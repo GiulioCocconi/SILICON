@@ -54,7 +54,7 @@ LogiFlowWindow::LogiFlowWindow()
 
   layout->addWidget(diagramView);
 
-  aboutDialog = new AboutDialog("Silicon", this);
+  aboutDialog = new AboutDialog("SILICON", this);
 
   undoStack = new QUndoStack(this);
 
@@ -62,7 +62,7 @@ LogiFlowWindow::LogiFlowWindow()
   createMenus();
   createToolBar();
 
-  setWindowTitle(tr("Silicon LogiFlow"));
+  setWindowTitle(tr("SILICON LogiFlow"));
   setMinimumSize(160, 160);
 }
 

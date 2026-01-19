@@ -136,8 +136,8 @@ jobs:
 
       - name: Configure CMake
         run: |
-          chmod +x ~/work/silicon/Qt/6.11.0/wasm_singlethread/bin/qt-cmake
-          ~/work/silicon/Qt/6.11.0/wasm_singlethread/bin/qt-cmake -Bbuild -G Ninja
+          chmod +x ~/work/SILICON/Qt/6.11.0/wasm_singlethread/bin/qt-cmake
+          ~/work/SILICON/Qt/6.11.0/wasm_singlethread/bin/qt-cmake -Bbuild -G Ninja
           emcmake cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -Bbuild
 
       - name: Build

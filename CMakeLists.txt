@@ -127,22 +127,22 @@ endif ()
 find_package(Qt6 REQUIRED COMPONENTS Widgets SvgWidgets)
 qt_standard_project_setup()
 
-qt_add_executable(Silicon
+qt_add_executable(SILICON
         ${src_dir}/main.cpp)
 
-target_sources(Silicon
+target_sources(SILICON
         PRIVATE
         ${COMMON_SOURCE_FILES}
         ${EXTRA_COMPONENTS_SOURCE_FILES}
         ${UI_SOURCE_FILES})
 
-target_compile_options(Silicon PRIVATE -Werror)
+target_compile_options(SILICON PRIVATE -Werror)
 
 if (EMSCRIPTEN)
-    target_link_libraries(Silicon PRIVATE Qt6::Widgets Qt6::SvgWidgets)
+    target_link_libraries(SILICON PRIVATE Qt6::Widgets Qt6::SvgWidgets)
 else ()
     add_subdirectory(libfst)
-    target_link_libraries(Silicon PRIVATE Qt6::Widgets Qt6::SvgWidgets fst)
+    target_link_libraries(SILICON PRIVATE Qt6::Widgets Qt6::SvgWidgets fst)
 endif ()
 
 if ((CMAKE_CXX_COMPILER_ID MATCHES "Clang") OR EMSCRIPTEN)
@@ -164,13 +164,13 @@ if ((CMAKE_CXX_COMPILER_ID MATCHES "Clang") OR EMSCRIPTEN)
         find_package(range-v3 REQUIRED)
     endif()
 
-    target_link_libraries(Silicon PRIVATE range-v3)
+    target_link_libraries(SILICON PRIVATE range-v3)
 endif ()
 
-win_deploy_qt(Silicon)
+win_deploy_qt(SILICON)
 
 # Add resources after Qt setup
-add_silicon_resources(Silicon)
+add_silicon_resources(SILICON)
 
 if (SILICON_BUILD_TESTS AND NOT EMSCRIPTEN)
     include(GoogleTest)
@@ -184,7 +184,7 @@ if (SILICON_BUILD_TESTS AND NOT EMSCRIPTEN)
     enable_testing()
 endif ()
 
-install(TARGETS Silicon
+install(TARGETS SILICON
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}

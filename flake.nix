@@ -1,5 +1,5 @@
 {
-  description = "Silicon - Open Source Suite for simulating Circuits, FSMs and Microcontrollers";
+  description = "SILICON - Open Source Suite for simulating Circuits, FSMs and Microcontrollers";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -38,34 +38,24 @@
       {
         devShells = {
             default = pkgs.mkShell {
-              name = "Silicon";
+              name = "SILICON-dev";
 
               packages = devPackages ++ libraries ++ nativeInputs;
 
               hardeningDisable = [ "all" ];
               NIX_LANG_CPP = "TRUE";
 
-              shellHook = ''
-                echo "Silicon development environment"
-                echo "CMake version: $(cmake --version | head -n1)"
-                echo "Ninja version: $(ninja --version)"
-                echo ""
-                echo "To build:"
-                echo "  mkdir -p build"
-                echo "  cmake -G Ninja -Bbuild"
-                echo "  ninja -C build"
-              '';
             };
 
             clang = (pkgs.mkShell.override { stdenv = pkgs.llvmPackages_20.libcxxStdenv; }) {
-                 name = "Silicon";
+                 name = "SILICON-dev-clang";
                  packages = devPackages ++ libraries ++ nativeInputs;
                  hardeningDisable = [ "all" ];
             };
         };
 
         packages.default = pkgs.stdenv.mkDerivation {
-          pname = "silicon";
+          pname = "SILICON";
           version = "0.1.0-pre-alpha";
 
           src = ./.;
@@ -82,7 +72,7 @@
 
           meta = with pkgs.lib; {
             description = "Open Source Suite for simulating Circuits, FSMs and Microcontrollers";
-            homepage = "https://github.com/GiulioCocconi/silicon";
+            homepage = "https://github.com/GiulioCocconi/SILICON";
             license = licenses.gpl3;
             platforms = platforms.linux;
           };

@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2025. Giulio Cocconi
+ Copyright (c) 2025-2026. Giulio Cocconi
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
    the Free Software Foundation, either version 3 of the License, or
@@ -32,7 +32,7 @@ class AboutDialog : public QDialog {
   Q_OBJECT
 
 public:
-  explicit AboutDialog(const QString& title = "Silicon", QWidget* parent = nullptr);
+  explicit AboutDialog(const QString& title = "SILICON", QWidget* parent = nullptr);
 
 private:
   void loadLicenses();
