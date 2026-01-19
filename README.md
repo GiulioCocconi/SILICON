@@ -79,8 +79,8 @@ echo "experimental-features = nix-command flakes" >> ~/.config/nix/nix.conf
 Finally, run the commands below to compile the develop edition of SILICON on Linux:
 
 ```shell
-git clone https://github.com/GiulioCocconi/silicon
-cd silicon
+git clone https://github.com/GiulioCocconi/SILICON
+cd SILICON
 nix build # Downloads the dependencies and builds the software
 ```
 

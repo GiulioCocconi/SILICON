@@ -153,7 +153,7 @@ if __name__ == "__main__":
         "--repo",
         type=str,
         required=True,
-        default="GiulioCocconi/Silicon",
+        default="GiulioCocconi/SILICON",
     )
     parser.add_argument("--issue-number", type=int, required=True)
     parser.add_argument(
