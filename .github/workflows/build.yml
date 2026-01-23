@@ -59,8 +59,10 @@ jobs:
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v21
 
-      - name: Cache Nix store
-        uses: DeterminateSystems/magic-nix-cache-action@v13
+
+      # REMOVED CACHE SINCE IT FILLS UP THE GA CACHE STORAGE
+      # - name: Cache Nix store
+      #  uses: DeterminateSystems/magic-nix-cache-action@v13
 
       - name: Build with Nix
         run: nix build --print-build-logs
