@@ -18,11 +18,14 @@
 
 #include "graphicalWire.hpp"
 
+#include <ui/common/diagramScene.hpp>
+
 GraphicalWire::GraphicalWire(const std::vector<GraphicalWireSegment*>& segments,
                              QGraphicsItem*                            parent)
-  : QGraphicsItem(parent)
+  : GraphicalItem(parent)
 {
   setFlag(QGraphicsItem::ItemIsSelectable);
+  setFlag(QGraphicsItem::ItemIsMovable);
   setFlag(QGraphicsItem::ItemSendsGeometryChanges);
 
   // Ensure this item can receive mouse events
@@ -34,8 +37,9 @@ GraphicalWire::GraphicalWire(const std::vector<GraphicalWireSegment*>& segments,
 
 void GraphicalWire::addSegment(GraphicalWireSegment* segment)
 {
-  if (segments.contains(segment))
+  if (segments.contains(segment)) {
     return;
+  }
 
   prepareGeometryChange();
   segments.insert(segment);
@@ -96,8 +100,8 @@ void GraphicalWire::paint(QPainter* painter, const QStyleOptionGraphicsItem* opt
   painter->setPen(QPen(this->getColor(), 3));
   painter->setBrush(Qt::black);
 
-  for (auto junction : getJunctions())
-    painter->drawEllipse(junction, 3, 3);
+  for (const auto& junction : getJunctions())
+    painter->drawEllipse(mapFromScene(junction), 3, 3);
 
   // Draw selection box
   if (isSelected()) {
@@ -136,27 +140,29 @@ std::vector<QPointF> GraphicalWire::getJunctions() const
       const GraphicalWireSegment* s1 = *it1;
       const GraphicalWireSegment* s2 = *it2;
 
-      // Bundle endpoints for cleaner iteration
-      const auto s1Extrema = std::array{s1->firstPoint(), s1->lastPoint()};
-      const auto s2Extrema = std::array{s2->firstPoint(), s2->lastPoint()};
+      // Convert endpoints to scene coordinates for proper junction detection
+      const auto s1Scene =
+          std::array{s1->mapToScene(s1->firstPoint()), s1->mapToScene(s1->lastPoint())};
+      const auto s2Scene =
+          std::array{s2->mapToScene(s2->firstPoint()), s2->mapToScene(s2->lastPoint())};
 
       // 1. Check Tip-to-Tip Connection (Corner/Extension)
-      if (std::ranges::find_first_of(s1Extrema, s2Extrema) != s1Extrema.end()) {
+      if (std::ranges::find_first_of(s1Scene, s2Scene) != s1Scene.end()) {
         // TODO: Add logic to merge wires
         continue;
       }
 
       // 2. Check T-Junctions (Intersection)
       // Check if s2's tips are on s1's body
-      for (const auto& p : s2Extrema) {
-        if (s1->isPointOnPath(p)) {
+      for (const auto& p : s2Scene) {
+        if (s1->isPointOnPath(s1->mapFromScene(p))) {
           junctions.push_back(p);
         }
       }
 
       // Check if s1's tips are on s2's body
-      for (const auto& p : s1Extrema) {
-        if (s2->isPointOnPath(p)) {
+      for (const auto& p : s1Scene) {
+        if (s2->isPointOnPath(s2->mapFromScene(p))) {
           junctions.push_back(p);
         }
       }
@@ -174,10 +180,13 @@ std::vector<QPointF> GraphicalWire::getVertices() const
   std::vector<QPointF> vertices = {};
 
   for (const auto segment : segments) {
-    if (std::ranges::find(junctions, segment->lastPoint()) == e)
-      vertices.push_back(segment->lastPoint());
-    if (std::ranges::find(junctions, segment->firstPoint()) == e)
-      vertices.push_back(segment->firstPoint());
+    const auto sceneFirst = segment->mapToScene(segment->firstPoint());
+    const auto sceneLast  = segment->mapToScene(segment->lastPoint());
+
+    if (std::ranges::find(junctions, sceneLast) == e)
+      vertices.push_back(sceneLast);
+    if (std::ranges::find(junctions, sceneFirst) == e)
+      vertices.push_back(sceneFirst);
   }
 
   assert(!vertices.empty());
@@ -192,11 +201,30 @@ GraphicalWire::~GraphicalWire()
   }
 }
 
+QRectF GraphicalWire::getCollisionRect() const
+{
+  return boundingRect();
+}
+
+void GraphicalWire::onPositionChanged(QPointF offset)
+{
+  assert(scene());
+  const auto diagramScene = qobject_cast<DiagramScene*>(scene());
+  assert(diagramScene);
+
+  diagramScene->calculateWiresForComponents();
+}
+
 GraphicalWireSegment::GraphicalWireSegment(QPointF firstPoint, QGraphicsItem* parent)
   : QGraphicsItem(parent)
 {
   setFlag(QGraphicsItem::ItemSendsGeometryChanges);
   setFlag(QGraphicsItem::ItemIsSelectable, false);
+
+  // Convert scene coordinate to local coordinate if we have a parent
+  if (parent) {
+    firstPoint = mapFromScene(firstPoint);
+  }
 
   points.push_back(firstPoint);
   updatePath();
@@ -204,23 +232,56 @@ GraphicalWireSegment::GraphicalWireSegment(QPointF firstPoint, QGraphicsItem* pa
 
 void GraphicalWireSegment::setGraphicalWire(GraphicalWire* graphicalWire)
 {
+  // Before reparenting, convert points to scene coordinates so they can be
+  // correctly mapped into the new parent's coordinate system afterwards.
+  // setParentItem() preserves pos() as-is but reinterprets it relative to the
+  // new parent, which shifts the local coordinate origin when the parent has a
+  // non-zero position (e.g. after dragging the wire).
+
+  std::vector<QPointF> scenePoints;
+  scenePoints.reserve(points.size());
+  for (const auto& pt : points)
+    scenePoints.push_back(mapToScene(pt));
+
+  std::vector<QPointF> sceneShowPoints;
+  sceneShowPoints.reserve(showPoints.size());
+  for (const auto& pt : showPoints)
+    sceneShowPoints.push_back(mapToScene(pt));
+
   setParentItem(graphicalWire);
+
+  // Convert back from scene coordinates to the new local coordinates
+  for (std::size_t i = 0; i < points.size(); ++i)
+    points[i] = mapFromScene(scenePoints[i]);
+
+  for (std::size_t i = 0; i < showPoints.size(); ++i)
+    showPoints[i] = mapFromScene(sceneShowPoints[i]);
 
   // The flag is deleted by QGraphicsItem::setParentItem()
   graphicalWire->setFlag(QGraphicsItem::ItemIsSelectable);
+  graphicalWire->setFlag(QGraphicsItem::ItemIsMovable);
   graphicalWire->setFlag(QGraphicsItem::ItemSendsGeometryChanges);
 
   graphicalWire->addSegment(this);
   this->graphicalWire = graphicalWire;
+
+  updatePath();
 }
 
-void GraphicalWireSegment::setShowPoints(const std::vector<QPointF>& points)
+void GraphicalWireSegment::setShowPoints(const std::vector<QPointF>& scenePoints)
 {
-  assert(points.size() <= 2);
+  assert(scenePoints.size() <= 2);
 
   // TODO: Check for collision with items but not with ports!
 
-  this->showPoints = points;
+  // Convert scene coordinates to local coordinates
+  std::vector<QPointF> localPoints;
+  localPoints.reserve(scenePoints.size());
+  for (const auto& pt : scenePoints) {
+    localPoints.push_back(mapFromScene(pt));
+  }
+
+  this->showPoints = localPoints;
 
   updatePath();
 }
@@ -255,7 +316,8 @@ void GraphicalWireSegment::addPoints()
     this->showPoints = {};
     updatePath();
   } else {
-    qDebug() << "Self intersecting";
+    qDebug() << "[GraphicalWireSegment] addPoints: self-intersecting wire detected, "
+                "points NOT added";
   }
 }
 
@@ -411,6 +473,14 @@ bool GraphicalWireSegment::isPointOnPath(const QPointF point) const
   }
 
   return false;
+}
+
+void GraphicalWireSegment::applyPositionOffset(const QPointF offset)
+{
+  for (auto& pt : points)
+    pt += offset;
+
+  updatePath();
 }
 
 GraphicalWireSegment::~GraphicalWireSegment()

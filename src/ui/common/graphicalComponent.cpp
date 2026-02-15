@@ -22,10 +22,8 @@
 
 GraphicalComponent::GraphicalComponent(QGraphicsItem* shape, QGraphicsItem* parent,
                                        bool scanShape)
-  : QGraphicsObject(parent)
+  : GraphicalItem(parent)
 {
-  this->collidingStatus = CollidingStatus::NOT_COLLIDING;
-
   setFlag(QGraphicsItem::ItemSendsGeometryChanges);
 
   setAcceptHoverEvents(true);
@@ -81,7 +79,7 @@ void GraphicalComponent::paint(QPainter* painter, const QStyleOptionGraphicsItem
   }
 }
 
-QRectF GraphicalComponent::collisionRect() const
+QRectF GraphicalComponent::collisionRectForWires() const
 {
   QPainterPath componentPath{};
   componentPath.addRect(itemShape->boundingRect());
@@ -102,81 +100,9 @@ void GraphicalComponent::rotate()
   update();
 }
 
-QVariant GraphicalComponent::itemChange(GraphicsItemChange change, const QVariant& value)
+QRectF GraphicalComponent::getCollisionRect() const
 {
-  // TODO: Implement with QGraphicsItem::ItemRotationChange for rotations
-
-  if (!scene())
-    return QGraphicsItem::itemChange(change, value);
-
-  if (change == ItemPositionChange) {
-    // 'proposedPos' is the new proposed position, snapped to the grid.
-    auto proposedPos = DiagramScene::snapToGrid(value.toPointF());
-
-    // Collision detection:
-    this->collidingStatus = NOT_COLLIDING;
-
-    // Calculate the bounding rectangle at the *new* position in scene coordinates.
-    // Use the item's bounding rectangle, offset by the proposed new position.
-    const auto newRect = this->boundingRectWithoutMargins().translated(proposedPos);
-
-    // Rotate newRect by item's rotation centered at item most-topleft pos using
-    // QTransform
-    const auto transform = QTransform()
-                               .translate(proposedPos.x(), proposedPos.y())
-                               .rotate(rotation())
-                               .translate(-proposedPos.x(), -proposedPos.y());
-
-    const auto rotatedRect = transform.mapRect(newRect);
-
-    // Get a list of items that would collide with this item at the new (rotated)
-    // position.
-    const auto collidingItems =
-        scene()->items(rotatedRect, Qt::IntersectsItemBoundingRect);
-
-    for (QGraphicsItem* collidingItem : collidingItems) {
-      // Skip collision with self or children
-      if (collidingItem == this || childItems().contains(collidingItem))
-        continue;
-
-      if (collidingItem->type() >= COMPONENT) {
-        this->collidingStatus = COLLIDING_WITH_COMPONENT;
-        goto rejectedPos;
-      }
-
-      if (collidingItem->type() == WIRE) {
-        // Check if the wire shape collides with the component shape excluding the port
-        // points
-        const auto   collidingWire = qgraphicsitem_cast<GraphicalWire*>(collidingItem);
-        QPainterPath collisionPath = collidingWire->shape();
-        QPainterPath toBeSubtractedWire{};
-
-        for (const auto vertex : collidingWire->getVertices()) {
-          toBeSubtractedWire.addEllipse(vertex, 5, 5);
-        }
-
-        collisionPath = collisionPath.subtracted(toBeSubtractedWire);
-        const bool collidingWithWire =
-            collisionPath.intersects(collisionRect().translated(proposedPos));
-
-        if (collidingWithWire) {
-          collidingStatus = COLLIDING_WITH_WIRE;
-          goto rejectedPos;
-        }
-      }
-    }
-
-    // If there isn't any collision return the proposed position
-    return proposedPos;
-
-  rejectedPos:
-    assert(collidingStatus != NOT_COLLIDING);
-    prepareGeometryChange();
-    return pos();  // Return current position, rejecting the change
-  }
-
-  // For all other changes call the base class implementation
-  return QGraphicsItem::itemChange(change, value);
+  return boundingRectWithoutMargins();
 }
 
 void GraphicalComponent::mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event)
@@ -185,7 +111,7 @@ void GraphicalComponent::mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event)
     showPropertiesDialog();
     return;
   }
-  QGraphicsObject::mouseDoubleClickEvent(event);
+  GraphicalItem::mouseDoubleClickEvent(event);
 }
 
 void GraphicalComponent::modeChanged(InteractionMode mode)

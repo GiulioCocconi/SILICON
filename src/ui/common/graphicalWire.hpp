@@ -22,6 +22,7 @@
 #include <ranges>
 #include <vector>
 
+#include <QDebug>
 #include <QGraphicsItem>
 #include <QGraphicsScene>
 #include <QPainter>
@@ -29,11 +30,12 @@
 #include <QPoint>
 #include <QRect>
 
+#include <core/wire.hpp>
 #include <ui/common/enums.hpp>
+#include <ui/common/graphicalItem.hpp>
 #include <utils/ranges_wrapper.hpp>
 
-#include <core/wire.hpp>
-
+class DiagramScene;
 class GraphicalWire;
 
 /* 1 GraphicalWire <-> GraphicalWireSegment
@@ -82,6 +84,8 @@ public:
 
   ~GraphicalWireSegment() override;
 
+  void applyPositionOffset(QPointF offset);
+
 private:
   QPainterPath path;
   QPainterPath showPath;
@@ -100,9 +104,15 @@ private:
   static constexpr int boxWidth  = interval * 0.6;
 };
 
-class GraphicalWire : public QGraphicsItem {
+class GraphicalWire : public GraphicalItem {
 public:
-  explicit GraphicalWire(QGraphicsItem* parent = nullptr) : QGraphicsItem(parent) {};
+  explicit GraphicalWire(QGraphicsItem* parent = nullptr) : GraphicalItem(parent)
+  {
+    setFlag(QGraphicsItem::ItemIsSelectable);
+    setFlag(QGraphicsItem::ItemIsMovable);
+    setFlag(QGraphicsItem::ItemSendsGeometryChanges);
+    setAcceptedMouseButtons(Qt::AllButtons);
+  };
   explicit GraphicalWire(const std::vector<GraphicalWireSegment*>& segments,
                          QGraphicsItem*                            parent = nullptr);
 
@@ -131,8 +141,13 @@ public:
   QColor        getColor();
   static QColor getColor(GraphicalWire* w);
 
+protected:
+  [[nodiscard]] QRectF getCollisionRect() const override;
+  [[nodiscard]] bool   canRotate() const override { return false; }
+  void                 onPositionChanged(QPointF offset) override;
+
 private:
-  Bus                                bus;
+  Bus                                       bus;
   std::unordered_set<GraphicalWireSegment*> segments;
 
   QRectF boundingRect() const override;
