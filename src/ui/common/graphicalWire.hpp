@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2025. Giulio Cocconi
+ Copyright (c) 2026. Giulio Cocconi
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -35,7 +35,6 @@
 #include <ui/common/graphicalItem.hpp>
 #include <utils/ranges_wrapper.hpp>
 
-class DiagramScene;
 class GraphicalWire;
 
 /* 1 GraphicalWire <-> GraphicalWireSegment
