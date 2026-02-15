@@ -31,13 +31,8 @@
 
 #include <core/component.hpp>
 #include <ui/common/diagramScene.hpp>
-
-enum CollidingStatus {
-  NOT_COLLIDING,
-  COLLIDING_WITH_COMPONENT,
-  COLLIDING_WITH_PORT,
-  COLLIDING_WITH_WIRE
-};
+#include <ui/common/enums.hpp>
+#include <ui/common/graphicalItem.hpp>
 
 class Port : public QGraphicsItem {
 private:
@@ -69,8 +64,11 @@ public:
   explicit PropertiesDialog(const QList<QWidget*>& widgets, QWidget* parent = nullptr);
 };
 
-class GraphicalComponent : public QGraphicsObject {
+class GraphicalComponent : public GraphicalItem {
   Q_OBJECT
+public:
+  [[nodiscard]] QRectF collisionRectForWires() const;
+
 protected:
   void                         setItemShape(QGraphicsItem* shape);
   [[nodiscard]] QGraphicsItem* getItemShape() const { return itemShape; }
@@ -78,14 +76,13 @@ protected:
   [[nodiscard]] QRectF boundingRect() const override;
   [[nodiscard]] QRectF boundingRectWithoutMargins() const;
 
-  void                 paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
-                             QWidget* widget) override;
-  [[nodiscard]] QRectF collisionRect() const;
+  void paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
+             QWidget* widget) override;
 
-  QVariant itemChange(GraphicsItemChange change, const QVariant& value) override;
-  void     mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event) override;
+  [[nodiscard]] QRectF getCollisionRect() const override;
+  [[nodiscard]] bool   canRotate() const override { return true; }
 
-  CollidingStatus collidingStatus = CollidingStatus::NOT_COLLIDING;
+  void mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event) override;
 
   std::vector<Port*> inputPorts;
   std::vector<Port*> outputPorts;
@@ -107,7 +104,6 @@ public:
                               bool scanShape = false);
 
   void               rotate();
-  [[nodiscard]] bool isColliding() const { return collidingStatus != NOT_COLLIDING; }
 
   virtual void
   setPorts(const std::vector<std::pair<std::string, QPoint>>& busToPortInputs,

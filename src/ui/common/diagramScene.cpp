@@ -378,7 +378,8 @@ void DiagramScene::calculateWiresForComponents() const
       const auto vertices = wire->getVertices();
 
       // Check for collision with input ports
-      for (const auto [index, p] : graphicalComponent->getInputPorts() | silicon::views::enumerate) {
+      for (const auto [index, p] :
+           graphicalComponent->getInputPorts() | silicon::views::enumerate) {
         const auto portPositionInScene = graphicalComponent->mapToScene(p->getPosition());
         const auto findResult          = std::ranges::find(vertices, portPositionInScene);
         if (findResult != vertices.end()) {
@@ -389,7 +390,7 @@ void DiagramScene::calculateWiresForComponents() const
       }
 
       for (const auto [index, p] :
-	     graphicalComponent->getOutputPorts() | silicon::views::enumerate) {
+           graphicalComponent->getOutputPorts() | silicon::views::enumerate) {
         const auto portPositionInScene = graphicalComponent->mapToScene(p->getPosition());
         const auto findResult          = std::ranges::find(vertices, portPositionInScene);
         if (findResult != vertices.end()) {

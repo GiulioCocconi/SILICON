@@ -30,9 +30,9 @@
 
 #include <ui/common/componentSearchBox.hpp>
 #include <ui/common/enums.hpp>
-#include <ui/common/graphicalWire.hpp>
 
 class GraphicalComponent;
+class GraphicalWireSegment;
 
 class DiagramScene : public QGraphicsScene {
   Q_OBJECT
@@ -75,13 +75,13 @@ public:
 public slots:
   void hideCSB();
 
+  void calculateWiresForComponents() const;
+
 signals:
   void modeChanged(InteractionMode mode);
 
 private:
   void drawBackground(QPainter* painter, const QRectF& rect) override;
-
-  void calculateWiresForComponents() const;
 
   void setInteractionMode(InteractionMode newMode, bool force);
 

@@ -74,6 +74,7 @@ set(UI_SOURCE_FILES
         ${src_dir}/ui/common/diagramScene.cpp
         ${src_dir}/ui/common/graphicalWire.cpp
         ${src_dir}/ui/common/graphicalComponent.cpp
+        ${src_dir}/ui/common/graphicalItem.cpp
         ${src_dir}/ui/common/icons.cpp
         ${src_dir}/ui/common/aboutDialog.cpp
         ${src_dir}/ui/logiFlow/components/graphicalLogicComponent.cpp
