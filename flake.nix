@@ -20,6 +20,7 @@
           valgrind
           surelog
           yosys
+	  opencode
           doxygen
           graphviz
         ];
