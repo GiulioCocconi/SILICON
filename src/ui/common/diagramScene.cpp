@@ -105,7 +105,6 @@ void DiagramScene::setInteractionMode(const InteractionMode newMode, bool force)
       delete componentToBeDrawn;
       componentToBeDrawn = nullptr;
     }
-
   } else if (newMode == InteractionMode::COMPONENT_PLACING_MODE) {
     // We need to show the CSB
 
@@ -193,7 +192,9 @@ void DiagramScene::mouseMoveEvent(QGraphicsSceneMouseEvent* mouseEvent)
 
       /* Calculate path to the cursor */
 
-      const QPointF lp              = wireSegmentToBeDrawn->lastPoint();
+      const QPointF lp =
+          wireSegmentToBeDrawn->mapToScene(wireSegmentToBeDrawn->lastPoint());
+
       const QPointF displacement    = cursorPos - lp;
       const QPointF intermediatePos = (displacement.x() >= displacement.y())
                                           ? QPointF(cursorPos.x(), lp.y())
