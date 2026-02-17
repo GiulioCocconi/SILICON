@@ -75,6 +75,9 @@ void DiagramScene::setInteractionMode(const InteractionMode newMode, bool force)
   if (currentMode == newMode && !force)
     return;
 
+  // Deselect all items
+  clearSelection();
+
   if (wireSegmentToBeDrawn && newMode != InteractionMode::WIRE_CREATION_MODE) {
     // Remove the wireSegment if it's invisible
     if (wireSegmentToBeDrawn->empty()) {
