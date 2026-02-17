@@ -18,6 +18,8 @@ result*
 .idea/editor.xml
 .idea/sonarlint.xml
 .idea/Silicon.iml
+.idea/misc.xml
+.idea/runConfigurations
 
 compile_commands.json
 .aider*
