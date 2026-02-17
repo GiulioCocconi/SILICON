@@ -195,8 +195,12 @@ std::vector<QPointF> GraphicalWire::getVertices() const
 
 GraphicalWire::~GraphicalWire()
 {
-  // Enforce the calling of the segment destructor before the wire itself gets destructed
-  for (const auto& segment : this->segments) {
+  // Take ownership of all segment pointers and clear the set *before*
+  // deleting any segment.  Each segment's destructor calls removeSegment(),
+  // which would erase from the set and invalidate the iterator if we were
+  // still iterating over it.
+  auto owned = std::move(this->segments);  // segments is now empty
+  for (const auto& segment : owned) {
     delete segment;
   }
 }
