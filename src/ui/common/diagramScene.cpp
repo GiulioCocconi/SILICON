@@ -434,7 +434,6 @@ void DiagramScene::addComponent(GraphicalComponent* component, QPointF pos)
 {
   component->setPos(pos);
 
-  connect(this, &DiagramScene::modeChanged, component, &GraphicalComponent::modeChanged);
 
   component->modeChanged(this->getInteractionMode());
 

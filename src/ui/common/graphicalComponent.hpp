@@ -94,8 +94,6 @@ protected:
   PropertiesDialog* propertiesDialog = nullptr;
 
 public slots:
-  void modeChanged(InteractionMode mode);
-
   virtual void propertiesDialogAccepted() {};
   virtual void propertiesDialogRejected();
 

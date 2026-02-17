@@ -261,11 +261,6 @@ void GraphicalWireSegment::setGraphicalWire(GraphicalWire* graphicalWire)
   for (std::size_t i = 0; i < showPoints.size(); ++i)
     showPoints[i] = mapFromScene(sceneShowPoints[i]);
 
-  // The flag is deleted by QGraphicsItem::setParentItem()
-  graphicalWire->setFlag(QGraphicsItem::ItemIsSelectable);
-  graphicalWire->setFlag(QGraphicsItem::ItemIsMovable);
-  graphicalWire->setFlag(QGraphicsItem::ItemSendsGeometryChanges);
-
   graphicalWire->addSegment(this);
   this->graphicalWire = graphicalWire;
 

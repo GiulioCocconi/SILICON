@@ -114,26 +114,6 @@ void GraphicalComponent::mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event)
   GraphicalItem::mouseDoubleClickEvent(event);
 }
 
-void GraphicalComponent::modeChanged(InteractionMode mode)
-{
-  switch (mode) {
-    case InteractionMode::NORMAL_MODE:
-      setFlag(QGraphicsItem::ItemIsMovable);
-      setFlag(QGraphicsItem::ItemIsFocusable);
-      setFlag(QGraphicsItem::ItemIsSelectable);
-      break;
-    case InteractionMode::WIRE_CREATION_MODE:
-    case InteractionMode::COMPONENT_PLACING_MODE:
-    case InteractionMode::SIMULATION_MODE:
-    case InteractionMode::PAN_MODE:
-      setFlag(QGraphicsItem::ItemIsSelectable, false);
-      setFlag(QGraphicsItem::ItemIsMovable, false);
-      setFlag(QGraphicsItem::ItemIsFocusable, false);
-      break;
-    default: assert(false);
-  }
-}
-
 void GraphicalComponent::propertiesDialogRejected()
 {
   assert(scene());

@@ -156,8 +156,34 @@ QVariant GraphicalItem::itemChange(GraphicsItemChange change, const QVariant& va
     onPositionChanged(offset);
     // Return the proposed new position
     return proposedPos;
+  } else if (change == ItemSceneHasChanged) {
+    // Connect the modeChanged from the new scene (only one scene during the object
+    // lifetime is supported)
+
+    const auto ds = dynamic_cast<DiagramScene*>(this->scene());
+    connect(ds, &DiagramScene::modeChanged, this, &GraphicalItem::modeChanged);
   }
 
   // For all other item changes, use default Qt behavior
   return QGraphicsItem::itemChange(change, value);
+}
+
+void GraphicalItem::modeChanged(InteractionMode mode)
+{
+  switch (mode) {
+    case InteractionMode::NORMAL_MODE:
+      setFlag(QGraphicsItem::ItemIsMovable);
+      setFlag(QGraphicsItem::ItemIsFocusable);
+      setFlag(QGraphicsItem::ItemIsSelectable);
+      break;
+    case InteractionMode::WIRE_CREATION_MODE:
+    case InteractionMode::COMPONENT_PLACING_MODE:
+    case InteractionMode::SIMULATION_MODE:
+    case InteractionMode::PAN_MODE:
+      setFlag(QGraphicsItem::ItemIsSelectable, false);
+      setFlag(QGraphicsItem::ItemIsMovable, false);
+      setFlag(QGraphicsItem::ItemIsFocusable, false);
+      break;
+    default: assert(false);
+  }
 }

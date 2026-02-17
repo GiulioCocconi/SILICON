@@ -18,13 +18,14 @@
 
 #pragma once
 
-#include "enums.hpp"
-
 #include <QGraphicsObject>
 #include <QPainterPath>
 #include <QPointF>
 #include <QRectF>
 #include <QTransform>
+
+#include <ui/common/enums.hpp>
+#include <ui/common/diagramScene.hpp>
 
 #include <unordered_set>
 #include <vector>
@@ -52,6 +53,8 @@ public:
   [[nodiscard]] bool isColliding() const
   { return getCollidingStatus() != NOT_COLLIDING; };
 
+public slots:
+  virtual void modeChanged(InteractionMode mode);
 protected:
   [[nodiscard]] virtual QRectF  getCollisionRect() const = 0;
   [[nodiscard]] virtual bool    canRotate() const { return true; }
