@@ -12,6 +12,7 @@
         pkgs = nixpkgs.legacyPackages.${system};
 
         devPackages = with pkgs; [
+          (python3.withPackages (pp: with pp; [ pygithub rich ]))
           vulkan-headers
           libxkbcommon.dev
           clang-tools
@@ -20,7 +21,7 @@
           valgrind
           surelog
           yosys
-	  opencode
+          opencode
           doxygen
           graphviz
         ];
