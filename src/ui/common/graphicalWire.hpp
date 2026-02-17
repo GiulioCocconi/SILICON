@@ -83,8 +83,6 @@ public:
 
   ~GraphicalWireSegment() override;
 
-  void applyPositionOffset(QPointF offset);
-
 private:
   QPainterPath path;
   QPainterPath showPath;

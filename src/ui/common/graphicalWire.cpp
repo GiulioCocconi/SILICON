@@ -474,14 +474,6 @@ bool GraphicalWireSegment::isPointOnPath(const QPointF point) const
   return false;
 }
 
-void GraphicalWireSegment::applyPositionOffset(const QPointF offset)
-{
-  for (auto& pt : points)
-    pt += offset;
-
-  updatePath();
-}
-
 GraphicalWireSegment::~GraphicalWireSegment()
 {
   if (graphicalWire)
