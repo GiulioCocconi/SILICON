@@ -146,7 +146,7 @@ jobs:
         run: ninja -C build
 
       - name: Upload WASM artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: silicon-wasm
           path: |
