@@ -30,6 +30,7 @@
           gtest.dev
           qt6.qtbase
           qt6.qtsvg
+          pegtl
         ];
 
         nativeInputs = with pkgs; [
@@ -51,7 +52,7 @@
 
             clang = (pkgs.mkShell.override { stdenv = pkgs.llvmPackages_20.libcxxStdenv; }) {
               name = "SILICON-dev-clang";
-              packages = devPackages ++ libraries ++ nativeInputs;
+              packages = devPackages ++ libraries ++ nativeInputs ++ [pkgs.range-v3];
               hardeningDisable = [ "all" ];
             };
           };
@@ -68,6 +69,7 @@
 
             cmakeFlags = [
               "-DSILICON_USE_VCPKG=OFF"
+	      "-DUSING_NIX=ON"
             ];
 
             doCheck = true;
