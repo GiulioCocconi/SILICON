@@ -84,15 +84,10 @@ void DiagramScene::setInteractionMode(const InteractionMode newMode, bool force)
       removeItem(wireSegmentToBeDrawn);
       delete wireSegmentToBeDrawn;
       wireSegmentToBeDrawn = nullptr;
-    } else if (!wireSegmentToBeDrawn->getGraphicalWire()) {  // Create the wire for
-                                                             // orphans
-      // Create the bus. Size 1 is the default, it will change if needed during simulation
-      const auto b = Bus(1);
-      auto*      w = new GraphicalWire();
-      w->setBus(b);
-
-      wireSegmentToBeDrawn->setGraphicalWire(w);
-      addItem(w);
+    } else {
+      // Always register the segment so the WireManager tracks it for junctions
+      // and collision detection
+      wireManager.addSegment(wireSegmentToBeDrawn);
     }
     clearWireShadow();
   }
@@ -343,15 +338,8 @@ void DiagramScene::hideCSB()
 
 void DiagramScene::calculateWiresForComponents() const
 {
-  const auto wires = items()
-                     | std::views::filter([](auto item) { return item->type() == WIRE; })
-                     | std::views::transform([](auto item) {
-                         return qgraphicsitem_cast<GraphicalWire*>(item);
-                       })
-                     | std::ranges::to<std::vector>();
-
-  // Set wires to initial state
-  for (GraphicalWire* wire : wires) {
+  // Set all wires to initial state
+  for (const auto& wire : wireManager.wires()) {
     wire->clearBusState();
   }
 
@@ -367,13 +355,24 @@ void DiagramScene::calculateWiresForComponents() const
     // Disconnect the component from all wires (TODO: Make more efficient)
     graphicalComponent->getComponent()->clearWires();
 
-    // Wires colliding with the component
-    auto collidingWires =
-        collidingItems(graphicalComponent)
-        | std::views::filter([](auto el) { return el->type() == SiliconTypes::WIRE; })
-        | std::views::transform(
-            [](auto el) { return qgraphicsitem_cast<GraphicalWire*>(el); })
-        | std::ranges::to<std::vector>();
+    // Find wire segments colliding with the component, then deduplicate by GraphicalWire
+    auto collidingSegments = collidingItems(graphicalComponent)
+                             | std::views::filter([](auto el) {
+                                 return el->type() == SiliconTypes::WIRE_SEGMENT;
+                               })
+                             | std::views::transform([](auto el) {
+                                 return qgraphicsitem_cast<GraphicalWireSegment*>(el);
+                               })
+                             | std::ranges::to<std::vector>();
+
+    // Deduplicate: collect the unique GraphicalWire* from the colliding segments
+    std::unordered_set<GraphicalWire*> seenWires;
+    std::vector<GraphicalWire*>        collidingWires;
+    for (auto* seg : collidingSegments) {
+      auto* wire = seg->getGraphicalWire();
+      if (wire && seenWires.insert(wire).second)
+        collidingWires.push_back(wire);
+    }
 
     // For each wire that collides with the component we need to find the port the wire
     // is connected to
@@ -414,17 +413,15 @@ void DiagramScene::calculateWiresForComponents() const
 bool DiagramScene::wireAlreadyPresentAtPos(const QPointF cursorPos) const
 {
   // This function checks for collisions within two or more GraphicalWireSegments and then
-  // assigns them the same GraphicalWire
+  // assigns them the same GraphicalWire, using the WireManager to find segments.
 
-  // Using Qt::IntersectsItemBoundingRect cause the shape of the wire is managed by the
-  // subsequently called segmentAtPoint()
-  for (const auto item : items(cursorPos, Qt::IntersectsItemBoundingRect)) {
-    if (item->type() == WIRE) {
-      const auto wire = qgraphicsitem_cast<GraphicalWire*>(item);
-      if (wire->segmentAtPoint(cursorPos)) {
-        wireSegmentToBeDrawn->setGraphicalWire(wire);
-        return true;
-      }
+  const auto* existingSegment =
+      wireManager.segmentAtPoint(cursorPos, wireSegmentToBeDrawn);
+  if (existingSegment) {
+    auto* wire = existingSegment->getGraphicalWire();
+    if (wire) {
+      wireSegmentToBeDrawn->setGraphicalWire(wire);
+      return true;
     }
   }
   return false;
@@ -433,7 +430,6 @@ bool DiagramScene::wireAlreadyPresentAtPos(const QPointF cursorPos) const
 void DiagramScene::addComponent(GraphicalComponent* component, QPointF pos)
 {
   component->setPos(pos);
-
 
   component->modeChanged(this->getInteractionMode());
 

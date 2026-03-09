@@ -30,9 +30,11 @@
 
 #include <ui/common/componentSearchBox.hpp>
 #include <ui/common/enums.hpp>
+#include <ui/common/wireManager.hpp>
 
 class GraphicalComponent;
 class GraphicalWireSegment;
+class WireManager;
 
 class DiagramScene : public QGraphicsScene {
   Q_OBJECT
@@ -97,6 +99,8 @@ private:
   GraphicalWireSegment* wireSegmentToBeDrawn = nullptr;
 
   ComponentSearchBox* csb = nullptr;
+
+  WireManager wireManager;
 
   // Completion map to be used with ComponentSearchBox
   static const inline ComponentSearchBox::SearchMap completionMap = {

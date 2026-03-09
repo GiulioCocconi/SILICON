@@ -22,12 +22,10 @@
 enum SiliconTypes {
   UNKNOWN = QGraphicsItem::UserType,
   PORT,
-  WIRE,
   WIRE_SEGMENT,
-  WIRE_JUNCTION,
 
   /* LogiFlow */
-  COMPONENT = WIRE_JUNCTION + 10,
+  COMPONENT = WIRE_SEGMENT + 10,
   GENERIC_IO,
   SINGLE_INPUT, /* Logiflow start */
   SINGLE_OUTPUT,

@@ -24,15 +24,15 @@
 #include <QRectF>
 #include <QTransform>
 
-#include <ui/common/enums.hpp>
 #include <ui/common/diagramScene.hpp>
+#include <ui/common/enums.hpp>
 
 #include <unordered_set>
 #include <vector>
 
 class DiagramScene;
 class GraphicalComponent;
-class GraphicalWire;
+class GraphicalWireSegment;
 
 enum CollidingStatus {
   NOT_COLLIDING,
@@ -51,10 +51,13 @@ public:
 
   [[nodiscard]] int  type() const override { return UNKNOWN; }
   [[nodiscard]] bool isColliding() const
-  { return getCollidingStatus() != NOT_COLLIDING; };
+  {
+    return getCollidingStatus() != NOT_COLLIDING;
+  };
 
 public slots:
   virtual void modeChanged(InteractionMode mode);
+
 protected:
   [[nodiscard]] virtual QRectF  getCollisionRect() const = 0;
   [[nodiscard]] virtual bool    canRotate() const { return true; }

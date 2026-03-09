@@ -67,15 +67,15 @@ QVariant GraphicalItem::itemChange(GraphicsItemChange change, const QVariant& va
     // Step 6: Analyze each potentially colliding item to determine collision type
     for (QGraphicsItem* collidingItem : collidingItems) {
       // Initialize containers to categorize the colliding pair
-      std::unordered_set<GraphicalComponent*> componentsInPair;
-      std::unordered_set<GraphicalWire*>      wiresInPair;
+      std::unordered_set<GraphicalComponent*>   componentsInPair;
+      std::unordered_set<GraphicalWireSegment*> segmentsInPair;
 
-      // Lambda function to categorize items as components or wires based on type
+      // Lambda function to categorize items as components or wire segments
       auto categorizeItem = [&](QGraphicsItem* item) {
         if (item->type() >= COMPONENT)
           componentsInPair.insert(qgraphicsitem_cast<GraphicalComponent*>(item));
-        else if (item->type() == WIRE)
-          wiresInPair.insert(qgraphicsitem_cast<GraphicalWire*>(item));
+        else if (item->type() == WIRE_SEGMENT)
+          segmentsInPair.insert(qgraphicsitem_cast<GraphicalWireSegment*>(item));
       };
 
       // Categorize both the current item and the colliding item
@@ -83,7 +83,7 @@ QVariant GraphicalItem::itemChange(GraphicsItemChange change, const QVariant& va
       categorizeItem(collidingItem);
 
       // Skip if categorization doesn't result in exactly 2 valid items
-      if (componentsInPair.size() + wiresInPair.size() != 2)
+      if (componentsInPair.size() + segmentsInPair.size() != 2)
         continue;
 
       if (componentsInPair.empty()) {
@@ -92,7 +92,7 @@ QVariant GraphicalItem::itemChange(GraphicsItemChange change, const QVariant& va
         continue;
       }
 
-      else if (wiresInPair.empty()) {
+      else if (segmentsInPair.empty()) {
         // Component-component collision
         // Since we simply care if the bounding rects intersects we should reject all
         // changes
@@ -105,19 +105,25 @@ QVariant GraphicalItem::itemChange(GraphicsItemChange change, const QVariant& va
       // The collision is checked against wire shape and the component's colliding rect
       // for wires
 
-      // Extract the component and wire from their respective containers
-      auto collidingComponent = *(componentsInPair.begin());
-      auto collidingWire      = *(wiresInPair.begin());
+      // Extract the component and colliding segment
+      auto        collidingComponent = *(componentsInPair.begin());
+      auto        collidingSegment   = *(segmentsInPair.begin());
+      const auto* collidingWire      = collidingSegment->getGraphicalWire();
+
+      if (!collidingWire)
+        continue;
 
       // Container for exclusion zones around wire vertices
       QPainterPath toBeSubtractedWire{};
 
       // Get wire vertices and create the base collision shape
+      // GraphicalWire::shape() and getVertices() already return scene coordinates
       auto         vertices      = collidingWire->getVertices();
       QPainterPath collisionPath = collidingWire->shape();
 
-      // If dragged item is a wire, translate the path to match the proposed position
-      if (this->type() == WIRE) {
+      // If dragged item is a wire segment, translate the path to match the proposed
+      // position
+      if (this->type() == WIRE_SEGMENT) {
         collisionPath.translate(offset);
         for (auto& vertex : vertices)
           vertex += offset;
@@ -129,9 +135,8 @@ QVariant GraphicalItem::itemChange(GraphicsItemChange change, const QVariant& va
         toBeSubtractedWire.addEllipse(vertex, 5, 5);
       }
 
-      // Convert collision path to scene coordinate
-      // Subtract the port exclusion zones from the wire's collision path
-      collisionPath = collidingWire->mapToScene(collisionPath);
+      // GraphicalWire::shape() already returns scene-coordinate paths, no mapToScene
+      // needed. Subtract the port exclusion zones from the wire's collision path.
       collisionPath = collisionPath.subtracted(toBeSubtractedWire);
 
       // Determine the component position for collision check
@@ -144,10 +149,9 @@ QVariant GraphicalItem::itemChange(GraphicsItemChange change, const QVariant& va
           collisionPath.intersects(collidingComponent->collisionRectForWires().translated(
               collidingComponentOffset));
 
-      // If collision detected, mark both items and reject the position change
+      // If collision detected, mark the component and reject the position change
       if (isCollidingWithWire) {
         collidingComponent->setCollidingStatus(COLLIDING_WITH_WIRE);
-        collidingWire->setCollidingStatus(COLLIDING_WITH_COMPONENT);
         return pos();
       }
     }
