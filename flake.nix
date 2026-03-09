@@ -69,7 +69,7 @@
 
             cmakeFlags = [
               "-DSILICON_USE_VCPKG=OFF"
-	      "-DUSING_NIX=ON"
+	          "-DUSING_NIX=ON"
             ];
 
             doCheck = true;
