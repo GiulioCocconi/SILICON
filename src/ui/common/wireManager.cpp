@@ -28,11 +28,13 @@
 
 WireManager::~WireManager()
 {
+  // Detach segments without side-effects (avoids creating new wires during
+  // teardown, which would leave dangling pointers after managedWires is cleared).
   for (auto* segment : allSegments) {
-    segment->setGraphicalWire(nullptr);
+    segment->detachFromWire();
   }
 
-  for (auto wire : managedWires) {
+  for (auto& wire : managedWires) {
     wire->setManager(nullptr);
   }
 
