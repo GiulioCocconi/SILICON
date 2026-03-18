@@ -144,6 +144,10 @@ public:
   GraphicalWire* getGraphicalWire() const { return graphicalWire; }
   void           setGraphicalWire(GraphicalWire* graphicalWire);
 
+  // Null out the wire pointer without side-effects. Used only during
+  // WireManager teardown to avoid creating new wires/accessing freed memory.
+  void detachFromWire() { graphicalWire = nullptr; }
+
   ~GraphicalWireSegment() override;
 
   [[nodiscard]] bool isAlignedWith(const GraphicalWireSegment* other) const;
