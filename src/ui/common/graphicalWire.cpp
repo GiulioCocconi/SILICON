@@ -258,14 +258,8 @@ void GraphicalWireSegment::paint(QPainter*                       painter,
   // Draw junction ellipses at endpoints
   if (firstJunction || lastJunction) {
     painter->setPen(QPen(color, 3));
-    if (firstJunction) {
-      assert(!points.empty());
-      painter->drawEllipse(points.front(), 3, 3);
-    }
-    if (lastJunction) {
-      assert(points.size() > 1);
-      painter->drawEllipse(points.back(), 3, 3);
-    }
+    const auto junctionPoint = firstJunction ? points.front() : points.back();
+    painter->drawEllipse(junctionPoint, 3, 3);
   }
 
   // Draw hovered / selected points
@@ -279,48 +273,62 @@ void GraphicalWireSegment::paint(QPainter*                       painter,
     }
   }
 
-  // Bus decorations (slashes and size boxes)
-  const qreal totalLength = path.length();
-  if (size > 1 && totalLength >= 2 * interval) {
-    painter->setPen(QPen(color, 2.0));
-    painter->setFont(QFont("NovaMono", painter->font().pointSize() * 0.8));
+  /* Bus decorations (slashes and size boxes) *
+   *       0   1   2   3   4   5   6          *
+   *       |  [ ]  |       |  [ ]  |          */
 
-    // 1. Calculate loop invariants ONCE before the loop
-    const QString   sizeText = QString::number(size);
-    const QRectF    boxRect(-boxWidth / 2.0, -boxHeight / 2.0, boxWidth, boxHeight);
-    constexpr qreal halfLen = slashLength / 2.0;
+  const qreal totalLength     = path.length();
+  const bool  drawDecorations = (size > 1) && (totalLength >= 2 * interval);
 
-    int counter = 0;
-    for (qreal dist = interval; dist < totalLength; dist += interval, ++counter) {
-      const bool drawSlash = (counter % 2 == 0);
-      const bool drawBox   = ((counter - 1) % 4 == 0);
+  if (!drawDecorations)
+    return;
 
-      // 2. Skip expensive path math if we aren't drawing anything this iteration
-      if (!drawSlash && !drawBox)
-        continue;
+  painter->setPen(QPen(color, 2.0));
+  painter->setFont(QFont("NovaMono", painter->font().pointSize() * 0.8));
 
-      const qreal percent   = path.percentAtLength(dist);
-      const qreal pathAngle = path.angleAtPercent(percent);
+  const QString   sizeText = QString::number(size);
+  const QRectF    boxRect(-boxWidth / 2.0, -boxHeight / 2.0, boxWidth, boxHeight);
+  constexpr qreal halfLen = slashLength / 2.0;
 
-      painter->save();
-      painter->translate(path.pointAtPercent(percent));
-      painter->rotate(-pathAngle);
+  int counter = 0;
+  for (qreal dist = interval; dist < totalLength; dist += interval, ++counter) {
+    const bool drawSlash = (counter % 2 == 0);
+    const bool drawBox   = ((counter - 1) % 4 == 0);
 
-      if (drawSlash) {
-        painter->rotate(slashAngle);
-        painter->drawLine(QPointF(-halfLen, 0), QPointF(halfLen, 0));
-      } else if (drawBox) {
-        if (pathAngle == 180.0)
-          painter->rotate(180.0);
+    // Skip expensive path math if we aren't drawing anything this iteration
+    if (!drawSlash && !drawBox)
+      continue;
 
-        painter->setBrush(AppColors::INTERNAL);
-        painter->drawRoundedRect(boxRect, 5, 5);
-        painter->setBrush(Qt::black);
-        painter->drawText(boxRect, sizeText, QTextOption(Qt::AlignCenter));
-      }
+    const qreal percent   = path.percentAtLength(dist);
+    const qreal pathAngle = path.angleAtPercent(percent);
 
-      painter->restore();
+    painter->save();
+
+    // Move the coordinate system's origin to the center of our slash
+    painter->translate(path.pointAtPercent(percent));
+
+    // Rotate the coordinate system. `angleAtPercent()` is counter-clockwise whilst
+    // `rotate()` is clockwise, we use a negative angle to align.
+    painter->rotate(-pathAngle);
+
+    if (drawSlash) {
+      // Now that the coordinate system is aligned with the path we can draw a simple
+      // rotated line.
+      painter->rotate(slashAngle);
+      painter->drawLine(QPointF(-halfLen, 0), QPointF(halfLen, 0));
+    } else if (drawBox) {
+      // Rotate the coordinate system back to the original position in order not to
+      // write the size upside down
+      if (pathAngle == 180.0)
+        painter->rotate(180.0);
+
+      painter->setBrush(AppColors::INTERNAL);
+      painter->drawRoundedRect(boxRect, 5, 5);
+      painter->setBrush(Qt::black);
+      painter->drawText(boxRect, sizeText, QTextOption(Qt::AlignCenter));
     }
+
+    painter->restore();
   }
 }
 
