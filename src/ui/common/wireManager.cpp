@@ -148,9 +148,10 @@ void WireManager::merge(GraphicalWireSegment* a, GraphicalWireSegment* b)
     return;
   }
 
-  // 2. Unaligned path: keep segments separate, but unify their GraphicalWire
+  // 2. Unaligned path: keep segments separate, but unify their GraphicalWire. The
+  // dominant wire is chosen in order to minimize segment's wire changes.
   if (wireA != wireB) {
-    bool aIsDominant = wireA->getBusSize() >= wireB->getBusSize();
+    const bool aIsDominant = wireA->getSegments().size() >= wireB->getSegments().size();
     mergeWires(aIsDominant ? wireA : wireB, aIsDominant ? wireB : wireA);
   }
 }
