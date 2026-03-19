@@ -116,11 +116,26 @@ void WireManager::segmentMoved(GraphicalWireSegment* segment)
   // --- 1. MERGE PHASE ---
   // If moving this segment makes it touch segments of OTHER wires, merge them.
   bool hasTopologyChanged = false;
-  for (GraphicalWireSegment* sibling : allSegments)
+
+  // To avoid invalidation UB, we process using an index approach because fusing
+  // dynamically destroys the sibling element leading to vector element shifts and scale
+  // changes.
+  for (size_t i = 0; i < allSegments.size();) {
+    size_t                oldSize = allSegments.size();
+    GraphicalWireSegment* sibling = allSegments[i];
+
     if (segmentsTouching(segment, sibling)) {
       merge(segment, sibling);
       hasTopologyChanged = true;
+
+      // If a merge has erased the sibling, vector sizes change so index `i` natively
+      // points towards the next right-shifted object. Skip the increment if deletion
+      // happened.
+      if (allSegments.size() < oldSize)
+        continue;
     }
+    ++i;
+  }
 
   // --- 2. SPLIT PHASE ---
   // Did moving this segment break its CURRENT wire into disconnected pieces?
@@ -313,7 +328,7 @@ void WireManager::mergeWires(GraphicalWire* dst, GraphicalWire* src)
     return;
 
   // Move all segments from src to dst
-  const auto& segsCopy = src->getSegments();  // copy to avoid iterator invalidation
+  const auto segsCopy = src->getSegments();  // copy to avoid iterator invalidation
   for (auto* seg : segsCopy) {
     src->removeSegment(seg);
     seg->setGraphicalWire(dst);
@@ -334,11 +349,6 @@ void WireManager::fuseSegments(GraphicalWireSegment* a, GraphicalWireSegment* b)
 
   const auto& aPts = a->getPoints();
   const auto& bPts = b->getPoints();
-
-  auto* wireA = a->getGraphicalWire();
-  auto* wireB = b->getGraphicalWire();
-
-  assert(wireA && wireB);
 
   std::vector<QPointF> newPoints;
   newPoints.reserve(aPts.size() + bPts.size() - 1);
@@ -371,16 +381,10 @@ void WireManager::fuseSegments(GraphicalWireSegment* a, GraphicalWireSegment* b)
     addA();
   }
 
-  // If a collision was found and points were merged, clean up 'b'
-  if (!newPoints.empty()) {
-    a->setPoints(std::move(newPoints));
+  assert(!newPoints.empty());
+  a->setPoints(std::move(newPoints));
 
-    wireB->removeSegment(b);
-    if (wireB->empty() && wireB != wireA) {
-      removeWire(wireB);
-    }
-
-    removeSegment(b);
-    delete b;
-  }
+  // The segment b is no longer needed, it was merged into a.
+  // It removes itself from the scene and safely cleans itself from the parent wire.
+  delete b;
 }

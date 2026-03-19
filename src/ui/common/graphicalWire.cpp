@@ -454,27 +454,16 @@ bool GraphicalWireSegment::isAlignedWith(const GraphicalWireSegment* other) cons
 {
   assert(other);
   assert(points.size() >= 2 && other->points.size() >= 2);
+  assert(scene());
 
-  const auto& p1 = points.front();
-  const auto& p2 = points.back();
-  const auto& o1 = other->points.front();
-  const auto& o2 = other->points.back();
+  const auto p1 = std::array{mapToScene(points.front()), mapToScene(points.back())};
 
-  // Helper lambda for coordinate alignment check
-  // Replace the difference using qAbs if necessary.
-  auto isAligned = [](auto a, auto b) { return a - b == 0; };
+  const auto p2 = std::array{other->mapToScene(other->points.front()),
+                             other->mapToScene(other->points.back())};
 
-  // Check Horizontal alignment
-  if (isAligned(p1.y(), p2.y()) && isAligned(o1.y(), o2.y())) {
-    return isAligned(p1.y(), o1.y());
-  }
+  auto it = std::ranges::find_first_of(p1, p2);
 
-  // Check Vertical alignment
-  if (isAligned(p1.x(), p2.x()) && isAligned(o1.x(), o2.x())) {
-    return isAligned(p1.x(), o1.x());
-  }
-
-  return false;
+  return (it != p1.end());
 }
 void GraphicalWireSegment::mousePressEvent(QGraphicsSceneMouseEvent* event)
 {
@@ -530,8 +519,12 @@ GraphicalWireSegment::~GraphicalWireSegment()
   if (!graphicalWire)
     return;
 
-  if (const auto manager = graphicalWire->getManager())
-    manager->removeSegment(this);
+  // Cache the manager as removing the segment from the wire might trigger a clean-up
+  auto* manager = graphicalWire->getManager();
 
+  // Extract the segment from the wire so the manager sees the accurate segment count
   graphicalWire->removeSegment(this);
+
+  if (manager)
+    manager->removeSegment(this);
 }
