@@ -68,7 +68,8 @@ public:
   // Called after a segment has been moved (e.g. by point dragging).
   // Checks endpoint collisions with all other segments and performs merge or
   // split as needed.
-  void segmentMoved(GraphicalWireSegment* segment);
+  void updateSegmentTopology(GraphicalWireSegment* segment,
+                             bool                  forceCalculateJunctions = false);
 
   // Merge: Unify the GraphicalWires of two segments whose endpoints collide.
   // If the segments are aligned (collinear), they are fused into one segment.
