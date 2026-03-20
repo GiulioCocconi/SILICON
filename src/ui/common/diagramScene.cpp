@@ -242,19 +242,9 @@ void DiagramScene::mousePressEvent(QGraphicsSceneMouseEvent* mouseEvent)
         // Let's start drawing the wire!
         wireSegmentToBeDrawn = new GraphicalWireSegment(cursorPos);
         addItem(wireSegmentToBeDrawn);
-        wireAlreadyPresentAtPos(cursorPos);
+        // wireAlreadyPresentAtPos(cursorPos);
       } else {
         wireSegmentToBeDrawn->addPoints();
-
-        // If the point to be created is a junction then we have finished drawing
-        // the segment
-
-        if (wireAlreadyPresentAtPos(cursorPos)) {
-          setInteractionMode(InteractionMode::NORMAL_MODE);
-          return;
-        }
-
-        // TODO: check for ports
       }
       break;
     }
@@ -420,7 +410,7 @@ bool DiagramScene::wireAlreadyPresentAtPos(const QPointF cursorPos) const
   if (existingSegment) {
     auto* wire = existingSegment->getGraphicalWire();
     if (wire) {
-      wireSegmentToBeDrawn->setGraphicalWire(wire);
+      // wireSegmentToBeDrawn->setGraphicalWire(wire);
       return true;
     }
   }
