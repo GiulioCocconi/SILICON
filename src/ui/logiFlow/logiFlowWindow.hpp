@@ -53,6 +53,7 @@ class LogiFlowWindow : public QMainWindow {
 
 public:
   LogiFlowWindow();
+  ~LogiFlowWindow() override;
 
 protected:
 #ifndef QT_NO_CONTEXTMENU
