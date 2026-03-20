@@ -76,13 +76,11 @@ void WireManager::addSegment(GraphicalWireSegment* segment)
     segment->setGraphicalWire(wire.get());
   }
 
-  calculateJunctions();
+  calculateJunctions(segment);
 }
 
 void WireManager::removeSegment(GraphicalWireSegment* segment)
 {
-  qDebug() << "Remove segment!!!";
-
   assert(segment);
 
   std::erase(allSegments, segment);
@@ -98,13 +96,11 @@ void WireManager::removeSegment(GraphicalWireSegment* segment)
   // The wire still has other segments. Removing this segment might have
   // broken the remaining wire into multiple pieces. Evaluate it!
   evaluateWireSplits(wire);
-  calculateJunctions();
+  calculateJunctions();  // TODO: OPTIMIZE
 }
 
 bool WireManager::pointsAreSame(QPointF a, QPointF b)
-{
-  return QLineF(a, b).length() <= collisionTolerance;
-}
+{ return QLineF(a, b).length() <= collisionTolerance; }
 
 void WireManager::segmentMoved(GraphicalWireSegment* segment)
 {
@@ -145,7 +141,7 @@ void WireManager::segmentMoved(GraphicalWireSegment* segment)
   }
 
   if (hasTopologyChanged)
-    calculateJunctions();
+    calculateJunctions(segment);
 }
 
 void WireManager::merge(GraphicalWireSegment* a, GraphicalWireSegment* b)
@@ -174,35 +170,45 @@ void WireManager::merge(GraphicalWireSegment* a, GraphicalWireSegment* b)
 void WireManager::calculateJunctions() const
 {
   for (auto* segment : allSegments)
-    calculateJunctions(segment);
+    calculateJunctions(segment, false);
 }
 
-void WireManager::calculateJunctions(GraphicalWireSegment* segment) const
+void WireManager::calculateJunctions(GraphicalWireSegment* segment,
+                                     bool                  includeNeighborhood) const
 {
+  assert(segment);
   if (segment->empty())
     return;
 
-  segment->setFirstPointJunction(false);
-  segment->setLastPointJunction(false);
+  const auto neighborhood = includeNeighborhood
+                                ? segmentNeighbors(segment)
+                                : std::vector<GraphicalWireSegment*>{segment};
 
-  // For each pair of segments, check whether one's endpoint lies on the other's body.
-  // Only endpoints can be junctions.
-  const QPointF firstScene = segment->mapToScene(segment->firstPoint());
-  const QPointF lastScene  = segment->mapToScene(segment->lastPoint());
+  for (const auto neighbor : neighborhood) {
+    neighbor->setFirstPointJunction(false);
+    neighbor->setLastPointJunction(false);
 
-  for (const auto* other : allSegments) {
-    if (other == segment || other->empty())
-      continue;
+    // For each pair of segments, check whether one's endpoint lies on the other's body.
+    // Only endpoints can be junctions.
+    const QPointF firstScene = neighbor->mapToScene(neighbor->firstPoint());
+    const QPointF lastScene  = neighbor->mapToScene(neighbor->lastPoint());
 
-    // Check if seg's first endpoint lies on other's body
-    const QPointF firstLocal = other->mapFromScene(firstScene);
-    if (other->isPointOnPath(firstLocal))
-      segment->setFirstPointJunction(true);
+    const auto segmentsToBeTested = includeNeighborhood ? neighborhood : allSegments;
 
-    // Check if seg's last endpoint lies on other's body
-    const QPointF lastLocal = other->mapFromScene(lastScene);
-    if (other->isPointOnPath(lastLocal))
-      segment->setLastPointJunction(true);
+    for (const auto* other : segmentsToBeTested) {
+      if (other == neighbor || other->empty())
+        continue;
+
+      // Check if seg's first endpoint lies on other's body
+      const QPointF firstLocal = other->mapFromScene(firstScene);
+      if (other->isPointOnPath(firstLocal))
+        neighbor->setFirstPointJunction(true);
+
+      // Check if seg's last endpoint lies on other's body
+      const QPointF lastLocal = other->mapFromScene(lastScene);
+      if (other->isPointOnPath(lastLocal))
+        neighbor->setLastPointJunction(true);
+    }
   }
 }
 
@@ -282,6 +288,26 @@ WireManager::segmentAtPoint(QPointF                     scenePoint,
 }
 
 // --- Helpers ---------------------------------------------------------------------------
+
+std::vector<GraphicalWireSegment*>
+WireManager::segmentNeighbors(GraphicalWireSegment* segment)
+{
+  assert(segment);
+  assert(segment->scene());
+
+  const auto colliding = segment->scene()->collidingItems(segment);
+
+  auto neighbors = colliding | std::views::transform([](QGraphicsItem* item) {
+                     return dynamic_cast<GraphicalWireSegment*>(item);
+                   })
+                   | std::views::filter([&](const GraphicalWireSegment* sibling) {
+                       return sibling && segmentsTouching(segment, sibling);
+                     })
+                   | std::ranges::to<std::vector>();
+
+  neighbors.push_back(segment);
+  return neighbors;
+}
 
 bool WireManager::segmentsTouching(const GraphicalWireSegment* segment,
                                    const GraphicalWireSegment* other)
