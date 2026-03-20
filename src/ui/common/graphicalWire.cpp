@@ -137,11 +137,9 @@ void GraphicalWireSegment::setGraphicalWire(GraphicalWire* newWire)
   graphicalWire->addSegment(this);
 
   // Propagate the new wire to all touching sibling segments
-  if (const auto* manager = graphicalWire->getManager()) {
-    for (auto* sibling : manager->getSegments()) {
-      if (WireManager::segmentsTouching(this, sibling)) {
-        sibling->setGraphicalWire(graphicalWire);
-      }
+  for (auto* sibling : WireManager::segmentNeighbors(this)) {
+    if (sibling != this) {
+      sibling->setGraphicalWire(graphicalWire);
     }
   }
 }
