@@ -16,7 +16,7 @@ _Common_
     * [ ] [Doxygen](https://www.doxygen.nl/index.html)?
     * [ ] [Read the Docs](https://readthedocs.org/)?
 - [X] CI/CD
-    * [ ] [GitHub Actions](https://github.com/features/actions)
+    * [X] [GitHub Actions](https://github.com/features/actions)
     * [ ] Multi-OS support (_kinda done: windows builds are now supported_)
         * [ ] Deployment (setup packages for Win & Mac). See [here](https://www.qt.io/blog/cmake-deployment-api).
 
@@ -88,14 +88,35 @@ nix build # Downloads the dependencies and builds the software
 
 Only recent versions of the MinGW compiler are supported (tested using version `13.0`), you can install them via this [graphical installer](https://github.com/Vuniverse0/mingwInstaller/releases/tag/1.2.1).
 
-The only thing you need to install is [CMake](https://cmake.org), since the `CMakeLists` take care of installing the dependency manager [vcpkg](https://vcpkg.io).
+The only thing you need to install for dependency management is [CMake](https://cmake.org), since the `CMakeLists` installs the dependency manager [vcpkg](https://vcpkg.io) automatically.
 Since all dependencies are built from source, the first time you run CMake you might need to wait a few minutes (or hours, depending on your compute power).
 
 To start the compilation process, once you have installed the compiler and CMake, run the following commands:
 ```shell
- git clone https://github.com/GiulioCocconi/silicon
- cd silicon
- mkdir build
- cmake -G "MinGW Makefiles" -Bbuild
- make -C build
+git clone https://github.com/GiulioCocconi/SILICON
+cd SILICON
+mkdir build
+cmake -G "MinGW Makefiles" -Bbuild
+make -C build
+```
+
+## Developing
+
+### Using Linux (Nix)
+```shell
+git clone https://github.com/GiulioCocconi/SILICON
+cd SILICON
+nix develop   # It also installs the DDD debugger
+mkdir build
+cmake -G "Ninja" -Bbuild -DCMAKE_BUILD_TYPE=Debug
+ninja -C build
+```
+
+### Using Windows
+```shell
+git clone https://github.com/GiulioCocconi/SILICON
+cd SILICON
+mkdir build
+cmake -G "MinGW Makefiles" -Bbuild -DCMAKE_BUILD_TYPE=Debug
+make -C build
 ```
