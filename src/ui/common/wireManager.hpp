@@ -77,7 +77,8 @@ public:
   void merge(GraphicalWireSegment* a, GraphicalWireSegment* b);
 
   // Recalculate the junction flags for a specific segment
-  void calculateJunctions(GraphicalWireSegment* segment) const;
+  void calculateJunctions(GraphicalWireSegment* segment,
+                          bool                  includeNeighborhood = true) const;
 
   // Recalculate all junction flags across every registered segment.
   void calculateJunctions() const;
@@ -86,6 +87,11 @@ public:
   [[nodiscard]] GraphicalWireSegment*
   segmentAtPoint(QPointF                     scenePoint,
                  const GraphicalWireSegment* ignoredSegment = nullptr) const;
+
+  // Returns a set of segments near the argument (and including it) using Qt's colliding
+  // items [O(log n)]
+  static std::vector<GraphicalWireSegment*>
+  segmentNeighbors(GraphicalWireSegment* segment);
 
   [[nodiscard]] std::vector<GraphicalWireSegment*> getSegments() const
   {
