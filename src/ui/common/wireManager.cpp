@@ -365,6 +365,7 @@ void WireManager::mergeWires(GraphicalWire* dst, GraphicalWire* src)
 void WireManager::fuseSegments(GraphicalWireSegment* a, GraphicalWireSegment* b)
 {
   assert(a && b);
+  assert(a->isAlignedWith(b));
 
   const QPointF aFirst = a->mapToScene(a->firstPoint());
   const QPointF aLast  = a->mapToScene(a->lastPoint());

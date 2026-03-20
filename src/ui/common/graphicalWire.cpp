@@ -451,6 +451,7 @@ void GraphicalWireSegment::setLastPointJunction(bool v)
 bool GraphicalWireSegment::isAlignedWith(const GraphicalWireSegment* other) const
 {
   assert(other);
+  assert(other != this);
   assert(points.size() >= 2 && other->points.size() >= 2);
   assert(scene());
 
