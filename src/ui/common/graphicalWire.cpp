@@ -493,7 +493,7 @@ void GraphicalWireSegment::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
   if (event->button() == Qt::LeftButton) {
     // Notify the manager about the endpoint move so it can check collisions
     if (graphicalWire && graphicalWire->getManager())
-      graphicalWire->getManager()->segmentMoved(this);
+      graphicalWire->getManager()->updateSegmentTopology(this);
 
     if (dragPointIndex >= 0)
       dragPointIndex = -1;

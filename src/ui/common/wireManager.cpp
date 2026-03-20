@@ -76,7 +76,7 @@ void WireManager::addSegment(GraphicalWireSegment* segment)
     segment->setGraphicalWire(wire.get());
   }
 
-  calculateJunctions(segment);
+  updateSegmentTopology(segment, true);
 }
 
 void WireManager::removeSegment(GraphicalWireSegment* segment)
@@ -102,45 +102,49 @@ void WireManager::removeSegment(GraphicalWireSegment* segment)
 bool WireManager::pointsAreSame(QPointF a, QPointF b)
 { return QLineF(a, b).length() <= collisionTolerance; }
 
-void WireManager::segmentMoved(GraphicalWireSegment* segment)
+void WireManager::updateSegmentTopology(GraphicalWireSegment* segment,
+                                        bool                  forceCalculateJunctions)
 {
   assert(segment && "segmentMoved() called with null segment");
 
   if (segment->empty())
     return;
 
-  // --- 1. MERGE PHASE ---
-  // If moving this segment makes it touch segments of OTHER wires, merge them.
   bool hasTopologyChanged = false;
 
-  // To avoid invalidation UB, we process using an index approach because fusing
-  // dynamically destroys the sibling element leading to vector element shifts and scale
-  // changes.
-  for (size_t i = 0; i < allSegments.size();) {
-    size_t                oldSize = allSegments.size();
-    GraphicalWireSegment* sibling = allSegments[i];
+  // --- 1. FUSION PHASE ---
+  while (true) {
+    const auto neighbors = segmentNeighbors(segment);
+    auto it = std::ranges::find_if(neighbors, [&](const GraphicalWireSegment* sibling) {
+      return segment != sibling && segment->isAlignedWith(sibling);
+    });
 
-    if (segmentsTouching(segment, sibling)) {
-      merge(segment, sibling);
-      hasTopologyChanged = true;
+    if (it == std::ranges::end(neighbors))
+      break;
 
-      // If a merge has erased the sibling, vector sizes change so index `i` natively
-      // points towards the next right-shifted object. Skip the increment if deletion
-      // happened.
-      if (allSegments.size() < oldSize)
-        continue;
-    }
-    ++i;
+    fuseSegments(segment, *it);
+    hasTopologyChanged = true;
   }
 
-  // --- 2. SPLIT PHASE ---
-  // Did moving this segment break its CURRENT wire into disconnected pieces?
+  // --- 2. MERGE PHASE ---
+  const auto unmergedNeighbors =
+      segmentNeighbors(segment) | std::views::filter([&](auto* sibling) {
+        return segment->getGraphicalWire() != sibling->getGraphicalWire();
+      })
+      | std::ranges::to<std::vector>();
+
+  for (GraphicalWireSegment* sibling : unmergedNeighbors) {
+    merge(segment, sibling);
+    hasTopologyChanged = true;
+  }
+
+  // --- 3. SPLIT PHASE ---
   if (GraphicalWire* currentWire = segment->getGraphicalWire()) {
     if (evaluateWireSplits(currentWire))
       hasTopologyChanged = true;
   }
 
-  if (hasTopologyChanged)
+  if (hasTopologyChanged || forceCalculateJunctions)
     calculateJunctions(segment);
 }
 
@@ -152,12 +156,6 @@ void WireManager::merge(GraphicalWireSegment* a, GraphicalWireSegment* b)
   auto* wireB = b->getGraphicalWire();
 
   assert(wireA && wireB);
-
-  // 1. Aligned path: fuse them into a single segment
-  if (a->isAlignedWith(b)) {
-    fuseSegments(a, b);
-    return;
-  }
 
   // 2. Unaligned path: keep segments separate, but unify their GraphicalWire. The
   // dominant wire is chosen in order to minimize segment's wire changes.
