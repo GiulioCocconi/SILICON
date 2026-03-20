@@ -19,6 +19,13 @@
 #include "logiFlowWindow.hpp"
 #include "ui/common/diagramScene.hpp"
 
+LogiFlowWindow::~LogiFlowWindow()
+{
+  if (diagramScene) {
+    disconnect(diagramScene, nullptr, this, nullptr);
+  }
+}
+
 LogiFlowWindow::LogiFlowWindow()
 {
   const auto centralWidget = new QWidget();
