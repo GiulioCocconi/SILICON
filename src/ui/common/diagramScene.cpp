@@ -66,7 +66,7 @@ void DiagramScene::setInteractionMode(InteractionMode mode)
   setInteractionMode(mode, false);
 }
 
-void DiagramScene::setInteractionMode(const InteractionMode newMode, bool force)
+void DiagramScene::setInteractionMode(const InteractionMode newMode, const bool force)
 {
   if (!force)
     assert(views().size() == 1);
@@ -398,23 +398,6 @@ void DiagramScene::calculateWiresForComponents() const
       }
     }
   }
-}
-
-bool DiagramScene::wireAlreadyPresentAtPos(const QPointF cursorPos) const
-{
-  // This function checks for collisions within two or more GraphicalWireSegments and then
-  // assigns them the same GraphicalWire, using the WireManager to find segments.
-
-  const auto* existingSegment =
-      wireManager.segmentAtPoint(cursorPos, wireSegmentToBeDrawn);
-  if (existingSegment) {
-    auto* wire = existingSegment->getGraphicalWire();
-    if (wire) {
-      // wireSegmentToBeDrawn->setGraphicalWire(wire);
-      return true;
-    }
-  }
-  return false;
 }
 
 void DiagramScene::addComponent(GraphicalComponent* component, QPointF pos)

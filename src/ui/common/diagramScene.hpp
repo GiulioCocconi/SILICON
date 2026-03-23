@@ -62,7 +62,6 @@ public:
   void clearWireShadow();
   void setComponentShadow();
   void clearComponentShadow();
-  bool wireAlreadyPresentAtPos(QPointF cursorPos) const;
 
   void addComponent(GraphicalComponent* component, QPointF pos);
 
