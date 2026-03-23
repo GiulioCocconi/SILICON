@@ -99,9 +99,6 @@ void WireManager::removeSegment(GraphicalWireSegment* segment)
   calculateJunctions();  // TODO: OPTIMIZE
 }
 
-bool WireManager::pointsAreSame(QPointF a, QPointF b)
-{ return QLineF(a, b).length() <= collisionTolerance; }
-
 void WireManager::updateSegmentTopology(GraphicalWireSegment* segment,
                                         bool                  forceCalculateJunctions)
 {
@@ -157,7 +154,7 @@ void WireManager::merge(GraphicalWireSegment* a, GraphicalWireSegment* b)
 
   assert(wireA && wireB);
 
-  // 2. Unaligned path: keep segments separate, but unify their GraphicalWire. The
+  // Unaligned path: keep segments separate, but unify their GraphicalWire. The
   // dominant wire is chosen in order to minimize segment's wire changes.
   if (wireA != wireB) {
     const bool aIsDominant = wireA->getSegments().size() >= wireB->getSegments().size();
@@ -178,9 +175,8 @@ void WireManager::calculateJunctions(GraphicalWireSegment* segment,
   if (segment->empty())
     return;
 
-  const auto neighborhood = includeNeighborhood
-                                ? segmentNeighbors(segment)
-                                : std::vector<GraphicalWireSegment*>{segment};
+  const auto neighborhood =
+      includeNeighborhood ? segmentNeighbors(segment) : std::vector{segment};
 
   for (const auto neighbor : neighborhood) {
     neighbor->setFirstPointJunction(false);
@@ -388,19 +384,19 @@ void WireManager::fuseSegments(GraphicalWireSegment* a, GraphicalWireSegment* b)
   auto addA = [&]() { newPoints.insert(newPoints.end(), aPts.begin(), aPts.end()); };
 
   // Assemble the points in the correct order:
-  if (pointsAreSame(aLast, bFirst)) {
+  if (aLast == bFirst) {
     // aLast == bFirst -> append b forward (skip b's first point)
     addA();
     addMappedB(bPts.begin() + 1, bPts.end());
-  } else if (pointsAreSame(aLast, bLast)) {
+  } else if (aLast == bLast) {
     // aLast == bLast -> append b reversed (skip b's last point)
     addA();
     addMappedB(bPts.rbegin() + 1, bPts.rend());
-  } else if (pointsAreSame(aFirst, bLast)) {
+  } else if (aFirst == bLast) {
     // aFirst == bLast -> prepend b forward (skip b's last point)
     addMappedB(bPts.begin(), bPts.end() - 1);
     addA();
-  } else if (pointsAreSame(aFirst, bFirst)) {
+  } else if (aFirst == bFirst) {
     // aFirst == bFirst -> prepend b reversed (skip b's first point)
     addMappedB(bPts.rbegin(), bPts.rend() - 1);
     addA();

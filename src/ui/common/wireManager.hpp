@@ -108,13 +108,6 @@ private:
   std::vector<std::shared_ptr<GraphicalWire>> managedWires;
   std::vector<GraphicalWireSegment*>          allSegments;
 
-  // Check whether two endpoints (in scene coordinates) are close enough to be
-  // considered colliding.
-  static bool pointsAreSame(QPointF a, QPointF b);
-
-  // Threshold distance for endpoint collision.
-  static constexpr double collisionTolerance = 5.0;
-
   // Merge all wires from `src` into `dst`, then destroy `src`.
   void mergeWires(GraphicalWire* dst, GraphicalWire* src);
 
