@@ -69,8 +69,6 @@ public:
   void                 clearBusState();
 
   // --- Topology ------------------------------------------------------------------------
-  // Junctions: endpoint pairs where two segments in this wire touch.
-  [[nodiscard]] std::vector<QPointF> getJunctions() const;
 
   // Vertices: segment endpoints that are NOT junctions (i.e. free tips).
   [[nodiscard]] std::vector<QPointF> getVertices() const;
