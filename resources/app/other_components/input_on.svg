@@ -34,16 +34,11 @@
        height="1.7563759"
        x="3.330183"
        y="1.7819635" />
-    <text
-       xml:space="preserve"
-       style="font-size:5.17438px;font-family:'Cormorant Infant';-inkscape-font-specification:'Cormorant Infant';text-align:start;writing-mode:lr-tb;direction:ltr;text-anchor:start;fill:#ff9955;stroke:#000000;stroke-width:0.0808499;stroke-dasharray:none;stroke-opacity:1"
-       x="3.6375809"
-       y="8.7157974"
+    <path
+       style="font-size:5.17438px;font-family:'Iosevka Nerd Font Mono';-inkscape-font-specification:'Iosevka Nerd Font Mono';fill:#1a1a1a;stroke:#000000;stroke-width:0.0808499"
+       d="M 4.8846064,8.7157974 V 5.3421018 L 4.1601932,5.9112836 3.9376949,5.6577389 4.8846064,4.9126283 H 5.288208 v 3.8031691 z"
        id="text6"
-       transform="scale(1.0731044,0.93187579)"><tspan
-         id="tspan6"
-         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-family:'Iosevka Nerd Font Mono';-inkscape-font-specification:'Iosevka Nerd Font Mono';fill:#1a1a1a;stroke-width:0.0808499"
-         x="3.6375809"
-         y="8.7157974">1</tspan></text>
+       transform="scale(1.0731044,0.93187579)"
+       aria-label="1" />
   </g>
 </svg>
