@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2025. Giulio Cocconi
+ Copyright (c) 2026. Giulio Cocconi
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -17,7 +17,8 @@
  */
 
 #include "logiFlowWindow.hpp"
-#include "ui/common/diagramScene.hpp"
+
+#include <ui/common/diagramScene.hpp>
 
 LogiFlowWindow::~LogiFlowWindow()
 {
@@ -248,13 +249,23 @@ void LogiFlowWindow::rotate()
 
 void LogiFlowWindow::del()
 {
-  for (auto selectedComponent : diagramScene->selectedItems()) {
-    // Trying to remove non user-defined components leads to crash
-    if (selectedComponent->type() > UNKNOWN) {
-      diagramScene->removeItem(selectedComponent);
-      delete selectedComponent;
-    }
-  }
+  // Collect items to delete first, then remove all from the scene before deleting
+  // any. This avoids crashes where removeItem() on one item triggers scene callbacks
+  // (e.g. collision detection via virtual getCollisionRect()) that reach items that
+  // have already been deleted in a prior iteration — which can corrupt vtable lookups
+  // and produce "pure virtual method called" errors.
+
+  auto itemsToDelete = diagramScene->selectedItems() | std::views::filter([](auto el) {
+                         // Trying to remove non user-defined components leads to crash
+                         return el->type() > UNKNOWN;
+                       })
+                       | std::ranges::to<std::vector>();
+
+  for (auto* item : itemsToDelete)
+    diagramScene->removeItem(item);
+
+  for (const auto* item : itemsToDelete)
+    delete item;
 }
 
 void LogiFlowWindow::about() const

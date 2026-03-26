@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2025. Giulio Cocconi
+ Copyright (c) 2026. Giulio Cocconi
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -18,7 +18,7 @@
 
 #pragma once
 
-#include "ui/common/aboutDialog.hpp"
+#include <vector>
 
 #include <QBrush>
 #include <QColor>
@@ -34,6 +34,7 @@
 #include <QToolBar>
 #include <QUndoStack>
 
+#include <ui/common/aboutDialog.hpp>
 #include <ui/common/componentSearchBox.hpp>
 #include <ui/common/diagramScene.hpp>
 #include <ui/common/diagramView.hpp>
