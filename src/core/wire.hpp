@@ -18,7 +18,6 @@
 
 #pragma once
 #include <algorithm>
-#include <cassert>
 #include <format>
 #include <functional>
 #include <initializer_list>

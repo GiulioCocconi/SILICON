@@ -18,6 +18,8 @@
 
 #include "diagramView.hpp"
 
+#include <stdexcept>
+
 DiagramView::DiagramView(QWidget* parent) : QGraphicsView(parent)
 {
   setMouseTracking(true);
@@ -100,6 +102,6 @@ void DiagramView::modeChanged(InteractionMode mode)
       break;
     case InteractionMode::COMPONENT_PLACING_MODE:
     case InteractionMode::SIMULATION_MODE: break;
-    default: assert(false);
+    default: throw std::logic_error("Unhandled InteractionMode in modeChanged");
   }
 }

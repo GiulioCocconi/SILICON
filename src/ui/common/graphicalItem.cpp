@@ -20,6 +20,8 @@
 
 #include "graphicalComponent.hpp"
 #include "graphicalWire.hpp"
+
+#include <stdexcept>
 #include <ui/common/diagramScene.hpp>
 
 void GraphicalItem::setCollidingStatus(const CollidingStatus newStatus)
@@ -188,6 +190,6 @@ void GraphicalItem::modeChanged(InteractionMode mode)
       setFlag(QGraphicsItem::ItemIsMovable, false);
       setFlag(QGraphicsItem::ItemIsFocusable, false);
       break;
-    default: assert(false);
+    default: throw std::logic_error("Unhandled InteractionMode in modeChanged");
   }
 }

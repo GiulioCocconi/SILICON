@@ -19,6 +19,7 @@
 #include "graphicalComponent.hpp"
 
 #include <QLabel>
+#include <stdexcept>
 
 GraphicalComponent::GraphicalComponent(QGraphicsItem* shape, QGraphicsItem* parent,
                                        bool scanShape)
@@ -37,7 +38,8 @@ GraphicalComponent::GraphicalComponent(QGraphicsItem* shape, QGraphicsItem* pare
 
 void GraphicalComponent::setItemShape(QGraphicsItem* shape)
 {
-  assert(shape);
+  if (!shape)
+    throw std::invalid_argument("setItemShape: shape must not be null");
 
   if (this->itemShape) {
     prepareGeometryChange();
@@ -116,7 +118,8 @@ void GraphicalComponent::mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event)
 
 void GraphicalComponent::propertiesDialogRejected()
 {
-  assert(scene());
+  if (!scene())
+    throw std::logic_error("propertiesDialogRejected: component not in a scene");
   auto       diagramScene = dynamic_cast<DiagramScene*>(scene());
   const auto currentMode  = diagramScene->getInteractionMode();
 
@@ -185,14 +188,17 @@ QPoint GraphicalComponent::scanImage(const QImage& image, const QPoint& initialP
 
 void GraphicalComponent::setPortLine(Port* port)
 {
-  assert(itemShape);
+  if (!itemShape)
+    throw std::logic_error("setPortLine: item shape not set");
 
   // Get the shapeRect and its size
   const auto shapeRect = itemShape->boundingRect();
-  assert(!shapeRect.isEmpty());
+  if (shapeRect.isEmpty())
+    throw std::logic_error("setPortLine: shape bounding rect is empty");
 
   const auto shapeSize = shapeRect.size().toSize();
-  assert(shapeSize.width() > 0 && shapeSize.height() > 0);
+  if (shapeSize.width() <= 0 || shapeSize.height() <= 0)
+    throw std::logic_error("setPortLine: shape dimensions must be positive");
 
   // Create an image that supports transparency in order to alpha-scan
   auto image = QImage(shapeSize, QImage::Format_ARGB32);
@@ -238,7 +244,7 @@ void GraphicalComponent::setPortLine(Port* port)
   else if (portY > bottomRightY) {
     projectionOnShape = scanImage(image, QPoint(portX, bottomRightY), false, false);
   } else
-    assert(false);
+    throw std::logic_error("setPortLine: port position is not outside the shape");
 
   // Create the line from port position to the projection
   port->setLine(new QGraphicsLineItem(QLineF(portPos, projectionOnShape), this));

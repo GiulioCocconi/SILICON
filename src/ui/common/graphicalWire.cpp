@@ -20,6 +20,7 @@
 #include "wireManager.hpp"
 
 #include <QGraphicsSceneMouseEvent>
+#include <stdexcept>
 
 // --- Graphical Wire --------------------------------------------------------------------
 
@@ -125,15 +126,18 @@ void GraphicalWireSegment::setGraphicalWire(GraphicalWire* newWire)
     graphicalWire = newWire;
   } else {
     // Because of the early return at the top, oldWire is guaranteed to be non-null here
-    assert(oldWire);
+    if (!oldWire)
+      throw std::logic_error("setGraphicalWire: oldWire is null unexpectedly");
 
     auto* oldManager = oldWire->getManager();
-    assert(oldManager);
+    if (!oldManager)
+      throw std::logic_error("setGraphicalWire: old wire has no manager");
 
     graphicalWire = oldManager->createWire(1).get();
   }
 
-  assert(graphicalWire);
+  if (!graphicalWire)
+    throw std::logic_error("setGraphicalWire: failed to create wire");
   graphicalWire->addSegment(this);
 
   // Propagate the new wire to all touching sibling segments
@@ -146,7 +150,8 @@ void GraphicalWireSegment::setGraphicalWire(GraphicalWire* newWire)
 
 void GraphicalWireSegment::setShowPoints(const std::vector<QPointF>& scenePoints)
 {
-  assert(scenePoints.size() <= 2);
+  if (scenePoints.size() > 2)
+    throw std::invalid_argument("setShowPoints: at most 2 points allowed");
 
   std::vector<QPointF> localPoints;
   localPoints.reserve(scenePoints.size());
@@ -382,7 +387,8 @@ bool GraphicalWireSegment::isPointOnPath(const QPointF point) const
 }
 void GraphicalWireSegment::setPoints(std::vector<QPointF> newPoints)
 {
-  assert(!newPoints.empty());
+  if (newPoints.empty())
+    throw std::invalid_argument("setPoints: points must not be empty");
   prepareGeometryChange();
   points = std::move(newPoints);
   updatePath();
@@ -450,10 +456,14 @@ void GraphicalWireSegment::setLastPointJunction(bool v)
 
 bool GraphicalWireSegment::isAlignedWith(const GraphicalWireSegment* other) const
 {
-  assert(other);
-  assert(other != this);
-  assert(points.size() >= 2 && other->points.size() >= 2);
-  assert(scene());
+  if (!other)
+    throw std::invalid_argument("isAlignedWith: other is null");
+  if (other == this)
+    throw std::logic_error("isAlignedWith: cannot compare segment with itself");
+  if (points.size() < 2 || other->points.size() < 2)
+    throw std::logic_error("isAlignedWith: segments must have at least 2 points");
+  if (!scene())
+    throw std::logic_error("isAlignedWith: segment not in a scene");
 
   const auto p1 = std::array{mapToScene(points.front()), mapToScene(points.back())};
 

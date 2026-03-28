@@ -1,4 +1,7 @@
 #include "graphicalUtils.hpp"
+
+#include <stdexcept>
+
 GraphicalWireSplitter::GraphicalWireSplitter(const unsigned size, QGraphicsItem* parent)
   : GraphicalLogicComponent(std::make_shared<WireSplitter>(Bus(), (std::vector<Bus>){}),
                             nullptr, parent)
@@ -8,7 +11,8 @@ GraphicalWireSplitter::GraphicalWireSplitter(const unsigned size, QGraphicsItem*
 
 void GraphicalWireSplitter::setSize(const unsigned int size)
 {
-  assert(size > 1);
+  if (size <= 1)
+    throw std::invalid_argument("WireSplitter size must be greater than 1");
   this->size = size;
 
   this->associatedComponent->setInput(0, Bus(size));
@@ -43,7 +47,8 @@ GraphicalWireMerger::GraphicalWireMerger(const unsigned size, QGraphicsItem* par
 
 void GraphicalWireMerger::setSize(const unsigned int size)
 {
-  assert(size > 1);
+  if (size <= 1)
+    throw std::invalid_argument("WireMerger size must be greater than 1");
   this->size = size;
 
   this->associatedComponent->setInputs(std::vector(size, Bus()));

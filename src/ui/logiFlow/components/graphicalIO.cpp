@@ -18,6 +18,8 @@
 
 #include "graphicalIO.hpp"
 
+#include <stdexcept>
+
 GraphicalInput::GraphicalInput(std::string name, QGraphicsItem* parent)
   : GraphicalLogicComponent(std::make_shared<DummyInputComponent>(Bus(1), name),
                             new QGraphicsSvgItem(":/other_components/input_off.svg"),
@@ -127,6 +129,7 @@ DummyOutputComponent::DummyOutputComponent(Bus bus, std::string name)
 
 void DummyOutputComponent::setSkin(GraphicalOutputSingle* skin)
 {
-  assert(skin);
+  if (!skin)
+    throw std::invalid_argument("setSkin: skin must not be null");
   this->skin = skin;
 }

@@ -22,8 +22,8 @@
 #include <QDebug>
 #include <QLineF>
 #include <algorithm>
-#include <cassert>
 #include <queue>
+#include <stdexcept>
 #include <unordered_set>
 
 WireManager::~WireManager()
@@ -52,18 +52,20 @@ std::shared_ptr<GraphicalWire> WireManager::createWire(unsigned int busSize)
 
 void WireManager::removeWire(GraphicalWire* wire)
 {
-  assert(wire && "removeWire() called with nullptr");
+  if (!wire)
+    throw std::invalid_argument("removeWire() called with nullptr");
 
   // Detach all segments from this wire first
-  assert(wire->getSegments().empty()
-         && "removeWire() called without detaching the segments first");
+  if (!wire->getSegments().empty())
+    throw std::logic_error("removeWire() called without detaching the segments first");
 
   std::erase_if(managedWires, [wire](const auto& uptr) { return uptr.get() == wire; });
 }
 
 void WireManager::addSegment(GraphicalWireSegment* segment)
 {
-  assert(segment);
+  if (!segment)
+    throw std::invalid_argument("addSegment() called with null segment");
 
   if (std::ranges::find(allSegments, segment) != allSegments.end())
     return;
@@ -81,12 +83,14 @@ void WireManager::addSegment(GraphicalWireSegment* segment)
 
 void WireManager::removeSegment(GraphicalWireSegment* segment)
 {
-  assert(segment);
+  if (!segment)
+    throw std::invalid_argument("removeSegment() called with null segment");
 
   std::erase(allSegments, segment);
 
   auto* wire = segment->getGraphicalWire();
-  assert(wire);
+  if (!wire)
+    throw std::logic_error("Segment has no associated wire");
 
   if (wire->empty()) {
     removeWire(wire);
@@ -102,7 +106,8 @@ void WireManager::removeSegment(GraphicalWireSegment* segment)
 void WireManager::updateSegmentTopology(GraphicalWireSegment* segment,
                                         bool                  forceCalculateJunctions)
 {
-  assert(segment && "segmentMoved() called with null segment");
+  if (!segment)
+    throw std::invalid_argument("updateSegmentTopology() called with null segment");
 
   if (segment->empty())
     return;
@@ -147,12 +152,14 @@ void WireManager::updateSegmentTopology(GraphicalWireSegment* segment,
 
 void WireManager::merge(GraphicalWireSegment* a, GraphicalWireSegment* b)
 {
-  assert(a && b);
+  if (!a || !b)
+    throw std::invalid_argument("merge() called with null segment");
 
   auto* wireA = a->getGraphicalWire();
   auto* wireB = b->getGraphicalWire();
 
-  assert(wireA && wireB);
+  if (!wireA || !wireB)
+    throw std::logic_error("Segments must have associated wires for merge");
 
   // Unaligned path: keep segments separate, but unify their GraphicalWire. The
   // dominant wire is chosen in order to minimize segment's wire changes.
@@ -171,7 +178,8 @@ void WireManager::calculateJunctions() const
 void WireManager::calculateJunctions(GraphicalWireSegment* segment,
                                      bool                  includeNeighborhood) const
 {
-  assert(segment);
+  if (!segment)
+    throw std::invalid_argument("calculateJunctions() called with null segment");
   if (segment->empty())
     return;
 
@@ -286,8 +294,10 @@ WireManager::segmentAtPoint(QPointF                     scenePoint,
 std::vector<GraphicalWireSegment*>
 WireManager::segmentNeighbors(GraphicalWireSegment* segment)
 {
-  assert(segment);
-  assert(segment->scene());
+  if (!segment)
+    throw std::invalid_argument("segmentNeighbors() called with null segment");
+  if (!segment->scene())
+    throw std::logic_error("segmentNeighbors() called on segment not in a scene");
 
   const auto colliding = segment->scene()->collidingItems(segment);
 
@@ -306,7 +316,8 @@ WireManager::segmentNeighbors(GraphicalWireSegment* segment)
 bool WireManager::segmentsTouching(const GraphicalWireSegment* segment,
                                    const GraphicalWireSegment* other)
 {
-  assert(segment && other);
+  if (!segment || !other)
+    throw std::invalid_argument("segmentsTouching() called with null segment");
 
   if (segment == other)
     return false;
@@ -342,7 +353,8 @@ bool WireManager::segmentsTouching(const GraphicalWireSegment* segment,
 
 void WireManager::mergeWires(GraphicalWire* dst, GraphicalWire* src)
 {
-  assert(dst && src);
+  if (!dst || !src)
+    throw std::invalid_argument("mergeWires() called with null wire");
 
   if (dst == src)
     return;
@@ -360,8 +372,10 @@ void WireManager::mergeWires(GraphicalWire* dst, GraphicalWire* src)
 
 void WireManager::fuseSegments(GraphicalWireSegment* a, GraphicalWireSegment* b)
 {
-  assert(a && b);
-  assert(a->isAlignedWith(b));
+  if (!a || !b)
+    throw std::invalid_argument("fuseSegments() called with null segment");
+  if (!a->isAlignedWith(b))
+    throw std::logic_error("fuseSegments() called with unaligned segments");
 
   const QPointF aFirst = a->mapToScene(a->firstPoint());
   const QPointF aLast  = a->mapToScene(a->lastPoint());
@@ -402,7 +416,8 @@ void WireManager::fuseSegments(GraphicalWireSegment* a, GraphicalWireSegment* b)
     addA();
   }
 
-  assert(!newPoints.empty());
+  if (newPoints.empty())
+    throw std::logic_error("fuseSegments() produced no points");
   a->setPoints(std::move(newPoints));
 
   // The segment b is no longer needed, it was merged into a.

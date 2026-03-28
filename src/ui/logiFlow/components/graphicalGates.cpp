@@ -17,12 +17,15 @@
 
 #include "graphicalGates.hpp"
 
+#include <stdexcept>
+
 GraphicalGate::GraphicalGate(const std::shared_ptr<Gate> gate, QGraphicsItem* shape,
                              QGraphicsItem* parent, bool scanShape)
   : GraphicalLogicComponent(gate, shape, parent, scanShape)
 {
   // TODO: ADD SUPPORT FOR OVER 2 INPUTS GATES
-  assert(associatedComponent->getInputs().size() == 2);
+  if (associatedComponent->getInputs().size() != 2)
+    throw std::logic_error("GraphicalGate: expected exactly 2 inputs");
 
   isEditable = false;
 

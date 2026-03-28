@@ -20,6 +20,8 @@
 
 #include <ui/common/diagramScene.hpp>
 
+#include <stdexcept>
+
 LogiFlowWindow::~LogiFlowWindow()
 {
   if (diagramScene) {
@@ -308,7 +310,7 @@ void LogiFlowWindow::updateStatus() const
     case InteractionMode::WIRE_CREATION_MODE: modeMsg += "WIRE CREATION"; break;
     case InteractionMode::PAN_MODE: modeMsg += "PAN"; break;
     case InteractionMode::SIMULATION_MODE: modeMsg += "SIMULATION"; break;
-    default: assert(false);
+    default: throw std::logic_error("Unhandled InteractionMode in modeToString");
   }
 
   statusBar()->showMessage(modeMsg);

@@ -18,6 +18,8 @@
 
 #include "wire.hpp"
 
+#include <stdexcept>
+
 State operator&&(const State& a, const State& b)
 {
   if (a == State::ERROR || b == State::ERROR)
@@ -69,7 +71,7 @@ std::string to_str(State s)
     case State::LOW: return "LOW";
     case State::ERROR: return "ERROR";
   }
-  assert(false);
+  throw std::logic_error("Unhandled State enum value");
 }
 
 Wire::Wire()
@@ -154,7 +156,8 @@ State Wire::safeGetCurrentState(const std::weak_ptr<Wire>& w)
 
 void Wire::addUpdateAction(const action_ptr& a)
 {
-  assert(a);
+  if (!a)
+    throw std::invalid_argument("Cannot add null update action");
 
   this->updateActions.push_back(a);
 
@@ -242,7 +245,8 @@ unsigned int Bus::getCurrentValue() const
       return 0;
 
     State s = this->busData[i]->getCurrentState();
-    assert(s != State::ERROR);
+    if (s == State::ERROR)
+      throw std::logic_error("Bus::getCurrentValue() called on a bus in ERROR state");
 
     if (s == State::HIGH)
       res |= (1 << i);

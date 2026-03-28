@@ -18,6 +18,8 @@
 
 #include "graphicalLogicComponent.hpp"
 
+#include <stdexcept>
+
 GraphicalLogicComponent::GraphicalLogicComponent(const Component_ptr& component,
                                                  QGraphicsItem*       shape,
                                                  QGraphicsItem* parent, bool scanShape)
@@ -33,8 +35,10 @@ void GraphicalLogicComponent::setPorts(
     const std::vector<Bus> componentInputs  = associatedComponent->getInputs();
     const std::vector<Bus> componentOutputs = associatedComponent->getOutputs();
 
-    assert(componentInputs.size() == busToPortInputs.size());
-    assert(componentOutputs.size() == busToPortOutputs.size());
+    if (componentInputs.size() != busToPortInputs.size())
+      throw std::logic_error("Input port count mismatch with component");
+    if (componentOutputs.size() != busToPortOutputs.size())
+      throw std::logic_error("Output port count mismatch with component");
   }
 
   GraphicalComponent::setPorts(busToPortInputs, busToPortOutputs);

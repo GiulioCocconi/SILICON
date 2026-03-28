@@ -19,7 +19,6 @@
 #pragma once
 
 #include <array>
-#include <cassert>
 #include <memory>
 #include <ranges>
 #include <string>
