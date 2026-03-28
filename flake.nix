@@ -30,6 +30,7 @@
           gtest.dev
           qt6.qtbase
           qt6.qtsvg
+          boost
           pegtl
         ];
 
