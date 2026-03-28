@@ -108,7 +108,7 @@ jobs:
         run: ninja -C build
 
       - name: Test
-        run: ctest --test-dir build
+        run: ctest --test-dir build --output-on-failure
 
 
   # -----------------------------------------------------------------------------
@@ -133,8 +133,8 @@ jobs:
           target: "wasm"
           arch: "wasm_singlethread"
 
-      - name: Install Ninja and range-v3
-        run: sudo apt-get install ninja-build
+      - name: Install Ninja and boost
+        run: sudo apt-get install ninja-build libboost-graph-dev
 
       - name: Configure CMake
         run: |

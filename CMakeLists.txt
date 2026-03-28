@@ -13,7 +13,7 @@
 #  You should have received a copy of the GNU General Public License
 #  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-cmake_minimum_required(VERSION 3.25)
+cmake_minimum_required(VERSION 3.31)
 
 project("SILICON"
         VERSION 0.1.0 # As defined at semver.org
@@ -125,6 +125,7 @@ if (UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
 endif ()
 
 
+find_package(Boost REQUIRED COMPONENTS graph)
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets SvgWidgets)
 qt_standard_project_setup()
@@ -144,7 +145,7 @@ if (EMSCRIPTEN)
     target_link_libraries(SILICON PRIVATE Qt6::Widgets Qt6::SvgWidgets)
 else ()
     add_subdirectory(libfst)
-    target_link_libraries(SILICON PRIVATE Qt6::Widgets Qt6::SvgWidgets fst)
+    target_link_libraries(SILICON PRIVATE Qt6::Widgets Qt6::SvgWidgets fst Boost::graph)
 endif ()
 
 if ((CMAKE_CXX_COMPILER_ID MATCHES "Clang") OR EMSCRIPTEN)

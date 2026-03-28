@@ -638,3 +638,4 @@ Each font is licensed under `OFL`
 - LibFST, under MIT, _Copyright (c) 2009-2025 Tony Bybell_
 - LZ4, under BSD, _Copyright (C) 2011-2023, Yann Collet_
 - Qt, under GPL, _Copyright (C) 2018 The Qt Company Ltd. and other contributors_
+- Boost Graph, under BSL, _Copyright 2002 Indiana University_

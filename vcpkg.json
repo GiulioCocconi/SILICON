@@ -26,6 +26,9 @@
     },
     {
       "name": "zlib"
+    },
+    {
+      "name": "boost-graph"
     }
   ]
 }
