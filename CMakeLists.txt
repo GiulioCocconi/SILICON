@@ -62,7 +62,8 @@ include(cmake/resources.cmake)
 set(COMMON_SOURCE_FILES
         ${src_dir}/core/wire.cpp
         ${src_dir}/core/gates.cpp
-        ${src_dir}/core/component.cpp)
+        ${src_dir}/core/component.cpp
+        ${src_dir}/core/circuit.cpp)
 
 set(EXTRA_COMPONENTS_SOURCE_FILES
         ${src_dir}/extraComponents/arithmetic.cpp

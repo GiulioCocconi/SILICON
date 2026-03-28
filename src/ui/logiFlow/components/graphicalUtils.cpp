@@ -16,7 +16,8 @@ void GraphicalWireSplitter::setSize(const unsigned int size)
   this->size = size;
 
   this->associatedComponent->setInput(0, Bus(size));
-  this->associatedComponent->setOutputs(std::vector(size, Bus(1)));
+  std::vector<Bus> outputs(size, Bus(1));
+  this->associatedComponent->setOutputs(outputs);
 
   QPainterPath path{};
   path.moveTo(0, 0);
@@ -51,7 +52,8 @@ void GraphicalWireMerger::setSize(const unsigned int size)
     throw std::invalid_argument("WireMerger size must be greater than 1");
   this->size = size;
 
-  this->associatedComponent->setInputs(std::vector(size, Bus()));
+  std::vector<Bus> inputs(size, Bus());
+  this->associatedComponent->setInputs(inputs);
   this->associatedComponent->setOutput(0, Bus(size));
 
   QPainterPath path{};

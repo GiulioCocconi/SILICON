@@ -18,6 +18,7 @@ add_executable(logic_tests logic.cpp)
 add_executable(arithmetic_tests arithmetic.cpp)
 add_executable(utils_tests utils.cpp)
 add_executable(libfst_tests fstlib.cpp)
+add_executable(circuit_tests circuit.cpp)
 
 
 
@@ -36,8 +37,12 @@ target_sources(utils_tests
         ${src_dir}/extraComponents/utils.cpp
         ${COMMON_SOURCE_FILES})
 
-foreach (target logic_tests arithmetic_tests utils_tests libfst_tests)
-    target_link_libraries(${target} GTest::gtest_main GTest::gtest)
+target_sources(circuit_tests
+        PRIVATE
+        ${COMMON_SOURCE_FILES})
+
+foreach (target logic_tests arithmetic_tests utils_tests libfst_tests circuit_tests)
+    target_link_libraries(${target} GTest::gtest_main GTest::gtest Boost::graph)
     gtest_discover_tests(${target})
 endforeach ()
 
