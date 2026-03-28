@@ -17,7 +17,6 @@
 
 #pragma once
 #include <array>
-#include <cassert>
 #include <core/gates.hpp>
 #include <core/wire.hpp>
 #include <iostream>

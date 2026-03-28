@@ -17,6 +17,8 @@
 
 #include "arithmetic.hpp"
 
+#include <stdexcept>
+
 HalfAdder::HalfAdder(std::array<Wire_ptr, 2> inputs, Wire_ptr sum, Wire_ptr cout)
   : Component({{inputs[0]}, {inputs[1]}}, {{sum}, {cout}}, "HalfAdder")
 {
@@ -78,7 +80,8 @@ AdderNBits::AdderNBits(std::array<Bus, 2> inputs, Bus sum, Wire_ptr cout)
      cout = outputs[1][ 0 ]; */
 
   static_assert(inputs.size() == 2);
-  assert(inputs[0].size() == sum.size());
+  if (inputs[0].size() != sum.size())
+    throw std::invalid_argument("AdderNBits: input bus width must match sum bus width");
 
   this->setAction([this] {
     int a = this->inputs[0].getCurrentValue();

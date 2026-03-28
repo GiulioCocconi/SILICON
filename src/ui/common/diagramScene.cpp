@@ -23,6 +23,8 @@
 #include "ui/logiFlow/components/graphicalIO.hpp"
 #include "ui/logiFlow/components/graphicalUtils.hpp"
 
+#include <stdexcept>
+
 DiagramScene::DiagramScene(QObject* parent) : QGraphicsScene(parent)
 {
   setInteractionMode(InteractionMode::NORMAL_MODE, true);
@@ -68,8 +70,8 @@ void DiagramScene::setInteractionMode(InteractionMode mode)
 
 void DiagramScene::setInteractionMode(const InteractionMode newMode, const bool force)
 {
-  if (!force)
-    assert(views().size() == 1);
+  if (!force && views().size() != 1)
+    throw std::logic_error("setInteractionMode: scene must have exactly one view");
 
   const auto currentMode = getInteractionMode();
   if (currentMode == newMode && !force)
@@ -211,7 +213,7 @@ void DiagramScene::mouseMoveEvent(QGraphicsSceneMouseEvent* mouseEvent)
     case InteractionMode::NORMAL_MODE:
     case InteractionMode::PAN_MODE:
     case InteractionMode::SIMULATION_MODE: break;
-    default: assert(false);
+    default: throw std::logic_error("Unhandled InteractionMode in mouseMoveEvent");
   }
   QGraphicsScene::mouseMoveEvent(mouseEvent);
 }
@@ -259,7 +261,7 @@ void DiagramScene::mousePressEvent(QGraphicsSceneMouseEvent* mouseEvent)
       }
       break;
     }
-    default: assert(false);
+    default: throw std::logic_error("Unhandled InteractionMode in mousePressEvent");
   }
   QGraphicsScene::mousePressEvent(mouseEvent);
 }
@@ -292,8 +294,10 @@ void DiagramScene::clearWireShadow()
 
 void DiagramScene::setComponentShadow()
 {
-  assert(componentToBeDrawn);
-  assert(views().size() == 1);
+  if (!componentToBeDrawn)
+    throw std::logic_error("setComponentShadow: no component to draw");
+  if (views().size() != 1)
+    throw std::logic_error("setComponentShadow: scene must have exactly one view");
 
   const auto view      = views()[0];
   const auto cursorPos = view->mapToScene(view->mapFromGlobal(QCursor::pos()));
@@ -340,7 +344,8 @@ void DiagramScene::calculateWiresForComponents() const
       | std::ranges::to<std::vector>();
 
   for (const GraphicalLogicComponent* graphicalComponent : components) {
-    assert(graphicalComponent);
+    if (!graphicalComponent)
+      throw std::logic_error("calculateWiresForComponents: null component encountered");
 
     // Disconnect the component from all wires (TODO: Make more efficient)
     graphicalComponent->getComponent()->clearWires();
@@ -412,9 +417,10 @@ void DiagramScene::addComponent(GraphicalComponent* component, QPointF pos)
 // TODO: Switch to auto memory management!
 void DiagramScene::placeComponent(const SiliconTypes type)
 {
-  assert(!componentToBeDrawn);
+  if (componentToBeDrawn)
+    throw std::logic_error("placeComponent: previous component not yet placed");
   switch (type) {
-    case UNKNOWN: assert(false && "Unknown component");
+    case UNKNOWN: throw std::invalid_argument("Unknown component type");
     case SINGLE_INPUT: componentToBeDrawn = new GraphicalInput(); break;
     case SINGLE_OUTPUT: componentToBeDrawn = new GraphicalOutputSingle(); break;
     case AND_GATE: componentToBeDrawn = new GraphicalAnd(); break;
@@ -427,7 +433,7 @@ void DiagramScene::placeComponent(const SiliconTypes type)
     case WIRE_MERGER: componentToBeDrawn = new GraphicalWireMerger(); break;
     case HALF_ADDER:
     case FULL_ADDER:
-    default: assert(false && "Component not implemented");
+    default: throw std::logic_error("Component not implemented");
   }
 
   // TODO: IMPLEMENT COMPONENT SHADOW TO BE SHOWN WHILE DRAGGING

@@ -14,13 +14,16 @@
 
 #include "aboutDialog.hpp"
 
+#include <stdexcept>
+
 AboutDialog::AboutDialog(const QString& title, QWidget* parent) : QDialog(parent)
 {
   setWindowTitle(QString("About %1").arg(title));
   setFixedSize(600, 500);
 
   const auto icon = QApplication::windowIcon();
-  assert(!icon.isNull());
+  if (icon.isNull())
+    throw std::logic_error("AboutDialog: application window icon is not set");
 
   titleLabel = new QLabel(title, this);
   titleLabel->setFont(QFont("Chango", 50, QFont::Bold));
@@ -87,7 +90,8 @@ void AboutDialog::loadLicenses()
         licenseFile.close();
       }
 
-      assert(!this->licenseText.isEmpty());
+      if (this->licenseText.isEmpty())
+        throw std::logic_error("loadLicenses: license text is empty after reading file");
 
       licenseTextEdit->setPlainText(this->licenseText);
     }

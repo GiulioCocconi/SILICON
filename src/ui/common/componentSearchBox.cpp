@@ -18,11 +18,14 @@
 
 #include "componentSearchBox.hpp"
 
+#include <stdexcept>
+
 ComponentSearchBox::ComponentSearchBox(SearchMap map, QString title,
                                        QGraphicsItem* parent)
   : QGraphicsProxyWidget(parent)
 {
-  assert(!map.empty());
+  if (map.empty())
+    throw std::invalid_argument("ComponentSearchBox: completion map must not be empty");
 
   this->completionMap = std::move(map);
 

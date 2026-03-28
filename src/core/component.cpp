@@ -17,8 +17,8 @@
  */
 
 #include "component.hpp"
-
-#include <any>
+#include <ranges>
+#include <stdexcept>
 
 Component::Component(std::vector<Bus> inputs, std::vector<Bus> outputs, std::string name)
 {
@@ -100,7 +100,8 @@ void Component::clearWires()
 void Component::setAction(const action& a)
 {
   this->act = std::make_shared<action>(a);
-  assert(this->act);
+  if (!this->act)
+    throw std::logic_error("Failed to create action");
 
   // The action is to be set for all the inputs of the component connected to wires:
   for (auto bus : this->inputs)
