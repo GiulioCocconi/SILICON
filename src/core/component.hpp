@@ -40,14 +40,19 @@ protected:
 public:
   Component() = default;
   Component(std::vector<Bus> inputs, std::vector<Bus> outputs, std::string name);
+  void toggleAction(const Bus& bus, bool add) const;
+  void replaceBus(std::vector<Bus>& busCollection, unsigned int index, Bus newBus,
+                  bool isInput);
 
   void setAction(const action& a);
 
   void setInput(const unsigned int index, const Bus& bus);
-  void setInputs(const std::vector<Bus>& newInputs);
+  void setInputs(std::vector<Bus>& newInputs);
 
   void setOutput(unsigned int index, const Bus& bus);
-  void setOutputs(const std::vector<Bus>& newOutputs);
+  void setOutputs(std::vector<Bus>& newOutputs);
+
+  bool isConnectedTo(const Bus& b);
 
   void setName(const std::string_view& newName) { this->name = newName; }
 

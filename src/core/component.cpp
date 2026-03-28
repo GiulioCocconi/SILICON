@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2025. Giulio Cocconi
+ Copyright (c) 2026. Giulio Cocconi
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -21,80 +21,114 @@
 #include <stdexcept>
 
 Component::Component(std::vector<Bus> inputs, std::vector<Bus> outputs, std::string name)
+  : inputs(std::move(inputs)), outputs(std::move(outputs)), name(std::move(name))
 {
-  this->inputs  = std::move(inputs);
-  this->outputs = std::move(outputs);
-  this->name    = std::move(name);
 }
+
+// --- Helpers ---------------------------------------------------------------------------
+
+void Component::toggleAction(const Bus& bus, bool add) const
+{
+  if (!this->act)
+    return;
+
+  for (const auto& w : bus) {
+    if (w) {
+      if (add)
+        w->addUpdateAction(this->act);
+      else
+        w->deleteUpdateAction(this->act);
+    }
+  }
+}
+
+void Component::replaceBus(std::vector<Bus>& busCollection, const unsigned int index,
+                           Bus newBus, bool isInput)
+{
+  if (busCollection[index] == newBus) {
+    busCollection[index].addComponent(weak_from_this());
+    return;
+  }
+
+  // Keep a copy of the old bus before overwriting it
+  Bus oldBus = busCollection[index];
+
+  if (isInput)
+    toggleAction(oldBus, false);
+
+  busCollection[index] = newBus;
+
+  auto isStillConnected = [this](const Bus& b) {
+    return b.getConnectedComponents().contains(shared_from_this());
+  };
+
+  if (std::ranges::none_of(this->inputs, isStillConnected)
+      && std::ranges::none_of(this->outputs, isStillConnected)) {
+    oldBus.removeComponent(weak_from_this());
+  }
+
+  if (isInput)
+    toggleAction(newBus, true);
+
+  busCollection[index].addComponent(weak_from_this());
+}
+
+// --- Public Methods --------------------------------------------------------------------
 
 void Component::setInput(const unsigned int index, const Bus& bus)
 {
-  // If the action is already defined then we should remove it from the inputs:
-  if (this->act)
-    for (const auto& w : this->inputs[index])
-      if (w)
-        w->deleteUpdateAction(this->act);
-
-  // Then we set the new inputs and add the update action to them:
-  this->inputs[index] = bus;
-
-  if (this->act)
-    for (const auto& w : this->inputs[index])
-      if (w)
-        w->addUpdateAction(this->act);
-}
-
-void Component::setInputs(const std::vector<Bus>& newInputs)
-{
-  // If the former inputs are the same as the new inputs then do nothing:
-  if (this->inputs == newInputs)
-    return;
-
-  if (this->inputs.empty()) {
-    this->inputs = newInputs;
-  }
-
-  for (const auto& [index, bus] : newInputs | silicon::views::enumerate) {
-    setInput(index, bus);
-  }
+  replaceBus(this->inputs, index, bus, true);
 }
 
 void Component::setOutput(const unsigned int index, const Bus& bus)
 {
-  if (this->outputs[index] == bus)
-    return;
-
-  this->outputs[index] = bus;
+  replaceBus(this->outputs, index, bus, false);
 }
 
-void Component::setOutputs(const std::vector<Bus>& newOutputs)
+void Component::setInputs(std::vector<Bus>& newInputs)
 {
-  // If the former outputs are the same as the new outputs then do nothing:
+  if (this->inputs == newInputs)
+    return;
+
+  // Resize instead of copy to avoid double-attaching logic in setInput
+  if (this->inputs.size() != newInputs.size()) {
+    this->inputs.resize(newInputs.size());
+  }
+
+  for (auto [index, bus] : newInputs | silicon::views::enumerate) {
+    setInput(index, bus);
+  }
+}
+
+void Component::setOutputs(std::vector<Bus>& newOutputs)
+{
   if (this->outputs == newOutputs)
     return;
 
-  // We set the new outputs
-  this->outputs = newOutputs;
+  if (this->outputs.size() != newOutputs.size()) {
+    this->outputs.resize(newOutputs.size());
+  }
+
+  for (auto [index, bus] : newOutputs | silicon::views::enumerate) {
+    setOutput(index, bus);
+  }
 }
+bool Component::isConnectedTo(const Bus& b)
+{
+  return (std::ranges::find(inputs, b) != inputs.end()
+          || std::ranges::find(outputs, b) != outputs.end());
+}
+
 void Component::clearWires()
 {
-  for (const auto [index, bus] : this->outputs | silicon::views::enumerate) {
-    const auto                  busSize = bus.size();
-    const std::vector<Wire_ptr> wires(busSize);
+  auto clearBuses = [](auto& busCollection, auto setterFunc) {
+    for (const auto [index, bus] : busCollection | silicon::views::enumerate) {
+      setterFunc(index, Bus(std::vector<Wire_ptr>(bus.size())));
+    }
+  };
 
-    const auto newBus = Bus(wires);
-
-    setOutput(index, newBus);
-  }
-
-  for (const auto [index, bus] : this->inputs | silicon::views::enumerate) {
-    const auto                  busSize = bus.size();
-    const std::vector<Wire_ptr> wires(busSize);
-
-    const auto newBus = Bus(wires);
-
-    setInput(index, newBus);
-  }
+  clearBuses(this->outputs, [this](auto i, const auto& b) { setOutput(i, b); });
+  clearBuses(this->inputs, [this](auto i, const auto& b) { setInput(i, b); });
 }
 
 void Component::setAction(const action& a)
@@ -103,18 +137,14 @@ void Component::setAction(const action& a)
   if (!this->act)
     throw std::logic_error("Failed to create action");
 
-  // The action is to be set for all the inputs of the component connected to wires:
-  for (auto bus : this->inputs)
-    for (const auto& w : bus)
-      if (w)
-        w->addUpdateAction(this->act);
+  for (const auto& bus : this->inputs) {
+    toggleAction(bus, true);
+  }
 }
 
 Component::~Component()
 {
-  // Remove the associated update action from all the inputs:
-  for (auto bus : this->inputs)
-    for (const auto& w : bus)
-      if (w)
-        w->deleteUpdateAction(this->act);
+  for (const auto& bus : this->inputs) {
+    toggleAction(bus, false);
+  }
 }

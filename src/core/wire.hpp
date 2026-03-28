@@ -24,6 +24,7 @@
 #include <iostream>
 #include <iterator>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -49,6 +50,7 @@ using action_ptr = std::shared_ptr<action>;
 class Component;
 using Component_weakPtr = std::weak_ptr<Component>;
 using Component_ptr     = std::shared_ptr<Component>;
+using Component_set     = std::set<Component_weakPtr, std::owner_less<Component_weakPtr>>;
 
 class Wire {
 private:
@@ -78,6 +80,7 @@ using Wire_ptr = std::shared_ptr<Wire>;
 class Bus {
 private:
   std::vector<Wire_ptr> busData;
+  Component_set         connectedComponents;
 
 public:
   Bus() = default;
@@ -103,8 +106,17 @@ public:
   auto begin() { return this->busData.begin(); }
   auto end() { return this->busData.end(); }
 
+  [[nodiscard]] auto begin() const { return this->busData.begin(); }
+  [[nodiscard]] auto end() const { return this->busData.end(); }
+
   [[nodiscard]] auto size() { return this->busData.size(); }
   [[nodiscard]] auto size() const { return this->busData.size(); }
 
   bool operator==(const Bus& other) const { return this->busData == other.busData; }
+  auto operator<=>(const Bus& other) const { return this->busData <=> other.busData; }
+
+  void addComponent(const Component_weakPtr& c) { connectedComponents.insert(c); }
+  void removeComponent(const Component_weakPtr& c) { connectedComponents.erase(c); }
+
+  Component_set getConnectedComponents() const { return connectedComponents; }
 };
