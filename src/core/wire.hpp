@@ -18,6 +18,8 @@
 
 #pragma once
 #include <algorithm>
+#include <atomic>
+#include <compare>
 #include <format>
 #include <functional>
 #include <initializer_list>
@@ -54,16 +56,20 @@ using Component_set     = std::set<Component_weakPtr, std::owner_less<Component_
 
 class Wire {
 private:
+  static inline std::atomic<uint64_t> nextId{0};
+
   State                   currentState;
   std::vector<action_ptr> updateActions;
   Component_weakPtr       authorizedComponent;
+  uint64_t                id;
 
 public:
   Wire();
   explicit Wire(State s);
 
-  State getCurrentState() const;
-  void  forceSetCurrentState(const State newState);
+  State    getCurrentState() const;
+  void     forceSetCurrentState(const State newState);
+  uint64_t getId() const { return id; }
 
   void setCurrentState(State newState, const Component_weakPtr& requestedBy);
 
@@ -112,8 +118,8 @@ public:
   [[nodiscard]] auto size() { return this->busData.size(); }
   [[nodiscard]] auto size() const { return this->busData.size(); }
 
-  bool operator==(const Bus& other) const { return this->busData == other.busData; }
-  auto operator<=>(const Bus& other) const { return this->busData <=> other.busData; }
+  bool                 operator==(const Bus& other) const;
+  std::strong_ordering operator<=>(const Bus& other) const;
 
   void addComponent(const Component_weakPtr& c) { connectedComponents.insert(c); }
   void removeComponent(const Component_weakPtr& c) { connectedComponents.erase(c); }

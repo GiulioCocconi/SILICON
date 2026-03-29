@@ -76,6 +76,7 @@ std::string to_str(State s)
 
 Wire::Wire()
 {
+  this->id                  = nextId.fetch_add(1, std::memory_order_relaxed);
   this->currentState        = State::ERROR;
   this->updateActions       = {};
   this->authorizedComponent = {};
@@ -83,6 +84,7 @@ Wire::Wire()
 
 Wire::Wire(State s)
 {
+  this->id           = nextId.fetch_add(1, std::memory_order_relaxed);
   this->currentState = s;
 }
 
@@ -258,4 +260,16 @@ bool Bus::isInErrorState() const
   using std::ranges::any_of;
   return any_of(busData,
                 [](const auto& el) { return el->getCurrentState() == State::ERROR; });
+}
+std::strong_ordering Bus::operator<=>(const Bus& other) const
+{
+  return std::lexicographical_compare_three_way(
+      busData.begin(), busData.end(), other.busData.begin(), other.busData.end(),
+      [](const auto& a, const auto& b) { return a->getId() <=> b->getId(); });
+}
+bool Bus::operator==(const Bus& other) const
+{
+  return std::ranges::equal(busData, other.busData, [](const auto& a, const auto& b) {
+    return a.get() == b.get();
+  });
 }
