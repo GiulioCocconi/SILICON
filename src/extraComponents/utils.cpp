@@ -21,14 +21,12 @@ WireSplitter::WireSplitter(Bus input, const std::vector<Bus>& outputs)
 {
   this->setAction([this] {
     const unsigned int N = this->outputs.size();
-    std::cout << "N: " << N << std::endl;
     for (unsigned int i = 0; i < N; i++) {
       // Get the value of input bit i
       const State s = (this->inputs[0].size() == N)
                           ? Wire::safeGetCurrentState(this->inputs[0][i])
                           : State::ERROR;
       // Set the value of ith output
-      std::cout << this->outputs[i].size() << std::endl;
       if (this->outputs[i].size() != 0)
         Wire::safeSetCurrentState(this->outputs[i][0], s, weak_from_this());
     }
@@ -40,7 +38,6 @@ WireMerger::WireMerger(const std::vector<Bus>& inputs, Bus output)
 {
   this->setAction([this] {
     const unsigned int N = this->inputs.size();
-    std::cout << "N: " << N << std::endl;
     for (unsigned int i = 0; i < N; i++) {
       // Get the value of ith input
       const State s = (this->inputs[i].size() != 0)
