@@ -51,7 +51,7 @@ elseif (MSVC)
     message(FATAL_ERROR "MSVC is not currently supported!")
 endif ()
 
-option(SILICON_USE_VCPKG "Bootstrap and use bundled vcpkg for dependencies (if using Nix or WASM, this option has no effect)" ON)
+option(SILICON_USE_VCPKG "Bootstrap and use bundled vcpkg for dependencies (if using Nix, this option has no effect)" ON)
 
 # Include our custom CMake modules
 include(cmake/vcpkg.cmake)
@@ -142,12 +142,8 @@ target_sources(SILICON
 
 target_compile_options(SILICON PRIVATE -Werror)
 
-if (EMSCRIPTEN)
-    target_link_libraries(SILICON PRIVATE Qt6::Widgets Qt6::SvgWidgets)
-else ()
-    add_subdirectory(libfst)
-    target_link_libraries(SILICON PRIVATE Qt6::Widgets Qt6::SvgWidgets fst Boost::graph)
-endif ()
+add_subdirectory(libfst)
+target_link_libraries(SILICON PRIVATE Qt6::Widgets Qt6::SvgWidgets fst Boost::graph)
 
 if ((CMAKE_CXX_COMPILER_ID MATCHES "Clang") OR EMSCRIPTEN)
     # Some view/ranges features are not yet implemented in clang libc++

@@ -112,7 +112,7 @@ jobs:
 
 
   # -----------------------------------------------------------------------------
-  # WASM BUILD (Linux + Emscripten)
+  # WASM BUILD (Linux + Emscripten + vcpkg)
   # -----------------------------------------------------------------------------
   build-wasm:
     name: WASM (Emscripten)
@@ -133,15 +133,28 @@ jobs:
           target: "wasm"
           arch: "wasm_singlethread"
 
-      - name: Install Ninja and boost
-        run: sudo apt-get install ninja-build libboost-graph-dev
+      - name: Install build deps
+        run: sudo apt-get install ninja-build autoconf autoconf-archive automake libtool jq
+
+      - name: Remove unwanted dependencyes from vcpkg.json
+        run: bash ./ci/wasm_remove_deps.sh
+
+      - name: Restore vcpkg Cache
+        uses: actions/cache@v5
+        id: vcpkg-cache
+        with:
+          path: |
+            build/vcpkg_installed
+            build/_deps
+          key: wasm-vcpkg-${{ hashFiles('**/vcpkg.json') }}
+          restore-keys: |
+            wasm-vcpkg-
 
       - name: Configure CMake
         run: |
           chmod +x ~/work/SILICON/Qt/6.11.0/wasm_singlethread/bin/qt-cmake
           ~/work/SILICON/Qt/6.11.0/wasm_singlethread/bin/qt-cmake -Bbuild -G Ninja
           emcmake cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -Bbuild
-
       - name: Build
         run: ninja -C build
 
