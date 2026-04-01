@@ -14,7 +14,7 @@
 #  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
- if (SILICON_USE_VCPKG AND NOT USING_NIX AND NOT EMSCRIPTEN)
+if (SILICON_USE_VCPKG AND NOT USING_NIX)
     message(STATUS "SILICON_USE_VCPKG is ON. Bootstrapping bundled vcpkg...")
 
     set(ENV{VCPKG_USE_SYSTEM_BINARIES} "1")
@@ -65,6 +65,24 @@
         if (NOT VCPKG_BOOTSTRAP_RESULT EQUAL 0)
             message(FATAL_ERROR "Failed to bootstrap vcpkg.")
         endif ()
+    endif ()
+
+    if (EMSCRIPTEN)
+        set(VCPKG_TARGET_TRIPLET "wasm32-emscripten" CACHE STRING "" FORCE)
+
+        # Locate the Emscripten toolchain for vcpkg to chainload
+        if (DEFINED ENV{EMSDK})
+            set(_EMSCRIPTEN_TOOLCHAIN "$ENV{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake")
+        else ()
+            get_filename_component(_EMCC_DIR "${CMAKE_C_COMPILER}" DIRECTORY)
+            set(_EMSCRIPTEN_TOOLCHAIN "${_EMCC_DIR}/cmake/Modules/Platform/Emscripten.cmake")
+        endif ()
+
+        if (NOT EXISTS "${_EMSCRIPTEN_TOOLCHAIN}")
+            message(FATAL_ERROR "Cannot find Emscripten CMake toolchain at: ${_EMSCRIPTEN_TOOLCHAIN}")
+        endif ()
+
+        set(VCPKG_CHAINLOAD_TOOLCHAIN_FILE "${_EMSCRIPTEN_TOOLCHAIN}")
     endif ()
 
     # Enable Manifest Mode (uses vcpkg.json)
