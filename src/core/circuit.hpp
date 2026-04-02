@@ -68,6 +68,8 @@ private:
                              std::vector<VertexDescriptor>& newlyAdded);
 
 public:
+  struct SimulationBlock;
+
   Circuit() = default;
   explicit Circuit(const Component_set& components, bool explore = false);
   explicit Circuit(const Component_weakPtr& component, bool explore = true);
@@ -93,8 +95,19 @@ public:
   /// Returns the components in topological order (inputs first, outputs last).
   [[nodiscard]] std::vector<Component_weakPtr> topologicalOrder() const;
 
-  /// Returns the underlying BGL graph for advanced algorithm use.
+  /// Returns the underlying BGL graph for algorithm use.
   [[nodiscard]] const CircuitGraph& getGraph() const { return graph; }
 
+  /// Splits the circuit into ordered simulation blocks (DAG parts and Cyclic parts).
+  /// Contiguous acyclic SCCs are merged into a single block to reduce solver overhead.
+  /// Evaluation order runs sequentially from vector index 0 to size-1.
+  [[nodiscard]] std::vector<SimulationBlock> splitCyclic() const;
+
   void serialize() const { throw std::logic_error("To be implemented"); }
+};
+
+struct Circuit::SimulationBlock {
+  bool                           isCyclic;
+  Circuit                        circuit;         // Populated if isCyclic == true
+  std::vector<Component_weakPtr> executionOrder;  // Populated if isCyclic == false
 };
