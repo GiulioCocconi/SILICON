@@ -450,3 +450,102 @@ TEST(CircuitTest, GetGraphNotEmpty)
 
   EXPECT_GT(boost::num_vertices(c.getGraph()), 0);
 }
+
+TEST(CircuitTest, SplitDagAndNonDagPureDag)
+{
+  // a,b → AND(mid) → NOT(o)  — no cycles, entire circuit is DAG.
+  auto a   = std::make_shared<Wire>();
+  auto b   = std::make_shared<Wire>();
+  auto mid = std::make_shared<Wire>();
+  auto o   = std::make_shared<Wire>();
+
+  auto g1 = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, mid);
+  auto g2 = std::make_shared<NotGate>(mid, o);
+
+  Component_set comps;
+  comps.insert(Component_weakPtr(g1));
+  comps.insert(Component_weakPtr(g2));
+
+  Circuit c(comps, false);
+
+  auto blocks = c.splitCyclic();
+
+  // All components should be in a single DAG block.
+  ASSERT_EQ(blocks.size(), 1);
+  EXPECT_FALSE(blocks[0].isCyclic);
+  EXPECT_EQ(blocks[0].circuit.getInputs().size(), 2);
+  EXPECT_EQ(blocks[0].circuit.getOutputs().size(), 1);
+  EXPECT_EQ(blocks[0].circuit.getOutputs()[0], Bus({o}));
+}
+
+TEST(CircuitTest, SplitDagAndNonDagWithCycle)
+{
+  // Create a cycle: g1(w1) → g2(w2) where w2 feeds back into g1 as input.
+  // g1: AND(w1, ext) → w2
+  // g2: NOT(w2) → w1   (this creates the cycle w1 → w2 → w1)
+  auto ext = std::make_shared<Wire>();
+  auto w1  = std::make_shared<Wire>();
+  auto w2  = std::make_shared<Wire>();
+
+  auto g1 = std::make_shared<AndGate>(std::vector<Wire_ptr>{w1, ext}, w2);
+  auto g2 = std::make_shared<NotGate>(w2, w1);
+
+  Component_set comps;
+  comps.insert(Component_weakPtr(g1));
+  comps.insert(Component_weakPtr(g2));
+
+  Circuit c(comps, false);
+
+  auto blocks = c.splitCyclic();
+
+  // Both gates are in the cycle, so there should be a single cyclic block.
+  ASSERT_EQ(blocks.size(), 1);
+  EXPECT_TRUE(blocks[0].isCyclic);
+  EXPECT_EQ(boost::num_vertices(blocks[0].circuit.getGraph()), 2);
+}
+
+TEST(CircuitTest, SplitDagAndNonDagMixed)
+{
+  // DAG part:  a → NOT(g1) → x
+  // Cycle part: y → NOT(g3) → z → NOT(g4) → y  (cycle between g3, g4)
+  // g2: AND(x, b) → y  connects DAG to cycle
+  auto a = std::make_shared<Wire>();
+  auto b = std::make_shared<Wire>();
+  auto x = std::make_shared<Wire>();
+  auto y = std::make_shared<Wire>();
+  auto z = std::make_shared<Wire>();
+
+  auto g1 = std::make_shared<NotGate>(a, x);
+  auto g2 = std::make_shared<AndGate>(std::vector<Wire_ptr>{x, b}, y);
+  auto g3 = std::make_shared<NotGate>(y, z);
+  auto g4 = std::make_shared<NotGate>(z, y);  // feeds back to y → cycle
+
+  Component_set comps;
+  comps.insert(Component_weakPtr(g1));
+  comps.insert(Component_weakPtr(g2));
+  comps.insert(Component_weakPtr(g3));
+  comps.insert(Component_weakPtr(g4));
+
+  Circuit c(comps, false);
+
+  auto blocks = c.splitCyclic();
+
+  // Should have a DAG block first (g1, g2), then a cyclic block (g3, g4).
+  ASSERT_EQ(blocks.size(), 2);
+
+  // First block should be DAG with g1 and g2.
+  EXPECT_FALSE(blocks[0].isCyclic);
+  EXPECT_EQ(boost::num_vertices(blocks[0].circuit.getGraph()), 2);
+
+  // Second block should be cyclic with g3 and g4.
+  EXPECT_TRUE(blocks[1].isCyclic);
+  EXPECT_EQ(boost::num_vertices(blocks[1].circuit.getGraph()), 2);
+}
+
+TEST(CircuitTest, SplitDagAndNonDagEmpty)
+{
+  Circuit c;
+  auto    blocks = c.splitCyclic();
+
+  EXPECT_TRUE(blocks.empty());
+}

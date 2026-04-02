@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <ranges>
 
+#include <boost/graph/strong_components.hpp>
 #include <boost/graph/topological_sort.hpp>
 
 // --- Internal helpers ------------------------------------------------------------------
@@ -304,4 +305,98 @@ std::vector<Component_weakPtr> Circuit::topologicalOrder() const
     result.push_back(graph[v].component);
 
   return result;
+}
+
+std::vector<Circuit::SimulationBlock> Circuit::splitCyclic() const
+{
+  const auto n = boost::num_vertices(graph);
+
+  // Early exit: Avoids allocating maps and vectors if there's nothing to process.
+  if (n == 0)
+    return {};
+
+  // --- STEP 1: Identify Strongly Connected Components (SCCs) ---------------------------
+  // An SCC is a subgraph where every vertex can reach every other vertex. An SCC of size
+  // > 1 represents a feedback loop (cycle).
+
+  std::vector<int> componentMap(n);
+  const auto       vertexIndexMap = boost::get(boost::vertex_index, graph);
+
+  // BGL guarantees a crucial topological property here:
+  // If a path exists from u to v, then componentMap[u] >= componentMap[v].
+  const int numSccs = boost::strong_components(
+      graph, boost::make_iterator_property_map(componentMap.begin(), vertexIndexMap));
+
+  // --- STEP 2: Group vertices by their SCC ID ------------------------------------------
+  std::vector<std::vector<VertexDescriptor>> sccVertices(numSccs);
+  auto [v_begin, v_end] = boost::vertices(graph);
+
+  for (const auto v : std::ranges::subrange(v_begin, v_end)) {
+    const auto scc_id = componentMap[boost::get(vertexIndexMap, v)];
+    sccVertices[scc_id].push_back(v);
+  }
+
+  std::vector<SimulationBlock> blocks;
+
+  // This vector acts as an accumulator for adjacent acyclic (DAG) components.
+  // We want to combine adjacent DAG segments into a single SimulationBlock to minimize
+  // execution overhead.
+  std::vector<Component_weakPtr> currentDagComps;
+
+  // Helper lambda to finalize and store the accumulated DAG segment.
+  auto flushDag = [&]() {
+    if (!currentDagComps.empty()) {
+      Component_set comps(currentDagComps.begin(), currentDagComps.end());
+      auto          execOrder = std::move(currentDagComps);
+      blocks.emplace_back(false, Circuit(comps, false), std::move(execOrder));
+    }
+  };
+
+  // --- STEP 3: Topologically traverse and build SimulationBlocks -----------------------
+  // We iterate backwards (numSccs - 1 down to 0) because BGL's component IDs represent a
+  // reversed topological sort. High IDs are "upstream" dependencies.
+  for (int i = numSccs - 1; i >= 0; --i) {
+    const auto& verts = sccVertices[i];
+
+    // Check A: If an SCC has multiple vertices it's a cycle.
+    bool isCyclic = verts.size() > 1;
+
+    // Check B: If it's a single vertex, it's only a cycle if it has a self-loop.
+    if (verts.size() == 1) {
+      auto [e_begin, e_end] = boost::out_edges(verts.front(), graph);
+
+      // std::ranges::any_of succinctly checks if any target matches our vertex.
+      isCyclic =
+          std::ranges::any_of(std::ranges::subrange(e_begin, e_end), [&](const auto& e) {
+            return boost::target(e, graph) == verts.front();
+          });
+    }
+
+    // This view is evaluated on-demand in the if/else block below.
+    auto validComps =
+        verts | std::views::transform([this](auto v) { return graph[v].component; })
+        | std::views::filter([](const auto& weakComp) { return !weakComp.expired(); });
+
+    if (isCyclic) {
+      // A cycle interrupts standard execution flow. We must flush any pending
+      // DAG components so they execute *before* this cycle block.
+      flushDag();
+
+      // C++23 std::ranges::to evaluates the lazy view above.
+      auto cyclicComps = validComps | std::ranges::to<Component_set>();
+
+      if (!cyclicComps.empty()) {
+        blocks.emplace_back(true, Circuit(cyclicComps, false),
+                            std::vector<Component_weakPtr>{});
+      }
+    } else {
+      for (const auto& comp : validComps)
+        currentDagComps.push_back(comp);
+    }
+  }
+
+  // Don't forget to flush the final DAG segment (if the graph ended with acyclic parts).
+  flushDag();
+
+  return blocks;
 }
