@@ -27,7 +27,7 @@ TEST(UtilsTest, WireMergerCase)
 
   auto bus = Bus(2);
 
-  WireMerger wm = WireMerger({{a}, {b}}, bus);
+  auto wm = std::make_shared<WireMerger>(std::vector<Bus>{{a}, {b}}, bus);
   a->forceSetCurrentState(State::HIGH);
 
   EXPECT_EQ(bus.getCurrentValue(), 3);
@@ -41,7 +41,7 @@ TEST(UtilsTest, WireSplitterCase)
   auto bus = Bus(2);
   bus.forceSetCurrentValue(2);
 
-  WireSplitter ws = WireSplitter(bus, {{a}, {b}});
+  auto ws = std::make_shared<WireSplitter>(bus, std::vector<Bus>{{a}, {b}});
   EXPECT_EQ(a->getCurrentState(), State::LOW);
   EXPECT_EQ(b->getCurrentState(), State::HIGH);
 }

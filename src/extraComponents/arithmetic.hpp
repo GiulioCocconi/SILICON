@@ -21,21 +21,34 @@
 #include <core/wire.hpp>
 #include <iostream>
 #include <memory>
+#include <string_view>
 
 class HalfAdder : public Component {
 public:
+  static constexpr std::string_view Type = "HalfAdder";
+
+  std::string_view typeName() const override { return Type; }
+
   HalfAdder() = default;
   HalfAdder(std::array<Wire_ptr, 2> inputs, Wire_ptr sum, Wire_ptr cout);
 };
 
 class FullAdder : public Component {
 public:
+  static constexpr std::string_view Type = "FullAdder";
+
+  std::string_view typeName() const override { return Type; }
+
   FullAdder() = default;
   FullAdder(std::array<Wire_ptr, 2> inputs, Wire_ptr cin, Wire_ptr sum, Wire_ptr cout);
 };
 
 class AdderNBits : public Component {
 public:
+  static constexpr std::string_view Type = "AdderNBits";
+
+  std::string_view typeName() const override { return Type; }
+
   AdderNBits() = default;
   AdderNBits(std::array<Bus, 2> inputs, Bus sum, Wire_ptr cout);
 };

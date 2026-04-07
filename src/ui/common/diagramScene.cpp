@@ -22,14 +22,16 @@
 #include "ui/logiFlow/components/graphicalGates.hpp"
 #include "ui/logiFlow/components/graphicalIO.hpp"
 #include "ui/logiFlow/components/graphicalUtils.hpp"
+#include "ui/serialization/gui_component_factory.hpp"
 
+#include <QDebug>
 #include <stdexcept>
 
 DiagramScene::DiagramScene(QObject* parent) : QGraphicsScene(parent)
 {
   setInteractionMode(InteractionMode::NORMAL_MODE, true);
 
-  csb = new ComponentSearchBox(completionMap);
+  csb = new ComponentSearchBox(GUIComponentFactory::instance().availableTypes());
   csb->setParent(this);
   connect(csb, &ComponentSearchBox::requestHide, this, &DiagramScene::hideCSB);
   connect(csb, &ComponentSearchBox::selectedComponent, this,
@@ -226,14 +228,15 @@ void DiagramScene::mousePressEvent(QGraphicsSceneMouseEvent* mouseEvent)
     case InteractionMode::NORMAL_MODE: break;
     case InteractionMode::COMPONENT_PLACING_MODE: {
       if (componentToBeDrawn) {
-        // Next components should inherit the type and rotation of the previous one
-        const auto type     = static_cast<SiliconTypes>(componentToBeDrawn->type());
         const auto rotation = componentToBeDrawn->rotation();
 
         clearComponentShadow();
 
         // Propose the placing of the next component
-        placeComponent(type);
+        placeComponent(lastPlacedComponentType);
+        if (!componentToBeDrawn)
+          throw std::logic_error(
+              "componentToBeDrawn should not be null after placeComponent succeeds");
         componentToBeDrawn->setRotation(rotation);
       }
       break;
@@ -415,26 +418,13 @@ void DiagramScene::addComponent(GraphicalComponent* component, QPointF pos)
 }
 
 // TODO: Switch to auto memory management!
-void DiagramScene::placeComponent(const SiliconTypes type)
+void DiagramScene::placeComponent(std::string typeName)
 {
   if (componentToBeDrawn)
     throw std::logic_error("placeComponent: previous component not yet placed");
-  switch (type) {
-    case UNKNOWN: throw std::invalid_argument("Unknown component type");
-    case SINGLE_INPUT: componentToBeDrawn = new GraphicalInput(); break;
-    case SINGLE_OUTPUT: componentToBeDrawn = new GraphicalOutputSingle(); break;
-    case AND_GATE: componentToBeDrawn = new GraphicalAnd(); break;
-    case NAND_GATE: componentToBeDrawn = new GraphicalNand(); break;
-    case OR_GATE: componentToBeDrawn = new GraphicalOr(); break;
-    case NOR_GATE: componentToBeDrawn = new GraphicalNor(); break;
-    case NOT_GATE: componentToBeDrawn = new GraphicalNot(); break;
-    case XOR_GATE: componentToBeDrawn = new GraphicalXor(); break;
-    case WIRE_SPLITTER: componentToBeDrawn = new GraphicalWireSplitter(); break;
-    case WIRE_MERGER: componentToBeDrawn = new GraphicalWireMerger(); break;
-    case HALF_ADDER:
-    case FULL_ADDER:
-    default: throw std::logic_error("Component not implemented");
-  }
+
+  componentToBeDrawn      = GUIComponentFactory::instance().create(typeName).release();
+  lastPlacedComponentType = std::move(typeName);
 
   // TODO: IMPLEMENT COMPONENT SHADOW TO BE SHOWN WHILE DRAGGING
   setInteractionMode(InteractionMode::COMPONENT_PLACING_MODE);

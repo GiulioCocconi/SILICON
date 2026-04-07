@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2025. Giulio Cocconi
+  Copyright (c) 2025. Giulio Cocconi
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -25,8 +25,10 @@
 #include <QMainWindow>
 #include <QSplashScreen>
 
+#include <core/serialization/component_registration.hpp>
 #include <ui/common/icons.hpp>
 #include <ui/logiFlow/logiFlowWindow.hpp>
+#include <ui/serialization/gui_component_registration.hpp>
 
 int siliconMain(int argc, char** argv)
 {
@@ -60,6 +62,13 @@ int siliconMain(int argc, char** argv)
 
   // Force processing of events to show the splash screen immediately
   QApplication::processEvents();
+
+  // Register all components explicitly
+  ComponentRegistry::instance();
+  registerAllComponents(ComponentRegistry::instance());
+
+  static GUIComponentFactory& guiFactory = GUIComponentFactory::instance();
+  registerAllGUIComponents(guiFactory);
 
   LogiFlowWindow lfWin{};
   lfWin.resize(QGuiApplication::primaryScreen()->size() * 0.6);

@@ -63,7 +63,9 @@ set(COMMON_SOURCE_FILES
         ${src_dir}/core/wire.cpp
         ${src_dir}/core/gates.cpp
         ${src_dir}/core/component.cpp
-        ${src_dir}/core/circuit.cpp)
+        ${src_dir}/core/circuit.cpp
+        ${src_dir}/core/serialization/component_registry.cpp
+        ${src_dir}/core/serialization/component_registration.cpp)
 
 set(EXTRA_COMPONENTS_SOURCE_FILES
         ${src_dir}/extraComponents/arithmetic.cpp
@@ -83,7 +85,9 @@ set(UI_SOURCE_FILES
         ${src_dir}/ui/logiFlow/components/graphicalIO.cpp
         ${src_dir}/ui/logiFlow/components/graphicalGates.cpp
         ${src_dir}/ui/logiFlow/components/graphicalUtils.cpp
-        ${src_dir}/ui/logiFlow/logiFlowWindow.cpp)
+        ${src_dir}/ui/logiFlow/logiFlowWindow.cpp
+        ${src_dir}/ui/serialization/gui_component_factory.cpp
+        ${src_dir}/ui/serialization/gui_component_registration.cpp)
 
 set(CMAKE_COLOR_DIAGNOSTICS ON)
 

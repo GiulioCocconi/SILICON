@@ -226,8 +226,16 @@ TEST(CircuitTest, MultiWireBus)
   auto inputBus  = Bus({a, b});
   auto outputBus = Bus({o1, o2});
 
-  auto g = std::make_shared<Component>(std::vector<Bus>{inputBus},
-                                       std::vector<Bus>{outputBus}, "Test");
+  struct TestComponent : public Component {
+    TestComponent(std::vector<Bus> inputs, std::vector<Bus> outputs, std::string name)
+      : Component(std::move(inputs), std::move(outputs), std::move(name))
+    {
+    }
+    std::string_view typeName() const override { return "TestComponent"; }
+  };
+
+  auto g = std::make_shared<TestComponent>(std::vector<Bus>{inputBus},
+                                           std::vector<Bus>{outputBus}, "Test");
 
   Circuit c(Component_weakPtr(g), false);
 

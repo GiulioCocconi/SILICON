@@ -17,6 +17,8 @@
 
 #include "arithmetic.hpp"
 
+#include <core/serialization/component_registry.hpp>
+
 #include <stdexcept>
 
 HalfAdder::HalfAdder(std::array<Wire_ptr, 2> inputs, Wire_ptr sum, Wire_ptr cout)

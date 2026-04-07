@@ -19,13 +19,24 @@
 
 #include <core/component.hpp>
 #include <core/wire.hpp>
+#include <string_view>
 
 class WireSplitter : public Component {
 public:
+  static constexpr std::string_view Type = "WireSplitter";
+
+  std::string_view typeName() const override { return Type; }
+
+  WireSplitter() = default;
   WireSplitter(Bus input, const std::vector<Bus>& outputs);
 };
 
 class WireMerger : public Component {
 public:
+  static constexpr std::string_view Type = "WireMerger";
+
+  std::string_view typeName() const override { return Type; }
+
+  WireMerger() = default;
   WireMerger(const std::vector<Bus>& inputs, Bus output);
 };
