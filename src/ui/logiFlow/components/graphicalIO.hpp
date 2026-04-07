@@ -28,6 +28,8 @@
 #include <core/component.hpp>
 #include <core/wire.hpp>
 
+#include <string_view>
+
 #include <ui/common/enums.hpp>
 #include <ui/common/graphicalComponent.hpp>
 #include <ui/logiFlow/components/graphicalLogicComponent.hpp>
@@ -35,6 +37,8 @@
 class GraphicalInput : public GraphicalLogicComponent {
   Q_OBJECT
 public:
+  static constexpr std::string_view ComponentType = "Input";
+
   explicit GraphicalInput(std::string name = "in", QGraphicsItem* parent = nullptr);
   int type() const override { return SiliconTypes::SINGLE_INPUT; }
 
@@ -76,13 +80,20 @@ private:
 
 class DummyInputComponent : public Component {
 public:
-  DummyInputComponent(Bus bus, std::string name) : Component({}, {bus}, name) {}
+  static constexpr std::string_view Type = "DummyInputComponent";
+
+  DummyInputComponent(Bus bus, std::string name) : Component({}, {bus}, std::move(name))
+  {
+  }
   void setState(int value) { this->outputs[0].setCurrentValue(value, weak_from_this()); };
+  std::string_view typeName() const override { return Type; }
 };
 
 class GraphicalOutputSingle : public GraphicalLogicComponent {
   Q_OBJECT
 public:
+  static constexpr std::string_view ComponentType = "Output";
+
   GraphicalOutputSingle(std::string name = "out", QGraphicsItem* parent = nullptr);
   int type() const override { return SiliconTypes::SINGLE_OUTPUT; }
 
@@ -104,8 +115,11 @@ private:
 
 class DummyOutputComponent : public Component {
 public:
+  static constexpr std::string_view Type = "DummyOutputComponent";
+
   DummyOutputComponent(Bus bus, std::string name);
-  void setSkin(GraphicalOutputSingle* skin);
+  void             setSkin(GraphicalOutputSingle* skin);
+  std::string_view typeName() const override { return Type; }
 
 private:
   GraphicalOutputSingle* skin = nullptr;

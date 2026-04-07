@@ -19,14 +19,21 @@
 #pragma once
 
 #include <array>
+#include <concepts>
 #include <memory>
 #include <ranges>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include <utils/ranges_wrapper.hpp>
 
 #include <core/wire.hpp>
+
+template <typename T>
+concept HasType = requires {
+  { T::Type } -> std::convertible_to<std::string_view>;
+};
 
 class Component : public std::enable_shared_from_this<Component> {
 protected:
@@ -61,6 +68,8 @@ public:
   std::vector<Bus> getInputs() const { return inputs; }
   std::vector<Bus> getOutputs() const { return outputs; }
   std::string      getName() const { return name; }
+
+  virtual std::string_view typeName() const = 0;
 
   virtual ~Component();
 };

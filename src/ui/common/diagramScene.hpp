@@ -19,6 +19,7 @@
 #pragma once
 
 #include <ranges>
+#include <string>
 
 #include <QCursor>
 #include <QGraphicsScene>
@@ -65,7 +66,7 @@ public:
 
   void addComponent(GraphicalComponent* component, QPointF pos);
 
-  void placeComponent(SiliconTypes type);
+  void placeComponent(std::string typeName);
 
   static QPointF snapToGrid(QPointF point);
 
@@ -101,18 +102,7 @@ private:
 
   WireManager wireManager;
 
-  // Completion map to be used with ComponentSearchBox
-  static const inline ComponentSearchBox::SearchMap completionMap = {
-      {"INPUT", SiliconTypes::SINGLE_INPUT},
-      {"OUTPUT", SiliconTypes::SINGLE_OUTPUT},
-      {"AND GATE", SiliconTypes::AND_GATE},
-      {"OR GATE", SiliconTypes::OR_GATE},
-      {"NAND GATE", SiliconTypes::NAND_GATE},
-      {"NOR GATE", SiliconTypes::NOR_GATE},
-      {"NOT GATE", SiliconTypes::NOT_GATE},
-      {"XOR GATE", SiliconTypes::XOR_GATE},
-      {"WIRE SPLITTER", SiliconTypes::WIRE_SPLITTER},
-      {"WIRE MERGER", SiliconTypes::WIRE_MERGER}};
+  std::string lastPlacedComponentType;
 };
 
 using InteractionMode = DiagramScene::InteractionMode;
