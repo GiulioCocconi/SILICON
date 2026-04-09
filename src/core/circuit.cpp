@@ -16,14 +16,18 @@
 
  */
 
-#include "circuit.hpp"
-#include "component.hpp"
-
 #include <algorithm>
+#include <format>
 #include <ranges>
+
+#include <core/circuit.hpp>
+#include <core/component.hpp>
+#include <core/serialization/component_registry.hpp>
 
 #include <boost/graph/strong_components.hpp>
 #include <boost/graph/topological_sort.hpp>
+
+#include <nlohmann/json.hpp>
 
 // --- Internal helpers ------------------------------------------------------------------
 
@@ -399,4 +403,126 @@ std::vector<Circuit::SimulationBlock> Circuit::splitCyclic() const
   flushDag();
 
   return blocks;
+}
+
+// --- Serialization ---------------------------------------------------------------------
+
+std::string Circuit::serialize() const
+{
+  nlohmann::ordered_json j = {{"version", SILICON_VERSION},
+                              {"name", name},
+                              {"components", nlohmann::ordered_json::array()}};
+
+  auto serializeBusList = [](const std::vector<Bus>& buses) -> nlohmann::ordered_json {
+    nlohmann::ordered_json busArray = nlohmann::ordered_json::array();
+
+    for (const Bus& bus : buses) {
+      nlohmann::ordered_json wireArray = nlohmann::ordered_json::array();
+
+      for (const auto& wire : bus) {
+        wireArray.push_back(wire ? nlohmann::ordered_json(wire->getId())
+                                 : nlohmann::ordered_json(nullptr));
+      }
+
+      busArray.push_back(std::move(wireArray));
+    }
+
+    return busArray;
+  };
+
+  for (auto [vi, vi_end] = boost::vertices(graph);
+       auto v : std::ranges::subrange(vi, vi_end)) {
+    if (auto cPtr = graph[v].component.lock()) {
+      j["components"].push_back(
+          nlohmann::ordered_json{{"id", v},
+                                 {"type", cPtr->typeName()},
+                                 {"inputs", serializeBusList(cPtr->getInputs())},
+                                 {"outputs", serializeBusList(cPtr->getOutputs())}});
+    }
+  }
+
+  return j.dump(2);
+}
+
+Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry& reg)
+{
+  auto j = nlohmann::json::parse(jsonStr);
+
+  if (j.value("version", "") != SILICON_VERSION) {
+    throw std::runtime_error(std::format("The version must be {}", SILICON_VERSION));
+  }
+
+  std::unordered_map<uint64_t, Wire_ptr> wireMap;
+
+  auto deserializeBusList = [&wireMap](const nlohmann::json& busListJson) {
+    std::vector<Bus> buses;
+    buses.reserve(busListJson.size());
+
+    for (const auto& busJson : busListJson) {
+      std::vector<Wire_ptr> wires;
+      wires.reserve(busJson.size());
+
+      for (const auto& wireJson : busJson) {
+        if (wireJson.is_null()) {
+          wires.push_back(nullptr);
+          continue;
+        }
+
+        const uint64_t w_id = wireJson.get<uint64_t>();
+
+        auto& wire = wireMap[w_id];
+        if (!wire) {
+          wire = std::make_shared<Wire>();
+        }
+        wires.push_back(wire);
+      }
+
+      buses.emplace_back(std::move(wires));
+    }
+
+    return buses;
+  };
+
+  std::vector<Component_ptr> componentList;
+
+  if (auto it = j.find("components"); it != j.end() && it->is_array()) {
+    for (const auto& compJson : *it) {
+      auto type_it = compJson.find("type");
+      if (type_it == compJson.end())
+        continue;
+
+      auto type = type_it->get<std::string>();
+      auto cPtr = reg.create(type);
+      if (!cPtr) {
+        throw std::runtime_error(
+            std::format("Failed to create unknown component type: {}", type));
+      }
+
+      if (auto in_it = compJson.find("inputs");
+          in_it != compJson.end() && in_it->is_array()) {
+        auto inputs = deserializeBusList(*in_it);
+        cPtr->setInputs(inputs);
+      }
+
+      if (auto out_it = compJson.find("outputs");
+          out_it != compJson.end() && out_it->is_array()) {
+        auto outputs = deserializeBusList(*out_it);
+        cPtr->setOutputs(outputs);
+      }
+
+      componentList.push_back(std::move(cPtr));
+    }
+  }
+
+  Circuit result(componentList | std::ranges::to<Component_set>(), true);
+
+  // Transfer ownership
+  result.ownedComponents = std::move(componentList);
+  result.ownedWires      = wireMap | std::views::values | std::ranges::to<std::vector>();
+
+  if (auto it = j.find("name"); it != j.end() && it->is_string()) {
+    result.name = it->get<std::string>();
+  }
+
+  return result;
 }

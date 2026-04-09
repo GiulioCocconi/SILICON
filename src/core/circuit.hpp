@@ -27,6 +27,8 @@
 
 #include <boost/graph/adjacency_list.hpp>
 
+class ComponentRegistry;
+
 // Bundled vertex property: each vertex holds a weak_ptr to a Component.
 struct VertexProperty {
   Component_weakPtr component;
@@ -54,6 +56,10 @@ private:
 
   // Maps a Component (by its raw pointer identity) to its vertex in the graph.
   std::unordered_map<const Component*, VertexDescriptor> componentToVertex;
+
+  // Owned components and wires (to prevent dangling pointers from deserialization)
+  std::vector<Component_ptr> ownedComponents;
+  std::vector<Wire_ptr>      ownedWires;
 
   // Get or create a vertex for the given component.
   VertexDescriptor getOrAddVertex(const Component_weakPtr& component);
@@ -103,7 +109,9 @@ public:
   /// Evaluation order runs sequentially from vector index 0 to size-1.
   [[nodiscard]] std::vector<SimulationBlock> splitCyclic() const;
 
-  void serialize() const { throw std::logic_error("To be implemented"); }
+  [[nodiscard]] std::string    serialize() const;
+  [[nodiscard]] static Circuit deserialize(const std::string&       jsonStr,
+                                           const ComponentRegistry& reg);
 };
 
 struct Circuit::SimulationBlock {
