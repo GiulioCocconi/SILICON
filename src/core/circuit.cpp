@@ -433,9 +433,15 @@ std::string Circuit::serialize() const
   for (auto [vi, vi_end] = boost::vertices(graph);
        auto v : std::ranges::subrange(vi, vi_end)) {
     if (auto cPtr = graph[v].component.lock()) {
+      nlohmann::ordered_json propsJson = nlohmann::ordered_json::object();
+      for (const auto& [key, val] : cPtr->getProperties()) {
+        std::visit([&](auto&& arg) { propsJson[key] = arg; }, val);
+      }
+
       j["components"].push_back(
           nlohmann::ordered_json{{"id", v},
                                  {"type", cPtr->typeName()},
+                                 {"properties", propsJson},
                                  {"inputs", serializeBusList(cPtr->getInputs())},
                                  {"outputs", serializeBusList(cPtr->getOutputs())}});
     }

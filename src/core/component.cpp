@@ -73,7 +73,37 @@ void Component::replaceBus(std::vector<Bus>& busCollection, const unsigned int i
   busCollection[index].addComponent(weak_from_this());
 }
 
-// --- Public Methods --------------------------------------------------------------------
+// --- Properties Management -------------------------------------------------------------
+
+
+void Component::setProperty(const std::string& key, const PropertyValue& value)
+{
+  auto it = properties.find(key);
+
+  // 1. Enforce static set of properties
+  if (it == properties.end()) {
+    throw std::invalid_argument(
+      std::format("Property '{}' does not exist on component '{}'", key, name));
+  }
+
+  // 2. Enforce static types (the variant index must match the one set during defineProperty)
+  if (it->second.index() != value.index()) {
+    throw std::invalid_argument(
+      std::format("Type mismatch when setting property '{}' on component '{}'", key, name));
+  }
+
+  it->second = value;
+}
+
+std::optional<PropertyValue> Component::getProperty(const std::string& key) const
+{
+  if (const auto it = properties.find(key); it != properties.end()) {
+    return it->second;
+  }
+  return std::nullopt;
+}
+
+// --- Other public Methods --------------------------------------------------------------
 
 void Component::setInput(const unsigned int index, const Bus& bus)
 {
