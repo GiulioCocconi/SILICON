@@ -27,6 +27,8 @@ Gate::Gate(const std::vector<Wire_ptr>& inputs, Wire_ptr output, std::string nam
 
   this->name = std::move(name);
 
+  defineProperty("delay", 5);
+
   for (const auto& input : inputs)
     this->inputs.push_back({input});
   this->outputs = {{output}};
@@ -64,6 +66,8 @@ OrGate::OrGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output)
 
 NotGate::NotGate(Wire_ptr input, Wire_ptr output) : Gate({input}, output, "Not")
 {
+  setProperty("delay", 2);
+
   this->setAction([this] {
     State s = !Wire::safeGetCurrentState(inputs[0][0]);
 
@@ -74,6 +78,8 @@ NotGate::NotGate(Wire_ptr input, Wire_ptr output) : Gate({input}, output, "Not")
 NandGate::NandGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output)
   : Gate(inputs, output, "Nand")
 {
+  setProperty("delay", 6);
+
   if (inputs.size() < 2)
     throw std::invalid_argument("NandGate requires at least 2 inputs");
   this->setAction([this] {
@@ -89,6 +95,8 @@ NandGate::NandGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output)
 NorGate::NorGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output)
   : Gate(inputs, output, "Nor")
 {
+  setProperty("delay", 6);
+
   if (inputs.size() < 2)
     throw std::invalid_argument("NorGate requires at least 2 inputs");
   this->setAction([this] {
@@ -104,6 +112,8 @@ NorGate::NorGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output)
 XorGate::XorGate(const std::array<Wire_ptr, 2>& inputs, Wire_ptr output)
   : Gate({inputs[0], inputs[1]}, output, "Xor")
 {
+  setProperty("delay", 7);
+
   this->setAction([this] {
     const State s = Wire::safeGetCurrentState(this->inputs[0][0])
                     ^ Wire::safeGetCurrentState(this->inputs[1][0]);

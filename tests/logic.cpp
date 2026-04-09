@@ -177,3 +177,120 @@ TEST(LogicTest, BusSettingReading)
     EXPECT_EQ(a.getCurrentValue(), i);
   }
 }
+
+// TODO: Move to a separated test suite
+
+TEST(ComponentTest, SetAndGetIntProperty)
+{
+  struct TestComponent : public Component {
+    TestComponent() : Component({}, {}, "Test") { defineProperty("value", 10); }
+    std::string_view typeName() const override { return "TestComponent"; }
+  };
+
+  auto c = std::make_shared<TestComponent>();
+
+  auto prop = c->getProperty("value");
+  ASSERT_TRUE(prop.has_value());
+  EXPECT_EQ(std::get<int>(*prop), 10);
+
+  c->setProperty("value", 20);
+  prop = c->getProperty("value");
+  EXPECT_EQ(std::get<int>(*prop), 20);
+}
+
+TEST(ComponentTest, SetAndGetBoolProperty)
+{
+  struct TestComponent : public Component {
+    TestComponent() : Component({}, {}, "Test") { defineProperty("enabled", false); }
+    std::string_view typeName() const override { return "TestComponent"; }
+  };
+
+  auto c = std::make_shared<TestComponent>();
+
+  auto prop = c->getProperty("enabled");
+  ASSERT_TRUE(prop.has_value());
+  EXPECT_EQ(std::get<bool>(*prop), false);
+
+  c->setProperty("enabled", true);
+  prop = c->getProperty("enabled");
+  EXPECT_EQ(std::get<bool>(*prop), true);
+}
+
+TEST(ComponentTest, SetAndGetStringProperty)
+{
+  struct TestComponent : public Component {
+    TestComponent() : Component({}, {}, "Test")
+    {
+      defineProperty("name", std::string("default"));
+    }
+    std::string_view typeName() const override { return "TestComponent"; }
+  };
+
+  auto c = std::make_shared<TestComponent>();
+
+  auto prop = c->getProperty("name");
+  ASSERT_TRUE(prop.has_value());
+  EXPECT_EQ(std::get<std::string>(*prop), "default");
+
+  c->setProperty("name", std::string("custom"));
+  prop = c->getProperty("name");
+  EXPECT_EQ(std::get<std::string>(*prop), "custom");
+}
+
+TEST(ComponentTest, GetPropertyNotFound)
+{
+  struct TestComponent : public Component {
+    TestComponent() : Component({}, {}, "Test") { defineProperty("value", 10); }
+    std::string_view typeName() const override { return "TestComponent"; }
+  };
+
+  auto c = std::make_shared<TestComponent>();
+
+  auto prop = c->getProperty("nonexistent");
+  EXPECT_FALSE(prop.has_value());
+}
+
+TEST(ComponentTest, SetPropertyTypeMismatch)
+{
+  struct TestComponent : public Component {
+    TestComponent() : Component({}, {}, "Test") { defineProperty("value", 10); }
+    std::string_view typeName() const override { return "TestComponent"; }
+  };
+
+  auto c = std::make_shared<TestComponent>();
+
+  EXPECT_THROW(c->setProperty("value", std::string("wrong type")), std::invalid_argument);
+}
+
+TEST(ComponentTest, SetPropertyUndefined)
+{
+  struct TestComponent : public Component {
+    TestComponent() : Component({}, {}, "Test") {}
+    std::string_view typeName() const override { return "TestComponent"; }
+  };
+
+  auto c = std::make_shared<TestComponent>();
+
+  EXPECT_THROW(c->setProperty("undefined", 10), std::invalid_argument);
+}
+
+TEST(ComponentTest, GetProperties)
+{
+  struct TestComponent : public Component {
+    TestComponent() : Component({}, {}, "Test")
+    {
+      defineProperty("intVal", 5);
+      defineProperty("boolVal", true);
+      defineProperty("strVal", std::string("hello"));
+    }
+    std::string_view typeName() const override { return "TestComponent"; }
+  };
+
+  auto c     = std::make_shared<TestComponent>();
+  auto props = c->getProperties();
+
+  EXPECT_EQ(props.size(), 3);
+  EXPECT_EQ(std::get<int>(props.at("intVal")), 5);
+  EXPECT_EQ(std::get<bool>(props.at("boolVal")), true);
+  EXPECT_EQ(std::get<std::string>(props.at("strVal")), "hello");
+}

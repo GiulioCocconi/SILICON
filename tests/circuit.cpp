@@ -950,3 +950,23 @@ TEST(CircuitTest, DeserializeAndNotGates)
   auto topoComps = deserialized.topologicalOrder();
   EXPECT_EQ(topoComps.size(), 2);
 }
+
+
+TEST(CircuitTest, SerializeIncludesProperties)
+{
+  auto a = std::make_shared<Wire>();
+  auto o = std::make_shared<Wire>();
+
+  auto g = std::make_shared<NotGate>(a, o);
+  g->setProperty("delay", 2);
+
+  Circuit c(Component_weakPtr(g), false);
+
+  auto serialized = c.serialize();
+  auto json       = nlohmann::json::parse(serialized);
+
+  EXPECT_EQ(json["components"].size(), 1);
+  EXPECT_TRUE(json["components"][0].contains("properties"));
+  EXPECT_TRUE(json["components"][0]["properties"].contains("delay"));
+  EXPECT_EQ(json["components"][0]["properties"]["delay"], 2);
+}

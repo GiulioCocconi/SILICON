@@ -21,10 +21,13 @@
 #include <array>
 #include <concepts>
 #include <memory>
+#include <optional>
 #include <ranges>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
+#include <variant>
 
 #include <utils/ranges_wrapper.hpp>
 
@@ -35,6 +38,9 @@ concept HasType = requires {
   { T::Type } -> std::convertible_to<std::string_view>;
 };
 
+using PropertyValue = std::variant<int, bool, std::string>;
+using PropertyMap   = std::unordered_map<std::string, PropertyValue>;
+
 class Component : public std::enable_shared_from_this<Component> {
 protected:
   std::vector<Bus> inputs;
@@ -44,12 +50,31 @@ protected:
 
   action_ptr act;
 
+  PropertyMap properties;
+
+  void defineProperty(std::string key, int defaultValue)
+  { properties[std::move(key)] = defaultValue; }
+
+  void defineProperty(std::string key, bool defaultValue)
+  { properties[std::move(key)] = defaultValue; }
+
+  void defineProperty(std::string key, std::string defaultValue)
+  { properties[std::move(key)] = std::move(defaultValue); }
+
+  void defineProperty(std::string key, const char* defaultValue)
+  { properties[std::move(key)] = std::string(defaultValue); }
+
 public:
   Component() = default;
   Component(std::vector<Bus> inputs, std::vector<Bus> outputs, std::string name);
   void toggleAction(const Bus& bus, bool add) const;
   void replaceBus(std::vector<Bus>& busCollection, unsigned int index, Bus newBus,
                   bool isInput);
+
+  void setProperty(const std::string& key, const PropertyValue& value);
+  std::optional<PropertyValue> getProperty(const std::string& key) const;
+  const PropertyMap& getProperties() const { return properties; }
+
 
   void setAction(const action& a);
 
