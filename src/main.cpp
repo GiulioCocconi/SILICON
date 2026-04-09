@@ -78,24 +78,7 @@ int siliconMain(int argc, char** argv)
   return QApplication::exec();
 }
 
-#if 0
-#  include <iostream>
-#  include <memory>
-#  include <ui/components/graphicalGates.cpp>
-
-#  include <QGraphicsEllipseItem>
-int main(int argc, char** argv) {
-  auto a = std::make_shared<Wire>(State::HIGH);
-  auto o = std::make_shared<Wire>();
-  auto ag = std::make_shared<AndGate>(std::vector<Wire_ptr>{a,a}, o);
-  GraphicalAnd* graphicalAnd = new GraphicalAnd(ag, nullptr);
-
-  std::cout << "Hey!";
-}
-
-#else
 int main(int argc, char** argv)
 {
   return siliconMain(argc, argv);
 }
-#endif
