@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2025. Giulio Cocconi
+  Copyright (c) 2026. Giulio Cocconi
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -20,6 +20,10 @@
 
 #include <core/circuit.hpp>
 #include <core/gates.hpp>
+#include <core/serialization/component_registration.hpp>
+#include <core/serialization/component_registry.hpp>
+#include <extraComponents/arithmetic.hpp>
+#include <nlohmann/json.hpp>
 
 TEST(CircuitTest, EmptyCircuit)
 {
@@ -556,4 +560,393 @@ TEST(CircuitTest, SplitDagAndNonDagEmpty)
   auto    blocks = c.splitCyclic();
 
   EXPECT_TRUE(blocks.empty());
+}
+
+TEST(CircuitTest, SerializeEmptyCircuit)
+{
+  Circuit c;
+  auto    serialized = c.serialize();
+  EXPECT_FALSE(serialized.empty());
+
+  auto json = nlohmann::json::parse(serialized);
+  EXPECT_EQ(json["components"].size(), 0);
+  EXPECT_EQ(json["version"], SILICON_VERSION);
+  EXPECT_TRUE(json["name"].is_string());
+}
+
+TEST(CircuitTest, SerializeSingleGate)
+{
+  auto a = std::make_shared<Wire>();
+  auto b = std::make_shared<Wire>();
+  auto o = std::make_shared<Wire>();
+
+  auto g = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, o);
+
+  Circuit c(Component_weakPtr(g), false);
+
+  auto serialized = c.serialize();
+  auto json       = nlohmann::json::parse(serialized);
+
+  EXPECT_EQ(json["components"].size(), 1);
+  EXPECT_EQ(json["components"][0]["type"], "AndGate");
+  EXPECT_EQ(json["components"][0]["inputs"].size(), 2);
+  EXPECT_EQ(json["components"][0]["outputs"].size(), 1);
+}
+
+TEST(CircuitTest, SerializeAllGateTypes)
+{
+  auto in1  = std::make_shared<Wire>();
+  auto in2  = std::make_shared<Wire>();
+  auto out1 = std::make_shared<Wire>();
+  auto out2 = std::make_shared<Wire>();
+  auto out3 = std::make_shared<Wire>();
+  auto out4 = std::make_shared<Wire>();
+  auto out5 = std::make_shared<Wire>();
+  auto out6 = std::make_shared<Wire>();
+
+  auto andg  = std::make_shared<AndGate>(std::vector<Wire_ptr>{in1, in2}, out1);
+  auto org   = std::make_shared<OrGate>(std::vector<Wire_ptr>{in1, in2}, out2);
+  auto notg  = std::make_shared<NotGate>(in1, out3);
+  auto nandg = std::make_shared<NandGate>(std::vector<Wire_ptr>{in1, in2}, out4);
+  auto norg  = std::make_shared<NorGate>(std::vector<Wire_ptr>{in1, in2}, out5);
+  auto xorg  = std::make_shared<XorGate>(std::array<Wire_ptr, 2>{in1, in2}, out6);
+
+  Component_set comps;
+  comps.insert(Component_weakPtr(andg));
+  comps.insert(Component_weakPtr(org));
+  comps.insert(Component_weakPtr(notg));
+  comps.insert(Component_weakPtr(nandg));
+  comps.insert(Component_weakPtr(norg));
+  comps.insert(Component_weakPtr(xorg));
+
+  Circuit c(comps, false);
+
+  auto serialized = c.serialize();
+  auto json       = nlohmann::json::parse(serialized);
+
+  EXPECT_EQ(json["components"].size(), 6);
+
+  std::set<std::string> types;
+  for (const auto& comp : json["components"]) {
+    types.insert(comp["type"]);
+  }
+  EXPECT_TRUE(types.contains("AndGate"));
+  EXPECT_TRUE(types.contains("OrGate"));
+  EXPECT_TRUE(types.contains("NotGate"));
+  EXPECT_TRUE(types.contains("NandGate"));
+  EXPECT_TRUE(types.contains("NorGate"));
+  EXPECT_TRUE(types.contains("XorGate"));
+}
+
+TEST(CircuitTest, SerializeMultiWireBus)
+{
+  auto a  = std::make_shared<Wire>();
+  auto b  = std::make_shared<Wire>();
+  auto o1 = std::make_shared<Wire>();
+  auto o2 = std::make_shared<Wire>();
+
+  auto inputBus  = Bus({a, b});
+  auto outputBus = Bus({o1, o2});
+
+  struct TestComponent : public Component {
+    TestComponent(std::vector<Bus> inputs, std::vector<Bus> outputs, std::string name)
+      : Component(std::move(inputs), std::move(outputs), std::move(name))
+    {
+    }
+    std::string_view typeName() const override { return "MultiBusComponent"; }
+  };
+
+  auto g = std::make_shared<TestComponent>(std::vector<Bus>{inputBus},
+                                           std::vector<Bus>{outputBus}, "Test");
+
+  Circuit c(Component_weakPtr(g), false);
+
+  auto serialized = c.serialize();
+  auto json       = nlohmann::json::parse(serialized);
+
+  EXPECT_EQ(json["components"].size(), 1);
+  EXPECT_EQ(json["components"][0]["type"], "MultiBusComponent");
+
+  EXPECT_EQ(json["components"][0]["inputs"].size(), 1);
+  EXPECT_EQ(json["components"][0]["inputs"][0].size(), 2);
+
+  EXPECT_EQ(json["components"][0]["outputs"].size(), 1);
+  EXPECT_EQ(json["components"][0]["outputs"][0].size(), 2);
+}
+
+TEST(CircuitTest, SerializeWireIdsAreValid)
+{
+  auto a = std::make_shared<Wire>();
+  auto b = std::make_shared<Wire>();
+  auto o = std::make_shared<Wire>();
+
+  auto g = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, o);
+
+  Circuit c(Component_weakPtr(g), false);
+
+  auto serialized = c.serialize();
+  auto json       = nlohmann::json::parse(serialized);
+
+  for (const auto& comp : json["components"]) {
+    for (const auto& inputBus : comp["inputs"]) {
+      for (const auto& wireId : inputBus) {
+        if (!wireId.is_null()) {
+          EXPECT_GE(wireId.get<uint64_t>(), 0);
+        }
+      }
+    }
+    for (const auto& outputBus : comp["outputs"]) {
+      for (const auto& wireId : outputBus) {
+        if (!wireId.is_null()) {
+          EXPECT_GE(wireId.get<uint64_t>(), 0);
+        }
+      }
+    }
+  }
+}
+
+TEST(CircuitTest, SerializeComplexCircuit)
+{
+  auto i1  = std::make_shared<Wire>();
+  auto i2  = std::make_shared<Wire>();
+  auto i3  = std::make_shared<Wire>();
+  auto w1  = std::make_shared<Wire>();
+  auto w2  = std::make_shared<Wire>();
+  auto w3  = std::make_shared<Wire>();
+  auto w4  = std::make_shared<Wire>();
+  auto out = std::make_shared<Wire>();
+
+  auto n1 = std::make_shared<NotGate>(i1, w1);
+  auto n2 = std::make_shared<NotGate>(i2, w2);
+  auto a1 = std::make_shared<AndGate>(std::vector<Wire_ptr>{w1, w2}, w3);
+  auto n3 = std::make_shared<NotGate>(w3, w4);
+  auto o1 = std::make_shared<OrGate>(std::vector<Wire_ptr>{w4, i3}, out);
+
+  Component_set comps;
+  comps.insert(Component_weakPtr(n1));
+  comps.insert(Component_weakPtr(n2));
+  comps.insert(Component_weakPtr(a1));
+  comps.insert(Component_weakPtr(n3));
+  comps.insert(Component_weakPtr(o1));
+
+  Circuit c(comps, false);
+
+  auto serialized = c.serialize();
+  auto json       = nlohmann::json::parse(serialized);
+
+  EXPECT_EQ(json["components"].size(), 5);
+  EXPECT_TRUE(json.contains("version"));
+  EXPECT_TRUE(json.contains("name"));
+}
+
+TEST(CircuitTest, DeserializeEmptyCircuit)
+{
+  ComponentRegistry registry;
+  registerAllComponents(registry);
+
+  std::string json = R"({"version": ")" + std::string(SILICON_VERSION)
+                     + R"(", "components": [], "name": "test"})";
+
+  auto c = Circuit::deserialize(json, registry);
+
+  auto topo = c.topologicalOrder();
+  EXPECT_TRUE(topo.empty());
+}
+
+TEST(CircuitTest, DeserializeSingleGate)
+{
+  ComponentRegistry registry;
+  registerAllComponents(registry);
+
+  auto a = std::make_shared<Wire>();
+  auto b = std::make_shared<Wire>();
+  auto o = std::make_shared<Wire>();
+
+  auto g = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, o);
+
+  Circuit original(Component_weakPtr(g), false);
+  auto    serialized = original.serialize();
+
+  auto deserialized = Circuit::deserialize(serialized, registry);
+
+  auto numVertices = boost::num_vertices(deserialized.getGraph());
+  EXPECT_EQ(numVertices, 1);
+}
+
+TEST(CircuitTest, DeserializePreservesWireIds)
+{
+  ComponentRegistry registry;
+  registerAllComponents(registry);
+
+  auto a = std::make_shared<Wire>();
+  auto b = std::make_shared<Wire>();
+  auto o = std::make_shared<Wire>();
+
+  auto g = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, o);
+
+  Circuit original(Component_weakPtr(g), false);
+  auto    serialized = original.serialize();
+
+  auto deserialized = Circuit::deserialize(serialized, registry);
+
+  auto topo = deserialized.topologicalOrder();
+  EXPECT_EQ(topo.size(), 1);
+}
+
+TEST(CircuitTest, DeserializeComplexCircuit)
+{
+  ComponentRegistry registry;
+  registerAllComponents(registry);
+
+  auto i1  = std::make_shared<Wire>();
+  auto i2  = std::make_shared<Wire>();
+  auto i3  = std::make_shared<Wire>();
+  auto w1  = std::make_shared<Wire>();
+  auto w2  = std::make_shared<Wire>();
+  auto w3  = std::make_shared<Wire>();
+  auto w4  = std::make_shared<Wire>();
+  auto out = std::make_shared<Wire>();
+
+  auto n1 = std::make_shared<NotGate>(i1, w1);
+  auto n2 = std::make_shared<NotGate>(i2, w2);
+  auto a1 = std::make_shared<AndGate>(std::vector<Wire_ptr>{w1, w2}, w3);
+  auto n3 = std::make_shared<NotGate>(w3, w4);
+  auto o1 = std::make_shared<OrGate>(std::vector<Wire_ptr>{w4, i3}, out);
+
+  Component_set comps;
+  comps.insert(Component_weakPtr(n1));
+  comps.insert(Component_weakPtr(n2));
+  comps.insert(Component_weakPtr(a1));
+  comps.insert(Component_weakPtr(n3));
+  comps.insert(Component_weakPtr(o1));
+
+  Circuit original(comps, false);
+  auto    serialized = original.serialize();
+
+  auto deserialized = Circuit::deserialize(serialized, registry);
+
+  auto numVertices = boost::num_vertices(deserialized.getGraph());
+  EXPECT_EQ(numVertices, 5);
+}
+
+TEST(CircuitTest, DeserializeAllGateTypes)
+{
+  ComponentRegistry registry;
+  registerAllComponents(registry);
+
+  auto in1  = std::make_shared<Wire>();
+  auto in2  = std::make_shared<Wire>();
+  auto out1 = std::make_shared<Wire>();
+  auto out2 = std::make_shared<Wire>();
+  auto out3 = std::make_shared<Wire>();
+  auto out4 = std::make_shared<Wire>();
+  auto out5 = std::make_shared<Wire>();
+  auto out6 = std::make_shared<Wire>();
+
+  auto andg  = std::make_shared<AndGate>(std::vector<Wire_ptr>{in1, in2}, out1);
+  auto org   = std::make_shared<OrGate>(std::vector<Wire_ptr>{in1, in2}, out2);
+  auto notg  = std::make_shared<NotGate>(in1, out3);
+  auto nandg = std::make_shared<NandGate>(std::vector<Wire_ptr>{in1, in2}, out4);
+  auto norg  = std::make_shared<NorGate>(std::vector<Wire_ptr>{in1, in2}, out5);
+  auto xorg  = std::make_shared<XorGate>(std::array<Wire_ptr, 2>{in1, in2}, out6);
+
+  Component_set comps;
+  comps.insert(Component_weakPtr(andg));
+  comps.insert(Component_weakPtr(org));
+  comps.insert(Component_weakPtr(notg));
+  comps.insert(Component_weakPtr(nandg));
+  comps.insert(Component_weakPtr(norg));
+  comps.insert(Component_weakPtr(xorg));
+
+  Circuit original(comps, false);
+  auto    serialized = original.serialize();
+
+  auto deserialized = Circuit::deserialize(serialized, registry);
+
+  auto topoComps = deserialized.topologicalOrder();
+  EXPECT_EQ(topoComps.size(), 6);
+}
+
+TEST(CircuitTest, DeserializeMultiWireBus)
+{
+  ComponentRegistry registry;
+  registerAllComponents(registry);
+
+  auto in1  = std::make_shared<Wire>();
+  auto in2  = std::make_shared<Wire>();
+  auto out1 = std::make_shared<Wire>();
+  auto out2 = std::make_shared<Wire>();
+
+  auto andg1 = std::make_shared<AndGate>(std::vector<Wire_ptr>{in1, in2}, out1);
+  auto andg2 = std::make_shared<AndGate>(std::vector<Wire_ptr>{in1, in2}, out2);
+
+  Component_set comps;
+  comps.insert(Component_weakPtr(andg1));
+  comps.insert(Component_weakPtr(andg2));
+
+  Circuit original(comps, false);
+  auto    serialized = original.serialize();
+
+  auto deserialized = Circuit::deserialize(serialized, registry);
+
+  auto numVertices = boost::num_vertices(deserialized.getGraph());
+  EXPECT_EQ(numVertices, 2);
+}
+
+TEST(CircuitTest, DeserializeInvalidVersionThrows)
+{
+  ComponentRegistry registry;
+  registerAllComponents(registry);
+
+  std::string json =
+      R"({"version": "invalid_version", "components": [], "name": "test"})";
+
+  EXPECT_THROW((void)Circuit::deserialize(json, registry), std::runtime_error);
+}
+
+TEST(CircuitTest, DeserializeHalfAdder)
+{
+  ComponentRegistry registry;
+  registerAllComponents(registry);
+
+  auto a    = std::make_shared<Wire>();
+  auto b    = std::make_shared<Wire>();
+  auto sum  = std::make_shared<Wire>();
+  auto cout = std::make_shared<Wire>();
+
+  auto ha = std::make_shared<HalfAdder>(std::array<Wire_ptr, 2>{a, b}, sum, cout);
+
+  Circuit original(Component_weakPtr(ha), false);
+  auto    serialized = original.serialize();
+
+  auto deserialized = Circuit::deserialize(serialized, registry);
+
+  auto topoComps = deserialized.topologicalOrder();
+  EXPECT_EQ(topoComps.size(), 1);
+}
+
+TEST(CircuitTest, DeserializeAndNotGates)
+{
+  ComponentRegistry registry;
+  registerAllComponents(registry);
+
+  auto a   = std::make_shared<Wire>();
+  auto b   = std::make_shared<Wire>();
+  auto mid = std::make_shared<Wire>();
+  auto out = std::make_shared<Wire>();
+
+  auto andg = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, mid);
+  auto notg = std::make_shared<NotGate>(mid, out);
+
+  Component_set comps;
+  comps.insert(Component_weakPtr(andg));
+  comps.insert(Component_weakPtr(notg));
+
+  Circuit original(comps, false);
+  auto    serialized = original.serialize();
+
+  auto deserialized = Circuit::deserialize(serialized, registry);
+
+  auto topoComps = deserialized.topologicalOrder();
+  EXPECT_EQ(topoComps.size(), 2);
 }

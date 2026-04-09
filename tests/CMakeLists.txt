@@ -40,6 +40,7 @@ target_sources(utils_tests
 
 target_sources(circuit_tests
         PRIVATE
+        ${src_dir}/extraComponents/arithmetic.cpp
         ${COMMON_SOURCE_FILES})
 
 target_sources(factory_tests
@@ -53,7 +54,7 @@ target_sources(libfst_tests
         ${COMMON_SOURCE_FILES})
 
 foreach (target logic_tests arithmetic_tests utils_tests libfst_tests circuit_tests factory_tests)
-    target_link_libraries(${target} GTest::gtest_main GTest::gtest Boost::graph)
+    target_link_libraries(${target} GTest::gtest_main GTest::gtest Boost::graph nlohmann_json)
     gtest_discover_tests(${target})
 endforeach ()
 
