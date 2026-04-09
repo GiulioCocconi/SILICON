@@ -32,6 +32,7 @@
           qt6.qtsvg
           boost
           pegtl
+	  nlohmann_json
         ];
 
         nativeInputs = with pkgs; [

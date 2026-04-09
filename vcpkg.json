@@ -29,6 +29,9 @@
     },
     {
       "name": "boost-graph"
+    },
+    {
+      "name": "nlohmann-json"
     }
   ]
 }

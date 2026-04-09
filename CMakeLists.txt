@@ -131,6 +131,7 @@ endif ()
 
 
 find_package(Boost REQUIRED COMPONENTS graph)
+find_package(nlohmann_json REQUIRED)
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets SvgWidgets)
 qt_standard_project_setup()
@@ -147,7 +148,13 @@ target_sources(SILICON
 target_compile_options(SILICON PRIVATE -Werror)
 
 add_subdirectory(libfst)
-target_link_libraries(SILICON PRIVATE Qt6::Widgets Qt6::SvgWidgets fst Boost::graph)
+
+target_link_libraries(SILICON PRIVATE
+  Qt6::Widgets
+  Qt6::SvgWidgets
+  fst
+  Boost::graph
+  nlohmann_json)
 
 if ((CMAKE_CXX_COMPILER_ID MATCHES "Clang") OR EMSCRIPTEN)
     # Some view/ranges features are not yet implemented in clang libc++
