@@ -231,15 +231,15 @@ TEST(CircuitTest, MultiWireBus)
   auto outputBus = Bus({o1, o2});
 
   struct TestComponent : public Component {
-    TestComponent(std::vector<Bus> inputs, std::vector<Bus> outputs, std::string name)
-      : Component(std::move(inputs), std::move(outputs), std::move(name))
+    TestComponent(std::vector<Bus> inputs, std::vector<Bus> outputs)
+      : Component(std::move(inputs), std::move(outputs))
     {
     }
     std::string_view typeName() const override { return "TestComponent"; }
   };
 
   auto g = std::make_shared<TestComponent>(std::vector<Bus>{inputBus},
-                                           std::vector<Bus>{outputBus}, "Test");
+                                           std::vector<Bus>{outputBus});
 
   Circuit c(Component_weakPtr(g), false);
 
@@ -649,15 +649,15 @@ TEST(CircuitTest, SerializeMultiWireBus)
   auto outputBus = Bus({o1, o2});
 
   struct TestComponent : public Component {
-    TestComponent(std::vector<Bus> inputs, std::vector<Bus> outputs, std::string name)
-      : Component(std::move(inputs), std::move(outputs), std::move(name))
+    TestComponent(std::vector<Bus> inputs, std::vector<Bus> outputs)
+      : Component(std::move(inputs), std::move(outputs))
     {
     }
     std::string_view typeName() const override { return "MultiBusComponent"; }
   };
 
   auto g = std::make_shared<TestComponent>(std::vector<Bus>{inputBus},
-                                           std::vector<Bus>{outputBus}, "Test");
+                                           std::vector<Bus>{outputBus});
 
   Circuit c(Component_weakPtr(g), false);
 
@@ -950,7 +950,6 @@ TEST(CircuitTest, DeserializeAndNotGates)
   auto topoComps = deserialized.topologicalOrder();
   EXPECT_EQ(topoComps.size(), 2);
 }
-
 
 TEST(CircuitTest, SerializeIncludesProperties)
 {

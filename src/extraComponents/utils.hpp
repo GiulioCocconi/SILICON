@@ -28,7 +28,20 @@ public:
   std::string_view typeName() const override { return Type; }
 
   WireSplitter() = default;
-  WireSplitter(Bus input, const std::vector<Bus>& outputs);
+  WireSplitter(Bus input, const std::vector<Bus>& outputs) : Component({input}, outputs)
+  {
+    defineProperty("size", 2);
+    this->setAction([this] {
+      const unsigned int N = this->outputs.size();
+      for (unsigned int i = 0; i < N; i++) {
+        const State s = (this->inputs[0].size() == N)
+                            ? Wire::safeGetCurrentState(this->inputs[0][i])
+                            : State::ERROR;
+        if (this->outputs[i].size() != 0)
+          Wire::safeSetCurrentState(this->outputs[i][0], s, weak_from_this());
+      }
+    });
+  }
 };
 
 class WireMerger : public Component {
@@ -38,5 +51,17 @@ public:
   std::string_view typeName() const override { return Type; }
 
   WireMerger() = default;
-  WireMerger(const std::vector<Bus>& inputs, Bus output);
+  WireMerger(const std::vector<Bus>& inputs, Bus output) : Component(inputs, {output})
+  {
+    defineProperty("size", 2);
+    this->setAction([this] {
+      const unsigned int N = this->inputs.size();
+      for (unsigned int i = 0; i < N; i++) {
+        const State s = (this->inputs[i].size() != 0)
+                            ? Wire::safeGetCurrentState(this->inputs[i][0])
+                            : State::ERROR;
+        Wire::safeSetCurrentState(this->outputs[0][i], s, weak_from_this());
+      }
+    });
+  }
 };

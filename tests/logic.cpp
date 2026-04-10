@@ -183,7 +183,7 @@ TEST(LogicTest, BusSettingReading)
 TEST(ComponentTest, SetAndGetIntProperty)
 {
   struct TestComponent : public Component {
-    TestComponent() : Component({}, {}, "Test") { defineProperty("value", 10); }
+    TestComponent() : Component({}, {}) { defineProperty("value", 10); }
     std::string_view typeName() const override { return "TestComponent"; }
   };
 
@@ -201,7 +201,7 @@ TEST(ComponentTest, SetAndGetIntProperty)
 TEST(ComponentTest, SetAndGetBoolProperty)
 {
   struct TestComponent : public Component {
-    TestComponent() : Component({}, {}, "Test") { defineProperty("enabled", false); }
+    TestComponent() : Component({}, {}) { defineProperty("enabled", false); }
     std::string_view typeName() const override { return "TestComponent"; }
   };
 
@@ -219,7 +219,7 @@ TEST(ComponentTest, SetAndGetBoolProperty)
 TEST(ComponentTest, SetAndGetStringProperty)
 {
   struct TestComponent : public Component {
-    TestComponent() : Component({}, {}, "Test")
+    TestComponent() : Component({}, {})
     {
       defineProperty("name", std::string("default"));
     }
@@ -240,7 +240,7 @@ TEST(ComponentTest, SetAndGetStringProperty)
 TEST(ComponentTest, GetPropertyNotFound)
 {
   struct TestComponent : public Component {
-    TestComponent() : Component({}, {}, "Test") { defineProperty("value", 10); }
+    TestComponent() : Component({}, {}) { defineProperty("value", 10); }
     std::string_view typeName() const override { return "TestComponent"; }
   };
 
@@ -253,7 +253,7 @@ TEST(ComponentTest, GetPropertyNotFound)
 TEST(ComponentTest, SetPropertyTypeMismatch)
 {
   struct TestComponent : public Component {
-    TestComponent() : Component({}, {}, "Test") { defineProperty("value", 10); }
+    TestComponent() : Component({}, {}) { defineProperty("value", 10); }
     std::string_view typeName() const override { return "TestComponent"; }
   };
 
@@ -265,7 +265,7 @@ TEST(ComponentTest, SetPropertyTypeMismatch)
 TEST(ComponentTest, SetPropertyUndefined)
 {
   struct TestComponent : public Component {
-    TestComponent() : Component({}, {}, "Test") {}
+    TestComponent() : Component({}, {}) {}
     std::string_view typeName() const override { return "TestComponent"; }
   };
 
@@ -277,7 +277,7 @@ TEST(ComponentTest, SetPropertyUndefined)
 TEST(ComponentTest, GetProperties)
 {
   struct TestComponent : public Component {
-    TestComponent() : Component({}, {}, "Test")
+    TestComponent() : Component({}, {})
     {
       defineProperty("intVal", 5);
       defineProperty("boolVal", true);

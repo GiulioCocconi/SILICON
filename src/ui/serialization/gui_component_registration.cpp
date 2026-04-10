@@ -45,14 +45,14 @@ void registerAllGUIComponents(GUIComponentFactory& factory)
       [](QGraphicsItem* p) { return std::make_unique<GraphicalXor>(p); });
 
   reg(std::string(GraphicalInput::ComponentType),
-      [](QGraphicsItem* p) { return std::make_unique<GraphicalInput>("in", p); });
+      [](QGraphicsItem* p) { return std::make_unique<GraphicalInput>(p); });
   reg(std::string(GraphicalOutputSingle::ComponentType),
-      [](QGraphicsItem* p) { return std::make_unique<GraphicalOutputSingle>("out", p); });
+      [](QGraphicsItem* p) { return std::make_unique<GraphicalOutputSingle>(p); });
 
   reg(std::string(WireSplitter::Type),
-      [](QGraphicsItem* p) { return std::make_unique<GraphicalWireSplitter>(2, p); });
+      [](QGraphicsItem* p) { return std::make_unique<GraphicalWireSplitter>(p); });
   reg(std::string(WireMerger::Type),
-      [](QGraphicsItem* p) { return std::make_unique<GraphicalWireMerger>(2, p); });
+      [](QGraphicsItem* p) { return std::make_unique<GraphicalWireMerger>(p); });
 
   // TODO: HalfAdder, FullAdder, AdderNBits are registered in the core layer
   // but have no GraphicalComponent counterpart yet. Add GUI registrations

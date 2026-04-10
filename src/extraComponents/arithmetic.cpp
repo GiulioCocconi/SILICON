@@ -22,7 +22,7 @@
 #include <stdexcept>
 
 HalfAdder::HalfAdder(std::array<Wire_ptr, 2> inputs, Wire_ptr sum, Wire_ptr cout)
-  : Component({{inputs[0]}, {inputs[1]}}, {{sum}, {cout}}, "HalfAdder")
+  : Component({{inputs[0]}, {inputs[1]}}, {{sum}, {cout}})
 {
   /* PIN MAP:
      a    = inputs [0][0];
@@ -45,7 +45,7 @@ HalfAdder::HalfAdder(std::array<Wire_ptr, 2> inputs, Wire_ptr sum, Wire_ptr cout
 
 FullAdder::FullAdder(std::array<Wire_ptr, 2> inputs, Wire_ptr cin, Wire_ptr sum,
                      Wire_ptr cout)
-  : Component({{inputs[0]}, {inputs[1]}, {cin}}, {{sum}, {cout}}, "FullAdder")
+  : Component({{inputs[0]}, {inputs[1]}, {cin}}, {{sum}, {cout}})
 {
   /* PIN MAP:
      a    = inputs [0][0];
@@ -73,7 +73,7 @@ FullAdder::FullAdder(std::array<Wire_ptr, 2> inputs, Wire_ptr cin, Wire_ptr sum,
 }
 
 AdderNBits::AdderNBits(std::array<Bus, 2> inputs, Bus sum, Wire_ptr cout)
-  : Component({inputs[0], inputs[1]}, {sum, {cout}}, "AdderNBits")
+  : Component({inputs[0], inputs[1]}, {sum, {cout}})
 {
   /* PIN MAP:
      a    = inputs [0][0:N];
