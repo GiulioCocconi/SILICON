@@ -26,6 +26,7 @@
 #include <ranges>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <unordered_map>
 #include <utility>
 #include <variant>
@@ -54,36 +55,23 @@ protected:
   PropertyMap         properties;
   PropertyCallbackMap propertyCallbacks;
 
-  void defineProperty(std::string key, int defaultValue,
+  template <typename T>
+  void defineProperty(std::string key, T&& defaultValue,
                       PropertyCallback callback = nullptr)
   {
-    properties[std::move(key)] = defaultValue;
-    if (callback)
+    if (callback) {
       propertyCallbacks[key] = std::move(callback);
-  }
+    }
 
-  void defineProperty(std::string key, bool defaultValue,
-                      PropertyCallback callback = nullptr)
-  {
-    properties[std::move(key)] = defaultValue;
-    if (callback)
-      propertyCallbacks[std::move(key)] = std::move(callback);
-  }
-
-  void defineProperty(std::string key, std::string defaultValue,
-                      PropertyCallback callback = nullptr)
-  {
-    properties[std::move(key)] = std::move(defaultValue);
-    if (callback)
-      propertyCallbacks[std::move(key)] = std::move(callback);
-  }
-
-  void defineProperty(std::string key, const char* defaultValue,
-                      PropertyCallback callback = nullptr)
-  {
-    properties[std::move(key)] = std::string(defaultValue);
-    if (callback)
-      propertyCallbacks[std::move(key)] = std::move(callback);
+    using Decayed = std::decay_t<T>;
+    if constexpr (std::is_constructible_v<std::string, T>
+                  && !std::is_same_v<Decayed, bool>) {
+      properties[key] = std::string(std::forward<T>(defaultValue));
+    } else {
+      static_assert(std::is_constructible_v<PropertyValue, T>,
+                    "T must be constructible into PropertyValue");
+      properties[key] = PropertyValue(std::forward<T>(defaultValue));
+    }
   }
 
 public:
@@ -96,6 +84,22 @@ public:
   void setProperty(const std::string& key, const PropertyValue& value);
   std::optional<PropertyValue> getProperty(const std::string& key) const;
   const PropertyMap&           getProperties() const { return properties; }
+
+  template <typename T> void setPropertyValue(const std::string& key, T&& value)
+  {
+    setProperty(key, PropertyValue(std::forward<T>(value)));
+  }
+
+  template <typename T> std::optional<T> getPropertyValue(const std::string& key) const
+  {
+    auto it = properties.find(key);
+    if (it != properties.end()) {
+      if (const T* val = std::get_if<T>(&it->second)) {
+        return *val;
+      }
+    }
+    return std::nullopt;
+  }
 
   void setPropertyCallback(const std::string& key, PropertyCallback callback);
 

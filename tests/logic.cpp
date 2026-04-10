@@ -198,6 +198,24 @@ TEST(ComponentTest, SetAndGetIntProperty)
   EXPECT_EQ(std::get<int>(*prop), 20);
 }
 
+TEST(ComponentTest, SetAndGetIntPropertyTemplated)
+{
+  struct TestComponent : public Component {
+    TestComponent() : Component({}, {}) { defineProperty("value", 10); }
+    std::string_view typeName() const override { return "TestComponent"; }
+  };
+
+  auto c = std::make_shared<TestComponent>();
+
+  auto prop = c->getPropertyValue<int>("value");
+  ASSERT_TRUE(prop.has_value());
+  EXPECT_EQ(*prop, 10);
+
+  c->setPropertyValue<int>("value", 20);
+  prop = c->getPropertyValue<int>("value");
+  EXPECT_EQ(*prop, 20);
+}
+
 TEST(ComponentTest, SetAndGetBoolProperty)
 {
   struct TestComponent : public Component {
