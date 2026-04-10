@@ -153,11 +153,11 @@ void Circuit::addComponentRecursive(const Component_weakPtr&       component,
 
   // Recursively explore neighbors through shared buses.
   for (const Bus& bus : cPtr->getInputs())
-    for (const Component_weakPtr& c : bus.getConnectedComponents())
+    for (const Component_weakPtr& c : getComponentsForBus(bus))
       addComponentRecursive(c, newlyAdded);
 
   for (const Bus& bus : cPtr->getOutputs())
-    for (const Component_weakPtr& c : bus.getConnectedComponents())
+    for (const Component_weakPtr& c : getComponentsForBus(bus))
       addComponentRecursive(c, newlyAdded);
 }
 

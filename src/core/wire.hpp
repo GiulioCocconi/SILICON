@@ -86,7 +86,6 @@ using Wire_ptr = std::shared_ptr<Wire>;
 class Bus {
 private:
   std::vector<Wire_ptr> busData;
-  Component_set         connectedComponents;
 
 public:
   Bus() = default;
@@ -120,9 +119,4 @@ public:
 
   bool                 operator==(const Bus& other) const;
   std::strong_ordering operator<=>(const Bus& other) const;
-
-  void addComponent(const Component_weakPtr& c) { connectedComponents.insert(c); }
-  void removeComponent(const Component_weakPtr& c) { connectedComponents.erase(c); }
-
-  Component_set getConnectedComponents() const { return connectedComponents; }
 };

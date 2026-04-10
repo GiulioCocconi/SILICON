@@ -46,7 +46,6 @@ void Component::replaceBus(std::vector<Bus>& busCollection, const unsigned int i
                            Bus newBus, bool isInput)
 {
   if (busCollection[index] == newBus) {
-    busCollection[index].addComponent(weak_from_this());
     return;
   }
 
@@ -58,19 +57,8 @@ void Component::replaceBus(std::vector<Bus>& busCollection, const unsigned int i
 
   busCollection[index] = newBus;
 
-  auto isStillConnected = [this](const Bus& b) {
-    return b.getConnectedComponents().contains(shared_from_this());
-  };
-
-  if (std::ranges::none_of(this->inputs, isStillConnected)
-      && std::ranges::none_of(this->outputs, isStillConnected)) {
-    oldBus.removeComponent(weak_from_this());
-  }
-
   if (isInput)
     toggleAction(newBus, true);
-
-  busCollection[index].addComponent(weak_from_this());
 }
 
 // --- Properties Management -------------------------------------------------------------
