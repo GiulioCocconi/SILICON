@@ -20,6 +20,7 @@
 
 #include <array>
 #include <concepts>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <ranges>
@@ -38,43 +39,65 @@ concept HasType = requires {
   { T::Type } -> std::convertible_to<std::string_view>;
 };
 
-using PropertyValue = std::variant<int, bool, std::string>;
-using PropertyMap   = std::unordered_map<std::string, PropertyValue>;
+using PropertyValue       = std::variant<int, bool, std::string>;
+using PropertyMap         = std::unordered_map<std::string, PropertyValue>;
+using PropertyCallback    = std::function<PropertyValue(const PropertyValue&)>;
+using PropertyCallbackMap = std::unordered_map<std::string, PropertyCallback>;
 
 class Component : public std::enable_shared_from_this<Component> {
 protected:
   std::vector<Bus> inputs;
   std::vector<Bus> outputs;
 
-  std::string name;
-
   action_ptr act;
 
-  PropertyMap properties;
+  PropertyMap         properties;
+  PropertyCallbackMap propertyCallbacks;
 
-  void defineProperty(std::string key, int defaultValue)
-  { properties[std::move(key)] = defaultValue; }
+  void defineProperty(std::string key, int defaultValue,
+                      PropertyCallback callback = nullptr)
+  {
+    properties[std::move(key)] = defaultValue;
+    if (callback)
+      propertyCallbacks[key] = std::move(callback);
+  }
 
-  void defineProperty(std::string key, bool defaultValue)
-  { properties[std::move(key)] = defaultValue; }
+  void defineProperty(std::string key, bool defaultValue,
+                      PropertyCallback callback = nullptr)
+  {
+    properties[std::move(key)] = defaultValue;
+    if (callback)
+      propertyCallbacks[std::move(key)] = std::move(callback);
+  }
 
-  void defineProperty(std::string key, std::string defaultValue)
-  { properties[std::move(key)] = std::move(defaultValue); }
+  void defineProperty(std::string key, std::string defaultValue,
+                      PropertyCallback callback = nullptr)
+  {
+    properties[std::move(key)] = std::move(defaultValue);
+    if (callback)
+      propertyCallbacks[std::move(key)] = std::move(callback);
+  }
 
-  void defineProperty(std::string key, const char* defaultValue)
-  { properties[std::move(key)] = std::string(defaultValue); }
+  void defineProperty(std::string key, const char* defaultValue,
+                      PropertyCallback callback = nullptr)
+  {
+    properties[std::move(key)] = std::string(defaultValue);
+    if (callback)
+      propertyCallbacks[std::move(key)] = std::move(callback);
+  }
 
 public:
   Component() = default;
-  Component(std::vector<Bus> inputs, std::vector<Bus> outputs, std::string name);
+  Component(std::vector<Bus> inputs, std::vector<Bus> outputs);
   void toggleAction(const Bus& bus, bool add) const;
   void replaceBus(std::vector<Bus>& busCollection, unsigned int index, Bus newBus,
                   bool isInput);
 
   void setProperty(const std::string& key, const PropertyValue& value);
   std::optional<PropertyValue> getProperty(const std::string& key) const;
-  const PropertyMap& getProperties() const { return properties; }
+  const PropertyMap&           getProperties() const { return properties; }
 
+  void setPropertyCallback(const std::string& key, PropertyCallback callback);
 
   void setAction(const action& a);
 
@@ -86,13 +109,10 @@ public:
 
   bool isConnectedTo(const Bus& b);
 
-  void setName(const std::string_view& newName) { this->name = newName; }
-
   void clearWires();
 
   std::vector<Bus> getInputs() const { return inputs; }
   std::vector<Bus> getOutputs() const { return outputs; }
-  std::string      getName() const { return name; }
 
   virtual std::string_view typeName() const = 0;
 

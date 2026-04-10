@@ -20,8 +20,8 @@
 #include <ranges>
 #include <stdexcept>
 
-Component::Component(std::vector<Bus> inputs, std::vector<Bus> outputs, std::string name)
-  : inputs(std::move(inputs)), outputs(std::move(outputs)), name(std::move(name))
+Component::Component(std::vector<Bus> inputs, std::vector<Bus> outputs)
+  : inputs(std::move(inputs)), outputs(std::move(outputs))
 {
 }
 
@@ -75,7 +75,6 @@ void Component::replaceBus(std::vector<Bus>& busCollection, const unsigned int i
 
 // --- Properties Management -------------------------------------------------------------
 
-
 void Component::setProperty(const std::string& key, const PropertyValue& value)
 {
   auto it = properties.find(key);
@@ -83,16 +82,23 @@ void Component::setProperty(const std::string& key, const PropertyValue& value)
   // 1. Enforce static set of properties
   if (it == properties.end()) {
     throw std::invalid_argument(
-      std::format("Property '{}' does not exist on component '{}'", key, name));
+        std::format("Property '{}' does not exist on component '{}'", key, typeName()));
   }
 
-  // 2. Enforce static types (the variant index must match the one set during defineProperty)
+  // 2. Enforce static types (the variant index must match the one set during
+  // defineProperty)
   if (it->second.index() != value.index()) {
-    throw std::invalid_argument(
-      std::format("Type mismatch when setting property '{}' on component '{}'", key, name));
+    throw std::invalid_argument(std::format(
+        "Type mismatch when setting property '{}' on component '{}'", key, typeName()));
   }
 
-  it->second = value;
+  // 3. Call the callback if registered, use returned value
+  PropertyValue finalValue = value;
+  if (auto cbIt = propertyCallbacks.find(key); cbIt != propertyCallbacks.end()) {
+    finalValue = cbIt->second(value);
+  }
+
+  it->second = finalValue;
 }
 
 std::optional<PropertyValue> Component::getProperty(const std::string& key) const
@@ -101,6 +107,15 @@ std::optional<PropertyValue> Component::getProperty(const std::string& key) cons
     return it->second;
   }
   return std::nullopt;
+}
+
+void Component::setPropertyCallback(const std::string& key, PropertyCallback callback)
+{
+  if (properties.find(key) == properties.end()) {
+    throw std::invalid_argument(
+        std::format("Property '{}' does not exist on component '{}'", key, typeName()));
+  }
+  propertyCallbacks[key] = std::move(callback);
 }
 
 // --- Other public Methods --------------------------------------------------------------
@@ -143,6 +158,7 @@ void Component::setOutputs(std::vector<Bus>& newOutputs)
     setOutput(index, bus);
   }
 }
+
 bool Component::isConnectedTo(const Bus& b)
 {
   return (std::ranges::find(inputs, b) != inputs.end()

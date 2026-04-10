@@ -20,12 +20,10 @@
 
 #include <stdexcept>
 
-Gate::Gate(const std::vector<Wire_ptr>& inputs, Wire_ptr output, std::string name)
+Gate::Gate(const std::vector<Wire_ptr>& inputs, Wire_ptr output)
 {
   if (inputs.empty())
     throw std::invalid_argument("Gate requires at least one input");
-
-  this->name = std::move(name);
 
   defineProperty("delay", 5);
 
@@ -35,7 +33,7 @@ Gate::Gate(const std::vector<Wire_ptr>& inputs, Wire_ptr output, std::string nam
 }
 
 AndGate::AndGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output)
-  : Gate(inputs, std::move(output), "And")
+  : Gate(inputs, std::move(output))
 {
   if (inputs.size() < 2)
     throw std::invalid_argument("AndGate requires at least 2 inputs");
@@ -50,7 +48,7 @@ AndGate::AndGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output)
 }
 
 OrGate::OrGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output)
-  : Gate(inputs, output, "Or")
+  : Gate(inputs, output)
 {
   if (inputs.size() < 2)
     throw std::invalid_argument("OrGate requires at least 2 inputs");
@@ -64,7 +62,7 @@ OrGate::OrGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output)
   });
 }
 
-NotGate::NotGate(Wire_ptr input, Wire_ptr output) : Gate({input}, output, "Not")
+NotGate::NotGate(Wire_ptr input, Wire_ptr output) : Gate({input}, output)
 {
   setProperty("delay", 2);
 
@@ -76,7 +74,7 @@ NotGate::NotGate(Wire_ptr input, Wire_ptr output) : Gate({input}, output, "Not")
 }
 
 NandGate::NandGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output)
-  : Gate(inputs, output, "Nand")
+  : Gate(inputs, output)
 {
   setProperty("delay", 6);
 
@@ -93,7 +91,7 @@ NandGate::NandGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output)
 }
 
 NorGate::NorGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output)
-  : Gate(inputs, output, "Nor")
+  : Gate(inputs, output)
 {
   setProperty("delay", 6);
 
@@ -110,7 +108,7 @@ NorGate::NorGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output)
 }
 
 XorGate::XorGate(const std::array<Wire_ptr, 2>& inputs, Wire_ptr output)
-  : Gate({inputs[0], inputs[1]}, output, "Xor")
+  : Gate({inputs[0], inputs[1]}, output)
 {
   setProperty("delay", 7);
 

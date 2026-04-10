@@ -39,7 +39,7 @@ class GraphicalInput : public GraphicalLogicComponent {
 public:
   static constexpr std::string_view ComponentType = "Input";
 
-  explicit GraphicalInput(std::string name = "in", QGraphicsItem* parent = nullptr);
+  explicit GraphicalInput(QGraphicsItem* parent = nullptr);
   int type() const override { return SiliconTypes::SINGLE_INPUT; }
 
   State getState();
@@ -82,8 +82,9 @@ class DummyInputComponent : public Component {
 public:
   static constexpr std::string_view Type = "DummyInputComponent";
 
-  DummyInputComponent(Bus bus, std::string name) : Component({}, {bus}, std::move(name))
+  DummyInputComponent(Bus bus, std::string name) : Component({}, {bus})
   {
+    defineProperty("name", std::move(name));
   }
   void setState(int value) { this->outputs[0].setCurrentValue(value, weak_from_this()); };
   std::string_view typeName() const override { return Type; }
@@ -94,7 +95,7 @@ class GraphicalOutputSingle : public GraphicalLogicComponent {
 public:
   static constexpr std::string_view ComponentType = "Output";
 
-  GraphicalOutputSingle(std::string name = "out", QGraphicsItem* parent = nullptr);
+  explicit GraphicalOutputSingle(QGraphicsItem* parent = nullptr);
   int type() const override { return SiliconTypes::SINGLE_OUTPUT; }
 
   void setState(State state);

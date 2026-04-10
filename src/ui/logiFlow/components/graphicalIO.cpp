@@ -20,8 +20,8 @@
 
 #include <stdexcept>
 
-GraphicalInput::GraphicalInput(std::string name, QGraphicsItem* parent)
-  : GraphicalLogicComponent(std::make_shared<DummyInputComponent>(Bus(1), name),
+GraphicalInput::GraphicalInput(QGraphicsItem* parent)
+  : GraphicalLogicComponent(std::make_shared<DummyInputComponent>(Bus(1), "in"),
                             new QGraphicsSvgItem(":/other_components/input_off.svg"),
                             parent)
 {
@@ -29,6 +29,12 @@ GraphicalInput::GraphicalInput(std::string name, QGraphicsItem* parent)
 
   setPorts({}, {std::pair<std::string, QPoint>{"o", QPoint(20, 60)}});
   setState(State::LOW);
+
+  this->associatedComponent->setPropertyCallback("name",
+                                                 [this](const PropertyValue& value) {
+                                                   prepareGeometryChange();
+                                                   return value;
+                                                 });
 
   auto nameLayout = new QHBoxLayout();
   auto nameLabel  = new QLabel("Name:");
@@ -47,7 +53,6 @@ GraphicalInput::GraphicalInput(std::string name, QGraphicsItem* parent)
   connect(this->propertiesDialog, &PropertiesDialog::rejected, this,
           &GraphicalInput::propertiesDialogRejected);
 
-  // Every time the component is placed we should set its properties
   GraphicalInput::showPropertiesDialog();
 }
 
@@ -70,21 +75,22 @@ void GraphicalInput::paint(QPainter* painter, const QStyleOptionGraphicsItem* op
                            QWidget* widget)
 {
   painter->setFont(font);
-  painter->drawText(QPointF(0, -1),
-                    QString::fromStdString(this->getComponent()->getName()));
+  painter->drawText(QPointF(0, -1), QString::fromStdString(std::get<std::string>(
+                                        *this->getComponent()->getProperty("name"))));
 
   GraphicalLogicComponent::paint(painter, option, widget);
 }
 void GraphicalInput::showPropertiesDialog()
 {
-  nameInput->setText(QString::fromStdString(this->getComponent()->getName()));
+  nameInput->setText(QString::fromStdString(
+      std::get<std::string>(*this->getComponent()->getProperty("name"))));
   GraphicalLogicComponent::showPropertiesDialog();
 }
 
 void GraphicalInput::propertiesDialogAccepted()
 {
   const auto newName = nameInput->text().toStdString();
-  this->associatedComponent->setName(newName);
+  this->associatedComponent->setProperty("name", newName);
 
   prepareGeometryChange();
 }
@@ -102,13 +108,17 @@ State GraphicalInput::getState()
   return (value == 1) ? State::HIGH : State::LOW;
 }
 
-GraphicalOutputSingle::GraphicalOutputSingle(std::string name, QGraphicsItem* parent)
-  : GraphicalLogicComponent(std::make_shared<DummyOutputComponent>(Bus(1), name),
+GraphicalOutputSingle::GraphicalOutputSingle(QGraphicsItem* parent)
+  : GraphicalLogicComponent(std::make_shared<DummyOutputComponent>(Bus(1), "out"),
                             new QGraphicsSvgItem(":/other_components/output_off.svg"),
                             parent)
 {
   isEditable = false;
   setPorts({std::pair<std::string, QPoint>{"in", QPoint(20, 60)}}, {});
+
+  this->associatedComponent->setPropertyCallback(
+      "name", [](const PropertyValue& value) { return value; });
+
   (std::static_pointer_cast<DummyOutputComponent>(associatedComponent))->setSkin(this);
 }
 
@@ -119,8 +129,9 @@ void GraphicalOutputSingle::setState(State state)
 }
 
 DummyOutputComponent::DummyOutputComponent(Bus bus, std::string name)
-  : Component({bus}, {}, name)
+  : Component({bus}, {})
 {
+  defineProperty("name", std::move(name));
   this->setAction([this] {
     if (this->skin)
       this->skin->setState(this->inputs[0][0]->getCurrentState());

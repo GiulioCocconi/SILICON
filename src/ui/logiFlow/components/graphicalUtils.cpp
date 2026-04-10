@@ -2,30 +2,39 @@
 
 #include <stdexcept>
 
-GraphicalWireSplitter::GraphicalWireSplitter(const unsigned size, QGraphicsItem* parent)
+GraphicalWireSplitter::GraphicalWireSplitter(QGraphicsItem* parent)
   : GraphicalLogicComponent(std::make_shared<WireSplitter>(Bus(), (std::vector<Bus>){}),
-                            nullptr, parent)
+                            nullptr, parent),
+    size(2)
 {
-  setSize(size);
+  this->associatedComponent->setPropertyCallback(
+      "size", [this](const PropertyValue& value) {
+        int newSize = std::get<int>(value);
+        if (newSize <= 1)
+          throw std::invalid_argument("WireSplitter size must be greater than 1");
+        this->setSize(newSize);
+        return value;
+      });
+  this->associatedComponent->setProperty("size", 2);
 };
 
-void GraphicalWireSplitter::setSize(const unsigned int size)
+void GraphicalWireSplitter::setSize(const int newSize)
 {
-  if (size <= 1)
+  if (newSize <= 1)
     throw std::invalid_argument("WireSplitter size must be greater than 1");
-  this->size = size;
+  this->size = newSize;
 
-  this->associatedComponent->setInput(0, Bus(size));
-  std::vector<Bus> outputs(size, Bus(1));
+  this->associatedComponent->setInput(0, Bus(newSize));
+  std::vector<Bus> outputs(newSize, Bus(1));
   this->associatedComponent->setOutputs(outputs);
 
   QPainterPath path{};
   path.moveTo(0, 0);
 
   std::vector<std::pair<std::string, QPoint>> outputPorts;
-  outputPorts.reserve(size);
+  outputPorts.reserve(newSize);
 
-  for (unsigned int i = 1; i <= size; i++) {
+  for (int i = 1; i <= newSize; i++) {
     QPoint portLoc(10, -20 * i + 10);
     path.lineTo(portLoc);
 
@@ -39,30 +48,39 @@ void GraphicalWireSplitter::setSize(const unsigned int size)
   this->setPorts({std::pair<std::string, QPoint>{"b", QPoint(-20, 0)}}, outputPorts);
 }
 
-GraphicalWireMerger::GraphicalWireMerger(const unsigned size, QGraphicsItem* parent)
+GraphicalWireMerger::GraphicalWireMerger(QGraphicsItem* parent)
   : GraphicalLogicComponent(std::make_shared<WireMerger>((std::vector<Bus>){}, Bus()),
-                            nullptr, parent)
+                            nullptr, parent),
+    size(2)
 {
-  setSize(size);
+  this->associatedComponent->setPropertyCallback(
+      "size", [this](const PropertyValue& value) {
+        int newSize = std::get<int>(value);
+        if (newSize <= 1)
+          throw std::invalid_argument("WireMerger size must be greater than 1");
+        this->setSize(newSize);
+        return value;
+      });
+  this->associatedComponent->setProperty("size", 2);
 };
 
-void GraphicalWireMerger::setSize(const unsigned int size)
+void GraphicalWireMerger::setSize(const int newSize)
 {
-  if (size <= 1)
+  if (newSize <= 1)
     throw std::invalid_argument("WireMerger size must be greater than 1");
-  this->size = size;
+  this->size = newSize;
 
-  std::vector<Bus> inputs(size, Bus());
+  std::vector<Bus> inputs(newSize, Bus());
   this->associatedComponent->setInputs(inputs);
-  this->associatedComponent->setOutput(0, Bus(size));
+  this->associatedComponent->setOutput(0, Bus(newSize));
 
   QPainterPath path{};
   path.moveTo(0, 0);
 
   std::vector<std::pair<std::string, QPoint>> inputPorts;
-  inputPorts.reserve(size);
+  inputPorts.reserve(newSize);
 
-  for (unsigned int i = 1; i <= size; i++) {
+  for (int i = 1; i <= newSize; i++) {
     QPoint portLoc(-10, -20 * i + 10);
     path.lineTo(portLoc);
 
