@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2025. Giulio Cocconi
+ Copyright (c) 2026. Giulio Cocconi
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -30,10 +30,17 @@
 #include <string>
 #include <vector>
 
-// Each wire could hold one of three states
+/* --- State values ---------------------------------------------------------------------
+ * Each wire could hold one of four states. UNKNOWN can be HIGH or LOW, for example
+ * HIGH || UNKNOWN == HIGH, cause (HIGH || HIGH) == (HIGH || LOW) == HIGH.
+ *
+ * UNKNOWN and ERROR states are only used as simulation internal values, they should not
+ * be assignable as inputs. */
+
 enum class State {
   LOW,
   HIGH,
+  UNKNOWN,
   ERROR,
 };
 
