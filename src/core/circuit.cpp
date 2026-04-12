@@ -516,6 +516,27 @@ Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry
         cPtr->setOutputs(outputs);
       }
 
+      if (auto props_it = compJson.find("properties");
+          props_it != compJson.end() && props_it->is_object()) {
+        for (const auto& [key, val] : props_it->items()) {
+          if (!cPtr->getProperty(key).has_value()) {
+            continue;
+          }
+
+          PropertyValue propValue;
+          if (val.is_string()) {
+            propValue = val.get<std::string>();
+          } else if (val.is_boolean()) {
+            propValue = val.get<bool>();
+          } else if (val.is_number_integer()) {
+            propValue = val.get<int>();
+          } else {
+            continue;
+          }
+          cPtr->setProperty(key, propValue);
+        }
+      }
+
       componentList.push_back(std::move(cPtr));
     }
   }
