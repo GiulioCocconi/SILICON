@@ -73,14 +73,19 @@ void Component::setProperty(const std::string& key, const PropertyValue& value)
         std::format("Property '{}' does not exist on component '{}'", key, typeName()));
   }
 
-  // 2. Enforce static types (the variant index must match the one set during
+  // 2. Return early if value hasn't changed
+  if (it->second == value) {
+    return;
+  }
+
+  // 3. Enforce static types (the variant index must match the one set during
   // defineProperty)
   if (it->second.index() != value.index()) {
     throw std::invalid_argument(std::format(
         "Type mismatch when setting property '{}' on component '{}'", key, typeName()));
   }
 
-  // 3. Call the callback if registered, use returned value
+  // 4. Call the callback if registered, use returned value
   PropertyValue finalValue = value;
   if (auto cbIt = propertyCallbacks.find(key); cbIt != propertyCallbacks.end()) {
     finalValue = cbIt->second(value);
