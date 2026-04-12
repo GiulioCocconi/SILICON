@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2025. Giulio Cocconi
+ Copyright (c) 2026. Giulio Cocconi
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -25,10 +25,13 @@ State operator&&(const State& a, const State& b)
   if (a == State::ERROR || b == State::ERROR)
     return State::ERROR;
 
+  if (a == State::LOW || b == State::LOW)
+    return State::LOW;
+
   if (a == State::HIGH && b == State::HIGH)
     return State::HIGH;
 
-  return State::LOW;
+  return State::UNKNOWN;
 }
 
 State operator||(const State& a, const State& b)
@@ -39,13 +42,19 @@ State operator||(const State& a, const State& b)
   if (a == State::HIGH || b == State::HIGH)
     return State::HIGH;
 
-  return State::LOW;
+  if (a == State::LOW && b == State::LOW)
+    return State::LOW;
+
+  return State::UNKNOWN;
 }
 
 State operator!(const State& a)
 {
   if (a == State::ERROR)
     return State::ERROR;
+
+  if (a == State::UNKNOWN)
+    return State::UNKNOWN;
 
   if (a == State::LOW)
     return State::HIGH;
@@ -58,6 +67,9 @@ State operator^(const State& a, const State& b)
   if (a == State::ERROR || b == State::ERROR)
     return State::ERROR;
 
+  if (a == State::UNKNOWN || b == State::UNKNOWN)
+    return State::UNKNOWN;
+
   if (a != b)
     return State::HIGH;
 
@@ -69,6 +81,7 @@ std::string to_str(State s)
   switch (s) {
     case State::HIGH: return "HIGH";
     case State::LOW: return "LOW";
+    case State::UNKNOWN: return "UNKNOWN";
     case State::ERROR: return "ERROR";
   }
   throw std::logic_error("Unhandled State enum value");
