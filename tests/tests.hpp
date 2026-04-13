@@ -28,6 +28,7 @@ void PrintTo(const State& s, std::ostream* os)
     case State::HIGH: *os << "HIGH"; break;
     case State::LOW: *os << "LOW"; break;
     case State::ERROR: *os << "ERROR"; break;
+    case State::UNKNOWN: *os << "UNKNOWN"; break;
     default: assert(false);
   }
 }

@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2025. Giulio Cocconi
+ Copyright (c) 2026. Giulio Cocconi
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -58,6 +58,9 @@ public:
 private slots:
   void propertiesDialogAccepted() override;
 
+signals:
+  void inputToggled(Wire_ptr targetWire, State newState, Component_weakPtr source);
+
 private:
   State skinState = State::LOW;
 
@@ -88,6 +91,9 @@ public:
   }
   void setState(int value) { this->outputs[0].setCurrentValue(value, weak_from_this()); };
   std::string_view typeName() const override { return Type; }
+
+  void simulate(Simulator& sim) override {}
+
 };
 
 class GraphicalOutputSingle : public GraphicalLogicComponent {
@@ -121,6 +127,8 @@ public:
   DummyOutputComponent(Bus bus, std::string name);
   void             setSkin(GraphicalOutputSingle* skin);
   std::string_view typeName() const override { return Type; }
+
+  void simulate(Simulator& sim) override;
 
 private:
   GraphicalOutputSingle* skin = nullptr;

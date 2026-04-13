@@ -1,150 +1,166 @@
 /*
-  Copyright (C) 2025 Giulio Cocconi
+ Copyright (c) 2026. Giulio Cocconi
 
-  This program is free software: you can redistribute it and/or modify
-  it under the terms of the GNU General Public License as published by
-  the Free Software Foundation, either version 3 of the License, or
-  (at your option) any later version.
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
 
-  This program is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License for more details.
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
 
-  You should have received a copy of the GNU General Public License
-  along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+   You should have received a copy of the GNU General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+ */
 
 #include "tests.hpp"
+#include <core/circuit.hpp>
+#include <core/simulator.hpp>
 
 TEST(LogicTest, And)
 {
-  auto a = std::make_shared<Wire>();
-  auto b = std::make_shared<Wire>();
+  auto a = std::make_shared<Wire>(State::ERROR);
+  auto b = std::make_shared<Wire>(State::ERROR);
   auto o = std::make_shared<Wire>();
 
   auto g = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, o);
+  auto circ = std::make_shared<Circuit>(Component_set{g});
+  Simulator sim(circ);
+  sim.run(20); // Process initial zero-delay and gate evaluations
 
-  a->forceSetCurrentState(State::ERROR);
-  b->forceSetCurrentState(State::ERROR);
+  EXPECT_EQ(o->getCurrentState(), State::ERROR) << "AND(ERROR, ERROR) = " << to_str(o->getCurrentState());
 
-  State outputState = o->getCurrentState();
-  EXPECT_EQ(outputState, State::ERROR) << "AND(ERROR, ERROR) = " << to_str(outputState);
-
+  // Using simulateBus to evaluate the upstream cone for non-standard states
   b->forceSetCurrentState(State::HIGH);
-  outputState = o->getCurrentState();
-  EXPECT_EQ(outputState, State::ERROR) << "AND(ERROR, HIGH) = " << to_str(outputState);
+  sim.simulateBus(Bus{o});
+  sim.run(20);
+  EXPECT_EQ(o->getCurrentState(), State::ERROR) << "AND(ERROR, HIGH) = " << to_str(o->getCurrentState());
 
   b->forceSetCurrentState(State::LOW);
-  outputState = o->getCurrentState();
-  EXPECT_EQ(outputState, State::ERROR) << "AND(ERROR, LOW) = " << to_str(outputState);
+  sim.simulateBus(Bus{o});
+  sim.run(20);
+  EXPECT_EQ(o->getCurrentState(), State::ERROR) << "AND(ERROR, LOW) = " << to_str(o->getCurrentState());
 
-  a->forceSetCurrentState(State::LOW);
-  outputState = o->getCurrentState();
-  EXPECT_EQ(outputState, State::LOW) << "AND(LOW, LOW) = " << to_str(outputState);
+  // Using setBus to reactively propagate inputs through the forward subgraph
+  sim.setBus(Bus{a}, 0); // LOW
+  sim.setBus(Bus{b}, 0); // LOW
+  sim.run(20);
+  EXPECT_EQ(o->getCurrentState(), State::LOW) << "AND(LOW, LOW) = " << to_str(o->getCurrentState());
 
-  a->forceSetCurrentState(State::HIGH);
-  outputState = o->getCurrentState();
-  EXPECT_EQ(outputState, State::LOW) << "AND(HIGH, LOW) = " << to_str(outputState);
+  sim.setBus(Bus{a}, 1); // HIGH
+  sim.run(20);
+  EXPECT_EQ(o->getCurrentState(), State::LOW) << "AND(HIGH, LOW) = " << to_str(o->getCurrentState());
 
-  b->forceSetCurrentState(State::HIGH);
-  outputState = o->getCurrentState();
-  EXPECT_EQ(outputState, State::HIGH) << "AND(HIGH, HIGH) = " << to_str(outputState);
+  sim.setBus(Bus{b}, 1); // HIGH
+  sim.run(20);
+  EXPECT_EQ(o->getCurrentState(), State::HIGH) << "AND(HIGH, HIGH) = " << to_str(o->getCurrentState());
 }
 
 TEST(LogicTest, Or)
 {
-  auto a = std::make_shared<Wire>();
-  auto b = std::make_shared<Wire>();
+  auto a = std::make_shared<Wire>(State::ERROR);
+  auto b = std::make_shared<Wire>(State::ERROR);
   auto o = std::make_shared<Wire>();
 
   auto g = std::make_shared<OrGate>(std::vector<Wire_ptr>{a, b}, o);
+  auto circ = std::make_shared<Circuit>(Component_set{g});
+  Simulator sim(circ);
+  sim.run(20);
 
-  a->forceSetCurrentState(State::ERROR);
-  b->forceSetCurrentState(State::ERROR);
-
-  State outputState = o->getCurrentState();
-  EXPECT_EQ(outputState, State::ERROR) << "OR(ERROR, ERROR) = " << to_str(outputState);
+  EXPECT_EQ(o->getCurrentState(), State::ERROR) << "OR(ERROR, ERROR) = " << to_str(o->getCurrentState());
 
   b->forceSetCurrentState(State::HIGH);
-  outputState = o->getCurrentState();
-  EXPECT_EQ(outputState, State::ERROR) << "OR(ERROR, HIGH) = " << to_str(outputState);
+  sim.simulateBus(Bus{o});
+  sim.run(20);
+  EXPECT_EQ(o->getCurrentState(), State::ERROR) << "OR(ERROR, HIGH) = " << to_str(o->getCurrentState());
 
   b->forceSetCurrentState(State::LOW);
-  outputState = o->getCurrentState();
-  EXPECT_EQ(outputState, State::ERROR) << "OR(ERROR, LOW) = " << to_str(outputState);
+  sim.simulateBus(Bus{o});
+  sim.run(20);
+  EXPECT_EQ(o->getCurrentState(), State::ERROR) << "OR(ERROR, LOW) = " << to_str(o->getCurrentState());
 
-  a->forceSetCurrentState(State::LOW);
-  outputState = o->getCurrentState();
-  EXPECT_EQ(outputState, State::LOW) << "OR(LOW, LOW) = " << to_str(outputState);
+  sim.setBus(Bus{a}, 0);
+  sim.setBus(Bus{b}, 0);
+  sim.run(20);
+  EXPECT_EQ(o->getCurrentState(), State::LOW) << "OR(LOW, LOW) = " << to_str(o->getCurrentState());
 
-  a->forceSetCurrentState(State::HIGH);
-  outputState = o->getCurrentState();
-  EXPECT_EQ(outputState, State::HIGH) << "OR(HIGH, LOW) = " << to_str(outputState);
+  sim.setBus(Bus{a}, 1);
+  sim.run(20);
+  EXPECT_EQ(o->getCurrentState(), State::HIGH) << "OR(HIGH, LOW) = " << to_str(o->getCurrentState());
 
-  b->forceSetCurrentState(State::HIGH);
-  outputState = o->getCurrentState();
-  EXPECT_EQ(outputState, State::HIGH) << "OR(HIGH, HIGH) = " << to_str(outputState);
+  sim.setBus(Bus{b}, 1);
+  sim.run(20);
+  EXPECT_EQ(o->getCurrentState(), State::HIGH) << "OR(HIGH, HIGH) = " << to_str(o->getCurrentState());
 }
 
 TEST(LogicTest, Xor)
 {
-  auto a = std::make_shared<Wire>();
-  auto b = std::make_shared<Wire>();
+  auto a = std::make_shared<Wire>(State::ERROR);
+  auto b = std::make_shared<Wire>(State::ERROR);
   auto o = std::make_shared<Wire>();
 
   auto g = std::make_shared<XorGate>(std::array<Wire_ptr, 2>{a, b}, o);
+  auto circ = std::make_shared<Circuit>(Component_set{g});
+  Simulator sim(circ);
+  sim.run(20);
 
-  a->forceSetCurrentState(State::ERROR);
-  b->forceSetCurrentState(State::ERROR);
-
-  State outputState = o->getCurrentState();
-  EXPECT_EQ(outputState, State::ERROR) << "XOR(ERROR, ERROR) = " << to_str(outputState);
+  EXPECT_EQ(o->getCurrentState(), State::ERROR) << "XOR(ERROR, ERROR) = " << to_str(o->getCurrentState());
 
   b->forceSetCurrentState(State::HIGH);
-  outputState = o->getCurrentState();
-  EXPECT_EQ(outputState, State::ERROR) << "XOR(ERROR, HIGH) = " << to_str(outputState);
+  sim.simulateBus(Bus{o});
+  sim.run(20);
+  EXPECT_EQ(o->getCurrentState(), State::ERROR) << "XOR(ERROR, HIGH) = " << to_str(o->getCurrentState());
 
   b->forceSetCurrentState(State::LOW);
-  outputState = o->getCurrentState();
-  EXPECT_EQ(outputState, State::ERROR) << "XOR(ERROR, LOW) = " << to_str(outputState);
+  sim.simulateBus(Bus{o});
+  sim.run(20);
+  EXPECT_EQ(o->getCurrentState(), State::ERROR) << "XOR(ERROR, LOW) = " << to_str(o->getCurrentState());
 
-  a->forceSetCurrentState(State::LOW);
-  outputState = o->getCurrentState();
-  EXPECT_EQ(outputState, State::LOW) << "XOR(LOW, LOW) = " << to_str(outputState);
+  sim.setBus(Bus{a}, 0);
+  sim.setBus(Bus{b}, 0);
+  sim.run(20);
+  EXPECT_EQ(o->getCurrentState(), State::LOW) << "XOR(LOW, LOW) = " << to_str(o->getCurrentState());
 
-  a->forceSetCurrentState(State::HIGH);
-  outputState = o->getCurrentState();
-  EXPECT_EQ(outputState, State::HIGH) << "XOR(HIGH, LOW) = " << to_str(outputState);
+  sim.setBus(Bus{a}, 1);
+  sim.run(20);
+  EXPECT_EQ(o->getCurrentState(), State::HIGH) << "XOR(HIGH, LOW) = " << to_str(o->getCurrentState());
 
-  b->forceSetCurrentState(State::HIGH);
-  outputState = o->getCurrentState();
-  EXPECT_EQ(outputState, State::LOW) << "XOR(HIGH, HIGH) = " << to_str(outputState);
+  sim.setBus(Bus{b}, 1);
+  sim.run(20);
+  EXPECT_EQ(o->getCurrentState(), State::LOW) << "XOR(HIGH, HIGH) = " << to_str(o->getCurrentState());
 }
 
 TEST(LogicTest, CircuitEditing1)
 {
-  auto a = std::make_shared<Wire>();
-  auto b = std::make_shared<Wire>();
-
-  auto o = std::make_shared<Wire>(State::HIGH);
-
-  a->forceSetCurrentState(State::HIGH);
-  b->forceSetCurrentState(State::LOW);
+  auto a = std::make_shared<Wire>(State::HIGH);
+  auto b = std::make_shared<Wire>(State::LOW);
+  auto o = std::make_shared<Wire>();
 
   {
     auto g = std::make_shared<XorGate>(std::array<Wire_ptr, 2>{a, b}, o);
+    auto c = std::make_shared<Circuit>(Component_set{g});
+    Simulator sim(c);
+    sim.run(20);
     EXPECT_EQ(o->getCurrentState(), State::HIGH);
   }
 
   {
     auto g = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, o);
+    auto c = std::make_shared<Circuit>(Component_set{g});
+    Simulator sim(c);
+    sim.run(20);
     EXPECT_EQ(o->getCurrentState(), State::LOW);
   }
 
   {
     b->forceSetCurrentState(State::HIGH);
     auto g = std::make_shared<OrGate>(std::vector<Wire_ptr>{a, b}, o);
+    auto c = std::make_shared<Circuit>(Component_set{g});
+    Simulator sim(c);
+    sim.run(20);
     EXPECT_EQ(o->getCurrentState(), State::HIGH);
   }
 }
@@ -157,15 +173,25 @@ TEST(LogicTest, CircuitEditing2)
 
   auto o = std::make_shared<Wire>();
 
-  auto             ag        = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, o);
+  auto ag = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, o);
+  auto circ = std::make_shared<Circuit>(Component_set{ag});
+  Simulator sim(circ);
+  sim.run(20);
+
   std::vector<Bus> newInputs = {{c}, {b}};
   ag->setInputs(newInputs);
+
+  // Dynamic topology alters require instantiating a fresh graph configuration
+  auto circ2 = std::make_shared<Circuit>(Component_set{ag});
+  Simulator sim2(circ2);
+  sim2.run(20);
 
   a->forceSetCurrentState(State::ERROR);  // Should not influence the gate anymore
 
   EXPECT_EQ(o->getCurrentState(), State::HIGH);
 
-  c->forceSetCurrentState(State::LOW);
+  sim2.setBus(Bus{c}, 0);
+  sim2.run(20);
   EXPECT_EQ(o->getCurrentState(), State::LOW);
 }
 
@@ -178,13 +204,14 @@ TEST(LogicTest, BusSettingReading)
   }
 }
 
-// TODO: Move to a separated test suite
+// --- Component Property Tests --------------------------------------------------------
 
 TEST(ComponentTest, SetAndGetIntProperty)
 {
   struct TestComponent : public Component {
     TestComponent() : Component({}, {}) { defineProperty("value", 10); }
     std::string_view typeName() const override { return "TestComponent"; }
+    void             simulate(Simulator& sim) override {}
   };
 
   auto c = std::make_shared<TestComponent>();
@@ -203,6 +230,7 @@ TEST(ComponentTest, SetAndGetIntPropertyTemplated)
   struct TestComponent : public Component {
     TestComponent() : Component({}, {}) { defineProperty("value", 10); }
     std::string_view typeName() const override { return "TestComponent"; }
+    void             simulate(Simulator& sim) override {}
   };
 
   auto c = std::make_shared<TestComponent>();
@@ -221,6 +249,7 @@ TEST(ComponentTest, SetAndGetBoolProperty)
   struct TestComponent : public Component {
     TestComponent() : Component({}, {}) { defineProperty("enabled", false); }
     std::string_view typeName() const override { return "TestComponent"; }
+    void             simulate(Simulator& sim) override {}
   };
 
   auto c = std::make_shared<TestComponent>();
@@ -242,6 +271,7 @@ TEST(ComponentTest, SetAndGetStringProperty)
       defineProperty("name", std::string("default"));
     }
     std::string_view typeName() const override { return "TestComponent"; }
+    void             simulate(Simulator& sim) override {}
   };
 
   auto c = std::make_shared<TestComponent>();
@@ -260,6 +290,7 @@ TEST(ComponentTest, GetPropertyNotFound)
   struct TestComponent : public Component {
     TestComponent() : Component({}, {}) { defineProperty("value", 10); }
     std::string_view typeName() const override { return "TestComponent"; }
+    void             simulate(Simulator& sim) override {}
   };
 
   auto c = std::make_shared<TestComponent>();
@@ -273,6 +304,7 @@ TEST(ComponentTest, SetPropertyTypeMismatch)
   struct TestComponent : public Component {
     TestComponent() : Component({}, {}) { defineProperty("value", 10); }
     std::string_view typeName() const override { return "TestComponent"; }
+    void             simulate(Simulator& sim) override {}
   };
 
   auto c = std::make_shared<TestComponent>();
@@ -285,6 +317,7 @@ TEST(ComponentTest, SetPropertyUndefined)
   struct TestComponent : public Component {
     TestComponent() : Component({}, {}) {}
     std::string_view typeName() const override { return "TestComponent"; }
+    void             simulate(Simulator& sim) override {}
   };
 
   auto c = std::make_shared<TestComponent>();
@@ -302,6 +335,7 @@ TEST(ComponentTest, GetProperties)
       defineProperty("strVal", std::string("hello"));
     }
     std::string_view typeName() const override { return "TestComponent"; }
+    void             simulate(Simulator& sim) override {}
   };
 
   auto c     = std::make_shared<TestComponent>();

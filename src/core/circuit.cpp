@@ -6,14 +6,13 @@
    the Free Software Foundation, either version 3 of the License, or
    (at your option) any later version.
 
-   This program is distributed in the hope that it will be useful,
-   but WITHOUT ANY WARRANTY; without even the implied warranty of
-   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
    GNU General Public License for more details.
 
-   You should have received a copy of the GNU General Public License
-   along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include <algorithm>
@@ -29,18 +28,96 @@
 
 #include <nlohmann/json.hpp>
 
-// --- Internal helpers ------------------------------------------------------------------
+// --- Topology Observers & Live Editing -------------------------------------------------
 
-VertexDescriptor Circuit::getOrAddVertex(const Component_weakPtr& component)
+uint64_t Circuit::addTopologyListener(TopologyObserver cb)
 {
-  const auto cPtr = component.lock();
-  if (!cPtr)
+  uint64_t id           = ++nextTopologyListenerId;
+  topologyListeners[id] = std::move(cb);
+  return id;
+}
+
+void Circuit::removeTopologyListener(uint64_t id)
+{
+  topologyListeners.erase(id);
+}
+
+void Circuit::notifyTopologyListeners()
+{
+  for (auto& [id, cb] : topologyListeners) {
+    cb();
+  }
+}
+
+void Circuit::makeInteractive()
+{
+  if (isInteractive)
+    return;
+  isInteractive = true;
+
+  std::weak_ptr<Circuit> weakThis = weak_from_this();
+
+  // Attach to all currently existing components
+  for (auto v : boost::make_iterator_range(boost::vertices(graph))) {
+    if (auto cPtr = graph[v].component) {
+      cPtr->addIOListener([weakThis](Component* c) {
+        if (auto circ = weakThis.lock()) {
+          circ->updateComponentIO(c->shared_from_this());
+        }
+      });
+    }
+  }
+}
+
+void Circuit::updateComponentIO(const Component_ptr& component)
+{
+  if (!component)
+    return;
+
+  auto it = componentToVertex.find(component.get());
+  if (it == componentToVertex.end())
+    return;
+  VertexDescriptor v = it->second;
+
+  // 1. Wipe old edges connected to this specific component
+  boost::clear_vertex(v, graph);
+
+  // 2. Rebuild out-edges (from this component to downstream)
+  rebuildEdges(v);
+
+  // 3. Rebuild in-edges (from upstream into this component)
+  for (auto u : boost::make_iterator_range(boost::vertices(graph))) {
+    if (u != v)
+      rebuildEdges(u);
+  }
+
+  // 4. Update the spatial wire lookup and notify the Simulator to recompile!
+  buildTopologyMap();
+  notifyTopologyListeners();
+}
+
+// --- Internal Helpers ------------------------------------------------------------------
+
+VertexDescriptor Circuit::getOrAddVertex(const Component_ptr& component)
+{
+  if (!component)
     return {};
 
-  const Component* key = cPtr.get();
+  const Component* key = component.get();
 
   if (auto it = componentToVertex.find(key); it != componentToVertex.end()) {
     return it->second;
+  }
+
+  // If we are in interactive mode, automatically attach a listener to newly added
+  // components
+  if (isInteractive) {
+    std::weak_ptr<Circuit> weakThis = weak_from_this();
+    component->addIOListener([weakThis](Component* c) {
+      if (auto circ = weakThis.lock()) {
+        circ->updateComponentIO(c->shared_from_this());
+      }
+    });
   }
 
   const VertexDescriptor v = boost::add_vertex(VertexProperty{component}, graph);
@@ -49,46 +126,66 @@ VertexDescriptor Circuit::getOrAddVertex(const Component_weakPtr& component)
   return v;
 }
 
+// rebuildEdges: Rebuilds directed edges in the graph based on wire connections.
+// A directed edge (u -> v) is added when component u's output bus shares at least one
+// wire with component v's input bus. This creates the dataflow graph used for
+// topological sorting and subgraph extraction.
+
 void Circuit::rebuildEdges(VertexDescriptor v)
 {
-  const auto cPtr = graph[v].component.lock();
+  const auto cPtr = graph[v].component;
   if (!cPtr)
     return;
 
-  for (const auto& outBus : cPtr->getOutputs()) {
-    for (auto [vi, vi_end] = boost::vertices(graph); vi != vi_end; ++vi) {
-      if (*vi == v)
-        continue;
+  const auto& outputs = cPtr->getOutputs();
 
-      auto neighbor = graph[*vi].component.lock();
-      if (!neighbor)
-        continue;
+  // 1. subrange allows us to use range-based for loops with Boost.Graph
+  for (auto target_v : boost::make_iterator_range(boost::vertices(graph))) {
+    if (target_v == v)
+      continue;
 
-      const auto& neighborInputs = neighbor->getInputs();
-      if (std::ranges::find(neighborInputs, outBus) == neighborInputs.end())
-        continue;
+    const auto neighbor = graph[target_v].component;
+    if (!neighbor)
+      continue;
 
-      auto [eBegin, eEnd]  = boost::out_edges(v, graph);
-      auto out_edges_range = std::ranges::subrange(eBegin, eEnd);
+    // 2. Flatten all neighbor input buses into a single view of wires
+    auto neighbor_wires = neighbor->getInputs() | std::views::join;
 
-      const bool isDuplicate =
-          std::ranges::any_of(out_edges_range, [&](const auto& edge) {
-            return boost::target(edge, graph) == *vi && graph[edge].bus == outBus;
-          });
+    for (const Bus& outBus : outputs) {
+      // 3. Filter out null/falsy wires lazily
+      auto valid_out_wires =
+          outBus | std::views::filter([](const auto& w) { return static_cast<bool>(w); });
 
-      if (!isDuplicate)
-        boost::add_edge(v, *vi, EdgeProperty{outBus}, graph);
+      // 4. Check if any valid out-wire exists in the flattened neighbor inputs
+      const bool sharesWire = std::ranges::any_of(valid_out_wires, [&](const auto& wire) {
+        return std::ranges::contains(neighbor_wires, wire);  // C++23
+      });
+
+      if (sharesWire) {
+        auto out_edges = boost::make_iterator_range(boost::out_edges(v, graph));
+
+        const bool isDuplicate = std::ranges::any_of(out_edges, [&](const auto& edge) {
+          return boost::target(edge, graph) == target_v && graph[edge].bus == outBus;
+        });
+
+        if (!isDuplicate) {
+          boost::add_edge(v, target_v, EdgeProperty{outBus}, graph);
+        }
+      }
     }
   }
 }
+
+// getComponentIOs: Collects all unique input and output buses from every component
+// in the circuit. Used to determine circuit interface.
 
 std::pair<std::vector<Bus>, std::vector<Bus>> Circuit::getComponentIOs() const
 {
   std::vector<Bus> inputs  = {};
   std::vector<Bus> outputs = {};
 
-  for (auto [vi, vi_end] = boost::vertices(graph); vi != vi_end; ++vi) {
-    auto cPtr = graph[*vi].component.lock();
+  for (auto v : boost::make_iterator_range(boost::vertices(graph))) {
+    auto cPtr = graph[v].component;
     if (!cPtr)
       continue;
 
@@ -105,7 +202,48 @@ std::pair<std::vector<Bus>, std::vector<Bus>> Circuit::getComponentIOs() const
   std::ranges::sort(outputs);
   outputs.erase(std::ranges::unique(outputs).begin(), outputs.end());
 
-  return {inputs, outputs};
+  return {std::move(inputs), std::move(outputs)};
+}
+
+// --- Topology Map ----------------------------------------------------------------------
+
+// buildTopologyMap: Builds a reverse mapping from wires to components that use them.
+// This enables O(1) lookup of components connected to a specific wire, used for
+// subgraph extraction and reactive updates.
+
+void Circuit::buildTopologyMap()
+{
+  wireListeners.clear();
+
+  for (auto v : boost::make_iterator_range(boost::vertices(graph))) {
+    const auto comp = graph[v].component;
+    if (!comp)
+      continue;
+
+    auto valid_wires =
+        comp->getInputs() | std::views::join
+        | std::views::filter([](const auto& wire) { return static_cast<bool>(wire); });
+
+    for (const auto& wire : valid_wires) {
+      wireListeners[wire->getId()].push_back(comp);
+    }
+  }
+}
+std::vector<Component_weakPtr> Circuit::getListenersForWire(uint64_t wireId) const
+{
+  auto it = wireListeners.find(wireId);
+
+  if (it == wireListeners.end())
+    return {};
+
+  std::vector<Component_weakPtr> result;
+  result.reserve(it->second.size());
+
+  for (const auto& ptr : it->second) {
+    result.push_back(ptr);
+  }
+
+  return result;
 }
 
 // --- Constructors ----------------------------------------------------------------------
@@ -113,55 +251,55 @@ std::pair<std::vector<Bus>, std::vector<Bus>> Circuit::getComponentIOs() const
 Circuit::Circuit(const Component_set& components, bool explore)
 {
   if (!explore) {
-    // Just add all components as vertices, then wire up edges.
     for (const auto& c : components)
       getOrAddVertex(c);
 
-    // Now build edges between vertices that share buses.
-    for (auto [vi, vi_end] = boost::vertices(graph); vi != vi_end; ++vi)
-      rebuildEdges(*vi);
-  } else {
+    for (auto v : boost::make_iterator_range(boost::vertices(graph)))
+      rebuildEdges(v);
+  }
+
+  else {
     for (const auto& c : components)
       addComponent(c);
   }
+
+  buildTopologyMap();
 }
 
-Circuit::Circuit(const Component_weakPtr& component, const bool explore)
+Circuit::Circuit(const Component_ptr& component, const bool explore)
 {
   if (!explore) {
     getOrAddVertex(component);
   } else {
     addComponent(component);
   }
+
+  buildTopologyMap();
 }
 
 // --- Public methods --------------------------------------------------------------------
 
-void Circuit::addComponentRecursive(const Component_weakPtr&       component,
+void Circuit::addComponentRecursive(const Component_ptr&           component,
                                     std::vector<VertexDescriptor>& newlyAdded)
 {
-  const auto cPtr = component.lock();
-  if (!cPtr)
-    return;
-
-  // Already present — skip.
-  if (componentToVertex.contains(cPtr.get()))
+  // Already present or null = early return
+  if (!component.get() || componentToVertex.contains(component.get()))
     return;
 
   const VertexDescriptor v = getOrAddVertex(component);
   newlyAdded.push_back(v);
 
-  // Recursively explore neighbors through shared buses.
-  for (const Bus& bus : cPtr->getInputs())
-    for (const Component_weakPtr& c : getComponentsForBus(bus))
+  // Recursively explore neighbors through shared buses
+  for (const Bus& bus : component->getInputs())
+    for (const auto& c : getComponentsForBus(bus))
       addComponentRecursive(c, newlyAdded);
 
-  for (const Bus& bus : cPtr->getOutputs())
-    for (const Component_weakPtr& c : getComponentsForBus(bus))
+  for (const Bus& bus : component->getOutputs())
+    for (const auto& c : getComponentsForBus(bus))
       addComponentRecursive(c, newlyAdded);
 }
 
-void Circuit::addComponent(const Component_weakPtr& component)
+void Circuit::addComponent(const Component_ptr& component)
 {
   std::vector<VertexDescriptor> newlyAdded;
   addComponentRecursive(component, newlyAdded);
@@ -170,13 +308,20 @@ void Circuit::addComponent(const Component_weakPtr& component)
   // This is safe because addComponent guards against re-entry via the map check.
   for (VertexDescriptor v : newlyAdded)
     rebuildEdges(v);
+
+  buildTopologyMap();
+  notifyTopologyListeners();
 }
 
 std::vector<Bus> Circuit::getInputs() const
 {
   auto [inputBuses, outputBuses] = getComponentIOs();
 
+  std::ranges::sort(inputBuses);
+  std::ranges::sort(outputBuses);
+
   std::vector<Bus> result;
+
   std::ranges::set_difference(inputBuses, outputBuses, std::back_inserter(result));
 
   return result;
@@ -186,109 +331,164 @@ std::vector<Bus> Circuit::getOutputs() const
 {
   auto [inputBuses, outputBuses] = getComponentIOs();
 
-  std::vector<Bus> result;
-  std::ranges::set_difference(outputBuses, inputBuses, std::back_inserter(result));
+  std::ranges::sort(inputBuses);
+  std::ranges::sort(outputBuses);
 
+  std::vector<Bus> result;
+
+  std::ranges::set_difference(outputBuses, inputBuses, std::back_inserter(result));
   return result;
 }
 
+// getComponentsForBus: Finds all components that are connected to a given bus.
+// A component is connected if any of its input or output buses share wires with
+// the target bus.
 Component_set Circuit::getComponentsForBus(Bus b) const
 {
-  Component_set connectedComponents = {};
-  for (auto [vi, vi_end] = boost::vertices(graph); vi != vi_end; ++vi) {
-    auto cPtr = graph[*vi].component.lock();
-    if (cPtr && cPtr->isConnectedTo(b))
-      connectedComponents.insert(graph[*vi].component);
+  Component_set connectedComponents;
+
+  auto valid_wires =
+      b | std::views::filter([](const auto& w) { return static_cast<bool>(w); });
+
+  // Gather components that are listening to these wires
+  for (const auto& wire : valid_wires) {
+    for (const auto& weakComp : getListenersForWire(wire->getId())) {
+      if (auto comp = weakComp.lock()) {
+        connectedComponents.insert(comp);
+      }
+    }
+  }
+
+  // Gather components that output to these wires
+  for (auto v : boost::make_iterator_range(boost::vertices(graph))) {
+    const auto cPtr = graph[v].component;
+    if (!cPtr)
+      continue;
+
+    // Flatten all of this component's output buses into a single stream of wires
+    auto out_wires = cPtr->getOutputs() | std::views::join;
+
+    // Check if ANY valid wire from `b` exists in this component's outputs
+    const bool matches = std::ranges::any_of(valid_wires, [&](const auto& wire) {
+      return std::ranges::contains(out_wires, wire);  // C++23
+    });
+
+    if (matches) {
+      connectedComponents.insert(cPtr);  // Re-use cPtr, no double lookup!
+    }
   }
 
   return connectedComponents;
 }
 
+// --- Wire Reactivity & Cone Subgraphs --------------------------------------------------
+
+// getBackwardsSubgraph: Extracts the cone of influence (COI) for a target output bus.
+// Returns a new Circuit containing all components that can affect the target bus
+// through dataflow dependencies (reading from sources that eventually drive the target).
+
 Circuit Circuit::getBackwardsSubgraph(const Bus& targetOutput) const
 {
-  Component_set                 coiComponents;  // "Cone of Influence" components
-  std::vector<VertexDescriptor> stack;
-  std::set<VertexDescriptor>    visited;
+  Component_set                        coiComponents;
+  std::vector<VertexDescriptor>        stack;
+  std::unordered_set<VertexDescriptor> visited;
 
-  // 1. Find the component(s) that drive this target output bus.
-  for (auto [vi, vi_end] = boost::vertices(graph); vi != vi_end; ++vi) {
-    auto cPtr = graph[*vi].component.lock();
+  auto valid_target_wires = targetOutput | std::views::filter([](const auto& w) {
+                              return static_cast<bool>(w);
+                            });
+
+  // Find starting vertices
+  for (auto v : boost::make_iterator_range(boost::vertices(graph))) {
+    const auto cPtr = graph[v].component;
     if (!cPtr)
       continue;
 
-    const auto& outputs = cPtr->getOutputs();
-    // If this component outputs to our target bus, it's a root for our backwards search
-    if (std::ranges::find(outputs, targetOutput) != outputs.end()) {
-      stack.push_back(*vi);
+    // Flatten all output buses into a single stream of wires
+    auto out_wires = cPtr->getOutputs() | std::views::join;
+
+    // Check if this component drives ANY of our valid target wires
+    const bool drivesWire =
+        std::ranges::any_of(valid_target_wires, [&](const auto& wire) {
+          return std::ranges::contains(out_wires, wire);  // C++23
+        });
+
+    if (drivesWire) {
+      stack.push_back(v);
+      visited.insert(v);
     }
   }
 
-  // 2. Traverse BACKWARDS through the graph using in_edges (dependencies)
+  // DFS backwards traversal
   while (!stack.empty()) {
-    VertexDescriptor v = stack.back();
+    const VertexDescriptor v = stack.back();
     stack.pop_back();
 
-    // If we haven't visited this component yet
-    if (visited.insert(v).second) {
-      coiComponents.insert(graph[v].component);
+    if (const auto comp = graph[v].component) {
+      coiComponents.insert(comp);
+    }
 
-      // Look at all edges coming INTO this vertex
-      for (auto [ie, ie_end] = boost::in_edges(v, graph); ie != ie_end; ++ie) {
-        // Push the source of the incoming edge (the upstream component) onto the stack
-        stack.push_back(boost::source(*ie, graph));
+    for (auto edge : boost::make_iterator_range(boost::in_edges(v, graph))) {
+      VertexDescriptor sourceVertex = boost::source(edge, graph);
+      if (visited.insert(sourceVertex).second) {
+        stack.push_back(sourceVertex);
       }
     }
   }
 
-  // 3. Construct and return a new Circuit using only the required components.
-  // We pass 'false' to explore, meaning it will only wire up the components
-  // in 'coiComponents' and ignore the rest of the original circuit.
   return Circuit(coiComponents, false);
 }
 
+// getForwardSubgraph: Extracts the forward cone of influence for a source input bus.
+// Returns a new Circuit containing all components that can be affected by changes to
+// the source bus (directly or indirectly through dataflow).
+
 Circuit Circuit::getForwardSubgraph(const Bus& sourceInput) const
 {
-  Component_set                 focComponents;  // "Fan-Out Cone" components
-  std::vector<VertexDescriptor> stack;
-  std::set<VertexDescriptor>    visited;
+  Component_set                        focComponents;
+  std::vector<VertexDescriptor>        stack;
+  std::unordered_set<VertexDescriptor> visited;
 
-  // 1. Find the component(s) that read directly from this source input bus.
-  for (auto [vi, vi_end] = boost::vertices(graph); vi != vi_end; ++vi) {
-    auto cPtr = graph[*vi].component.lock();
-    if (!cPtr)
-      continue;
+  auto valid_source_wires = sourceInput | std::views::filter([](const auto& w) {
+                              return static_cast<bool>(w);
+                            });
 
-    const auto& inputs = cPtr->getInputs();
-    // If this component reads the target input, it's a starting point
-    if (std::ranges::find(inputs, sourceInput) != inputs.end()) {
-      stack.push_back(*vi);
-      visited.insert(*vi);  // Mark visited so we don't process it twice
+  for (const auto& wire : valid_source_wires) {
+    for (const auto& weakComp : getListenersForWire(wire->getId())) {
+      if (auto cPtr = weakComp.lock()) {
+        auto it = componentToVertex.find(cPtr.get());
+
+        if (it != componentToVertex.end() && visited.insert(it->second).second) {
+          stack.push_back(it->second);
+        }
+      }
     }
   }
 
-  // 2. Traverse FORWARDS through the graph using out_edges (downstream dependencies)
   while (!stack.empty()) {
-    VertexDescriptor v = stack.back();
+    const VertexDescriptor v = stack.back();
     stack.pop_back();
 
-    focComponents.insert(graph[v].component);
+    if (const auto comp = graph[v].component) {
+      focComponents.insert(comp);
+    }
 
-    // Look at all edges going OUT of this vertex
-    for (auto [oe, oe_end] = boost::out_edges(v, graph); oe != oe_end; ++oe) {
-      // Get the destination component of this wire
-      VertexDescriptor targetVertex = boost::target(*oe, graph);
-
-      // If we haven't visited this downstream component yet, add it to the queue
+    for (auto edge : boost::make_iterator_range(boost::out_edges(v, graph))) {
+      VertexDescriptor targetVertex = boost::target(edge, graph);
       if (visited.insert(targetVertex).second) {
         stack.push_back(targetVertex);
       }
     }
   }
 
-  // 3. Construct and return a new Circuit using only the affected downstream components.
   return Circuit(focComponents, false);
 }
 
+// --- Execution Blocks -----------------------------------------------------------------
+
+// topologicalOrder: Computes a valid execution order for all components in the circuit.
+// Uses Boost's topological_sort algorithm which requires a DAG (Directed Acyclic Graph).
+//
+// Returns: Vector of components in topological order, or empty if cyclic.
 std::vector<Component_weakPtr> Circuit::topologicalOrder() const
 {
   std::vector<VertexDescriptor> order;
@@ -300,7 +500,7 @@ std::vector<Component_weakPtr> Circuit::topologicalOrder() const
     return {};
   }
 
-  // topological_sort produces reverse order, so reverse it.
+  // Boost's topological_sort produces reverse order, so we need to reverse it.
   std::ranges::reverse(order);
 
   std::vector<Component_weakPtr> result;
@@ -311,6 +511,11 @@ std::vector<Component_weakPtr> Circuit::topologicalOrder() const
   return result;
 }
 
+// splitCyclic: Splits the circuit into simulation blocks separating cyclic from acyclic
+// parts. This is essential for proper simulation: acyclic parts execute once in
+// topological order, while cyclic parts require iterative delta cycles to converge.
+//
+// Returns: Vector of SimulationBlocks ordered for proper execution.
 std::vector<Circuit::SimulationBlock> Circuit::splitCyclic() const
 {
   const auto n = boost::num_vertices(graph);
@@ -319,15 +524,13 @@ std::vector<Circuit::SimulationBlock> Circuit::splitCyclic() const
   if (n == 0)
     return {};
 
-  // --- STEP 1: Identify Strongly Connected Components (SCCs) ---------------------------
+  // --- STEP 1: Identify Strongly Connected Components (SCCs) --------------------------
   // An SCC is a subgraph where every vertex can reach every other vertex. An SCC of size
-  // > 1 represents a feedback loop (cycle).
+  // > 1 represents a feedback loop (cycle). BGL guarantees topological order.
 
   std::vector<int> componentMap(n);
   const auto       vertexIndexMap = boost::get(boost::vertex_index, graph);
 
-  // BGL guarantees a crucial topological property here:
-  // If a path exists from u to v, then componentMap[u] >= componentMap[v].
   const int numSccs = boost::strong_components(
       graph, boost::make_iterator_property_map(componentMap.begin(), vertexIndexMap));
 
@@ -340,14 +543,14 @@ std::vector<Circuit::SimulationBlock> Circuit::splitCyclic() const
     sccVertices[scc_id].push_back(v);
   }
 
-  std::vector<SimulationBlock> blocks;
-
   // This vector acts as an accumulator for adjacent acyclic (DAG) components.
   // We want to combine adjacent DAG segments into a single SimulationBlock to minimize
   // execution overhead.
+
+  std::vector<SimulationBlock>   blocks;
   std::vector<Component_weakPtr> currentDagComps;
 
-  // Helper lambda to finalize and store the accumulated DAG segment.
+  // Helper: finalize and store the accumulated DAG
   auto flushDag = [&]() {
     if (!currentDagComps.empty()) {
       Component_set comps(currentDagComps.begin(), currentDagComps.end());
@@ -359,34 +562,28 @@ std::vector<Circuit::SimulationBlock> Circuit::splitCyclic() const
   // --- STEP 3: Topologically traverse and build SimulationBlocks -----------------------
   // We iterate backwards (numSccs - 1 down to 0) because BGL's component IDs represent a
   // reversed topological sort. High IDs are "upstream" dependencies.
+
   for (int i = numSccs - 1; i >= 0; --i) {
-    const auto& verts = sccVertices[i];
+    const auto& verts    = sccVertices[i];
+    bool        isCyclic = verts.size() > 1;
 
-    // Check A: If an SCC has multiple vertices it's a cycle.
-    bool isCyclic = verts.size() > 1;
-
-    // Check B: If it's a single vertex, it's only a cycle if it has a self-loop.
     if (verts.size() == 1) {
       auto [e_begin, e_end] = boost::out_edges(verts.front(), graph);
-
-      // std::ranges::any_of succinctly checks if any target matches our vertex.
       isCyclic =
           std::ranges::any_of(std::ranges::subrange(e_begin, e_end), [&](const auto& e) {
             return boost::target(e, graph) == verts.front();
           });
     }
 
-    // This view is evaluated on-demand in the if/else block below.
     auto validComps =
         verts | std::views::transform([this](auto v) { return graph[v].component; })
-        | std::views::filter([](const auto& weakComp) { return !weakComp.expired(); });
+        | std::views::filter([](const auto& comp) { return comp != nullptr; });
 
     if (isCyclic) {
       // A cycle interrupts standard execution flow. We must flush any pending
       // DAG components so they execute *before* this cycle block.
-      flushDag();
 
-      // C++23 std::ranges::to evaluates the lazy view above.
+      flushDag();
       auto cyclicComps = validComps | std::ranges::to<Component_set>();
 
       if (!cyclicComps.empty()) {
@@ -399,9 +596,8 @@ std::vector<Circuit::SimulationBlock> Circuit::splitCyclic() const
     }
   }
 
-  // Don't forget to flush the final DAG segment (if the graph ended with acyclic parts).
+  // Finalize the final DAG tail (that's present if the circuit ends with a DAG block)
   flushDag();
-
   return blocks;
 }
 
@@ -415,24 +611,20 @@ std::string Circuit::serialize() const
 
   auto serializeBusList = [](const std::vector<Bus>& buses) -> nlohmann::ordered_json {
     nlohmann::ordered_json busArray = nlohmann::ordered_json::array();
-
     for (const Bus& bus : buses) {
       nlohmann::ordered_json wireArray = nlohmann::ordered_json::array();
-
       for (const auto& wire : bus) {
         wireArray.push_back(wire ? nlohmann::ordered_json(wire->getId())
                                  : nlohmann::ordered_json(nullptr));
       }
-
       busArray.push_back(std::move(wireArray));
     }
-
     return busArray;
   };
 
   for (auto [vi, vi_end] = boost::vertices(graph);
        auto v : std::ranges::subrange(vi, vi_end)) {
-    if (auto cPtr = graph[v].component.lock()) {
+    if (auto cPtr = graph[v].component) {
       nlohmann::ordered_json propsJson = nlohmann::ordered_json::object();
       for (const auto& [key, val] : cPtr->getProperties()) {
         std::visit([&](auto&& arg) { propsJson[key] = arg; }, val);
@@ -482,10 +674,8 @@ Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry
         }
         wires.push_back(wire);
       }
-
       buses.emplace_back(std::move(wires));
     }
-
     return buses;
   };
 
@@ -519,9 +709,8 @@ Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry
       if (auto props_it = compJson.find("properties");
           props_it != compJson.end() && props_it->is_object()) {
         for (const auto& [key, val] : props_it->items()) {
-          if (!cPtr->getProperty(key).has_value()) {
+          if (!cPtr->getProperty(key).has_value())
             continue;
-          }
 
           PropertyValue propValue;
           if (val.is_string()) {
@@ -542,8 +731,6 @@ Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry
   }
 
   Circuit result(componentList | std::ranges::to<Component_set>(), true);
-
-  // Transfer ownership
   result.ownedComponents = std::move(componentList);
   result.ownedWires      = wireMap | std::views::values | std::ranges::to<std::vector>();
 
@@ -551,5 +738,6 @@ Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry
     result.name = it->get<std::string>();
   }
 
+  result.buildTopologyMap();
   return result;
 }

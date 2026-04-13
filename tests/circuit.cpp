@@ -22,6 +22,7 @@
 #include <core/gates.hpp>
 #include <core/serialization/component_registration.hpp>
 #include <core/serialization/component_registry.hpp>
+#include <core/simulator.hpp>
 #include <extraComponents/arithmetic.hpp>
 #include <nlohmann/json.hpp>
 
@@ -41,7 +42,7 @@ TEST(CircuitTest, SingleGateInputsOutputs)
 
   auto g = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, o);
 
-  Circuit c(Component_weakPtr(g), false);
+  Circuit c(g, false);
 
   auto inputs  = c.getInputs();
   auto outputs = c.getOutputs();
@@ -64,8 +65,8 @@ TEST(CircuitTest, TwoGatesInternalWire)
   auto g2 = std::make_shared<NotGate>(mid, o);
 
   Component_set comps;
-  comps.insert(Component_weakPtr(g1));
-  comps.insert(Component_weakPtr(g2));
+  comps.insert(g1);
+  comps.insert(g2);
 
   Circuit c(comps, false);
 
@@ -94,8 +95,8 @@ TEST(CircuitTest, GetComponentsForBus)
   auto busMid = Bus({mid});
 
   Component_set comps;
-  comps.insert(Component_weakPtr(g1));
-  comps.insert(Component_weakPtr(g2));
+  comps.insert(g1);
+  comps.insert(g2);
 
   Circuit c(comps, false);
 
@@ -106,26 +107,6 @@ TEST(CircuitTest, GetComponentsForBus)
   EXPECT_EQ(aComponents.size(), 1);
 }
 
-TEST(CircuitTest, BusValuePropagation)
-{
-  auto a = std::make_shared<Wire>(State::LOW);
-  auto b = std::make_shared<Wire>(State::LOW);
-  auto o = std::make_shared<Wire>();
-
-  auto g = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, o);
-
-  Circuit c(Component_weakPtr(g), false);
-
-  EXPECT_EQ(o->getCurrentState(), State::LOW);
-
-  a->forceSetCurrentState(State::HIGH);
-  b->forceSetCurrentState(State::HIGH);
-  EXPECT_EQ(o->getCurrentState(), State::HIGH);
-
-  a->forceSetCurrentState(State::LOW);
-  EXPECT_EQ(o->getCurrentState(), State::LOW);
-}
-
 TEST(CircuitTest, NotGateSingleInputOutput)
 {
   auto a = std::make_shared<Wire>(State::HIGH);
@@ -133,7 +114,7 @@ TEST(CircuitTest, NotGateSingleInputOutput)
 
   auto g = std::make_shared<NotGate>(a, o);
 
-  Circuit c(Component_weakPtr(g), false);
+  Circuit c(g, false);
 
   auto inputs  = c.getInputs();
   auto outputs = c.getOutputs();
@@ -152,7 +133,7 @@ TEST(CircuitTest, ChangeInputsAfterConstruction)
 
   auto g = std::make_shared<AndGate>(std::vector<Wire_ptr>{a1, a2}, o);
 
-  Circuit c(Component_weakPtr(g), false);
+  Circuit c(g, false);
 
   EXPECT_EQ(c.getInputs().size(), 2);
   EXPECT_EQ(c.getInputs()[0], Bus({a1}));
@@ -178,7 +159,7 @@ TEST(CircuitTest, ChangeOutputAfterConstruction)
 
   auto g = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, o1);
 
-  Circuit c(Component_weakPtr(g), false);
+  Circuit c(g, false);
 
   EXPECT_EQ(c.getOutputs().size(), 1);
   EXPECT_EQ(c.getOutputs()[0], Bus({o1}));
@@ -199,7 +180,7 @@ TEST(CircuitTest, AddComponentToCircuit)
   auto g = std::make_shared<NotGate>(a, o);
 
   Component_set comps;
-  comps.insert(Component_weakPtr(g));
+  comps.insert(g);
 
   Circuit c(comps, false);
 
@@ -209,7 +190,7 @@ TEST(CircuitTest, AddComponentToCircuit)
   auto c2 = std::make_shared<Wire>();
   auto g2 = std::make_shared<NotGate>(o, c2);
 
-  c.addComponent(Component_weakPtr(g2));
+  c.addComponent(g2);
 
   auto inputs  = c.getInputs();
   auto outputs = c.getOutputs();
@@ -236,12 +217,13 @@ TEST(CircuitTest, MultiWireBus)
     {
     }
     std::string_view typeName() const override { return "TestComponent"; }
+    void             simulate(Simulator& sim) override {}
   };
 
   auto g = std::make_shared<TestComponent>(std::vector<Bus>{inputBus},
                                            std::vector<Bus>{outputBus});
 
-  Circuit c(Component_weakPtr(g), false);
+  Circuit c(g, false);
 
   auto inputs  = c.getInputs();
   auto outputs = c.getOutputs();
@@ -267,8 +249,8 @@ TEST(CircuitTest, GetSubgraphFanIn)
   auto g2 = std::make_shared<NotGate>(mid, o);
 
   Component_set comps;
-  comps.insert(Component_weakPtr(g1));
-  comps.insert(Component_weakPtr(g2));
+  comps.insert(g1);
+  comps.insert(g2);
 
   Circuit c(comps, false);
 
@@ -298,9 +280,9 @@ TEST(CircuitTest, GetSubgraphFanInThreeLevels)
   auto and2 = std::make_shared<AndGate>(std::vector<Wire_ptr>{y, c}, o);
 
   Component_set comps;
-  comps.insert(Component_weakPtr(not1));
-  comps.insert(Component_weakPtr(and1));
-  comps.insert(Component_weakPtr(and2));
+  comps.insert(not1);
+  comps.insert(and1);
+  comps.insert(and2);
 
   Circuit circuit(comps, false);
 
@@ -333,9 +315,9 @@ TEST(CircuitTest, GetSubgraphPartialFanIn)
   auto and2 = std::make_shared<AndGate>(std::vector<Wire_ptr>{y, c}, o);
 
   Component_set comps;
-  comps.insert(Component_weakPtr(not1));
-  comps.insert(Component_weakPtr(and1));
-  comps.insert(Component_weakPtr(and2));
+  comps.insert(not1);
+  comps.insert(and1);
+  comps.insert(and2);
 
   Circuit circuit(comps, false);
 
@@ -362,8 +344,8 @@ TEST(CircuitTest, GetForwardSubgraphFanOut)
   auto and1 = std::make_shared<AndGate>(std::vector<Wire_ptr>{x, b}, o);
 
   Component_set comps;
-  comps.insert(Component_weakPtr(not1));
-  comps.insert(Component_weakPtr(and1));
+  comps.insert(not1);
+  comps.insert(and1);
 
   Circuit c(comps, false);
 
@@ -390,8 +372,8 @@ TEST(CircuitTest, GetForwardSubgraphPartial)
   auto and1 = std::make_shared<AndGate>(std::vector<Wire_ptr>{x, b}, o);
 
   Component_set comps;
-  comps.insert(Component_weakPtr(not1));
-  comps.insert(Component_weakPtr(and1));
+  comps.insert(not1);
+  comps.insert(and1);
 
   Circuit c(comps, false);
 
@@ -413,7 +395,7 @@ TEST(CircuitTest, TopologicalOrderSingleGate)
 
   auto g = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, o);
 
-  Circuit c(Component_weakPtr(g), false);
+  Circuit c(g, false);
 
   auto order = c.topologicalOrder();
   EXPECT_EQ(order.size(), 1);
@@ -433,8 +415,8 @@ TEST(CircuitTest, TopologicalOrderTwoGates)
   auto g2 = std::make_shared<NotGate>(mid, o);
 
   Component_set comps;
-  comps.insert(Component_weakPtr(g1));
-  comps.insert(Component_weakPtr(g2));
+  comps.insert(g1);
+  comps.insert(g2);
 
   Circuit c(comps, false);
 
@@ -458,7 +440,7 @@ TEST(CircuitTest, GetGraphNotEmpty)
 
   auto g = std::make_shared<NotGate>(a, o);
 
-  Circuit c(Component_weakPtr(g), false);
+  Circuit c(g, false);
 
   EXPECT_GT(boost::num_vertices(c.getGraph()), 0);
 }
@@ -475,8 +457,8 @@ TEST(CircuitTest, SplitDagAndNonDagPureDag)
   auto g2 = std::make_shared<NotGate>(mid, o);
 
   Component_set comps;
-  comps.insert(Component_weakPtr(g1));
-  comps.insert(Component_weakPtr(g2));
+  comps.insert(g1);
+  comps.insert(g2);
 
   Circuit c(comps, false);
 
@@ -503,8 +485,8 @@ TEST(CircuitTest, SplitDagAndNonDagWithCycle)
   auto g2 = std::make_shared<NotGate>(w2, w1);
 
   Component_set comps;
-  comps.insert(Component_weakPtr(g1));
-  comps.insert(Component_weakPtr(g2));
+  comps.insert(g1);
+  comps.insert(g2);
 
   Circuit c(comps, false);
 
@@ -533,10 +515,10 @@ TEST(CircuitTest, SplitDagAndNonDagMixed)
   auto g4 = std::make_shared<NotGate>(z, y);  // feeds back to y → cycle
 
   Component_set comps;
-  comps.insert(Component_weakPtr(g1));
-  comps.insert(Component_weakPtr(g2));
-  comps.insert(Component_weakPtr(g3));
-  comps.insert(Component_weakPtr(g4));
+  comps.insert(g1);
+  comps.insert(g2);
+  comps.insert(g3);
+  comps.insert(g4);
 
   Circuit c(comps, false);
 
@@ -582,7 +564,7 @@ TEST(CircuitTest, SerializeSingleGate)
 
   auto g = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, o);
 
-  Circuit c(Component_weakPtr(g), false);
+  Circuit c(g, false);
 
   auto serialized = c.serialize();
   auto json       = nlohmann::json::parse(serialized);
@@ -612,12 +594,12 @@ TEST(CircuitTest, SerializeAllGateTypes)
   auto xorg  = std::make_shared<XorGate>(std::array<Wire_ptr, 2>{in1, in2}, out6);
 
   Component_set comps;
-  comps.insert(Component_weakPtr(andg));
-  comps.insert(Component_weakPtr(org));
-  comps.insert(Component_weakPtr(notg));
-  comps.insert(Component_weakPtr(nandg));
-  comps.insert(Component_weakPtr(norg));
-  comps.insert(Component_weakPtr(xorg));
+  comps.insert(andg);
+  comps.insert(org);
+  comps.insert(notg);
+  comps.insert(nandg);
+  comps.insert(norg);
+  comps.insert(xorg);
 
   Circuit c(comps, false);
 
@@ -654,12 +636,13 @@ TEST(CircuitTest, SerializeMultiWireBus)
     {
     }
     std::string_view typeName() const override { return "MultiBusComponent"; }
+    void             simulate(Simulator& sim) override {}
   };
 
   auto g = std::make_shared<TestComponent>(std::vector<Bus>{inputBus},
                                            std::vector<Bus>{outputBus});
 
-  Circuit c(Component_weakPtr(g), false);
+  Circuit c(g, false);
 
   auto serialized = c.serialize();
   auto json       = nlohmann::json::parse(serialized);
@@ -682,7 +665,7 @@ TEST(CircuitTest, SerializeWireIdsAreValid)
 
   auto g = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, o);
 
-  Circuit c(Component_weakPtr(g), false);
+  Circuit c(g, false);
 
   auto serialized = c.serialize();
   auto json       = nlohmann::json::parse(serialized);
@@ -723,11 +706,11 @@ TEST(CircuitTest, SerializeComplexCircuit)
   auto o1 = std::make_shared<OrGate>(std::vector<Wire_ptr>{w4, i3}, out);
 
   Component_set comps;
-  comps.insert(Component_weakPtr(n1));
-  comps.insert(Component_weakPtr(n2));
-  comps.insert(Component_weakPtr(a1));
-  comps.insert(Component_weakPtr(n3));
-  comps.insert(Component_weakPtr(o1));
+  comps.insert(n1);
+  comps.insert(n2);
+  comps.insert(a1);
+  comps.insert(n3);
+  comps.insert(o1);
 
   Circuit c(comps, false);
 
@@ -764,7 +747,7 @@ TEST(CircuitTest, DeserializeSingleGate)
 
   auto g = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, o);
 
-  Circuit original(Component_weakPtr(g), false);
+  Circuit original(g, false);
   auto    serialized = original.serialize();
 
   auto deserialized = Circuit::deserialize(serialized, registry);
@@ -784,7 +767,7 @@ TEST(CircuitTest, DeserializePreservesWireIds)
 
   auto g = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, o);
 
-  Circuit original(Component_weakPtr(g), false);
+  Circuit original(g, false);
   auto    serialized = original.serialize();
 
   auto deserialized = Circuit::deserialize(serialized, registry);
@@ -814,11 +797,11 @@ TEST(CircuitTest, DeserializeComplexCircuit)
   auto o1 = std::make_shared<OrGate>(std::vector<Wire_ptr>{w4, i3}, out);
 
   Component_set comps;
-  comps.insert(Component_weakPtr(n1));
-  comps.insert(Component_weakPtr(n2));
-  comps.insert(Component_weakPtr(a1));
-  comps.insert(Component_weakPtr(n3));
-  comps.insert(Component_weakPtr(o1));
+  comps.insert(n1);
+  comps.insert(n2);
+  comps.insert(a1);
+  comps.insert(n3);
+  comps.insert(o1);
 
   Circuit original(comps, false);
   auto    serialized = original.serialize();
@@ -851,12 +834,12 @@ TEST(CircuitTest, DeserializeAllGateTypes)
   auto xorg  = std::make_shared<XorGate>(std::array<Wire_ptr, 2>{in1, in2}, out6);
 
   Component_set comps;
-  comps.insert(Component_weakPtr(andg));
-  comps.insert(Component_weakPtr(org));
-  comps.insert(Component_weakPtr(notg));
-  comps.insert(Component_weakPtr(nandg));
-  comps.insert(Component_weakPtr(norg));
-  comps.insert(Component_weakPtr(xorg));
+  comps.insert(andg);
+  comps.insert(org);
+  comps.insert(notg);
+  comps.insert(nandg);
+  comps.insert(norg);
+  comps.insert(xorg);
 
   Circuit original(comps, false);
   auto    serialized = original.serialize();
@@ -881,8 +864,8 @@ TEST(CircuitTest, DeserializeMultiWireBus)
   auto andg2 = std::make_shared<AndGate>(std::vector<Wire_ptr>{in1, in2}, out2);
 
   Component_set comps;
-  comps.insert(Component_weakPtr(andg1));
-  comps.insert(Component_weakPtr(andg2));
+  comps.insert(andg1);
+  comps.insert(andg2);
 
   Circuit original(comps, false);
   auto    serialized = original.serialize();
@@ -916,7 +899,7 @@ TEST(CircuitTest, DeserializeHalfAdder)
 
   auto ha = std::make_shared<HalfAdder>(std::array<Wire_ptr, 2>{a, b}, sum, cout);
 
-  Circuit original(Component_weakPtr(ha), false);
+  Circuit original(ha, false);
   auto    serialized = original.serialize();
 
   auto deserialized = Circuit::deserialize(serialized, registry);
@@ -939,8 +922,8 @@ TEST(CircuitTest, DeserializeAndNotGates)
   auto notg = std::make_shared<NotGate>(mid, out);
 
   Component_set comps;
-  comps.insert(Component_weakPtr(andg));
-  comps.insert(Component_weakPtr(notg));
+  comps.insert(andg);
+  comps.insert(notg);
 
   Circuit original(comps, false);
   auto    serialized = original.serialize();
@@ -959,7 +942,7 @@ TEST(CircuitTest, SerializeIncludesProperties)
   auto g = std::make_shared<NotGate>(a, o);
   g->setProperty("delay", 2);
 
-  Circuit c(Component_weakPtr(g), false);
+  Circuit c(g, false);
 
   auto serialized = c.serialize();
   auto json       = nlohmann::json::parse(serialized);

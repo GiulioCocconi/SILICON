@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2025 Giulio Cocconi
+  Copyright (C) 2026 Giulio Cocconi
 
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -26,7 +26,6 @@
 
 class Gate : public Component {
 public:
-  using Component::setAction;
   Gate(const std::vector<Wire_ptr>& inputs, Wire_ptr output);
   Gate() = default;
 };
@@ -34,59 +33,59 @@ public:
 class AndGate : public Gate {
 public:
   static constexpr std::string_view Type = "AndGate";
-
   std::string_view typeName() const override { return Type; }
 
   AndGate() = default;
   AndGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output);
+  void simulate(Simulator& sim) override;
 };
 
 class OrGate : public Gate {
 public:
   static constexpr std::string_view Type = "OrGate";
-
   std::string_view typeName() const override { return Type; }
 
   OrGate() = default;
   OrGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output);
+  void simulate(Simulator& sim) override;
 };
 
 class NotGate : public Gate {
 public:
   static constexpr std::string_view Type = "NotGate";
-
   std::string_view typeName() const override { return Type; }
 
   NotGate() = default;
   NotGate(Wire_ptr input, Wire_ptr output);
+  void simulate(Simulator& sim) override;
 };
 
 class NandGate : public Gate {
 public:
   static constexpr std::string_view Type = "NandGate";
-
   std::string_view typeName() const override { return Type; }
 
   NandGate() = default;
   NandGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output);
+  void simulate(Simulator& sim) override;
 };
 
 class NorGate : public Gate {
 public:
   static constexpr std::string_view Type = "NorGate";
-
   std::string_view typeName() const override { return Type; }
 
   NorGate() = default;
   NorGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output);
+  void simulate(Simulator& sim) override;
 };
 
 class XorGate : public Gate {
 public:
   static constexpr std::string_view Type = "XorGate";
-
   std::string_view typeName() const override { return Type; }
 
   XorGate() = default;
   XorGate(const std::array<Wire_ptr, 2>& inputs, Wire_ptr output);
+  void simulate(Simulator& sim) override;
 };
