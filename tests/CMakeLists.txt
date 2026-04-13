@@ -25,22 +25,27 @@ add_executable(factory_tests factory.cpp)
 
 target_sources(logic_tests
         PRIVATE
+        ${src_dir}/extraComponents/arithmetic.cpp
+        ${src_dir}/extraComponents/utils.cpp
         ${COMMON_SOURCE_FILES})
 
 
 target_sources(arithmetic_tests
         PRIVATE
         ${src_dir}/extraComponents/arithmetic.cpp
+        ${src_dir}/extraComponents/utils.cpp
         ${COMMON_SOURCE_FILES})
 
 target_sources(utils_tests
         PRIVATE
+        ${src_dir}/extraComponents/arithmetic.cpp
         ${src_dir}/extraComponents/utils.cpp
         ${COMMON_SOURCE_FILES})
 
 target_sources(circuit_tests
         PRIVATE
         ${src_dir}/extraComponents/arithmetic.cpp
+        ${src_dir}/extraComponents/utils.cpp
         ${COMMON_SOURCE_FILES})
 
 target_sources(factory_tests
@@ -51,6 +56,8 @@ target_sources(factory_tests
 
 target_sources(libfst_tests
         PRIVATE
+        ${src_dir}/extraComponents/arithmetic.cpp
+        ${src_dir}/extraComponents/utils.cpp
         ${COMMON_SOURCE_FILES})
 
 foreach (target logic_tests arithmetic_tests utils_tests libfst_tests circuit_tests factory_tests)

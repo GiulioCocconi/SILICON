@@ -16,37 +16,39 @@
 */
 
 #include "arithmetic.hpp"
-
-#include <core/serialization/component_registry.hpp>
-
+#include <core/simulator.hpp>
 #include <stdexcept>
 
 HalfAdder::HalfAdder(std::array<Wire_ptr, 2> inputs, Wire_ptr sum, Wire_ptr cout)
   : Component({{inputs[0]}, {inputs[1]}}, {{sum}, {cout}})
 {
-  /* PIN MAP:
+
+ /* PIN MAP:
      a    = inputs [0][0];
      b    = inputs [1][0];
      sum  = outputs[0][0];
      cout = outputs[1][0];
   */
 
-  this->setAction([this] {
-    State cout =
-        this->inputs[0][0]->getCurrentState() && this->inputs[1][0]->getCurrentState();
+  defineProperty("delay", 2);
+}
 
-    State sum =
-        this->inputs[0][0]->getCurrentState() ^ this->inputs[1][0]->getCurrentState();
+void HalfAdder::simulate(Simulator& sim)
+{
+  State a = Wire::safeGetCurrentState(this->inputs[0][0]);
+  State b = Wire::safeGetCurrentState(this->inputs[1][0]);
 
-    this->outputs[0][0]->setCurrentState(sum, weak_from_this());
-    this->outputs[1][0]->setCurrentState(cout, weak_from_this());
-  });
+  sim.updateWire(this->outputs[0][0], a ^ b, getPropertyValue<int>("delay").value_or(0),
+                 weak_from_this());
+  sim.updateWire(this->outputs[1][0], a && b, getPropertyValue<int>("delay").value_or(0),
+                 weak_from_this());
 }
 
 FullAdder::FullAdder(std::array<Wire_ptr, 2> inputs, Wire_ptr cin, Wire_ptr sum,
                      Wire_ptr cout)
   : Component({{inputs[0]}, {inputs[1]}, {cin}}, {{sum}, {cout}})
 {
+
   /* PIN MAP:
      a    = inputs [0][0];
      b    = inputs [1][0];
@@ -54,27 +56,27 @@ FullAdder::FullAdder(std::array<Wire_ptr, 2> inputs, Wire_ptr cin, Wire_ptr sum,
      sum  = outputs[0][0];
      cout = outputs[1][0]; */
 
-  this->setAction([this] {
-    auto partialSum1   = std::make_shared<Wire>();
-    auto partialCarry1 = std::make_shared<Wire>();
-    auto partialCarry2 = std::make_shared<Wire>();
+  defineProperty("delay", 3);
+}
 
-    auto h1 = std::make_shared<HalfAdder>(
-        std::array<Wire_ptr, 2>{this->inputs[0][0], this->inputs[1][0]}, partialSum1,
-        partialCarry1);
+void FullAdder::simulate(Simulator& sim)
+{
+  State a   = Wire::safeGetCurrentState(this->inputs[0][0]);
+  State b   = Wire::safeGetCurrentState(this->inputs[1][0]);
+  State cin = Wire::safeGetCurrentState(this->inputs[2][0]);
 
-    auto h2 = std::make_shared<HalfAdder>(
-        std::array<Wire_ptr, 2>{partialSum1, this->inputs[2][0]}, this->outputs[0][0],
-        partialCarry2);
+  State sum  = a ^ b ^ cin;
+  State cout = (a && b) || (cin && (a ^ b));
 
-    auto og = std::make_shared<OrGate>(
-        std::vector<Wire_ptr>{partialCarry1, partialCarry2}, this->outputs[1][0]);
-  });
+  int delay = getPropertyValue<int>("delay").value_or(0);
+  sim.updateWire(this->outputs[0][0], sum, delay, weak_from_this());
+  sim.updateWire(this->outputs[1][0], cout, delay, weak_from_this());
 }
 
 AdderNBits::AdderNBits(std::array<Bus, 2> inputs, Bus sum, Wire_ptr cout)
   : Component({inputs[0], inputs[1]}, {sum, {cout}})
 {
+
   /* PIN MAP:
      a    = inputs [0][0:N];
      b    = inputs [1][0:N];
@@ -85,12 +87,39 @@ AdderNBits::AdderNBits(std::array<Bus, 2> inputs, Bus sum, Wire_ptr cout)
   if (inputs[0].size() != sum.size())
     throw std::invalid_argument("AdderNBits: input bus width must match sum bus width");
 
-  this->setAction([this] {
-    int a = this->inputs[0].getCurrentValue();
-    int b = this->inputs[1].getCurrentValue();
+  defineProperty("delay", 5);
+}
 
-    int overflow = this->outputs[0].setCurrentValue(a + b, weak_from_this());
+void AdderNBits::simulate(Simulator& sim)
+{
+  int delay = getPropertyValue<int>("delay").value_or(0);
 
-    this->outputs[1].setCurrentValue(overflow, weak_from_this());
-  });
+  try {
+    if (this->inputs[0].isInErrorState() || this->inputs[1].isInErrorState()) {
+      throw std::logic_error("Input bus in error state");
+    }
+
+    unsigned int a   = this->inputs[0].getCurrentValue();
+    unsigned int b   = this->inputs[1].getCurrentValue();
+    unsigned int sum = a + b;
+
+    for (unsigned short i = 0; i < this->outputs[0].size(); i++) {
+      if (this->outputs[0][i]) {
+        State s = (sum >> i) & 1 ? State::HIGH : State::LOW;
+        sim.updateWire(this->outputs[0][i], s, delay, weak_from_this());
+      }
+    }
+
+    State overflow = (sum >= (1u << this->outputs[0].size())) ? State::HIGH : State::LOW;
+    sim.updateWire(this->outputs[1][0], overflow, delay, weak_from_this());
+
+  } catch (const std::logic_error&) {
+    for (auto& w : this->outputs[0]) {
+      if (w)
+        sim.updateWire(w, State::ERROR, delay, weak_from_this());
+    }
+    if (this->outputs[1][0]) {
+      sim.updateWire(this->outputs[1][0], State::ERROR, delay, weak_from_this());
+    }
+  }
 }

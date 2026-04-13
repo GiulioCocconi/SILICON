@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2025. Giulio Cocconi
+ Copyright (c) 2026. Giulio Cocconi
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
  */
 
 #include "graphicalIO.hpp"
-
+#include <core/simulator.hpp>
 #include <stdexcept>
 
 GraphicalInput::GraphicalInput(QGraphicsItem* parent)
@@ -68,9 +68,13 @@ void GraphicalInput::setState(State state)
   const QString shapePath =
       (skinState == State::HIGH) ? getOnShapePath() : getOffShapePath();
   setItemShape(new QGraphicsSvgItem(shapePath));
-  this->getComponent()->getOutputs()[0].setCurrentValue(state == State::HIGH,
-                                                        getComponent()->weak_from_this());
+
+  const auto targetWire = this->getComponent()->getOutputs()[0][0];
+  emit inputToggled(targetWire, state, getComponent()->weak_from_this());
 }
+
+
+
 void GraphicalInput::paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
                            QWidget* widget)
 {
@@ -80,6 +84,7 @@ void GraphicalInput::paint(QPainter* painter, const QStyleOptionGraphicsItem* op
 
   GraphicalLogicComponent::paint(painter, option, widget);
 }
+
 void GraphicalInput::showPropertiesDialog()
 {
   nameInput->setText(QString::fromStdString(
@@ -94,6 +99,7 @@ void GraphicalInput::propertiesDialogAccepted()
 
   prepareGeometryChange();
 }
+
 QRectF GraphicalInput::boundingRect() const
 {
   const auto fontHeight = QFontMetrics(font).height();
@@ -107,6 +113,9 @@ State GraphicalInput::getState()
   const int value = this->getComponent()->getOutputs()[0].getCurrentValue();
   return (value == 1) ? State::HIGH : State::LOW;
 }
+
+
+// --- Graphical Output ------------------------------------------------------------------
 
 GraphicalOutputSingle::GraphicalOutputSingle(QGraphicsItem* parent)
   : GraphicalLogicComponent(std::make_shared<DummyOutputComponent>(Bus(1), "out"),
@@ -128,14 +137,20 @@ void GraphicalOutputSingle::setState(State state)
   setItemShape(new QGraphicsSvgItem(shapePath));
 }
 
+// --- Dummy Output Component ------------------------------------------------------------
+
 DummyOutputComponent::DummyOutputComponent(Bus bus, std::string name)
-  : Component({bus}, {})
+  : Component({std::move(bus)}, {})
 {
   defineProperty("name", std::move(name));
-  this->setAction([this] {
-    if (this->skin)
-      this->skin->setState(this->inputs[0][0]->getCurrentState());
-  });
+}
+
+void DummyOutputComponent::simulate(Simulator& /*sim*/)
+{
+  if (this->skin) {
+    State s = Wire::safeGetCurrentState(this->inputs[0][0]);
+    this->skin->setState(s);
+  }
 }
 
 void DummyOutputComponent::setSkin(GraphicalOutputSingle* skin)

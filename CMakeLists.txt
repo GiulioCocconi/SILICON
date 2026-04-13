@@ -64,6 +64,7 @@ set(COMMON_SOURCE_FILES
         ${src_dir}/core/gates.cpp
         ${src_dir}/core/component.cpp
         ${src_dir}/core/circuit.cpp
+        ${src_dir}/core/simulator.cpp
         ${src_dir}/core/serialization/component_registry.cpp
         ${src_dir}/core/serialization/component_registration.cpp)
 

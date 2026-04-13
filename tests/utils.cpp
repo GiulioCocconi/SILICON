@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2025. Giulio Cocconi
+ Copyright (c) 2026. Giulio Cocconi
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -14,11 +14,12 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
- */
+*/
 
 #include "tests.hpp"
-
 #include <extraComponents/utils.hpp>
+#include <core/circuit.hpp>
+#include <core/simulator.hpp>
 
 TEST(UtilsTest, WireMergerCase)
 {
@@ -28,7 +29,12 @@ TEST(UtilsTest, WireMergerCase)
   auto bus = Bus(2);
 
   auto wm = std::make_shared<WireMerger>(std::vector<Bus>{{a}, {b}}, bus);
-  a->forceSetCurrentState(State::HIGH);
+  auto circ = std::make_shared<Circuit>(Component_set{wm});
+  Simulator sim(circ);
+  sim.run(20);
+
+  sim.setBus(Bus{a}, 1);
+  sim.run(20);
 
   EXPECT_EQ(bus.getCurrentValue(), 3);
 }
@@ -39,9 +45,14 @@ TEST(UtilsTest, WireSplitterCase)
   auto b = std::make_shared<Wire>();
 
   auto bus = Bus(2);
-  bus.forceSetCurrentValue(2);
 
   auto ws = std::make_shared<WireSplitter>(bus, std::vector<Bus>{{a}, {b}});
+  auto circ = std::make_shared<Circuit>(Component_set{ws});
+  Simulator sim(circ);
+
+  sim.setBus(bus, 2); // 0b10 sets 'b' to HIGH and 'a' to LOW
+  sim.run(20);
+
   EXPECT_EQ(a->getCurrentState(), State::LOW);
   EXPECT_EQ(b->getCurrentState(), State::HIGH);
 }

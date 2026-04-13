@@ -21,6 +21,8 @@
 #include <QLabel>
 #include <stdexcept>
 
+#include <utils/ranges_wrapper.hpp>
+
 GraphicalComponent::GraphicalComponent(QGraphicsItem* shape, QGraphicsItem* parent,
                                        bool scanShape)
   : GraphicalItem(parent)
