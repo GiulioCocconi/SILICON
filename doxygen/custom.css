@@ -1,0 +1,131 @@
+@import url('https://fonts.googleapis.com/css2?family=Chango&family=Nova+Mono&family=Quicksand:wght@300..700&display=swap');
+
+#top {
+    background-color: var(--side-nav-background) !important;
+
+    border-radius: 16px !important;
+    margin: 12px 12px 0 12px !important;
+    width: calc(100% - 24px) !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    border-bottom: none !important;
+}
+
+.sm-dox ul {
+    /* Match the background of the top navbar and nav-tree */
+    background-color: var(--side-nav-background) !important;
+    background: var(--side-nav-background) !important;
+
+    /* Make the dropdowns look like matching floating cards */
+    border-radius: 12px !important;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1) !important;
+    border: none !important;
+
+    /* Add a little breathing room inside the dropdown */
+    padding: 6px !important;
+}
+
+/* Remove the little triangle pointing up from the dropdown menus */
+.sm-dox ul::before,
+.sm-dox ul::after {
+    display: none !important;
+}
+
+/* Ensure the main content doesn't tuck under the new floating navbar */
+#side-nav, #doc-content {
+    padding-top: 12px;
+}
+
+/* 1. Make the outer container an invisible wrapper to create spacing */
+#side-nav {
+    background-color: transparent !important;
+    border: none !important;
+    padding: 12px !important;
+    box-sizing: border-box !important;
+}
+
+/* 2. Make the inner scrolling tree the actual "floating card" */
+#nav-tree {
+    background-color: var(--side-nav-background) !important;
+    border-radius: 16px !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
+    height: 100% !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+}
+
+/* 3. Hide the draggable splitbar line so it blends perfectly */
+#splitbar {
+    background-color: transparent !important;
+    border: none !important;
+}
+
+#page-nav {
+    background-color: var(--side-nav-background) !important;
+    border-radius: 16px !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
+    border: none !important;
+    margin: 12px !important;
+    padding: 16px !important;
+    box-sizing: border-box !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+}
+
+
+#page-nav ul.page-outline .vis {
+    background: var(--side-nav-background) !important;
+}
+
+/* Optional: Remove any default borders from headers inside the page-nav */
+#page-nav h3,
+#page-nav .toc-title {
+    border-bottom: none !important;
+}
+
+span.mlabel {
+    font-size: 10pt !important;
+}
+
+.memitem {
+    background-color: var(--code-background) !important;
+}
+
+.memdoc {
+    background-color: var(--code-background) !important;
+}
+
+h2.groupheader {
+    box-shadow: none !important;
+}
+
+a:link, a:visited, a:hover, a:focus, a:active {
+    font-weight: bold;
+}
+
+
+.title {
+    --font-family: "Chango" !important;
+}
+
+div.header {
+    border-bottom: none !important;
+}
+
+div.qindex {
+    border-bottom: none !important;
+}
+
+html {
+    --page-background-color: #cbe9a2;
+    --fragment-background: var(--code-background);
+    --primary-color: #ff9955;
+    --invariant-color-dark: #9acd32;
+    --primary-dark-color: #c4459a;
+
+    --font-family: "Quicksand";
+    --font-family-monospace: "Nova Mono", monospace;
+
+}
