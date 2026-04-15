@@ -126,11 +126,6 @@ VertexDescriptor Circuit::getOrAddVertex(const Component_ptr& component)
   return v;
 }
 
-// rebuildEdges: Rebuilds directed edges in the graph based on wire connections.
-// A directed edge (u -> v) is added when component u's output bus shares at least one
-// wire with component v's input bus. This creates the dataflow graph used for
-// topological sorting and subgraph extraction.
-
 void Circuit::rebuildEdges(VertexDescriptor v)
 {
   const auto cPtr = graph[v].component;
@@ -176,9 +171,6 @@ void Circuit::rebuildEdges(VertexDescriptor v)
   }
 }
 
-// getComponentIOs: Collects all unique input and output buses from every component
-// in the circuit. Used to determine circuit interface.
-
 std::pair<std::vector<Bus>, std::vector<Bus>> Circuit::getComponentIOs() const
 {
   std::vector<Bus> inputs  = {};
@@ -206,10 +198,6 @@ std::pair<std::vector<Bus>, std::vector<Bus>> Circuit::getComponentIOs() const
 }
 
 // --- Topology Map ----------------------------------------------------------------------
-
-// buildTopologyMap: Builds a reverse mapping from wires to components that use them.
-// This enables O(1) lookup of components connected to a specific wire, used for
-// subgraph extraction and reactive updates.
 
 void Circuit::buildTopologyMap()
 {
@@ -340,9 +328,6 @@ std::vector<Bus> Circuit::getOutputs() const
   return result;
 }
 
-// getComponentsForBus: Finds all components that are connected to a given bus.
-// A component is connected if any of its input or output buses share wires with
-// the target bus.
 Component_set Circuit::getComponentsForBus(Bus b) const
 {
   Component_set connectedComponents;
@@ -382,10 +367,6 @@ Component_set Circuit::getComponentsForBus(Bus b) const
 }
 
 // --- Wire Reactivity & Cone Subgraphs --------------------------------------------------
-
-// getBackwardsSubgraph: Extracts the cone of influence (COI) for a target output bus.
-// Returns a new Circuit containing all components that can affect the target bus
-// through dataflow dependencies (reading from sources that eventually drive the target).
 
 Circuit Circuit::getBackwardsSubgraph(const Bus& targetOutput) const
 {
@@ -438,10 +419,6 @@ Circuit Circuit::getBackwardsSubgraph(const Bus& targetOutput) const
   return Circuit(coiComponents, false);
 }
 
-// getForwardSubgraph: Extracts the forward cone of influence for a source input bus.
-// Returns a new Circuit containing all components that can be affected by changes to
-// the source bus (directly or indirectly through dataflow).
-
 Circuit Circuit::getForwardSubgraph(const Bus& sourceInput) const
 {
   Component_set                        focComponents;
@@ -485,10 +462,6 @@ Circuit Circuit::getForwardSubgraph(const Bus& sourceInput) const
 
 // --- Execution Blocks -----------------------------------------------------------------
 
-// topologicalOrder: Computes a valid execution order for all components in the circuit.
-// Uses Boost's topological_sort algorithm which requires a DAG (Directed Acyclic Graph).
-//
-// Returns: Vector of components in topological order, or empty if cyclic.
 std::vector<Component_weakPtr> Circuit::topologicalOrder() const
 {
   std::vector<VertexDescriptor> order;
@@ -511,11 +484,6 @@ std::vector<Component_weakPtr> Circuit::topologicalOrder() const
   return result;
 }
 
-// splitCyclic: Splits the circuit into simulation blocks separating cyclic from acyclic
-// parts. This is essential for proper simulation: acyclic parts execute once in
-// topological order, while cyclic parts require iterative delta cycles to converge.
-//
-// Returns: Vector of SimulationBlocks ordered for proper execution.
 std::vector<Circuit::SimulationBlock> Circuit::splitCyclic() const
 {
   const auto n = boost::num_vertices(graph);

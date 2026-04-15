@@ -67,20 +67,6 @@ void Simulator::updateWire(const Wire_ptr& target, State newState, uint64_t dela
   }
 }
 
-// evaluateBlock: Executes all components in a simulation block.
-// Handles two distinct execution modes based on whether the block contains cycles.
-//
-// For acyclic blocks (isCyclic = false):
-// Step 1: Lock all weak component pointers to obtain shared_ptrs.
-// Step 2: Execute each component's simulate() method in the precomputed order.
-//
-// For cyclic blocks (isCyclic = true):
-// Step 1: Collect all components in the cyclic subgraph.
-// Step 2: Iterate up to MAX_DELTA times, executing all components each iteration.
-// Step 3: After each iteration, check if any component changed state
-// (cyclicStateChanged). Step 4: If state stabilized (!cyclicStateChanged), convergence is
-// achieved. Step 5: If MAX_DELTA iterations reached without stability, throw error
-// (unstable loop).
 void Simulator::evaluateBlock(const Circuit::SimulationBlock& block)
 {
   if (!block.isCyclic) {
@@ -113,15 +99,6 @@ void Simulator::evaluateBlock(const Circuit::SimulationBlock& block)
   }
 }
 
-// run: Executes the simulation for a specified duration.
-// Uses an event-driven simulation paradigm with a priority queue sorted by time.
-//
-// Step 1: Calculate the end time (currentTime + duration).
-// Step 2: Process events in chronological order until end time is reached.
-// Step 3: For each time step, extract all events scheduled at that time.
-// Step 4: Apply each event's wire state change if different from current.
-// Step 5: If any wire state changed, re-evaluate all simulation blocks.
-// Step 6: Advance currentTime to endTime when done.
 void Simulator::run(uint64_t duration)
 {
   uint64_t endTime = currentTime + duration;
@@ -153,13 +130,6 @@ void Simulator::run(uint64_t duration)
   currentTime = endTime;
 }
 
-// setBus: Forces a bus to a specific value and propagates the change through the circuit.
-// Optimized for pass-by-value buses (copies the bus).
-//
-// Step 1: Check if bus is in error state or value already matches - early return if so.
-// Step 2: Force-set the bus value (bypassing normal input validation).
-// Step 3: Extract forward subgraph (all components affected by this bus).
-// Step 4: Split into simulation blocks and evaluate each.
 void Simulator::setBus(Bus bus, unsigned int value)
 {
   if (!bus.isInErrorState()) {
@@ -177,11 +147,6 @@ void Simulator::setBus(Bus bus, unsigned int value)
   }
 }
 
-// simulateBus: Propagates changes from a bus through the circuit in reverse direction.
-// Used when the bus value has changed externally and needs to update upstream components.
-//
-// Step 1: Extract backwards subgraph (all components that could affect this bus).
-// Step 2: Split into simulation blocks and evaluate each.
 void Simulator::simulateBus(const Bus& bus)
 {
   Circuit subCircuit = circuit->getBackwardsSubgraph(bus);
