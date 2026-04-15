@@ -24,6 +24,10 @@ on:
       - '.github/workflows/build.yml'
       - 'vcpkg.json'
 
+concurrency:
+  group: build-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   set-label:
     if: github.event_name == 'pull_request'
