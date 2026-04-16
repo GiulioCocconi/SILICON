@@ -38,150 +38,367 @@
 class GraphicalWireSegment;
 class WireManager;
 
-/* --- GraphicalWire ---------------------------------------------------------------------
- * An abstract entity that groups one or more GraphicalWireSegments sharing the same
- * logical bus. It is NOT a QGraphicsItem itself -- it is a plain object managed by the
- * WireManager. It carries the logical Bus and the bus size.
+/**
+ * @class GraphicalWire
+ * @brief Logical wire entity that groups segments sharing the same bus.
+ *
+ * GraphicalWire is an abstract logical entity representing a single logical bus
+ * in the circuit diagram. It manages one or more GraphicalWireSegment objects
+ * that are visually connected and share the same logical Bus and bus size.
+ *
+ * This class is not a QGraphicsItem itself - it is managed by WireManager
+ * and tracks the logical connectivity independent of the visual representation.
+ *
+ * @see GraphicalWireSegment
+ * @see WireManager
  */
-
 class GraphicalWire {
 public:
   GraphicalWire()  = default;
   ~GraphicalWire() = default;
+
+  /**
+   * @brief Constructs a wire with a specified bus size.
+   * @param busSize The number of wires in the bus
+   */
   explicit GraphicalWire(unsigned int busSize);
 
+  /**
+   * @brief Adds a segment to this wire.
+   * @param segment The segment to add
+   */
   void addSegment(GraphicalWireSegment* segment);
+
+  /**
+   * @brief Removes a segment from this wire.
+   * @param segment The segment to remove
+   */
   void removeSegment(GraphicalWireSegment* segment);
 
+  /**
+   * @brief Gets all segments belonging to this wire.
+   * @return Set of segment pointers
+   */
   [[nodiscard]] const std::unordered_set<GraphicalWireSegment*>& getSegments() const
   {
     return segments;
   }
 
+  /** @brief Checks if this wire has no segments.
+   * @return True if empty
+   */
   [[nodiscard]] bool empty() const { return segments.empty(); }
 
+  /**
+   * @brief Sets the logical bus for this wire.
+   * @param bus The bus to set
+   */
   void setBus(Bus bus) { this->bus = bus; }
+
+  /**
+   * @brief Sets the bus size.
+   * @param size The new size
+   */
   void setBusSize(unsigned int size);
 
-  [[nodiscard]] Bus    getBus() const { return bus; }
+  /**
+   * @brief Gets the logical bus.
+   * @return Reference to the bus
+   */
+  [[nodiscard]] Bus getBus() const { return bus; }
+
+  /**
+   * @brief Gets the bus size.
+   * @return Number of wires in the bus
+   */
   [[nodiscard]] size_t getBusSize() const { return bus.size(); }
-  void                 clearBusState();
+
+  /**
+   * @brief Clears the state of all wires in the bus.
+   *
+   * Sets all wires to ERROR state, used during simulation initialization.
+   */
+  void clearBusState();
 
   // --- Topology ------------------------------------------------------------------------
 
-  // Vertices: segment endpoints that are NOT junctions (i.e. free tips).
+  /**
+   * @brief Gets vertices at wire endpoints that are not junctions.
+   *
+   * Returns segment endpoints that are free tips (not connected to
+   * other wires), representing connection points to components.
+   *
+   * @return Vector of endpoint positions in scene coordinates
+   */
   [[nodiscard]] std::vector<QPointF> getVertices() const;
 
-  // Combined shape of all segments (in scene coordinates).
+  /**
+   * @brief Gets the combined shape of all segments.
+   *
+   * @return Painter path in scene coordinates
+   */
   [[nodiscard]] QPainterPath shape() const;
 
-  // --- Color ---------------------------------------------------------------------------
-  QColor        getColor() const;
+  // ---
+
+  /**
+   * @brief Gets the color for this wire based on bus size.
+   * @return QColor for rendering
+   */
+  QColor getColor() const;
+
+  /**
+   * @brief Gets the color for a wire pointer (null-safe).
+   * @param w The wire pointer
+   * @return QColor for rendering
+   */
   static QColor getColor(const GraphicalWire* w);
 
-  void         setManager(WireManager* manager) { this->manager = manager; }
+  /**
+   * @brief Sets the wire manager.
+   * @param manager The manager instance
+   */
+  void setManager(WireManager* manager) { this->manager = manager; }
+
+  /**
+   * @brief Gets the wire manager.
+   * @return Pointer to the manager
+   */
   WireManager* getManager() const { return manager; }
 
 private:
-  Bus                                       bus;
+  /** @brief The logical bus */
+  Bus bus;
+
+  /** @brief Set of segments belonging to this wire */
   std::unordered_set<GraphicalWireSegment*> segments;
-  WireManager*                              manager = nullptr;
+
+  /** @brief Wire manager for this wire */
+  WireManager* manager = nullptr;
 };
 
-/* --- GraphicalWireSegment --------------------------------------------------------------
- * The visible, selectable polyline on the scene. Junctions can only occur at
- * endpoints that collide with other GraphicalWireSegments. Individual points are
- * highlighted in red and can be dragged, causing adjacent points to update.
+/**
+ * @class GraphicalWireSegment
+ * @brief The visible, selectable polyline wire on the diagram scene.
+ *
+ * GraphicalWireSegment is a QGraphicsItem representing a polyline wire
+ * drawn on the diagram. It supports interactive point dragging,
+ * automatic junction detection, and orthogonal (horizontal/vertical)
+ * path maintenance.
+ *
+ * Junctions occur when endpoints collide with other segments.
+ * Individual points can be highlighted and dragged to reshape
+ * the wire while maintaining orthogonality.
+ *
+ * @see GraphicalWire
  */
-
 class GraphicalWireSegment : public GraphicalItem {
 public:
+  /**
+   * @brief Constructs a segment starting at the given point.
+   * @param firstPoint The starting point in local coordinates
+   * @param parent Optional parent graphics item
+   */
   explicit GraphicalWireSegment(QPointF firstPoint, QGraphicsItem* parent = nullptr);
+
+  /** @brief Returns the item type identifier */
   int type() const override { return SiliconTypes::WIRE_SEGMENT; }
 
+  /**
+   * @brief Paints the wire segment.
+   */
   void paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
              QWidget* widget) override;
 
+  /** @brief Gets the shape for hit testing */
   [[nodiscard]] QPainterPath shape() const override;
-  [[nodiscard]] QRectF       boundingRect() const override;
-  [[nodiscard]] QRectF       getCollisionRect() const override { return boundingRect(); }
 
+  /** @brief Gets the bounding rectangle */
+  [[nodiscard]] QRectF boundingRect() const override;
+
+  /** @brief Gets the collision rectangle */
+  [[nodiscard]] QRectF getCollisionRect() const override { return boundingRect(); }
+
+  /**
+   * @brief Checks if a point is on the wire path.
+   * @param point The point to check
+   * @return True if on path
+   */
   bool isPointOnPath(QPointF point) const;
 
+  /**
+   * @brief Confirms the show points as actual wire points.
+   *
+   * Called when the wire drawing is completed, converting
+   * the temporary showPoints into permanent points.
+   */
   void addPoints();
 
-  void                 setShowPoints(const std::vector<QPointF>& showPoints);
+  /**
+   * @brief Sets temporary points shown while drawing.
+   * @param showPoints The points to show
+   */
+  void setShowPoints(const std::vector<QPointF>& showPoints);
+
+  /**
+   * @brief Gets temporary points shown while drawing.
+   * @return Vector of show points
+   */
   std::vector<QPointF> getShowPoints() { return showPoints; }
 
+  /** @brief Gets all points of the segment */
   [[nodiscard]] const std::vector<QPointF>& getPoints() const { return points; }
+
+  /** @brief Gets the last point */
   [[nodiscard]] QPointF lastPoint() const { return points[points.size() - 1]; }
+
+  /** @brief Gets the first point */
   [[nodiscard]] QPointF firstPoint() const { return points[0]; }
+
+  /** @brief Gets the last show point */
   [[nodiscard]] QPointF lastShowPoint() const
   {
     return showPoints[showPoints.size() - 1];
   }
+
+  /** @brief Checks if segment has only one point */
   [[nodiscard]] bool empty() const { return points.size() == 1; }
 
-  // Replace the entire points vector (used by WireManager during aligned merge).
+  /**
+   * @brief Replaces all points at once.
+   *
+   * Used by WireManager during aligned merge operations.
+   *
+   * @param newPoints The new points vector
+   */
   void setPoints(std::vector<QPointF> newPoints);
 
-  // Returns the index of the point closest to `localPos`, or -1 if none is
-  // within the grab radius.
+  /**
+   * @brief Gets the index of the point nearest to localPos.
+   *
+   * @param localPos The position to check
+   * @return Index of nearest point, or -1 if none within grab radius
+   */
   [[nodiscard]] int pointIndexAt(QPointF localPos) const;
 
-  // Move the point at `index` to `newLocalPos`. Adjacent points are adjusted
-  // so that segments remain horizontal/vertical.
+  /**
+   * @brief Moves a point and adjusts adjacent points for orthogonality.
+   *
+   * @param index The point index to move
+   * @param newLocalPos The new position
+   */
   void movePointTo(size_t index, QPointF newLocalPos);
 
+  /** @brief Checks if first endpoint is a junction */
   [[nodiscard]] bool isFirstPointJunction() const { return firstJunction; }
+
+  /** @brief Checks if last endpoint is a junction */
   [[nodiscard]] bool isLastPointJunction() const { return lastJunction; }
-  void               setFirstPointJunction(bool v);
-  void               setLastPointJunction(bool v);
 
+  /** @brief Sets first endpoint junction status */
+  void setFirstPointJunction(bool v);
+
+  /** @brief Sets last endpoint junction status */
+  void setLastPointJunction(bool v);
+
+  /** @brief Gets the logical wire */
   GraphicalWire* getGraphicalWire() const { return graphicalWire; }
-  void           setGraphicalWire(GraphicalWire* graphicalWire);
 
-  // Null out the wire pointer without side-effects. Used only during
-  // WireManager teardown to avoid creating new wires/accessing freed memory.
+  /**
+   * @brief Sets the logical wire, propagating to siblings.
+   * @param graphicalWire The wire to set
+   */
+  void setGraphicalWire(GraphicalWire* graphicalWire);
+
+  /**
+   * @brief Detaches from the logical wire without side effects.
+   *
+   * Used during WireManager teardown to avoid creating
+   * new wires or accessing freed memory.
+   */
   void detachFromWire() { graphicalWire = nullptr; }
 
   ~GraphicalWireSegment() override;
 
+  /**
+   * @brief Checks alignment with another segment.
+   *
+   * @param other The segment to check
+   * @return True if aligned (share an endpoint)
+   */
   [[nodiscard]] bool isAlignedWith(const GraphicalWireSegment* other) const;
 
+  /**
+   * @brief Optimizes the path by removing redundant points.
+   *
+   * Removes collinear points to simplify the wire shape.
+   */
   void optimize();
 
 private:
+  /** @brief The main path */
   QPainterPath path;
+
+  /** @brief The temporary path while drawing */
   QPainterPath showPath;
 
+  /** @brief The segment points */
   std::vector<QPointF> points;
+
+  /** @brief Temporary points while drawing */
   std::vector<QPointF> showPoints;
-  GraphicalWire*       graphicalWire = nullptr;
 
-  // Junction flags for the two endpoints
+  /** @brief The logical wire this segment belongs to */
+  GraphicalWire* graphicalWire = nullptr;
+
+  /** @brief Junction flag for first endpoint */
   bool firstJunction = false;
-  bool lastJunction  = false;
 
-  // Point-drag state
-  int     dragPointIndex = -1;
+  /** @brief Junction flag for last endpoint */
+  bool lastJunction = false;
+
+  /** @brief Currently dragged point index */
+  int dragPointIndex = -1;
+
+  /** @brief Starting position of drag */
   QPointF dragStartPos;
 
-  // Hovered point (for highlight)
+  /** @brief Currently hovered point index */
   int hoveredPointIndex = -1;
 
+  /** @brief Updates the internal path shapes */
   void updatePath();
 
+  /** @brief Handles mouse press for point dragging */
   void mousePressEvent(QGraphicsSceneMouseEvent* event) override;
+
+  /** @brief Handles mouse move for point dragging */
   void mouseMoveEvent(QGraphicsSceneMouseEvent* event) override;
+
+  /** @brief Handles mouse release */
   void mouseReleaseEvent(QGraphicsSceneMouseEvent* event) override;
+
+  /** @brief Handles hover for point highlighting */
   void hoverMoveEvent(QGraphicsSceneHoverEvent* event) override;
 
-  static constexpr int    interval    = 60;
-  static constexpr int    slashLength = 20;
-  static constexpr int    slashAngle  = 135;
-  static constexpr int    boxHeight   = 20;
-  static constexpr int    boxWidth    = interval * 0.6;
+  /** @brief Interval for bus size decorations */
+  static constexpr int interval = 60;
+
+  /** @brief Length of slash decorations */
+  static constexpr int slashLength = 20;
+
+  /** @brief Angle for slash decorations */
+  static constexpr int slashAngle = 135;
+
+  /** @brief Height of bus size label box */
+  static constexpr int boxHeight = 20;
+
+  /** @brief Width of bus size label box */
+  static constexpr int boxWidth = interval * 0.6;
+
+  /** @brief Radius of draggable points */
   static constexpr double pointRadius = 4.0;
-  static constexpr double grabRadius  = 8.0;
+
+  /** @brief Grab radius for point selection */
+  static constexpr double grabRadius = 8.0;
 };

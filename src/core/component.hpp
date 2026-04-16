@@ -33,63 +33,186 @@
 
 class Simulator;
 
+/**
+ * @brief Concept to check if a type has a Type static member.
+ *
+ * Used to identify component types during serialization and factory creation.
+ *
+ * @tparam T The type to check
+ */
 template <typename T>
 concept HasType = requires {
   { T::Type } -> std::convertible_to<std::string_view>;
 };
 
-using PropertyValue       = std::variant<int, bool, std::string>;
-using PropertyMap         = std::unordered_map<std::string, PropertyValue>;
-using PropertyCallback    = std::function<PropertyValue(const PropertyValue&)>;
+/**
+ * @brief Variant type for component properties.
+ *
+ * Supports integer, boolean, and string property values.
+ */
+using PropertyValue = std::variant<int, bool, std::string>;
+
+/** @brief Map from property names to their values */
+using PropertyMap = std::unordered_map<std::string, PropertyValue>;
+
+/** @brief Callback function for property validation/transformation */
+using PropertyCallback = std::function<PropertyValue(const PropertyValue&)>;
+
+/** @brief Map from property names to their callback functions */
 using PropertyCallbackMap = std::unordered_map<std::string, PropertyCallback>;
 
+/**
+ * @class Component
+ * @brief Base class for all digital circuit components.
+ *
+ * The Component class represents a fundamental building block in a digital
+ * circuit. It manages input and output buses for data connectivity, maintains
+ * configurable properties, and implements an observer pattern for I/O changes.
+ *
+ * Components operate in a reactive simulation environment where their
+ * simulate() method is called to process inputs and produce outputs.
+ *
+ * @see Circuit
+ * @see Simulator
+ */
 class Component : public std::enable_shared_from_this<Component> {
 public:
+  /**
+   * @brief Callback type for I/O change notifications.
+   *
+   * IOObservers are invoked when the component's input or output buses change,
+   * allowing dependent components or circuits to update accordingly.
+   *
+   * @param component Pointer to the component whose I/O changed
+   */
   using IOObserver = std::function<void(Component*)>;
 
 protected:
+  /** @brief Input buses connected to this component */
   std::vector<Bus> inputs;
+
+  /** @brief Output buses produced by this component */
   std::vector<Bus> outputs;
 
-  PropertyMap         properties;
+  /** @brief Map of configurable properties for this component */
+  PropertyMap properties;
+
+  /** @brief Map of callbacks for property validation/transformation */
   PropertyCallbackMap propertyCallbacks;
 
-  uint64_t                                 nextIoListenerId = 0;
+  /** @brief Counter for generating unique I/O listener IDs */
+  uint64_t nextIoListenerId = 0;
+
+  /** @brief Map of I/O change listeners indexed by ID */
   std::unordered_map<uint64_t, IOObserver> ioListeners;
 
+  /**
+   * @brief Defines a property with a default value and optional callback.
+   *
+   * Used by derived components to declare their configurable properties
+   * during construction.
+   *
+   * @tparam T The property value type
+   * @param key The property name
+   * @param defaultValue The default property value
+   * @param callback Optional callback for value validation/transformation
+   */
   template <typename T>
-  void defineProperty(std::string key, T&& defaultValue, PropertyCallback callback = nullptr) {
+  void defineProperty(std::string key, T&& defaultValue,
+                      PropertyCallback callback = nullptr)
+  {
     if (callback) {
       propertyCallbacks[key] = std::move(callback);
     }
     using Decayed = std::decay_t<T>;
-    if constexpr (std::is_constructible_v<std::string, T> && !std::is_same_v<Decayed, bool>) {
+    if constexpr (std::is_constructible_v<std::string, T>
+                  && !std::is_same_v<Decayed, bool>) {
       properties[key] = std::string(std::forward<T>(defaultValue));
     } else {
       properties[key] = PropertyValue(std::forward<T>(defaultValue));
     }
   }
 
+  /**
+   * @brief Notifies all registered I/O listeners of a change.
+   *
+   * Called when the component's input or output configuration changes,
+   * typically after setInput/setOutput is called.
+   */
   void notifyIOListeners();
 
 public:
   Component() = default;
+
+  /**
+   * @brief Constructs a component with input and output buses.
+   * @param inputs Vector of input buses
+   * @param outputs Vector of output buses
+   */
   Component(std::vector<Bus> inputs, std::vector<Bus> outputs);
+
   virtual ~Component() = default;
 
+  /**
+   * @brief Executes the component's logic.
+   *
+   * Called by the Simulator during circuit evaluation.
+   * Each component implements this to read input bus states and produce
+   * output bus states.
+   *
+   * @param sim The simulator executing this component
+   */
   virtual void simulate(Simulator& sim) = 0;
 
-  void replaceBus(std::vector<Bus>& busCollection, unsigned int index, Bus newBus, bool isInput);
+  /**
+   * @brief Replaces a bus in the input or output collection.
+   *
+   * @param busCollection The collection to modify (inputs or outputs)
+   * @param index The index of the bus to replace
+   * @param newBus The new bus to set
+   * @param isInput True for input collection, false for output
+   */
+  void replaceBus(std::vector<Bus>& busCollection, unsigned int index, Bus newBus,
+                  bool isInput);
 
+  /**
+   * @brief Sets a property value.
+   * @param key The property name
+   * @param value The property value
+   */
   void setProperty(const std::string& key, const PropertyValue& value);
+
+  /**
+   * @brief Gets a property value.
+   * @param key The property name
+   * @return The property value if present
+   */
   [[nodiscard]] std::optional<PropertyValue> getProperty(const std::string& key) const;
+
+  /** @brief Gets all properties.
+   * @return Reference to the property map
+   */
   [[nodiscard]] const PropertyMap& getProperties() const { return properties; }
 
-  template <typename T> void setPropertyValue(const std::string& key, T&& value) {
+  /**
+   * @brief Sets a property value with type deduction.
+   * @tparam T The property value type
+   * @param key The property name
+   * @param value The property value
+   */
+  template <typename T> void setPropertyValue(const std::string& key, T&& value)
+  {
     setProperty(key, PropertyValue(std::forward<T>(value)));
   }
 
-  template <typename T> std::optional<T> getPropertyValue(const std::string& key) const {
+  /**
+   * @brief Gets a property value with type deduction.
+   * @tparam T The expected property type
+   * @param key The property name
+   * @return The property value if present and of correct type
+   */
+  template <typename T> std::optional<T> getPropertyValue(const std::string& key) const
+  {
     auto it = properties.find(key);
     if (it != properties.end()) {
       if (const T* val = std::get_if<T>(&it->second)) {
@@ -99,23 +222,84 @@ public:
     return std::nullopt;
   }
 
+  /**
+   * @brief Sets a callback for property validation/transformation.
+   * @param key The property name
+   * @param callback The callback function
+   */
   void setPropertyCallback(const std::string& key, PropertyCallback callback);
 
+  /**
+   * @brief Sets an input bus at a specific index.
+   * @param index The input index
+   * @param bus The bus to connect
+   */
   void setInput(unsigned int index, const Bus& bus);
+
+  /**
+   * @brief Replaces all input buses.
+   * @param newInputs The new input buses
+   */
   void setInputs(std::vector<Bus>& newInputs);
 
+  /**
+   * @brief Sets an output bus at a specific index.
+   * @param index The output index
+   * @param bus The bus to connect
+   */
   void setOutput(unsigned int index, const Bus& bus);
+
+  /**
+   * @brief Replaces all output buses.
+   * @param newOutputs The new output buses
+   */
   void setOutputs(std::vector<Bus>& newOutputs);
 
+  /**
+   * @brief Checks if this component is connected to a bus.
+   * @param b The bus to check
+   * @return True if connected
+   */
   bool isConnectedTo(const Bus& b) const;
+
+  /**
+   * @brief Clears all wire connections.
+   *
+   * Removes references to all wires in input and output buses,
+   * disconnecting this component from the circuit.
+   */
   void clearWires();
 
+  /**
+   * @brief Gets all input buses.
+   * @return Vector of input buses
+   */
   [[nodiscard]] std::vector<Bus> getInputs() const { return inputs; }
+
+  /**
+   * @brief Gets all output buses.
+   * @return Vector of output buses
+   */
   [[nodiscard]] std::vector<Bus> getOutputs() const { return outputs; }
 
+  /**
+   * @brief Gets the component type name.
+   * @return String view of the type identifier
+   */
   virtual std::string_view typeName() const = 0;
 
   // --- IO Observer Pattern ---
+
+  /**
+   * @brief Adds a listener for I/O changes.
+   * @param cb The callback function
+   * @return Unique ID for later removing the listener
+   */
   uint64_t addIOListener(IOObserver cb);
-  void     removeIOListener(uint64_t id);
+
+  /**
+   * @brief Removes a previously added I/O listener.
+   * @param id The ID returned by addIOListener
+   */
+  void removeIOListener(uint64_t id);
 };

@@ -10,18 +10,28 @@
 
 class ComponentRegistry;
 
+/** @brief Property stored in each vertex of the circuit graph */
 struct VertexProperty {
+  /** @brief The component this vertex represents */
   Component_ptr component;
 };
+
+/** @brief Property stored in each edge of the circuit graph */
 struct EdgeProperty {
+  /** @brief The bus of wires this edge represents */
   Bus bus;
 };
 
+/** @brief Boost graph type representing the circuit topology */
 using CircuitGraph =
     boost::adjacency_list<boost::vecS, boost::vecS, boost::bidirectionalS, VertexProperty,
                           EdgeProperty>;
+
+/** @brief Descriptor type for vertices in the circuit graph */
 using VertexDescriptor = boost::graph_traits<CircuitGraph>::vertex_descriptor;
-using EdgeDescriptor   = boost::graph_traits<CircuitGraph>::edge_descriptor;
+
+/** @brief Descriptor type for edges in the circuit graph */
+using EdgeDescriptor = boost::graph_traits<CircuitGraph>::edge_descriptor;
 
 /**
  * @class Circuit
@@ -46,19 +56,38 @@ public:
   using TopologyObserver = std::function<void()>;
 
 private:
+  /** @brief The Boost graph representing the circuit topology */
   CircuitGraph graph;
-  std::string  name;
 
-  std::unordered_map<const Component*, VertexDescriptor>   componentToVertex;
+  /** @brief Name of the circuit */
+  std::string name;
+
+  /** @brief Maps components to their vertex descriptors in the graph */
+  std::unordered_map<const Component*, VertexDescriptor> componentToVertex;
+
+  /** @brief Maps wire IDs to components that listen to changes on that wire */
   std::unordered_map<uint64_t, std::vector<Component_ptr>> wireListeners;
 
+  /** @brief Components owned by this circuit (for deserialization) */
   std::vector<Component_ptr> ownedComponents;
-  std::vector<Wire_ptr>      ownedWires;
 
-  bool                                           isInteractive          = false;
-  uint64_t                                       nextTopologyListenerId = 0;
+  /** @brief Wires owned by this circuit (for deserialization) */
+  std::vector<Wire_ptr> ownedWires;
+
+  /** @brief Whether interactive mode is enabled for live editing */
+  bool isInteractive = false;
+
+  /** @brief Counter for generating unique topology listener IDs */
+  uint64_t nextTopologyListenerId = 0;
+
+  /** @brief Map of topology listener callbacks indexed by ID */
   std::unordered_map<uint64_t, TopologyObserver> topologyListeners;
 
+  /**
+   * @brief Gets or adds a vertex for a component
+   * @param component The component to get or add
+   * @return The vertex descriptor
+   */
   VertexDescriptor getOrAddVertex(const Component_ptr& component);
 
   /**
@@ -81,6 +110,12 @@ private:
    * @return A pair of vectors: first is input buses, second is output buses
    */
   std::pair<std::vector<Bus>, std::vector<Bus>> getComponentIOs() const;
+
+  /**
+   * @brief Recursively adds a component and all connected components
+   * @param component The component to add
+   * @param newlyAdded Vector to collect newly added vertex descriptors
+   */
   void addComponentRecursive(const Component_ptr&           component,
                              std::vector<VertexDescriptor>& newlyAdded);
 
@@ -88,9 +123,25 @@ public:
   struct SimulationBlock;
 
   Circuit() = default;
+
+  /**
+   * @brief Constructs a circuit from a set of components
+   * @param components The set of components to include
+   * @param explore If true, recursively explore and add connected components
+   */
   explicit Circuit(const Component_set& components, bool explore = false);
+
+  /**
+   * @brief Constructs a circuit from a single component
+   * @param component The root component to add
+   * @param explore If true, recursively explore and add connected components
+   */
   explicit Circuit(const Component_ptr& component, bool explore = true);
 
+  /**
+   * @brief Gets the name of the circuit
+   * @return Reference to the circuit name
+   */
   [[nodiscard]] const std::string& getName() const { return name; }
 
   /**
@@ -217,6 +268,10 @@ public:
    */
   [[nodiscard]] std::vector<Component_weakPtr> topologicalOrder() const;
 
+  /**
+   * @brief Gets the underlying circuit graph
+   * @return Reference to the Boost graph
+   */
   [[nodiscard]] const CircuitGraph& getGraph() const { return graph; }
 
   /**
@@ -230,13 +285,30 @@ public:
    */
   [[nodiscard]] std::vector<SimulationBlock> splitCyclic() const;
 
-  [[nodiscard]] std::string    serialize() const;
+  /**
+   * @brief Serializes the circuit to a JSON string
+   * @return JSON string representation of the circuit
+   */
+  [[nodiscard]] std::string serialize() const;
+
+  /**
+   * @brief Deserializes a circuit from a JSON string
+   * @param jsonStr The JSON string to deserialize
+   * @param reg The component registry to create components
+   * @return The deserialized circuit
+   */
   [[nodiscard]] static Circuit deserialize(const std::string&       jsonStr,
                                            const ComponentRegistry& reg);
 };
 
+/** @brief Represents a block of components for simulation execution */
 struct Circuit::SimulationBlock {
-  bool                           isCyclic;
-  Circuit                        circuit;
+  /** @brief Whether this block contains cyclic dependencies */
+  bool isCyclic;
+
+  /** @brief The sub-circuit containing the components in this block */
+  Circuit circuit;
+
+  /** @brief Pre-computed execution order for acyclic blocks */
   std::vector<Component_weakPtr> executionOrder;
 };

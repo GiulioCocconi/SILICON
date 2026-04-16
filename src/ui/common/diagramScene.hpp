@@ -37,72 +37,177 @@ class GraphicalComponent;
 class GraphicalWireSegment;
 class WireManager;
 
+/**
+ * @class DiagramScene
+ * @brief Graphics scene for the circuit diagram editor.
+ *
+ * DiagramScene extends QGraphicsScene to provide an interactive
+ * circuit diagram editor. It manages component placement,
+ * wire drawing, and various interaction modes for
+ * editing and simulation.
+ *
+ * The scene integrates with WireManager for wire topology
+ * and uses ComponentSearchBox (CSB) for component selection.
+ *
+ * @see GraphicalComponent
+ * @see GraphicalWireSegment
+ * @see WireManager
+ */
 class DiagramScene : public QGraphicsScene {
   Q_OBJECT
 public:
+  /**
+   * @enum InteractionMode
+   * @brief Operating modes for the diagram scene.
+   */
   enum class InteractionMode {
-    NORMAL_MODE,
-    PAN_MODE,
-    WIRE_CREATION_MODE,
-    COMPONENT_PLACING_MODE,
-    SIMULATION_MODE,
+    NORMAL_MODE,            /**< Default editing mode */
+    PAN_MODE,               /**< Panning the view */
+    WIRE_CREATION_MODE,     /**< Drawing a new wire */
+    COMPONENT_PLACING_MODE, /**< Placing a component after selection */
+    SIMULATION_MODE         /**< Interactive simulation */
   };
 
+  /**
+   * @brief Constructs a diagram scene.
+   * @param parent Optional parent object
+   */
   explicit DiagramScene(QObject* parent = nullptr);
 
-  void                          setInteractionMode(InteractionMode mode);
+  /**
+   * @brief Sets the interaction mode.
+   * @param mode The new mode
+   */
+  void setInteractionMode(InteractionMode mode);
+
+  /**
+   * @brief Gets the current interaction mode.
+   * @return Current mode
+   */
   [[nodiscard]] InteractionMode getInteractionMode() const
   {
     return currentInteractionMode;
   }
 
+  /**
+   * @brief Gets the component currently being placed.
+   * @return Pointer to component or nullptr
+   */
   [[nodiscard]] GraphicalComponent* getComponentToBeDrawn() const;
 
+  /**
+   * @brief Shows the component search box at a position.
+   * @param pos Position to show the search box
+   */
   void showCSB(QPointF pos);
 
+  /**
+   * @brief Clears the wire being drawn.
+   */
   void clearWireShadow();
+
+  /**
+   * @brief Shows the component shadow at cursor position.
+   */
   void setComponentShadow();
+
+  /**
+   * @brief Clears the component shadow.
+   */
   void clearComponentShadow();
 
+  /**
+   * @brief Adds a component to the scene.
+   * @param component The component to add
+   * @param pos Position to place the component
+   */
   void addComponent(GraphicalComponent* component, QPointF pos);
 
+  /**
+   * @brief Begins placing a component of the given type.
+   * @param typeName The component type name
+   */
   void placeComponent(std::string typeName);
 
+  /**
+   * @brief Snaps a point to the grid.
+   * @param point The point to snap
+   * @return Snapped point
+   */
   static QPointF snapToGrid(QPointF point);
 
+  /** @brief Grid cell size in scene units */
   static constexpr int GRID_SIZE = 10;
 
   ~DiagramScene() override;
 
 public slots:
+  /**
+   * @brief Hides the component search box.
+   */
   void hideCSB();
 
+  /**
+   * @brief Calculates wire connections for all components.
+   *
+   * Computes the logical bus connections between components
+   * and wires based on spatial collisions.
+   */
   void calculateWiresForComponents() const;
 
 signals:
+  /**
+   * @brief Emitted when the interaction mode changes.
+   * @param mode The new mode
+   */
   void modeChanged(InteractionMode mode);
 
 private:
+  /**
+   * @brief Draws the background grid.
+   */
   void drawBackground(QPainter* painter, const QRectF& rect) override;
 
+  /**
+   * @brief Internal method to set mode with force option.
+   */
   void setInteractionMode(InteractionMode newMode, bool force);
 
+  /**
+   * @brief Handles mouse movement for wire/component dragging.
+   */
   void mouseMoveEvent(QGraphicsSceneMouseEvent* mouseEvent) override;
+
+  /**
+   * @brief Handles mouse press for wire drawing and component placement.
+   */
   void mousePressEvent(QGraphicsSceneMouseEvent* mouseEvent) override;
+
+  /**
+   * @brief Handles key presses for mode changes.
+   */
   void keyPressEvent(QKeyEvent* event) override;
 
+  /** @brief Current interaction mode */
   InteractionMode currentInteractionMode = InteractionMode::NORMAL_MODE;
 
-  // Wire and component shadows to be used in `WIRE_CREATION_MODE` and
-  // `COMPONENT_PLACING_MODE`
-  GraphicalComponent*   componentToBeDrawn   = nullptr;
+  /** @brief Component being placed (shadow) */
+  GraphicalComponent* componentToBeDrawn = nullptr;
+
+  /** @brief Wire segment being drawn */
   GraphicalWireSegment* wireSegmentToBeDrawn = nullptr;
 
+  /** @brief Component search box */
   ComponentSearchBox* csb = nullptr;
 
+  /** @brief Wire manager for wire topology */
   WireManager wireManager;
 
+  /** @brief Last placed component type for repeat placement */
   std::string lastPlacedComponentType;
 };
 
+/**
+ * @brief Alias for DiagramScene::InteractionMode
+ */
 using InteractionMode = DiagramScene::InteractionMode;

@@ -34,36 +34,90 @@ class DiagramScene;
 class GraphicalComponent;
 class GraphicalWireSegment;
 
+/**
+ * @enum CollidingStatus
+ * @brief Collision state of a graphical item.
+ */
 enum CollidingStatus {
-  NOT_COLLIDING,
-  COLLIDING_WITH_COMPONENT,
-  COLLIDING_WITH_PORT,
-  COLLIDING_WITH_WIRE
+  NOT_COLLIDING,            /**< Not colliding with anything */
+  COLLIDING_WITH_COMPONENT, /**< Colliding with another component */
+  COLLIDING_WITH_PORT,      /**< Colliding with a port */
+  COLLIDING_WITH_WIRE       /**< Colliding with a wire */
 };
 
+/**
+ * @class GraphicalItem
+ * @brief Base class for all graphical items in the diagram.
+ *
+ * GraphicalItem extends QGraphicsObject to provide common
+ * functionality for circuit diagram elements including
+ * collision detection, rotation support, and interaction
+ * mode handling.
+ *
+ * @see GraphicalComponent
+ * @see GraphicalWireSegment
+ */
 class GraphicalItem : public QGraphicsObject {
   Q_OBJECT
 public:
   using QGraphicsObject::QGraphicsObject;
 
-  void     setCollidingStatus(CollidingStatus newStatus);
+  /**
+   * @brief Sets the collision status.
+   * @param newStatus The new collision status
+   */
+  void setCollidingStatus(CollidingStatus newStatus);
+
+  /**
+   * @brief Handles item change events.
+   */
   QVariant itemChange(GraphicsItemChange change, const QVariant& value) override;
 
-  [[nodiscard]] int  type() const override { return UNKNOWN; }
+  /** @brief Returns the item type identifier */
+  [[nodiscard]] int type() const override { return UNKNOWN; }
+
+  /**
+   * @brief Checks if the item is colliding.
+   * @return True if colliding
+   */
   [[nodiscard]] bool isColliding() const
   {
     return getCollidingStatus() != NOT_COLLIDING;
   };
 
 public slots:
+  /**
+   * @brief Called when the interaction mode changes.
+   * @param mode The new interaction mode
+   */
   virtual void modeChanged(InteractionMode mode);
 
 protected:
-  [[nodiscard]] virtual QRectF  getCollisionRect() const = 0;
-  [[nodiscard]] virtual bool    canRotate() const { return true; }
-  virtual void                  onPositionChanged(QPointF offset) {}
+  /**
+   * @brief Gets the rectangle used for collision detection.
+   * @return Collision rectangle
+   */
+  [[nodiscard]] virtual QRectF getCollisionRect() const = 0;
+
+  /**
+   * @brief Whether the item can be rotated.
+   * @return True by default
+   */
+  [[nodiscard]] virtual bool canRotate() const { return true; }
+
+  /**
+   * @brief Called when the item position changes.
+   * @param offset The position change offset
+   */
+  virtual void onPositionChanged(QPointF offset) {}
+
+  /**
+   * @brief Gets the current collision status.
+   * @return The collision status
+   */
   [[nodiscard]] CollidingStatus getCollidingStatus() const { return collidingStatus; }
 
 private:
+  /** @brief Current collision status */
   CollidingStatus collidingStatus = NOT_COLLIDING;
 };
