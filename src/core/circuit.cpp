@@ -301,6 +301,30 @@ void Circuit::addComponent(const Component_ptr& component)
   notifyTopologyListeners();
 }
 
+void Circuit::removeComponent(const Component_ptr& component)
+{
+  if (!component)
+    return;
+
+  auto it = componentToVertex.find(component.get());
+  if (it == componentToVertex.end())
+    return;
+
+  VertexDescriptor v = it->second;
+
+  boost::clear_vertex(v, graph);
+  boost::remove_vertex(v, graph);
+
+  componentToVertex.clear();
+
+  for (auto vd : boost::make_iterator_range(vertices(graph))) {
+    componentToVertex[graph[vd].component.get()] = vd;
+  }
+
+  buildTopologyMap();
+  notifyTopologyListeners();
+}
+
 std::vector<Bus> Circuit::getInputs() const
 {
   auto [inputBuses, outputBuses] = getComponentIOs();
