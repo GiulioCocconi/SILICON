@@ -23,6 +23,13 @@ struct EdgeProperty {
 };
 
 /** @brief Boost graph type representing the circuit topology */
+/**
+ * @brief Boost graph type representing the circuit topology.
+ *
+ * @note Uses vecS for vertex storage - vertex descriptors are indices. If vertices
+ * are ever removed, descriptors stored in componentToVertex will be invalidated and
+ * require rebuilding.
+ */
 using CircuitGraph =
     boost::adjacency_list<boost::vecS, boost::vecS, boost::bidirectionalS, VertexProperty,
                           EdgeProperty>;
@@ -160,6 +167,16 @@ public:
    * @param component The component to add
    */
   void addComponent(const Component_ptr& component);
+
+  /**
+   * @brief Removes a component from the circuit.
+   *
+   * Removes the vertex and all incident edges from the graph, and removes the
+   * component from componentToVertex map.
+   *
+   * @param component The component to remove
+   */
+  void removeComponent(const Component_ptr& component);
 
   /**
    * @brief Updates the circuit after a component's I/O has changed.

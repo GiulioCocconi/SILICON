@@ -952,3 +952,102 @@ TEST(CircuitTest, SerializeIncludesProperties)
   EXPECT_TRUE(json["components"][0]["properties"].contains("delay"));
   EXPECT_EQ(json["components"][0]["properties"]["delay"], 2);
 }
+
+TEST(CircuitTest, RemoveComponent)
+{
+  auto a = std::make_shared<Wire>();
+  auto b = std::make_shared<Wire>();
+  auto o = std::make_shared<Wire>();
+
+  auto g = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, o);
+
+  Circuit c(g, false);
+
+  EXPECT_EQ(c.getComponentsForBus(Bus({a})).size(), 1);
+  EXPECT_EQ(c.getComponentsForBus(Bus({b})).size(), 1);
+  EXPECT_EQ(c.getComponentsForBus(Bus({o})).size(), 1);
+
+  c.removeComponent(g);
+
+  EXPECT_TRUE(c.getComponentsForBus(Bus({a})).empty());
+  EXPECT_TRUE(c.getComponentsForBus(Bus({b})).empty());
+  EXPECT_TRUE(c.getComponentsForBus(Bus({o})).empty());
+}
+
+TEST(CircuitTest, RemoveComponentFromLargerCircuit)
+{
+  auto a      = std::make_shared<Wire>();
+  auto b      = std::make_shared<Wire>();
+  auto c1_out = std::make_shared<Wire>();
+  auto c2_out = std::make_shared<Wire>();
+
+  auto andg = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, c1_out);
+  auto notg = std::make_shared<NotGate>(c1_out, c2_out);
+
+  Component_set comps{andg, notg};
+  Circuit       circuit(comps, false);
+
+  EXPECT_EQ(circuit.getComponentsForBus(Bus({a})).size(), 1);
+  EXPECT_EQ(circuit.getComponentsForBus(Bus({b})).size(), 1);
+  EXPECT_EQ(circuit.getComponentsForBus(Bus({c1_out})).size(), 2);
+  EXPECT_EQ(circuit.getComponentsForBus(Bus({c2_out})).size(), 1);
+
+  circuit.removeComponent(andg);
+
+  EXPECT_TRUE(circuit.getComponentsForBus(Bus({a})).empty());
+  EXPECT_TRUE(circuit.getComponentsForBus(Bus({b})).empty());
+  EXPECT_EQ(circuit.getComponentsForBus(Bus({c1_out})).size(), 1);
+  EXPECT_EQ(circuit.getComponentsForBus(Bus({c2_out})).size(), 1);
+}
+
+TEST(CircuitTest, RemoveNonExistentComponentDoesNotCrash)
+{
+  auto a = std::make_shared<Wire>();
+  auto o = std::make_shared<Wire>();
+  auto g = std::make_shared<NotGate>(a, o);
+
+  Circuit c(g, false);
+
+  c.removeComponent(g);
+
+  c.removeComponent(g);
+}
+
+TEST(CircuitTest, RemoveNullComponentDoesNotCrash)
+{
+  Circuit c;
+
+  c.removeComponent(nullptr);
+}
+
+TEST(CircuitTest, RemoveMiddleComponent)
+{
+  auto a       = std::make_shared<Wire>();
+  auto b       = std::make_shared<Wire>();
+  auto c       = std::make_shared<Wire>();
+  auto d       = std::make_shared<Wire>();
+  auto and_out = std::make_shared<Wire>();
+  auto xor_out = std::make_shared<Wire>();
+  auto or_out  = std::make_shared<Wire>();
+
+  auto andg = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, and_out);
+  auto xorg = std::make_shared<XorGate>(std::array<Wire_ptr, 2>{and_out, c}, xor_out);
+  auto org  = std::make_shared<OrGate>(std::vector<Wire_ptr>{xor_out, d}, or_out);
+
+  Component_set comps{andg, xorg, org};
+  Circuit       circuit(comps, false);
+
+  auto beforeInputs  = circuit.getInputs();
+  auto beforeOutputs = circuit.getOutputs();
+
+  EXPECT_EQ(beforeInputs.size(), 4);
+  EXPECT_EQ(beforeOutputs.size(), 1);
+
+  circuit.removeComponent(xorg);
+
+  auto afterInputs  = circuit.getInputs();
+  auto afterOutputs = circuit.getOutputs();
+
+  EXPECT_EQ(afterInputs.size(), 4);
+  EXPECT_EQ(afterOutputs.size(), 2);
+}
