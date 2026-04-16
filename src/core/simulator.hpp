@@ -26,11 +26,19 @@
  * @brief Represents a timed event in the simulation.
  */
 struct TimedEvent {
-  uint64_t          time;
-  Wire_ptr          targetWire;
-  State             newState;
+  /** @brief Simulation time at which the event occurs */
+  uint64_t time;
+
+  /** @brief The wire to update */
+  Wire_ptr targetWire;
+
+  /** @brief The new state to set on the wire */
+  State newState;
+
+  /** @brief The component that is the source of this state change */
   Component_weakPtr source;
 
+  /** @brief Comparison operator for priority queue ordering */
   bool operator>(const TimedEvent& other) const { return time > other.time; }
 };
 
@@ -115,13 +123,23 @@ public:
   [[nodiscard]] uint64_t getCurrentTime() const { return currentTime; }
 
 private:
-  std::shared_ptr<Circuit>              circuit;
+  /** @brief The circuit being simulated */
+  std::shared_ptr<Circuit> circuit;
+
+  /** @brief Pre-compiled execution blocks split by cyclic/acyclic parts */
   std::vector<Circuit::SimulationBlock> executionBlocks;
+
+  /** @brief Priority queue of timed events sorted by time */
   std::priority_queue<TimedEvent, std::vector<TimedEvent>, std::greater<>> eventQueue;
 
-  uint64_t             topologyListenerId = 0;
-  uint64_t             currentTime        = 0;
-  static constexpr int MAX_DELTA          = 1000;
+  /** @brief ID of the topology change listener registered with the circuit */
+  uint64_t topologyListenerId = 0;
+
+  /** @brief Current simulation time */
+  uint64_t currentTime = 0;
+
+  /** @brief Maximum number of delta cycles for convergence */
+  static constexpr int MAX_DELTA = 1000;
 
   bool cyclicStateChanged = false;
 

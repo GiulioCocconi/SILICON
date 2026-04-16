@@ -33,19 +33,55 @@
 #include <ui/common/diagramScene.hpp>
 #include <ui/common/graphicalComponent.hpp>
 
+/**
+ * @class GraphicalLogicComponent
+ * @brief Base class for logic-gate graphical components.
+ *
+ * GraphicalLogicComponent extends GraphicalComponent to add
+ * logic-level functionality. It associates a logical Component
+ * with its visual representation, enabling wire connection
+ * and simulation integration.
+ *
+ * The component's input/output buses are synchronized with
+ * its graphical ports for circuit connectivity.
+ *
+ * @see GraphicalComponent
+ * @see Component
+ */
 class GraphicalLogicComponent : public GraphicalComponent {
   Q_OBJECT
 protected:
+  /** @brief The logical component this graphical component represents */
   Component_ptr associatedComponent;
-  bool          isEditable = false;
+
+  /** @brief Whether the component allows property editing */
+  bool isEditable = false;
 
 public:
+  /**
+   * @brief Constructs a logic component.
+   *
+   * @param component The logical component
+   * @param shape The visual shape item
+   * @param parent Optional parent graphics item
+   * @param scanShape Enable alpha scanning for port placement
+   */
   GraphicalLogicComponent(const Component_ptr& component, QGraphicsItem* shape,
                           QGraphicsItem* parent, bool scanShape = false);
 
+  /**
+   * @brief Sets ports and validates against component I/O.
+   *
+   * @param busToPortInputs Vector of (name, position) pairs for inputs
+   * @param busToPortOutputs Vector of (name, position) pairs for outputs
+   */
   void
   setPorts(const std::vector<std::pair<std::string, QPoint>>& busToPortInputs,
            const std::vector<std::pair<std::string, QPoint>>& busToPortOutputs) override;
 
+  /**
+   * @brief Gets the associated logical component.
+   * @return Pointer to the component
+   */
   [[nodiscard]] Component_ptr getComponent() const { return associatedComponent; }
 };
