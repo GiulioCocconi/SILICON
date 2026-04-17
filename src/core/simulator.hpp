@@ -93,7 +93,30 @@ public:
    * @param bus The bus to set
    * @param value The value to set
    */
+  /**
+   * @brief Forces a bus to a specific value and propagates the change through the
+   * circuit.
+   *
+   * Optimized for pass-by-value buses (copies the bus).
+   * Extracts forward subgraph and evaluates each block.
+   *
+   * @param bus The bus to set
+   * @param value The value to set
+   */
   void setBus(Bus bus, unsigned int value);
+
+  /**
+   * @brief Forces a bus to a specific value with a source component and propagates
+   * the change through the circuit.
+   *
+   * Tracks the source component that authorized this state change for proper
+   * event propagation. Extracts forward subgraph and evaluates each block.
+   *
+   * @param bus The bus to set
+   * @param value The value to set
+   * @param source The component that authorized this change
+   */
+  void setBus(Bus bus, unsigned int value, const Component_weakPtr& source);
 
   /**
    * @brief Propagates changes from a bus through the circuit in reverse direction.

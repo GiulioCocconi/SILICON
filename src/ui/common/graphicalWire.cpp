@@ -19,8 +19,16 @@
 #include "graphicalWire.hpp"
 #include "wireManager.hpp"
 
+#include <core/wire.hpp>  // Gives access to State enum for coloring
+
+#include <QDebug>
 #include <QGraphicsSceneMouseEvent>
+#include <QLineF>
+#include <algorithm>
+#include <queue>
+#include <ranges>
 #include <stdexcept>
+#include <unordered_set>
 
 // --- Graphical Wire --------------------------------------------------------------------
 
@@ -54,9 +62,28 @@ void GraphicalWire::clearBusState()
       b->forceSetCurrentState(State::ERROR);
 }
 
+void GraphicalWire::initializeBusForSimulation()
+{
+  for (const auto& b : bus)
+    if (b)
+      b->forceSetCurrentState(State::LOW);
+}
+
 QColor GraphicalWire::getColor() const
 {
-  return bus.size() > 1 ? AppColors::GREEN : AppColors::BLUE;
+  if (bus.isInErrorState())
+    return Qt::red;
+
+  // Show simulation state visually for single wires
+  if (bus.size() == 1 && bus[0]) {
+    switch (bus[0]->getCurrentState()) {
+      case State::HIGH: return AppColors::ORANGE;
+      case State::LOW: return AppColors::LIGHT_ORANGE;
+      case State::UNKNOWN: return AppColors::VIOLET;
+      default: qWarning() << "Unhandled wire status in getColor()"; return Qt::magenta;
+    }
+  }
+  return AppColors::GREEN;
 }
 
 QColor GraphicalWire::getColor(const GraphicalWire* w)
@@ -503,8 +530,10 @@ void GraphicalWireSegment::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
 {
   if (event->button() == Qt::LeftButton) {
     // Notify the manager about the endpoint move so it can check collisions
-    if (graphicalWire && graphicalWire->getManager())
+    // (updateSegmentTopology internally calls notifyTopologyChanged if a change occurred)
+    if (graphicalWire && graphicalWire->getManager()) {
       graphicalWire->getManager()->updateSegmentTopology(this);
+    }
 
     if (dragPointIndex >= 0)
       dragPointIndex = -1;

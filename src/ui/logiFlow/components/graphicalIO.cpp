@@ -69,11 +69,10 @@ void GraphicalInput::setState(State state)
       (skinState == State::HIGH) ? getOnShapePath() : getOffShapePath();
   setItemShape(new QGraphicsSvgItem(shapePath));
 
-  const auto targetWire = this->getComponent()->getOutputs()[0][0];
-  emit inputToggled(targetWire, state, getComponent()->weak_from_this());
+  const auto targetBus = this->getComponent()->getOutputs()[0];
+  const auto value     = (state == State::HIGH) ? 1 : 0;
+  emit       inputToggled(targetBus, value, getComponent()->weak_from_this());
 }
-
-
 
 void GraphicalInput::paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
                            QWidget* widget)
@@ -113,7 +112,6 @@ State GraphicalInput::getState()
   const int value = this->getComponent()->getOutputs()[0].getCurrentValue();
   return (value == 1) ? State::HIGH : State::LOW;
 }
-
 
 // --- Graphical Output ------------------------------------------------------------------
 

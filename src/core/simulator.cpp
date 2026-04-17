@@ -132,12 +132,17 @@ void Simulator::run(uint64_t duration)
 
 void Simulator::setBus(Bus bus, unsigned int value)
 {
+  setBus(std::move(bus), value, {});
+}
+
+void Simulator::setBus(Bus bus, const unsigned int value, const Component_weakPtr& source)
+{
   if (!bus.isInErrorState()) {
     unsigned int currentVal = bus.getCurrentValue();
     if (currentVal == value)
       return;
   }
-  bus.forceSetCurrentValue(value);
+  bus.forceSetCurrentValue(value, source);
 
   Circuit subCircuit = circuit->getForwardSubgraph(bus);
   auto    blocks     = subCircuit.splitCyclic();

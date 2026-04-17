@@ -17,7 +17,6 @@
  */
 
 #include "wireManager.hpp"
-#include "graphicalWire.hpp"
 
 #include <QDebug>
 #include <QLineF>
@@ -25,6 +24,8 @@
 #include <queue>
 #include <stdexcept>
 #include <unordered_set>
+
+#include <ui/common/graphicalWire.hpp>
 
 WireManager::~WireManager()
 {
@@ -94,6 +95,7 @@ void WireManager::removeSegment(GraphicalWireSegment* segment)
 
   if (wire->empty()) {
     removeWire(wire);
+    notifyTopologyChanged();
     return;
   }
 
@@ -101,6 +103,7 @@ void WireManager::removeSegment(GraphicalWireSegment* segment)
   // broken the remaining wire into multiple pieces. Evaluate it!
   evaluateWireSplits(wire);
   calculateJunctions();  // TODO: OPTIMIZE
+  notifyTopologyChanged();
 }
 
 void WireManager::updateSegmentTopology(GraphicalWireSegment* segment,
@@ -148,6 +151,9 @@ void WireManager::updateSegmentTopology(GraphicalWireSegment* segment,
 
   if (hasTopologyChanged || forceCalculateJunctions)
     calculateJunctions(segment);
+
+  if (hasTopologyChanged)
+    notifyTopologyChanged();
 }
 
 void WireManager::merge(GraphicalWireSegment* a, GraphicalWireSegment* b)

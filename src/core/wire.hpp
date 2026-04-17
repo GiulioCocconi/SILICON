@@ -67,6 +67,13 @@ public:
   [[nodiscard]] uint64_t getId() const { return id; }
 
   void forceSetCurrentState(State newState);
+
+  /**
+   * @brief Forces the wire state without authorization check.
+   * @param newState The new state to set
+   * @param authorizedBy The component that authorized this change
+   */
+  void forceSetCurrentState(State newState, const Component_weakPtr& authorizedBy);
   void setCurrentState(State newState, const Component_weakPtr& requestedBy);
 
   static void  safeSetCurrentState(const std::weak_ptr<Wire>& w, State newState,
@@ -90,6 +97,14 @@ public:
   void setSize(unsigned short size);
 
   int forceSetCurrentValue(unsigned int value);
+
+  /**
+   * @brief Forces the bus value without authorization check.
+   * @param value The value to set
+   * @param authorizedBy The component that authorized this change
+   * @return Non-zero if value exceeds bus size (overflow), zero otherwise
+   */
+  int forceSetCurrentValue(unsigned int value, const Component_weakPtr& authorizedBy);
   int setCurrentValue(unsigned int value, const Component_weakPtr& requestedBy);
 
   [[nodiscard]] unsigned int getCurrentValue() const;

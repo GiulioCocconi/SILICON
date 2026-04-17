@@ -18,6 +18,7 @@
 
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -104,9 +105,32 @@ public:
   [[nodiscard]] static bool segmentsTouching(const GraphicalWireSegment* segment,
                                              const GraphicalWireSegment* other);
 
+  /**
+   * @brief Bind an external callback to react to topology events.
+   * By binding this, DiagramScene can automatically map new underlying hardware logic.
+   */
+  void setTopologyChangedCallback(std::function<void()> cb)
+  {
+    onTopologyChanged = std::move(cb);
+  }
+
+  /**
+   * @brief Force execute the callback natively mapped to topological splits, merges, or
+   * drags.
+   */
+  void notifyTopologyChanged() const
+  {
+    if (onTopologyChanged) {
+      onTopologyChanged();
+    }
+  }
+
 private:
   std::vector<std::shared_ptr<GraphicalWire>> managedWires;
   std::vector<GraphicalWireSegment*>          allSegments;
+
+  /** @brief Callback invoked when wire topology changes (splits, merges, drags) */
+  std::function<void()> onTopologyChanged;
 
   // Merge all wires from `src` into `dst`, then destroy `src`.
   void mergeWires(GraphicalWire* dst, GraphicalWire* src);

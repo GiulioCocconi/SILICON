@@ -18,6 +18,7 @@
 
 #pragma once
 
+#include <memory>
 #include <ranges>
 #include <string>
 
@@ -29,13 +30,15 @@
 #include <QPainter>
 #include <QRect>
 
+#include <core/circuit.hpp>
+#include <core/simulator.hpp>
+
 #include <ui/common/componentSearchBox.hpp>
 #include <ui/common/enums.hpp>
 #include <ui/common/wireManager.hpp>
 
 class GraphicalComponent;
 class GraphicalWireSegment;
-class WireManager;
 
 /**
  * @class DiagramScene
@@ -48,10 +51,14 @@ class WireManager;
  *
  * The scene integrates with WireManager for wire topology
  * and uses ComponentSearchBox (CSB) for component selection.
+ * It maintains an underlying Circuit model and uses a Simulator
+ * for logic simulation.
  *
  * @see GraphicalComponent
  * @see GraphicalWireSegment
  * @see WireManager
+ * @see Circuit
+ * @see Simulator
  */
 class DiagramScene : public QGraphicsScene {
   Q_OBJECT
@@ -148,6 +155,22 @@ public slots:
   void hideCSB();
 
   /**
+   * @brief Handles input toggle events from GraphicalInput components.
+   * @param targetBus The bus to update
+   * @param value The value to set
+   * @param source The component that triggered the change
+   */
+  void handleInputToggled(Bus targetBus, unsigned int value, Component_weakPtr source);
+
+  /**
+   * @brief Refreshes the visual state of all graphical outputs.
+   *
+   * Queries the simulator buses and updates the visual state of
+   * SINGLE_OUTPUT components accordingly.
+   */
+  void refreshGraphicalOutputs();
+
+  /**
    * @brief Calculates wire connections for all components.
    *
    * Computes the logical bus connections between components
@@ -205,6 +228,12 @@ private:
 
   /** @brief Last placed component type for repeat placement */
   std::string lastPlacedComponentType;
+
+  /** @brief Underlying logic circuit model */
+  std::shared_ptr<Circuit> circuit;
+
+  /** @brief Logic simulation engine */
+  std::unique_ptr<Simulator> simulator;
 };
 
 /**

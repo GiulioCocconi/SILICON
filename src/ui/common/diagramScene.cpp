@@ -17,15 +17,17 @@
  */
 
 #include "diagramScene.hpp"
-#include "ui/common/enums.hpp"
+
+#include <memory>
+#include <stdexcept>
+
+#include <QDebug>
+
 #include "ui/common/graphicalWire.hpp"
 #include "ui/logiFlow/components/graphicalGates.hpp"
 #include "ui/logiFlow/components/graphicalIO.hpp"
 #include "ui/logiFlow/components/graphicalUtils.hpp"
 #include "ui/serialization/gui_component_factory.hpp"
-
-#include <QDebug>
-#include <stdexcept>
 
 DiagramScene::DiagramScene(QObject* parent) : QGraphicsScene(parent)
 {
@@ -36,6 +38,24 @@ DiagramScene::DiagramScene(QObject* parent) : QGraphicsScene(parent)
   connect(csb, &ComponentSearchBox::requestHide, this, &DiagramScene::hideCSB);
   connect(csb, &ComponentSearchBox::selectedComponent, this,
           &DiagramScene::placeComponent);
+
+  // Bind the topology callback to support Live-Editing during Simulation Mode
+  wireManager.setTopologyChangedCallback([this]() {
+    if (this->getInteractionMode() == InteractionMode::SIMULATION_MODE) {
+      // 1. Recalculate collisions to apply bus changes to Logic Components
+      this->calculateWiresForComponents();
+
+      // (The Circuit instance's interactive observer will automatically catch the IO
+      // changes
+      //  and instruct the Simulator to recompile its execution blocks.)
+
+      // 2. Refresh graphical output states
+      this->refreshGraphicalOutputs();
+
+      // 3. Force a visual repaint so wires update their simulation colors
+      this->update();
+    }
+  });
 }
 
 QPointF DiagramScene::snapToGrid(const QPointF point)
@@ -140,34 +160,78 @@ void DiagramScene::setInteractionMode(const InteractionMode newMode, const bool 
 
   if (newMode == InteractionMode::SIMULATION_MODE
       || currentMode == InteractionMode::SIMULATION_MODE) {
-    // If we are goint to simulation mode then calculate the wires
+    // SETUP FOR SIMULATION MODE
     if (newMode == InteractionMode::SIMULATION_MODE) {
       calculateWiresForComponents();
-    }
 
-    // RESTORE INPUTS TO NEUTRAL STATE
-
-    // TODO: Make a parent IO class with virtual reset method
-
-    const auto inputComponents = items() | std::views::filter([](auto item) {
-                                   return item->type() == SiliconTypes::SINGLE_INPUT;
-                                 })
-                                 | std::ranges::to<std::vector>();
-
-    for (const auto inputComponent : inputComponents) {
-      qgraphicsitem_cast<GraphicalInput*>(inputComponent)->setState(State::LOW);
-    }
-
-    // If we are exiting SIMULATION_MODE then restore outputs as well
-    if (currentMode == InteractionMode::SIMULATION_MODE) {
-      const auto outputComponents = items() | std::views::filter([](auto item) {
-                                      return item->type() == SiliconTypes::SINGLE_OUTPUT;
-                                    })
-                                    | std::ranges::to<std::vector>();
-
-      for (const auto outputComponent : outputComponents) {
-        qgraphicsitem_cast<GraphicalOutputSingle*>(outputComponent)->setState(State::LOW);
+      // Initialize all wires to LOW state
+      for (const auto& wire : wireManager.wires()) {
+        wire->initializeBusForSimulation();
       }
+
+      // Gather core components and initialize Circuit & Simulator frameworks
+      Component_set coreComps;
+      for (auto* item : items()) {
+        if (item && item->type() >= COMPONENT) {
+          auto* comp = qgraphicsitem_cast<GraphicalLogicComponent*>(item);
+          if (comp && comp->getComponent()) {
+            coreComps.insert(comp->getComponent());
+          }
+        }
+      }
+
+      this->circuit   = std::make_shared<Circuit>(coreComps, false);
+      this->simulator = std::make_unique<Simulator>(this->circuit);
+
+      // Restore inputs to neutral state & push LOW state to Simulator
+      for (auto* item : items()) {
+        if (item && item->type() == SiliconTypes::SINGLE_INPUT) {
+          auto* input = qgraphicsitem_cast<GraphicalInput*>(item);
+          input->setState(State::LOW);
+
+          if (this->simulator && !input->getComponent()->getOutputs().empty()) {
+            this->simulator->setBus(input->getComponent()->getOutputs()[0], 0,
+                                    input->getComponent()->weak_from_this());
+          }
+
+          connect(input, &GraphicalInput::inputToggled, this,
+                  &DiagramScene::handleInputToggled, Qt::UniqueConnection);
+        }
+      }
+
+      refreshGraphicalOutputs();
+      update();
+    }
+
+    // TEARDOWN FOR SIMULATION MODE
+    if (currentMode == InteractionMode::SIMULATION_MODE) {
+      // Disconnect signals from inputs
+      for (auto* item : items()) {
+        if (item && item->type() == SiliconTypes::SINGLE_INPUT) {
+          auto* input = qgraphicsitem_cast<GraphicalInput*>(item);
+          disconnect(input, &GraphicalInput::inputToggled, this,
+                     &DiagramScene::handleInputToggled);
+        }
+      }
+
+      // Discard simulation engines
+      this->simulator.reset();
+      this->circuit.reset();
+
+      for (auto* item : items()) {
+        if (item && item->type() == SiliconTypes::SINGLE_OUTPUT) {
+          auto* out = qgraphicsitem_cast<GraphicalOutputSingle*>(item);
+          if (out)
+            out->setState(State::LOW);
+        }
+      }
+
+      // Clear bus states to reset visual wire colors
+      for (const auto& wire : wireManager.wires()) {
+        wire->clearBusState();
+      }
+
+      update();
     }
   }
 
@@ -247,7 +311,6 @@ void DiagramScene::mousePressEvent(QGraphicsSceneMouseEvent* mouseEvent)
         // Let's start drawing the wire!
         wireSegmentToBeDrawn = new GraphicalWireSegment(cursorPos);
         addItem(wireSegmentToBeDrawn);
-        // wireAlreadyPresentAtPos(cursorPos);
       } else {
         wireSegmentToBeDrawn->addPoints();
       }
@@ -262,6 +325,7 @@ void DiagramScene::mousePressEvent(QGraphicsSceneMouseEvent* mouseEvent)
           input->toggle();
         }
       }
+
       break;
     }
     default: throw std::logic_error("Unhandled InteractionMode in mousePressEvent");
@@ -333,6 +397,43 @@ void DiagramScene::hideCSB()
     removeItem(csb);
 }
 
+void DiagramScene::handleInputToggled(Bus targetBus, unsigned int value,
+                                      Component_weakPtr source)
+{
+  if (!simulator)
+    return;
+
+  simulator->setBus(targetBus, value, source);
+  simulator->run(20);
+
+
+  refreshGraphicalOutputs();
+  update();
+}
+
+void DiagramScene::refreshGraphicalOutputs()
+{
+  for (auto* item : items()) {
+    if (item->type() == SiliconTypes::SINGLE_OUTPUT) {
+      auto* out = qgraphicsitem_cast<GraphicalOutputSingle*>(item);
+
+      if (!out->getComponent())
+        continue;
+
+      auto bus = out->getComponent()->getInputs()[0];
+
+      if (bus.isInErrorState())
+        continue;
+
+      // TODO: HANDLE MULTI WIRE OUTPUTS
+
+      State s = (bus.getCurrentValue() > 0) ? State::HIGH : State::LOW;
+
+      out->setState(s);
+    }
+  }
+}
+
 void DiagramScene::calculateWiresForComponents() const
 {
   // Set all wires to initial state
@@ -340,13 +441,12 @@ void DiagramScene::calculateWiresForComponents() const
     wire->clearBusState();
   }
 
-  auto components =
-      items() | std::views::filter([](auto item) { return item->type() >= COMPONENT; })
-      | std::views::transform(
-          [](auto item) { return qgraphicsitem_cast<GraphicalLogicComponent*>(item); })
-      | std::ranges::to<std::vector>();
+  // Process all components that are >= COMPONENT type
+  for (auto* item : items()) {
+    if (!item || item->type() < COMPONENT)
+      continue;
 
-  for (const GraphicalLogicComponent* graphicalComponent : components) {
+    auto* graphicalComponent = qgraphicsitem_cast<GraphicalLogicComponent*>(item);
     if (!graphicalComponent)
       throw std::logic_error("calculateWiresForComponents: null component encountered");
 
@@ -354,32 +454,27 @@ void DiagramScene::calculateWiresForComponents() const
     graphicalComponent->getComponent()->clearWires();
 
     // Find wire segments colliding with the component, then deduplicate by GraphicalWire
-    auto collidingSegments = collidingItems(graphicalComponent)
-                             | std::views::filter([](auto el) {
-                                 return el->type() == SiliconTypes::WIRE_SEGMENT;
-                               })
-                             | std::views::transform([](auto el) {
-                                 return qgraphicsitem_cast<GraphicalWireSegment*>(el);
-                               })
-                             | std::ranges::to<std::vector>();
+    const auto colliding = collidingItems(graphicalComponent);
 
     // Deduplicate: collect the unique GraphicalWire* from the colliding segments
     std::unordered_set<GraphicalWire*> seenWires;
     std::vector<GraphicalWire*>        collidingWires;
-    for (auto* seg : collidingSegments) {
-      auto* wire = seg->getGraphicalWire();
+    for (auto* el : colliding) {
+      if (el->type() != SiliconTypes::WIRE_SEGMENT)
+        continue;
+      auto* seg  = qgraphicsitem_cast<GraphicalWireSegment*>(el);
+      auto* wire = seg ? seg->getGraphicalWire() : nullptr;
       if (wire && seenWires.insert(wire).second)
         collidingWires.push_back(wire);
     }
 
     // For each wire that collides with the component we need to find the port the wire
     // is connected to
-
     for (GraphicalWire* wire : collidingWires) {
       const auto vertices = wire->getVertices();
 
       // Check for collision with input ports
-      for (const auto [index, p] :
+      for (const auto& [index, p] :
            graphicalComponent->getInputPorts() | silicon::views::enumerate) {
         const auto portPositionInScene = graphicalComponent->mapToScene(p->getPosition());
         const auto findResult          = std::ranges::find(vertices, portPositionInScene);
@@ -390,7 +485,7 @@ void DiagramScene::calculateWiresForComponents() const
         }
       }
 
-      for (const auto [index, p] :
+      for (const auto& [index, p] :
            graphicalComponent->getOutputPorts() | silicon::views::enumerate) {
         const auto portPositionInScene = graphicalComponent->mapToScene(p->getPosition());
         const auto findResult          = std::ranges::find(vertices, portPositionInScene);
