@@ -96,9 +96,15 @@ void Wire::forceSetCurrentState(const State newState)
   this->currentState = newState;
 }
 
+void Wire::forceSetCurrentState(const State              newState,
+                                const Component_weakPtr& authorizedBy)
+{
+  this->authorizedComponent = authorizedBy;
+  this->currentState        = newState;
+}
+
 void Wire::setCurrentState(const State newState, const Component_weakPtr& requestedBy)
 {
-
   // Every wire has a mechanism to detect graphs error: the component that
   // controls the wire can be only one at a time and it's stored in the
   // authorizedComponent pointer. If another component tries to modify its
@@ -172,6 +178,18 @@ int Bus::forceSetCurrentValue(const unsigned int value)
     if (this->busData[i]) {
       State s = (value >> i) & 1 ? State::HIGH : State::LOW;
       this->busData[i]->forceSetCurrentState(s);
+    }
+  }
+  return (value >= (1u << this->size()));
+}
+
+int Bus::forceSetCurrentValue(const unsigned int       value,
+                              const Component_weakPtr& authorizedBy)
+{
+  for (unsigned short i = 0; i < this->size(); i++) {
+    if (this->busData[i]) {
+      State s = (value >> i) & 1 ? State::HIGH : State::LOW;
+      this->busData[i]->forceSetCurrentState(s, authorizedBy);
     }
   }
   return (value >= (1u << this->size()));

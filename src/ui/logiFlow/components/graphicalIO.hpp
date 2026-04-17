@@ -59,7 +59,7 @@ private slots:
   void propertiesDialogAccepted() override;
 
 signals:
-  void inputToggled(Wire_ptr targetWire, State newState, Component_weakPtr source);
+  void inputToggled(Bus targetBus, unsigned int value, Component_weakPtr source);
 
 private:
   State skinState = State::LOW;
@@ -93,7 +93,6 @@ public:
   std::string_view typeName() const override { return Type; }
 
   void simulate(Simulator& sim) override {}
-
 };
 
 class GraphicalOutputSingle : public GraphicalLogicComponent {

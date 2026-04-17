@@ -120,6 +120,13 @@ public:
    */
   void clearBusState();
 
+  /**
+   * @brief Initializes all wires in the bus to LOW state for simulation.
+   *
+   * Sets all wires to LOW state, used before simulation starts.
+   */
+  void initializeBusForSimulation();
+
   // --- Topology ------------------------------------------------------------------------
 
   /**
