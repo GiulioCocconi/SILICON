@@ -164,7 +164,7 @@ void DiagramScene::setInteractionMode(const InteractionMode newMode, const bool 
     if (newMode == InteractionMode::SIMULATION_MODE) {
       calculateWiresForComponents();
 
-      // Initialize all wires to LOW state
+      // Initialize all wires to UNKNOWN state (will be overridden by connected inputs)
       for (const auto& wire : wireManager.wires()) {
         wire->initializeBusForSimulation();
       }
@@ -405,7 +405,6 @@ void DiagramScene::handleInputToggled(Bus targetBus, unsigned int value,
 
   simulator->setBus(targetBus, value, source);
   simulator->run(20);
-
 
   refreshGraphicalOutputs();
   update();
