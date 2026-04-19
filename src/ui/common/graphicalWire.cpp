@@ -66,7 +66,7 @@ void GraphicalWire::initializeBusForSimulation()
 {
   for (const auto& b : bus)
     if (b)
-      b->forceSetCurrentState(State::LOW);
+      b->forceSetCurrentState(State::UNKNOWN);
 }
 
 QColor GraphicalWire::getColor() const

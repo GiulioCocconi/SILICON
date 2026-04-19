@@ -140,7 +140,7 @@ Bus::Bus(const unsigned short size)
 {
   this->busData.reserve(size);
   for (unsigned short i = 0; i < size; i++)
-    this->busData.push_back(std::make_shared<Wire>(State::ERROR));
+    this->busData.push_back(std::make_shared<Wire>(State::UNKNOWN));
 }
 
 void Bus::setSize(const unsigned short size)
@@ -148,7 +148,7 @@ void Bus::setSize(const unsigned short size)
   const size_t oldSize = this->busData.size();
   this->busData.resize(size);
   for (size_t i = oldSize; i < size; i++)
-    this->busData[i] = std::make_shared<Wire>(State::ERROR);
+    this->busData[i] = std::make_shared<Wire>(State::UNKNOWN);
 }
 
 Bus::Bus(std::vector<Wire_ptr> busData)
@@ -156,7 +156,7 @@ Bus::Bus(std::vector<Wire_ptr> busData)
   this->busData = busData;
   for (Wire_ptr& w : this->busData)
     if (!w)
-      w = std::make_shared<Wire>(State::LOW);
+      w = std::make_shared<Wire>(State::UNKNOWN);
 }
 
 Bus::Bus(std::initializer_list<Wire_ptr> initList)
