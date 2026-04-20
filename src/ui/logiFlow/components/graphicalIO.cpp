@@ -117,7 +117,7 @@ State GraphicalInput::getState()
 
 GraphicalOutputSingle::GraphicalOutputSingle(QGraphicsItem* parent)
   : GraphicalLogicComponent(std::make_shared<DummyOutputComponent>(Bus(1), "out"),
-                            new QGraphicsSvgItem(":/other_components/output_off.svg"),
+                            new QGraphicsSvgItem(":/other_components/output_unknown.svg"),
                             parent)
 {
   isEditable = false;
@@ -131,7 +131,13 @@ GraphicalOutputSingle::GraphicalOutputSingle(QGraphicsItem* parent)
 
 void GraphicalOutputSingle::setState(State state)
 {
-  QString shapePath = (state == State::HIGH) ? getOnShapePath() : getOffShapePath();
+  QString shapePath = getOffShapePath();
+
+  if (state == State::HIGH)
+    shapePath = getOnShapePath();
+  else if (state == State::UNKNOWN)
+    shapePath = getUnknownShapePath();
+
   setItemShape(new QGraphicsSvgItem(shapePath));
 }
 
