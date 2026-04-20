@@ -169,7 +169,26 @@ void DiagramScene::setInteractionMode(const InteractionMode newMode, const bool 
         wire->initializeBusForSimulation();
       }
 
-      // Gather core components and initialize Circuit & Simulator frameworks
+      // Restore inputs to neutral state & inject LOW into the logic bus
+      // Do this BEFORE creating the Simulator to avoid double-evaluations
+      for (auto* item : items()) {
+        if (item && item->type() == SiliconTypes::SINGLE_INPUT) {
+          auto* input = qgraphicsitem_cast<GraphicalInput*>(item);
+
+          // Updates visual shape
+          input->setState(State::LOW);
+
+          // Manually push the LOW state directly to the logic bus
+          auto bus = input->getComponent()->getOutputs()[0];
+	  bus.forceSetCurrentValue(0, input->getComponent()->weak_from_this());
+
+          // Now connect the signal for user clicks during runtime
+          connect(input, &GraphicalInput::inputToggled, this,
+                  &DiagramScene::handleInputToggled, Qt::UniqueConnection);
+        }
+      }
+
+      // 2. Gather core components
       Component_set coreComps;
       for (auto* item : items()) {
         if (item && item->type() >= COMPONENT) {
@@ -180,24 +199,12 @@ void DiagramScene::setInteractionMode(const InteractionMode newMode, const bool 
         }
       }
 
+      // 3. Initialize Circuit & Simulator frameworks
       this->circuit   = std::make_shared<Circuit>(coreComps, false);
+
+      // The Simulator constructor automatically calls recompile() and evaluates the
+      // entire circuit exactly once, using the LOW logic values we just injected!
       this->simulator = std::make_unique<Simulator>(this->circuit);
-
-      // Restore inputs to neutral state & push LOW state to Simulator
-      for (auto* item : items()) {
-        if (item && item->type() == SiliconTypes::SINGLE_INPUT) {
-          auto* input = qgraphicsitem_cast<GraphicalInput*>(item);
-          input->setState(State::LOW);
-
-          if (this->simulator && !input->getComponent()->getOutputs().empty()) {
-            this->simulator->setBus(input->getComponent()->getOutputs()[0], 0,
-                                    input->getComponent()->weak_from_this());
-          }
-
-          connect(input, &GraphicalInput::inputToggled, this,
-                  &DiagramScene::handleInputToggled, Qt::UniqueConnection);
-        }
-      }
 
       refreshGraphicalOutputs();
       update();

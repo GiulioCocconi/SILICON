@@ -208,13 +208,14 @@ int Bus::setCurrentValue(const unsigned int value, const Component_weakPtr& requ
 
 unsigned int Bus::getCurrentValue() const
 {
+  if (isInErrorState() || hasUnknowns())
+     throw std::logic_error("Bus::getCurrentValue() called on a bus in UNKNOWN / ERROR state");
+
   unsigned int res = 0;
   for (unsigned int i = 0; i < this->size(); i++) {
     if (!this->busData[i])
       return 0;
     State s = this->busData[i]->getCurrentState();
-    if (s == State::ERROR)
-      throw std::logic_error("Bus::getCurrentValue() called on a bus in ERROR state");
     if (s == State::HIGH)
       res |= (1 << i);
   }
@@ -225,6 +226,12 @@ bool Bus::isInErrorState() const
 {
   return std::ranges::any_of(
       busData, [](const auto& el) { return el->getCurrentState() == State::ERROR; });
+}
+
+bool Bus::hasUnknowns() const
+{
+  return std::ranges::any_of(
+      busData, [](const auto& el) { return el->getCurrentState() == State::UNKNOWN; });
 }
 
 std::strong_ordering Bus::operator<=>(const Bus& other) const
