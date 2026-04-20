@@ -22,21 +22,29 @@
 
 #include <core/component.hpp>
 
-Simulator::Simulator(std::shared_ptr<Circuit> c) : circuit(std::move(c))
+Simulator::Simulator(std::shared_ptr<Circuit> c, uint64_t initialSimulationTime,
+                     bool isInteractive)
+  : circuit(std::move(c))
 {
   if (!circuit) {
     throw std::invalid_argument("Simulator requires a valid Circuit pointer");
   }
 
-  // 1. Arm the live-editing observer chain
-  circuit->makeInteractive();
-  topologyListenerId = circuit->addTopologyListener([this]() { this->recompile(); });
+  // Arm the live-editing observer chain
+
+  if (isInteractive) {
+    circuit->makeInteractive();
+    topologyListenerId = circuit->addTopologyListener([this]() { this->recompile(); });
+  }
 
   // 2. Initial compile & evaluation
   recompile();
   for (const auto& block : executionBlocks) {
     evaluateBlock(block);
   }
+
+  if (initialSimulationTime != 0)
+    run(initialSimulationTime);
 }
 
 Simulator::~Simulator()

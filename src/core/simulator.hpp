@@ -51,17 +51,21 @@ struct TimedEvent {
  * topological order) and cyclic parts (executed iteratively using delta cycles until
  * convergence).
  *
- * @note The Simulator automatically recompiles when the circuit topology changes.
+ * @note The Simulator automatically recompiles when the circuit topology changes (if
+ * constructed with `isInteractive`) .
  */
 class Simulator {
 public:
   /**
    * @brief Constructs a Simulator for the given circuit.
    * @param c The circuit to simulate
-   * @throws std::invalid_argument if c is null
+   * @param initialSimulationTime If != 0 also simulate the circuit using
+   * initialSimulationTime as duration
+   * @param isInteractive If true make the circuit interactive
+   * @throws std::invalid_argument If c is null
    */
-  explicit Simulator(std::shared_ptr<Circuit> c);
-
+  explicit Simulator(std::shared_ptr<Circuit> c, uint64_t initialSimulationTime = 0,
+                     bool isInteractive = false);
   /**
    * @brief Destructor - removes topology listener
    */
