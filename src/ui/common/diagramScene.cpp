@@ -206,8 +206,6 @@ void DiagramScene::setInteractionMode(const InteractionMode newMode, const bool 
       // entire circuit exactly once, using the LOW logic values we just injected!
       this->simulator = std::make_unique<Simulator>(this->circuit);
 
-      simulator->run(1);
-
       refreshGraphicalOutputs();
       update();
     }
