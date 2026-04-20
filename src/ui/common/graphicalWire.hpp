@@ -116,16 +116,9 @@ public:
   /**
    * @brief Clears the state of all wires in the bus.
    *
-   * Sets all wires to ERROR state, used during simulation initialization.
+   * Sets all wires to UNKNOWN state, used during simulation initialization.
    */
   void clearBusState();
-
-  /**
-   * @brief Initializes all wires in the bus to LOW state for simulation.
-   *
-   * Sets all wires to LOW state, used before simulation starts.
-   */
-  void initializeBusForSimulation();
 
   // --- Topology ------------------------------------------------------------------------
 
