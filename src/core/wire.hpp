@@ -109,6 +109,7 @@ public:
 
   [[nodiscard]] unsigned int getCurrentValue() const;
   [[nodiscard]] bool         isInErrorState() const;
+  [[nodiscard]] bool         hasUnknowns() const;
 
   const Wire_ptr& operator[](unsigned short index) const
   {

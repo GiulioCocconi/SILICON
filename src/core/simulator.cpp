@@ -137,11 +137,13 @@ void Simulator::setBus(Bus bus, unsigned int value)
 
 void Simulator::setBus(Bus bus, const unsigned int value, const Component_weakPtr& source)
 {
-  if (!bus.isInErrorState()) {
+  // Early return if bus current value == new value (only if the prev value is valid)
+  if (!bus.isInErrorState() && !bus.hasUnknowns()) {
     unsigned int currentVal = bus.getCurrentValue();
     if (currentVal == value)
       return;
   }
+
   bus.forceSetCurrentValue(value, source);
 
   Circuit subCircuit = circuit->getForwardSubgraph(bus);
