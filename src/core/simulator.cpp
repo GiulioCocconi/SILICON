@@ -101,10 +101,14 @@ void Simulator::evaluateBlock(const Circuit::SimulationBlock& block)
 
 void Simulator::run(uint64_t duration)
 {
-  uint64_t endTime = currentTime + duration;
+  uint64_t minimumEndTime = currentTime + duration;
+
+  // Safeguard: Prevent GUI thread freezing if the circuit contains an oscillator.
+  // Allows signals to propagate far into the future, but eventually stops.
+  uint64_t safetyTimeout = minimumEndTime + 100000;
 
   while (!eventQueue.empty()) {
-    if (eventQueue.top().time > endTime)
+    if (eventQueue.top().time > safetyTimeout)
       break;
 
     currentTime        = eventQueue.top().time;
@@ -127,7 +131,8 @@ void Simulator::run(uint64_t duration)
     }
   }
 
-  currentTime = endTime;
+  if (currentTime < minimumEndTime)
+    currentTime = minimumEndTime;
 }
 
 void Simulator::setBus(Bus bus, unsigned int value)
