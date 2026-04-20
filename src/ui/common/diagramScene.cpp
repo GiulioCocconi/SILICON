@@ -206,6 +206,8 @@ void DiagramScene::setInteractionMode(const InteractionMode newMode, const bool 
       // entire circuit exactly once, using the LOW logic values we just injected!
       this->simulator = std::make_unique<Simulator>(this->circuit);
 
+      simulator->run(1);
+
       refreshGraphicalOutputs();
       update();
     }
@@ -428,12 +430,12 @@ void DiagramScene::refreshGraphicalOutputs()
 
       auto bus = out->getComponent()->getInputs()[0];
 
+      State s = State::UNKNOWN;
+
       if (bus.isInErrorState())
-        continue;
-
-      // TODO: HANDLE MULTI WIRE OUTPUTS
-
-      State s = (bus.getCurrentValue() > 0) ? State::HIGH : State::LOW;
+        s = State::ERROR;
+      else if (!bus.hasUnknowns())
+	s = (bus.getCurrentValue() > 0) ? State::HIGH : State::LOW;
 
       out->setState(s);
     }
