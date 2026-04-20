@@ -223,12 +223,12 @@ void DiagramScene::enterSimulationMode()
     }
   }
 
-  // 3. Initialize Circuit & Simulator frameworks
-  this->circuit   = std::make_shared<Circuit>(coreComps, false);
+      // 3. Initialize Circuit & Simulator frameworks
+      this->circuit = std::make_shared<Circuit>(coreComps, false);
 
-  // The Simulator constructor automatically calls recompile() and evaluates the
-  // entire circuit exactly once, using the LOW logic values we just injected!
-  this->simulator = std::make_unique<Simulator>(this->circuit);
+      // The Simulator constructor automatically calls recompile() and evaluates the
+      // entire circuit exactly once, using the LOW logic values we just injected!
+      this->simulator = std::make_unique<Simulator>(this->circuit, 1, true);
 
   refreshGraphicalOutputs();
   update();
@@ -310,7 +310,6 @@ void DiagramScene::mouseMoveEvent(QGraphicsSceneMouseEvent* mouseEvent)
   }
   QGraphicsScene::mouseMoveEvent(mouseEvent);
 }
-
 
 void DiagramScene::mousePressEvent(QGraphicsSceneMouseEvent* mouseEvent)
 {
@@ -454,7 +453,7 @@ void DiagramScene::refreshGraphicalOutputs()
       if (bus.isInErrorState())
         s = State::ERROR;
       else if (!bus.hasUnknowns())
-	s = (bus.getCurrentValue() > 0) ? State::HIGH : State::LOW;
+        s = (bus.getCurrentValue() > 0) ? State::HIGH : State::LOW;
 
       out->setState(s);
     }
