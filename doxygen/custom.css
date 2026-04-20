@@ -1,30 +1,42 @@
 @import url('https://fonts.googleapis.com/css2?family=Chango&family=Nova+Mono&family=Quicksand:wght@300..700&display=swap');
 
+/* =========================================
+   TOP NAVBAR (Floating Card)
+   ========================================= */
 #top {
     background-color: var(--side-nav-background) !important;
-
     border-radius: 16px !important;
-    margin: 12px 12px 0 12px !important;
+
+    /* Internal padding for the navbar */
+    padding-top: 12px !important;
+    box-sizing: border-box !important;
+
+    /* Changed top margin to 0 so Doxygen's math doesn't break the footer */
+    margin: 0 12px 0 12px !important;
+
+    /* Visually push it down 12px instead */
+    position: relative !important;
+    top: 12px !important;
+    z-index: 10 !important; /* Keep it above the content */
+
     width: calc(100% - 24px) !important;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
     border-bottom: none !important;
 }
 
+#MSearchSelectWindow, #MSearchResultsWindow {
+    background-color: var(--side-nav-background) !important;
+}
+
 .sm-dox ul {
-    /* Match the background of the top navbar and nav-tree */
     background-color: var(--side-nav-background) !important;
     background: var(--side-nav-background) !important;
-
-    /* Make the dropdowns look like matching floating cards */
     border-radius: 12px !important;
     box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1) !important;
     border: none !important;
-
-    /* Add a little breathing room inside the dropdown */
     padding: 6px !important;
 }
 
-/* Remove the little triangle pointing up from the dropdown menus */
 .sm-dox ul::before,
 .sm-dox ul::after {
     display: none !important;
@@ -32,15 +44,21 @@
 
 /* Ensure the main content doesn't tuck under the new floating navbar */
 #side-nav, #doc-content {
-    padding-top: 12px;
+    /* 12px for the header shift + 12px breathing room */
+    padding-top: 24px !important;
 }
 
+/* =========================================
+   SIDEBAR (Floating Card & Scrolling)
+   ========================================= */
 /* 1. Make the outer container an invisible wrapper to create spacing */
 #side-nav {
     background-color: transparent !important;
     border: none !important;
     padding: 12px !important;
     box-sizing: border-box !important;
+    /* Let the inner #nav-tree handle the scrolling */
+    overflow: hidden !important;
 }
 
 /* 2. Make the inner scrolling tree the actual "floating card" */
@@ -52,6 +70,7 @@
     width: 100% !important;
     box-sizing: border-box !important;
 
+    /* INTERNAL SCROLLING FOR SIDEBAR */
     overflow-y: auto !important;
     overflow-x: hidden !important;
 }
@@ -62,6 +81,9 @@
     border: none !important;
 }
 
+/* =========================================
+   PAGE NAV (Right Sidebar)
+   ========================================= */
 #page-nav {
     background-color: var(--side-nav-background) !important;
     border-radius: 16px !important;
@@ -74,17 +96,18 @@
     overflow-x: hidden !important;
 }
 
-
 #page-nav ul.page-outline .vis {
     background: var(--side-nav-background) !important;
 }
 
-/* Optional: Remove any default borders from headers inside the page-nav */
 #page-nav h3,
 #page-nav .toc-title {
     border-bottom: none !important;
 }
 
+/* =========================================
+   TYPOGRAPHY & COLORS
+   ========================================= */
 span.mlabel {
     font-size: 10pt !important;
 }
@@ -105,7 +128,6 @@ a:link, a:visited, a:hover, a:focus, a:active {
     font-weight: bold;
 }
 
-
 .title {
     --font-family: "Chango" !important;
 }
@@ -119,6 +141,7 @@ div.qindex {
 }
 
 html {
+    --content-maxwidth: auto;
     --page-background-color: #cbe9a2;
     --fragment-background: var(--code-background);
     --primary-color: #ff9955;
@@ -127,5 +150,32 @@ html {
 
     --font-family: "Quicksand";
     --font-family-monospace: "Nova Mono", monospace;
+}
 
+/* =========================================
+   FIXED VIEWPORT & INTERNAL SCROLLING
+   ========================================= */
+
+/* 1. Kill the main window scroll */
+html, body {
+  height: 100vh !important;
+  height: 100dvh !important; /* Modern fix for mobile browser URL bars */
+  max-height: 100vh !important;
+  margin: 0;
+  padding: 0;
+  overflow: hidden !important;
+}
+
+/* 2. Main Content Area Scrolling */
+#doc-content {
+  overflow-y: auto !important;
+  overflow-x: auto !important;
+  box-sizing: border-box;
+  padding-bottom: 32px !important; /* Keeps content from sticking to bottom edge */
+}
+
+/* 3. Keep the footer (breadcrumbs) from being truncated */
+#nav-path {
+    bottom: 12px !important;
+    right: 12px !important;
 }
