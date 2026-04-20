@@ -57,16 +57,9 @@ void GraphicalWire::setBusSize(unsigned int size)
 
 void GraphicalWire::clearBusState()
 {
-  for (const auto& b : bus)
-    if (b)
-      b->forceSetCurrentState(State::ERROR);
-}
-
-void GraphicalWire::initializeBusForSimulation()
-{
-  for (const auto& b : bus)
-    if (b)
-      b->forceSetCurrentState(State::UNKNOWN);
+  for (const auto&  wire: bus)
+    if (wire)
+      wire->forceSetCurrentState(State::UNKNOWN);
 }
 
 QColor GraphicalWire::getColor() const

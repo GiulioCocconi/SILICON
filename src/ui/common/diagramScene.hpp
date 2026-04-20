@@ -196,6 +196,16 @@ private:
    */
   void setInteractionMode(InteractionMode newMode, bool force);
 
+
+  /**
+   * @brief Lifecycle helper methods for interaction modes.
+   */
+  void finalizeWireCreation();
+  void enterComponentPlacingMode();
+  void exitComponentPlacingMode();
+  void enterSimulationMode();
+  void exitSimulationMode();
+
   /**
    * @brief Handles mouse movement for wire/component dragging.
    */

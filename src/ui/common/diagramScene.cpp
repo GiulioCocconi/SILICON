@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2025. Giulio Cocconi
+ Copyright (c) 2026. Giulio Cocconi
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -90,6 +90,7 @@ void DiagramScene::setInteractionMode(InteractionMode mode)
   setInteractionMode(mode, false);
 }
 
+
 void DiagramScene::setInteractionMode(const InteractionMode newMode, const bool force)
 {
   if (!force && views().size() != 1)
@@ -103,148 +104,167 @@ void DiagramScene::setInteractionMode(const InteractionMode newMode, const bool 
   clearSelection();
 
   if (wireSegmentToBeDrawn && newMode != InteractionMode::WIRE_CREATION_MODE) {
-    // Remove the wireSegment if it's invisible
-    if (wireSegmentToBeDrawn->empty()) {
-      removeItem(wireSegmentToBeDrawn);
-      delete wireSegmentToBeDrawn;
-      wireSegmentToBeDrawn = nullptr;
-    } else {
-      // Always register the segment so the WireManager tracks it for junctions
-      // and collision detection
-      wireManager.addSegment(wireSegmentToBeDrawn);
-    }
-    clearWireShadow();
+    finalizeWireCreation();
   }
 
   if (currentMode == InteractionMode::COMPONENT_PLACING_MODE) {
-    hideCSB();
-    if (componentToBeDrawn) {
-      // componentToBeDrawn shadow should have been cleared BEFORE switching to another
-      // mode, if it's not then it means the insertion has been aborted and the component
-      // should be removed
-
-      removeItem(componentToBeDrawn);
-      delete componentToBeDrawn;
-      componentToBeDrawn = nullptr;
-    }
+    exitComponentPlacingMode();
   } else if (newMode == InteractionMode::COMPONENT_PLACING_MODE) {
-    // We need to show the CSB
-
-    // ALGORITHM: If the cursor is inside the view then try to place the component.
-    //            If the it's outside or the component boundingRect is colliding then
-    //            go to component placing mode and place it manually.
-    //            When the component is placed then go to component placing mode and
-    //            repeat the placing of the same component until ESC is pressed
-    //            (NORMAL_MODE)
-
-    const QPoint globalCursorPos = QCursor::pos();
-
-    const auto view = this->views()[0];
-
-    // The position for the CSB should be the position of the cursor (if the cursor is
-    // inside the view) or the center of the view (every other case)
-
-    // Get center pos
-    const QPoint centerPos = view->viewport()->rect().center();
-
-    // Get cursor pos within view
-    const QPoint cursorPosWithinView = view->mapFromGlobal(globalCursorPos);
-
-    const bool isCursorInsideView =
-        view->viewport()->rect().contains(cursorPosWithinView);
-
-    const QPoint posForCSB = isCursorInsideView ? cursorPosWithinView : centerPos;
-
-    showCSB(view->mapToScene(posForCSB));
+    enterComponentPlacingMode();
   }
 
-  if (newMode == InteractionMode::SIMULATION_MODE
-      || currentMode == InteractionMode::SIMULATION_MODE) {
-    // SETUP FOR SIMULATION MODE
-    if (newMode == InteractionMode::SIMULATION_MODE) {
-      calculateWiresForComponents();
+  if (newMode == InteractionMode::SIMULATION_MODE) {
+    enterSimulationMode();
+  }
 
-      // Initialize all wires to UNKNOWN state (will be overridden by connected inputs)
-      for (const auto& wire : wireManager.wires()) {
-        wire->initializeBusForSimulation();
-      }
-
-      // Restore inputs to neutral state & inject LOW into the logic bus
-      // Do this BEFORE creating the Simulator to avoid double-evaluations
-      for (auto* item : items()) {
-        if (item && item->type() == SiliconTypes::SINGLE_INPUT) {
-          auto* input = qgraphicsitem_cast<GraphicalInput*>(item);
-
-          // Updates visual shape
-          input->setState(State::LOW);
-
-          // Manually push the LOW state directly to the logic bus
-          auto bus = input->getComponent()->getOutputs()[0];
-	  bus.forceSetCurrentValue(0, input->getComponent()->weak_from_this());
-
-          // Now connect the signal for user clicks during runtime
-          connect(input, &GraphicalInput::inputToggled, this,
-                  &DiagramScene::handleInputToggled, Qt::UniqueConnection);
-        }
-      }
-
-      // 2. Gather core components
-      Component_set coreComps;
-      for (auto* item : items()) {
-        if (item && item->type() >= COMPONENT) {
-          auto* comp = qgraphicsitem_cast<GraphicalLogicComponent*>(item);
-          if (comp && comp->getComponent()) {
-            coreComps.insert(comp->getComponent());
-          }
-        }
-      }
-
-      // 3. Initialize Circuit & Simulator frameworks
-      this->circuit   = std::make_shared<Circuit>(coreComps, false);
-
-      // The Simulator constructor automatically calls recompile() and evaluates the
-      // entire circuit exactly once, using the LOW logic values we just injected!
-      this->simulator = std::make_unique<Simulator>(this->circuit);
-
-      refreshGraphicalOutputs();
-      update();
-    }
-
-    // TEARDOWN FOR SIMULATION MODE
-    if (currentMode == InteractionMode::SIMULATION_MODE) {
-      // Disconnect signals from inputs
-      for (auto* item : items()) {
-        if (item && item->type() == SiliconTypes::SINGLE_INPUT) {
-          auto* input = qgraphicsitem_cast<GraphicalInput*>(item);
-          disconnect(input, &GraphicalInput::inputToggled, this,
-                     &DiagramScene::handleInputToggled);
-        }
-      }
-
-      // Discard simulation engines
-      this->simulator.reset();
-      this->circuit.reset();
-
-      for (auto* item : items()) {
-        if (item && item->type() == SiliconTypes::SINGLE_OUTPUT) {
-          auto* out = qgraphicsitem_cast<GraphicalOutputSingle*>(item);
-          if (out)
-            out->setState(State::LOW);
-        }
-      }
-
-      // Clear bus states to reset visual wire colors
-      for (const auto& wire : wireManager.wires()) {
-        wire->clearBusState();
-      }
-
-      update();
-    }
+  if (currentMode == InteractionMode::SIMULATION_MODE) {
+    exitSimulationMode();
   }
 
   this->currentInteractionMode = newMode;
   emit DiagramScene::modeChanged(newMode);
 }
+
+void DiagramScene::finalizeWireCreation()
+{
+  // Remove the wireSegment if it's invisible
+  if (wireSegmentToBeDrawn->empty()) {
+    removeItem(wireSegmentToBeDrawn);
+    delete wireSegmentToBeDrawn;
+    wireSegmentToBeDrawn = nullptr;
+  } else {
+    // Always register the segment so the WireManager tracks it for junctions
+    // and collision detection
+    wireManager.addSegment(wireSegmentToBeDrawn);
+  }
+  clearWireShadow();
+}
+
+void DiagramScene::exitComponentPlacingMode()
+{
+  hideCSB();
+  if (componentToBeDrawn) {
+    // componentToBeDrawn shadow should have been cleared BEFORE switching to another
+    // mode, if it's not then it means the insertion has been aborted and the component
+    // should be removed
+
+    removeItem(componentToBeDrawn);
+    delete componentToBeDrawn;
+    componentToBeDrawn = nullptr;
+  }
+}
+
+void DiagramScene::enterComponentPlacingMode()
+{
+  // ALGORITHM: If the cursor is inside the view then try to place the component.
+  //            If the it's outside or the component boundingRect is colliding then
+  //            go to component placing mode and place it manually.
+  //            When the component is placed then go to component placing mode and
+  //            repeat the placing of the same component until ESC is pressed
+  //            (NORMAL_MODE)
+
+  const QPoint globalCursorPos = QCursor::pos();
+
+  const auto view = this->views()[0];
+
+  // The position for the CSB should be the position of the cursor (if the cursor is
+  // inside the view) or the center of the view (every other case)
+
+  // Get center pos
+  const QPoint centerPos = view->viewport()->rect().center();
+
+  // Get cursor pos within view
+  const QPoint cursorPosWithinView = view->mapFromGlobal(globalCursorPos);
+
+  const bool isCursorInsideView =
+      view->viewport()->rect().contains(cursorPosWithinView);
+
+  const QPoint posForCSB = isCursorInsideView ? cursorPosWithinView : centerPos;
+
+  showCSB(view->mapToScene(posForCSB));
+}
+
+void DiagramScene::enterSimulationMode()
+{
+  calculateWiresForComponents();
+
+  // Initialize all wires to UNKNOWN state (will be overridden by connected inputs)
+  for (const auto& wire : wireManager.wires()) {
+    wire->clearBusState();
+  }
+
+  // Restore inputs to neutral state & inject LOW into the logic bus
+  // Do this BEFORE creating the Simulator to avoid double-evaluations
+  for (auto* item : items()) {
+    if (item && item->type() == SiliconTypes::SINGLE_INPUT) {
+      auto* input = qgraphicsitem_cast<GraphicalInput*>(item);
+
+      // Updates visual shape
+      input->setState(State::LOW);
+
+      // Manually push the LOW state directly to the logic bus
+      auto bus = input->getComponent()->getOutputs()[0];
+      bus.forceSetCurrentValue(0, input->getComponent()->weak_from_this());
+
+      // Now connect the signal for user clicks during runtime
+      connect(input, &GraphicalInput::inputToggled, this,
+              &DiagramScene::handleInputToggled, Qt::UniqueConnection);
+    }
+  }
+
+  // 2. Gather core components
+  Component_set coreComps;
+  for (auto* item : items()) {
+    if (item && item->type() >= COMPONENT) {
+      auto* comp = qgraphicsitem_cast<GraphicalLogicComponent*>(item);
+      if (comp && comp->getComponent()) {
+        coreComps.insert(comp->getComponent());
+      }
+    }
+  }
+
+  // 3. Initialize Circuit & Simulator frameworks
+  this->circuit   = std::make_shared<Circuit>(coreComps, false);
+
+  // The Simulator constructor automatically calls recompile() and evaluates the
+  // entire circuit exactly once, using the LOW logic values we just injected!
+  this->simulator = std::make_unique<Simulator>(this->circuit);
+
+  refreshGraphicalOutputs();
+  update();
+}
+
+void DiagramScene::exitSimulationMode()
+{
+  // Disconnect signals from inputs
+  for (auto* item : items()) {
+    if (item && item->type() == SiliconTypes::SINGLE_INPUT) {
+      auto* input = qgraphicsitem_cast<GraphicalInput*>(item);
+      disconnect(input, &GraphicalInput::inputToggled, this,
+                 &DiagramScene::handleInputToggled);
+    }
+  }
+
+  // Discard simulation engines
+  this->simulator.reset();
+  this->circuit.reset();
+
+  for (auto* item : items()) {
+    if (item && item->type() == SiliconTypes::SINGLE_OUTPUT) {
+      auto* out = qgraphicsitem_cast<GraphicalOutputSingle*>(item);
+      if (out)
+        out->setState(State::UNKNOWN);
+    }
+  }
+
+  // Clear bus states to reset visual wire colors
+  for (const auto& wire : wireManager.wires()) {
+    wire->clearBusState();
+  }
+
+  update();
+}
+
 
 void DiagramScene::mouseMoveEvent(QGraphicsSceneMouseEvent* mouseEvent)
 {
@@ -290,6 +310,7 @@ void DiagramScene::mouseMoveEvent(QGraphicsSceneMouseEvent* mouseEvent)
   }
   QGraphicsScene::mouseMoveEvent(mouseEvent);
 }
+
 
 void DiagramScene::mousePressEvent(QGraphicsSceneMouseEvent* mouseEvent)
 {
