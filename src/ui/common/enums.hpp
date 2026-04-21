@@ -47,10 +47,10 @@ enum SiliconTypes {
 };
 
 namespace AppColors {
-  inline const QColor ORANGE   = {"#ff9955"};
-  inline const QColor LIGHT_ORANGE = {"#ffc999"};
+inline const QColor ORANGE       = {"#ff9955"};
+inline const QColor LIGHT_ORANGE = {"#ffc999"};
 inline const QColor BLUE     = {"#4997d0"};
 inline const QColor GREEN    = {"#9acd32"};
-inline const QColor VIOLET   = {"#c4459a"};
+inline const QColor VIOLET       = {"#c4459a"};
 inline const QColor INTERNAL = {"#ffe6d5"};
 }  // namespace AppColors

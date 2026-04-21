@@ -57,7 +57,7 @@ void GraphicalWire::setBusSize(unsigned int size)
 
 void GraphicalWire::clearBusState()
 {
-  for (const auto&  wire: bus)
+  for (const auto& wire : bus)
     if (wire)
       wire->forceSetCurrentState(State::UNKNOWN);
 }

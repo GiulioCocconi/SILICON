@@ -27,36 +27,42 @@ TEST(LogicTest, And)
   auto o = std::make_shared<Wire>();
 
   auto g = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, o);
-  auto circ = std::make_shared<Circuit>(Component_set{g});
+  auto      circ = std::make_shared<Circuit>(Component_set{g});
   Simulator sim(circ);
-  sim.run(20); // Process initial zero-delay and gate evaluations
+  sim.run(20);  // Process initial zero-delay and gate evaluations
 
-  EXPECT_EQ(o->getCurrentState(), State::ERROR) << "AND(ERROR, ERROR) = " << to_str(o->getCurrentState());
+  EXPECT_EQ(o->getCurrentState(), State::ERROR)
+      << "AND(ERROR, ERROR) = " << to_str(o->getCurrentState());
 
   // Using simulateBus to evaluate the upstream cone for non-standard states
   b->forceSetCurrentState(State::HIGH);
   sim.simulateBus(Bus{o});
   sim.run(20);
-  EXPECT_EQ(o->getCurrentState(), State::ERROR) << "AND(ERROR, HIGH) = " << to_str(o->getCurrentState());
+  EXPECT_EQ(o->getCurrentState(), State::ERROR)
+      << "AND(ERROR, HIGH) = " << to_str(o->getCurrentState());
 
   b->forceSetCurrentState(State::LOW);
   sim.simulateBus(Bus{o});
   sim.run(20);
-  EXPECT_EQ(o->getCurrentState(), State::ERROR) << "AND(ERROR, LOW) = " << to_str(o->getCurrentState());
+  EXPECT_EQ(o->getCurrentState(), State::ERROR)
+      << "AND(ERROR, LOW) = " << to_str(o->getCurrentState());
 
   // Using setBus to reactively propagate inputs through the forward subgraph
-  sim.setBus(Bus{a}, 0); // LOW
-  sim.setBus(Bus{b}, 0); // LOW
+  sim.setBus(Bus{a}, 0);  // LOW
+  sim.setBus(Bus{b}, 0);  // LOW
   sim.run(20);
-  EXPECT_EQ(o->getCurrentState(), State::LOW) << "AND(LOW, LOW) = " << to_str(o->getCurrentState());
+  EXPECT_EQ(o->getCurrentState(), State::LOW)
+      << "AND(LOW, LOW) = " << to_str(o->getCurrentState());
 
-  sim.setBus(Bus{a}, 1); // HIGH
+  sim.setBus(Bus{a}, 1);  // HIGH
   sim.run(20);
-  EXPECT_EQ(o->getCurrentState(), State::LOW) << "AND(HIGH, LOW) = " << to_str(o->getCurrentState());
+  EXPECT_EQ(o->getCurrentState(), State::LOW)
+      << "AND(HIGH, LOW) = " << to_str(o->getCurrentState());
 
-  sim.setBus(Bus{b}, 1); // HIGH
+  sim.setBus(Bus{b}, 1);  // HIGH
   sim.run(20);
-  EXPECT_EQ(o->getCurrentState(), State::HIGH) << "AND(HIGH, HIGH) = " << to_str(o->getCurrentState());
+  EXPECT_EQ(o->getCurrentState(), State::HIGH)
+      << "AND(HIGH, HIGH) = " << to_str(o->getCurrentState());
 }
 
 TEST(LogicTest, Or)
@@ -66,34 +72,40 @@ TEST(LogicTest, Or)
   auto o = std::make_shared<Wire>();
 
   auto g = std::make_shared<OrGate>(std::vector<Wire_ptr>{a, b}, o);
-  auto circ = std::make_shared<Circuit>(Component_set{g});
+  auto      circ = std::make_shared<Circuit>(Component_set{g});
   Simulator sim(circ);
   sim.run(20);
 
-  EXPECT_EQ(o->getCurrentState(), State::ERROR) << "OR(ERROR, ERROR) = " << to_str(o->getCurrentState());
+  EXPECT_EQ(o->getCurrentState(), State::ERROR)
+      << "OR(ERROR, ERROR) = " << to_str(o->getCurrentState());
 
   b->forceSetCurrentState(State::HIGH);
   sim.simulateBus(Bus{o});
   sim.run(20);
-  EXPECT_EQ(o->getCurrentState(), State::ERROR) << "OR(ERROR, HIGH) = " << to_str(o->getCurrentState());
+  EXPECT_EQ(o->getCurrentState(), State::ERROR)
+      << "OR(ERROR, HIGH) = " << to_str(o->getCurrentState());
 
   b->forceSetCurrentState(State::LOW);
   sim.simulateBus(Bus{o});
   sim.run(20);
-  EXPECT_EQ(o->getCurrentState(), State::ERROR) << "OR(ERROR, LOW) = " << to_str(o->getCurrentState());
+  EXPECT_EQ(o->getCurrentState(), State::ERROR)
+      << "OR(ERROR, LOW) = " << to_str(o->getCurrentState());
 
   sim.setBus(Bus{a}, 0);
   sim.setBus(Bus{b}, 0);
   sim.run(20);
-  EXPECT_EQ(o->getCurrentState(), State::LOW) << "OR(LOW, LOW) = " << to_str(o->getCurrentState());
+  EXPECT_EQ(o->getCurrentState(), State::LOW)
+      << "OR(LOW, LOW) = " << to_str(o->getCurrentState());
 
   sim.setBus(Bus{a}, 1);
   sim.run(20);
-  EXPECT_EQ(o->getCurrentState(), State::HIGH) << "OR(HIGH, LOW) = " << to_str(o->getCurrentState());
+  EXPECT_EQ(o->getCurrentState(), State::HIGH)
+      << "OR(HIGH, LOW) = " << to_str(o->getCurrentState());
 
   sim.setBus(Bus{b}, 1);
   sim.run(20);
-  EXPECT_EQ(o->getCurrentState(), State::HIGH) << "OR(HIGH, HIGH) = " << to_str(o->getCurrentState());
+  EXPECT_EQ(o->getCurrentState(), State::HIGH)
+      << "OR(HIGH, HIGH) = " << to_str(o->getCurrentState());
 }
 
 TEST(LogicTest, Xor)
@@ -103,34 +115,40 @@ TEST(LogicTest, Xor)
   auto o = std::make_shared<Wire>();
 
   auto g = std::make_shared<XorGate>(std::array<Wire_ptr, 2>{a, b}, o);
-  auto circ = std::make_shared<Circuit>(Component_set{g});
+  auto      circ = std::make_shared<Circuit>(Component_set{g});
   Simulator sim(circ);
   sim.run(20);
 
-  EXPECT_EQ(o->getCurrentState(), State::ERROR) << "XOR(ERROR, ERROR) = " << to_str(o->getCurrentState());
+  EXPECT_EQ(o->getCurrentState(), State::ERROR)
+      << "XOR(ERROR, ERROR) = " << to_str(o->getCurrentState());
 
   b->forceSetCurrentState(State::HIGH);
   sim.simulateBus(Bus{o});
   sim.run(20);
-  EXPECT_EQ(o->getCurrentState(), State::ERROR) << "XOR(ERROR, HIGH) = " << to_str(o->getCurrentState());
+  EXPECT_EQ(o->getCurrentState(), State::ERROR)
+      << "XOR(ERROR, HIGH) = " << to_str(o->getCurrentState());
 
   b->forceSetCurrentState(State::LOW);
   sim.simulateBus(Bus{o});
   sim.run(20);
-  EXPECT_EQ(o->getCurrentState(), State::ERROR) << "XOR(ERROR, LOW) = " << to_str(o->getCurrentState());
+  EXPECT_EQ(o->getCurrentState(), State::ERROR)
+      << "XOR(ERROR, LOW) = " << to_str(o->getCurrentState());
 
   sim.setBus(Bus{a}, 0);
   sim.setBus(Bus{b}, 0);
   sim.run(20);
-  EXPECT_EQ(o->getCurrentState(), State::LOW) << "XOR(LOW, LOW) = " << to_str(o->getCurrentState());
+  EXPECT_EQ(o->getCurrentState(), State::LOW)
+      << "XOR(LOW, LOW) = " << to_str(o->getCurrentState());
 
   sim.setBus(Bus{a}, 1);
   sim.run(20);
-  EXPECT_EQ(o->getCurrentState(), State::HIGH) << "XOR(HIGH, LOW) = " << to_str(o->getCurrentState());
+  EXPECT_EQ(o->getCurrentState(), State::HIGH)
+      << "XOR(HIGH, LOW) = " << to_str(o->getCurrentState());
 
   sim.setBus(Bus{b}, 1);
   sim.run(20);
-  EXPECT_EQ(o->getCurrentState(), State::LOW) << "XOR(HIGH, HIGH) = " << to_str(o->getCurrentState());
+  EXPECT_EQ(o->getCurrentState(), State::LOW)
+      << "XOR(HIGH, HIGH) = " << to_str(o->getCurrentState());
 }
 
 TEST(LogicTest, CircuitEditing1)
@@ -141,7 +159,7 @@ TEST(LogicTest, CircuitEditing1)
 
   {
     auto g = std::make_shared<XorGate>(std::array<Wire_ptr, 2>{a, b}, o);
-    auto c = std::make_shared<Circuit>(Component_set{g});
+    auto      c = std::make_shared<Circuit>(Component_set{g});
     Simulator sim(c);
     sim.run(20);
     EXPECT_EQ(o->getCurrentState(), State::HIGH);
@@ -149,7 +167,7 @@ TEST(LogicTest, CircuitEditing1)
 
   {
     auto g = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, o);
-    auto c = std::make_shared<Circuit>(Component_set{g});
+    auto      c = std::make_shared<Circuit>(Component_set{g});
     Simulator sim(c);
     sim.run(20);
     EXPECT_EQ(o->getCurrentState(), State::LOW);
@@ -158,7 +176,7 @@ TEST(LogicTest, CircuitEditing1)
   {
     b->forceSetCurrentState(State::HIGH);
     auto g = std::make_shared<OrGate>(std::vector<Wire_ptr>{a, b}, o);
-    auto c = std::make_shared<Circuit>(Component_set{g});
+    auto      c = std::make_shared<Circuit>(Component_set{g});
     Simulator sim(c);
     sim.run(20);
     EXPECT_EQ(o->getCurrentState(), State::HIGH);
@@ -174,7 +192,7 @@ TEST(LogicTest, CircuitEditing2)
   auto o = std::make_shared<Wire>();
 
   auto ag = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, o);
-  auto circ = std::make_shared<Circuit>(Component_set{ag});
+  auto      circ = std::make_shared<Circuit>(Component_set{ag});
   Simulator sim(circ);
   sim.run(20);
 
@@ -182,7 +200,7 @@ TEST(LogicTest, CircuitEditing2)
   ag->setInputs(newInputs);
 
   // Dynamic topology alters require instantiating a fresh graph configuration
-  auto circ2 = std::make_shared<Circuit>(Component_set{ag});
+  auto      circ2 = std::make_shared<Circuit>(Component_set{ag});
   Simulator sim2(circ2);
   sim2.run(20);
 

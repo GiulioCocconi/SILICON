@@ -196,7 +196,6 @@ private:
    */
   void setInteractionMode(InteractionMode newMode, bool force);
 
-
   /**
    * @brief Lifecycle helper methods for interaction modes.
    */

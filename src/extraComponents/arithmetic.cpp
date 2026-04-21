@@ -22,13 +22,12 @@
 HalfAdder::HalfAdder(std::array<Wire_ptr, 2> inputs, Wire_ptr sum, Wire_ptr cout)
   : Component({{inputs[0]}, {inputs[1]}}, {{sum}, {cout}})
 {
-
- /* PIN MAP:
-     a    = inputs [0][0];
-     b    = inputs [1][0];
-     sum  = outputs[0][0];
-     cout = outputs[1][0];
-  */
+  /* PIN MAP:
+      a    = inputs [0][0];
+      b    = inputs [1][0];
+      sum  = outputs[0][0];
+      cout = outputs[1][0];
+   */
 
   defineProperty("delay", 2);
 }
@@ -48,7 +47,6 @@ FullAdder::FullAdder(std::array<Wire_ptr, 2> inputs, Wire_ptr cin, Wire_ptr sum,
                      Wire_ptr cout)
   : Component({{inputs[0]}, {inputs[1]}, {cin}}, {{sum}, {cout}})
 {
-
   /* PIN MAP:
      a    = inputs [0][0];
      b    = inputs [1][0];
@@ -76,7 +74,6 @@ void FullAdder::simulate(Simulator& sim)
 AdderNBits::AdderNBits(std::array<Bus, 2> inputs, Bus sum, Wire_ptr cout)
   : Component({inputs[0], inputs[1]}, {sum, {cout}})
 {
-
   /* PIN MAP:
      a    = inputs [0][0:N];
      b    = inputs [1][0:N];
