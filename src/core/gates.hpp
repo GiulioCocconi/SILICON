@@ -33,7 +33,7 @@ public:
 class AndGate : public Gate {
 public:
   static constexpr std::string_view Type = "AndGate";
-  std::string_view typeName() const override { return Type; }
+  std::string_view                  typeName() const override { return Type; }
 
   AndGate() = default;
   AndGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output);
@@ -43,7 +43,7 @@ public:
 class OrGate : public Gate {
 public:
   static constexpr std::string_view Type = "OrGate";
-  std::string_view typeName() const override { return Type; }
+  std::string_view                  typeName() const override { return Type; }
 
   OrGate() = default;
   OrGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output);
@@ -53,7 +53,7 @@ public:
 class NotGate : public Gate {
 public:
   static constexpr std::string_view Type = "NotGate";
-  std::string_view typeName() const override { return Type; }
+  std::string_view                  typeName() const override { return Type; }
 
   NotGate() = default;
   NotGate(Wire_ptr input, Wire_ptr output);
@@ -63,7 +63,7 @@ public:
 class NandGate : public Gate {
 public:
   static constexpr std::string_view Type = "NandGate";
-  std::string_view typeName() const override { return Type; }
+  std::string_view                  typeName() const override { return Type; }
 
   NandGate() = default;
   NandGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output);
@@ -73,7 +73,7 @@ public:
 class NorGate : public Gate {
 public:
   static constexpr std::string_view Type = "NorGate";
-  std::string_view typeName() const override { return Type; }
+  std::string_view                  typeName() const override { return Type; }
 
   NorGate() = default;
   NorGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output);
@@ -83,7 +83,7 @@ public:
 class XorGate : public Gate {
 public:
   static constexpr std::string_view Type = "XorGate";
-  std::string_view typeName() const override { return Type; }
+  std::string_view                  typeName() const override { return Type; }
 
   XorGate() = default;
   XorGate(const std::array<Wire_ptr, 2>& inputs, Wire_ptr output);

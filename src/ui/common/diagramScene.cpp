@@ -90,7 +90,6 @@ void DiagramScene::setInteractionMode(InteractionMode mode)
   setInteractionMode(mode, false);
 }
 
-
 void DiagramScene::setInteractionMode(const InteractionMode newMode, const bool force)
 {
   if (!force && views().size() != 1)
@@ -176,8 +175,7 @@ void DiagramScene::enterComponentPlacingMode()
   // Get cursor pos within view
   const QPoint cursorPosWithinView = view->mapFromGlobal(globalCursorPos);
 
-  const bool isCursorInsideView =
-      view->viewport()->rect().contains(cursorPosWithinView);
+  const bool isCursorInsideView = view->viewport()->rect().contains(cursorPosWithinView);
 
   const QPoint posForCSB = isCursorInsideView ? cursorPosWithinView : centerPos;
 
@@ -223,12 +221,12 @@ void DiagramScene::enterSimulationMode()
     }
   }
 
-      // 3. Initialize Circuit & Simulator frameworks
-      this->circuit = std::make_shared<Circuit>(coreComps, false);
+  // 3. Initialize Circuit & Simulator frameworks
+  this->circuit = std::make_shared<Circuit>(coreComps, false);
 
-      // The Simulator constructor automatically calls recompile() and evaluates the
-      // entire circuit exactly once, using the LOW logic values we just injected!
-      this->simulator = std::make_unique<Simulator>(this->circuit, 1, true);
+  // The Simulator constructor automatically calls recompile() and evaluates the
+  // entire circuit exactly once, using the LOW logic values we just injected!
+  this->simulator = std::make_unique<Simulator>(this->circuit, 1, true);
 
   refreshGraphicalOutputs();
   update();
@@ -264,7 +262,6 @@ void DiagramScene::exitSimulationMode()
 
   update();
 }
-
 
 void DiagramScene::mouseMoveEvent(QGraphicsSceneMouseEvent* mouseEvent)
 {

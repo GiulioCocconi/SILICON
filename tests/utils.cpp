@@ -17,9 +17,9 @@
 */
 
 #include "tests.hpp"
-#include <extraComponents/utils.hpp>
 #include <core/circuit.hpp>
 #include <core/simulator.hpp>
+#include <extraComponents/utils.hpp>
 
 TEST(UtilsTest, WireMergerCase)
 {
@@ -28,8 +28,8 @@ TEST(UtilsTest, WireMergerCase)
 
   auto bus = Bus(2);
 
-  auto wm = std::make_shared<WireMerger>(std::vector<Bus>{{a}, {b}}, bus);
-  auto circ = std::make_shared<Circuit>(Component_set{wm});
+  auto      wm   = std::make_shared<WireMerger>(std::vector<Bus>{{a}, {b}}, bus);
+  auto      circ = std::make_shared<Circuit>(Component_set{wm});
   Simulator sim(circ);
   sim.run(20);
 
@@ -46,11 +46,11 @@ TEST(UtilsTest, WireSplitterCase)
 
   auto bus = Bus(2);
 
-  auto ws = std::make_shared<WireSplitter>(bus, std::vector<Bus>{{a}, {b}});
-  auto circ = std::make_shared<Circuit>(Component_set{ws});
+  auto      ws   = std::make_shared<WireSplitter>(bus, std::vector<Bus>{{a}, {b}});
+  auto      circ = std::make_shared<Circuit>(Component_set{ws});
   Simulator sim(circ);
 
-  sim.setBus(bus, 2); // 0b10 sets 'b' to HIGH and 'a' to LOW
+  sim.setBus(bus, 2);  // 0b10 sets 'b' to HIGH and 'a' to LOW
   sim.run(20);
 
   EXPECT_EQ(a->getCurrentState(), State::LOW);

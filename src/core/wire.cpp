@@ -209,7 +209,8 @@ int Bus::setCurrentValue(const unsigned int value, const Component_weakPtr& requ
 unsigned int Bus::getCurrentValue() const
 {
   if (isInErrorState() || hasUnknowns())
-     throw std::logic_error("Bus::getCurrentValue() called on a bus in UNKNOWN / ERROR state");
+    throw std::logic_error(
+        "Bus::getCurrentValue() called on a bus in UNKNOWN / ERROR state");
 
   unsigned int res = 0;
   for (unsigned int i = 0; i < this->size(); i++) {

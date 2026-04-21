@@ -106,7 +106,6 @@ public:
   void setState(State state);
 
 private:
-
   const static QString& getUnknownShapePath()
   {
     static QString UNKNOWN_SHAPE_PATH = ":/other_components/output_unknown.svg";
