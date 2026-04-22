@@ -52,18 +52,13 @@ int WireSplitter::setSize(int newSize)
 
 void WireSplitter::simulate(Simulator& sim)
 {
-  const unsigned int N     = this->outputs.size();
+  const unsigned int size  = getPropertyValue<int>("size").value();
   const int          delay = getPropertyValue<int>("delay").value();
 
-  for (unsigned int i = 0; i < N; i++) {
-    State s;
-    if (this->inputs[0].size() != N) {
-      s = State::ERROR;
-    } else {
-      s = Wire::safeGetCurrentState(this->inputs[0][i]);
-    }
+  for (unsigned int i = 0; i < size; i++) {
+    const State s = Wire::safeGetCurrentState(this->inputs[0][i]);
 
-    if (this->outputs[i].size() != 0) {
+    if (this->outputs.size() > i && this->outputs[i].size() != 0) {
       sim.updateWire(this->outputs[i][0], s, delay, weak_from_this());
     }
   }
@@ -100,16 +95,13 @@ int WireMerger::setSize(int newSize)
 
 void WireMerger::simulate(Simulator& sim)
 {
-  const unsigned int N     = this->inputs.size();
+  const unsigned int size  = getPropertyValue<int>("size").value();
   const int          delay = getPropertyValue<int>("delay").value();
 
-  for (unsigned int i = 0; i < N; i++) {
-    State s;
-    if (this->inputs[i].size() == 0) {
-      s = State::ERROR;
-    } else {
-      s = Wire::safeGetCurrentState(this->inputs[i][0]);
-    }
+  for (unsigned int i = 0; i < size; i++) {
+    const bool  inputIsDisconnected = this->inputs[i].size() == 0;
+    const State s                   = inputIsDisconnected ? State::UNKNOWN
+                                                          : Wire::safeGetCurrentState(this->inputs[i][0]);
 
     if (this->outputs[0].size() > i) {
       sim.updateWire(this->outputs[0][i], s, delay, weak_from_this());
