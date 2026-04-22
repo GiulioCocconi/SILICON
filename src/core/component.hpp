@@ -121,16 +121,21 @@ protected:
   void defineProperty(std::string key, T&& defaultValue,
                       PropertyCallback callback = nullptr)
   {
+    PropertyCallback cb;
     if (callback) {
-      propertyCallbacks[key] = std::move(callback);
+      cb                     = std::move(callback);
+      propertyCallbacks[key] = cb;
     }
     using Decayed = std::decay_t<T>;
+    PropertyValue defaultVal;
     if constexpr (std::is_constructible_v<std::string, T>
                   && !std::is_same_v<Decayed, bool>) {
-      properties[key] = std::string(std::forward<T>(defaultValue));
+      defaultVal = std::string(std::forward<T>(defaultValue));
     } else {
-      properties[key] = PropertyValue(std::forward<T>(defaultValue));
+      defaultVal = PropertyValue(std::forward<T>(defaultValue));
     }
+    const PropertyValue finalValue = cb ? cb(defaultVal) : defaultVal;
+    properties[key]                = finalValue;
   }
 
   /**

@@ -69,10 +69,6 @@ void Component::setProperty(const std::string& key, const PropertyValue& value)
         std::format("Property '{}' does not exist on component '{}'", key, typeName()));
   }
 
-  // Early return if value hasn't changed
-  if (it->second == value)
-    return;
-
   // Enforce static type
   if (it->second.index() != value.index()) {
     throw std::invalid_argument(std::format(
@@ -98,11 +94,14 @@ std::optional<PropertyValue> Component::getProperty(const std::string& key) cons
 
 void Component::setPropertyCallback(const std::string& key, PropertyCallback callback)
 {
-  if (properties.find(key) == properties.end()) {
+  const auto property = properties.find(key);
+  if (property == properties.end()) {
     throw std::invalid_argument(
         std::format("Property '{}' does not exist on component '{}'", key, typeName()));
   }
+
   propertyCallbacks[key] = std::move(callback);
+  property->second       = propertyCallbacks[key](property->second);
 }
 
 void Component::setInput(const unsigned int index, const Bus& bus)

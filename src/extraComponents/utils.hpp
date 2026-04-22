@@ -30,6 +30,8 @@ public:
   WireSplitter() = default;
   WireSplitter(Bus input, const std::vector<Bus>& outputs);
 
+  int setSize(int newSize);
+
   void simulate(class Simulator& sim) override;
 };
 
@@ -40,6 +42,8 @@ public:
 
   WireMerger() = default;
   WireMerger(const std::vector<Bus>& inputs, Bus output);
+
+  int setSize(int newSize);
 
   void simulate(class Simulator& sim) override;
 };

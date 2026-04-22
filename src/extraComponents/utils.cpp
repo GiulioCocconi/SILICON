@@ -16,6 +16,7 @@
 */
 
 #include "utils.hpp"
+
 #include <core/simulator.hpp>
 
 WireSplitter::WireSplitter(Bus input, const std::vector<Bus>& outputs)
@@ -23,6 +24,30 @@ WireSplitter::WireSplitter(Bus input, const std::vector<Bus>& outputs)
 {
   defineProperty("size", 2);
   defineProperty("delay", 0);
+
+  setPropertyCallback("size", [this](const PropertyValue& value) {
+    int newSize = std::get<int>(value);
+    this->setSize(newSize);
+    return value;
+  });
+}
+
+int WireSplitter::setSize(int newSize)
+{
+  if (newSize <= 1) {
+    return static_cast<int>(this->outputs.size());
+  }
+
+  if (this->inputs[0].size() == static_cast<unsigned int>(newSize)
+      && this->outputs.size() == static_cast<unsigned int>(newSize)) {
+    return newSize;
+  }
+
+  setInput(0, Bus(newSize));
+  std::vector<Bus> outs(newSize, Bus(1));
+  setOutputs(outs);
+
+  return newSize;
 }
 
 void WireSplitter::simulate(Simulator& sim)
@@ -49,6 +74,28 @@ WireMerger::WireMerger(const std::vector<Bus>& inputs, Bus output)
 {
   defineProperty("size", 2);
   defineProperty("delay", 0);
+
+  setPropertyCallback("size", [this](const PropertyValue& value) {
+    int newSize = std::get<int>(value);
+    this->setSize(newSize);
+    return value;
+  });
+}
+
+int WireMerger::setSize(int newSize)
+{
+  if (newSize <= 1)
+    return static_cast<int>(this->inputs.size());
+
+  if (this->inputs.size() == static_cast<unsigned int>(newSize)
+      && this->outputs[0].size() == static_cast<unsigned int>(newSize)) {
+    return newSize;
+  }
+
+  std::vector<Bus> inputs(newSize, Bus());
+  setInputs(inputs);
+  setOutput(0, Bus(newSize));
+  return newSize;
 }
 
 void WireMerger::simulate(Simulator& sim)
