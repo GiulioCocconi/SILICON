@@ -1,32 +1,25 @@
-#include "graphicalUtils.hpp"
-
-#include <stdexcept>
+#include <ui/logiFlow/components/graphicalUtils.hpp>
 
 GraphicalWireSplitter::GraphicalWireSplitter(QGraphicsItem* parent)
   : GraphicalLogicComponent(std::make_shared<WireSplitter>(Bus(), (std::vector<Bus>){}),
-                            nullptr, parent),
-    size(2)
+                            nullptr, parent)
 {
-  this->associatedComponent->setPropertyCallback(
-      "size", [this](const PropertyValue& value) {
-        int newSize = std::get<int>(value);
-        if (newSize <= 1)
-          throw std::invalid_argument("WireSplitter size must be greater than 1");
-        this->setSize(newSize);
-        return value;
-      });
-  this->associatedComponent->setProperty("size", 2);
+  this->associatedComponent->setPropertyCallback("size",
+                                                 [this](const PropertyValue& value) {
+                                                   int newSize = std::get<int>(value);
+                                                   return this->setSize(newSize);
+                                                 });
 };
 
-void GraphicalWireSplitter::setSize(const int newSize)
+int GraphicalWireSplitter::setSize(const int newSize)
 {
   if (newSize <= 1)
-    throw std::invalid_argument("WireSplitter size must be greater than 1");
+    return static_cast<int>(this->size);
+
   this->size = newSize;
 
-  this->associatedComponent->setInput(0, Bus(newSize));
-  std::vector<Bus> outputs(newSize, Bus(1));
-  this->associatedComponent->setOutputs(outputs);
+  const auto logicalWireSplitter = dynamic_cast<WireSplitter*>(associatedComponent.get());
+  logicalWireSplitter->setSize(newSize);
 
   QPainterPath path{};
   path.moveTo(0, 0);
@@ -46,33 +39,29 @@ void GraphicalWireSplitter::setSize(const int newSize)
 
   this->setItemShape(shape);
   this->setPorts({std::pair<std::string, QPoint>{"b", QPoint(-20, 0)}}, outputPorts);
+
+  return newSize;
 }
 
 GraphicalWireMerger::GraphicalWireMerger(QGraphicsItem* parent)
   : GraphicalLogicComponent(std::make_shared<WireMerger>((std::vector<Bus>){}, Bus()),
-                            nullptr, parent),
-    size(2)
+                            nullptr, parent)
 {
   this->associatedComponent->setPropertyCallback(
       "size", [this](const PropertyValue& value) {
-        int newSize = std::get<int>(value);
-        if (newSize <= 1)
-          throw std::invalid_argument("WireMerger size must be greater than 1");
-        this->setSize(newSize);
-        return value;
+        const int newSize = std::get<int>(value);
+        return this->setSize(newSize);
       });
-  this->associatedComponent->setProperty("size", 2);
 };
 
-void GraphicalWireMerger::setSize(const int newSize)
+int GraphicalWireMerger::setSize(const int newSize)
 {
   if (newSize <= 1)
-    throw std::invalid_argument("WireMerger size must be greater than 1");
+    return this->size;
   this->size = newSize;
 
-  std::vector<Bus> inputs(newSize, Bus());
-  this->associatedComponent->setInputs(inputs);
-  this->associatedComponent->setOutput(0, Bus(newSize));
+  const auto logicalWireMerger = dynamic_cast<WireMerger*>(associatedComponent.get());
+  logicalWireMerger->setSize(newSize);
 
   QPainterPath path{};
   path.moveTo(0, 0);
@@ -92,4 +81,6 @@ void GraphicalWireMerger::setSize(const int newSize)
 
   this->setItemShape(shape);
   this->setPorts(inputPorts, {std::pair<std::string, QPoint>{"b", QPoint(20, 0)}});
+
+  return newSize;
 }
