@@ -18,7 +18,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Install doxygen dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y doxygen graphviz
@@ -26,17 +26,29 @@ jobs:
       - name: Generate Doxygen documentation
         run: doxygen Doxyfile
 
-      # Flatten output so Pages serves it cleanly
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install webpage dependencies
+        working-directory: webpage
+        run: bun install
+
+      - name: Build webpage
+        working-directory: webpage
+        run: bun run build
+
       - name: Prepare Pages site
         run: |
-          mkdir -p site/internaldocs
-
-            cp -r docs/html/* site/internaldocs
+          mkdir -p dist/internaldocs
+          cp -r docs/html/* dist/internaldocs
+          cp -r webpage/dist/* dist/
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./site
+          path: ./dist
 
   deploy:
     needs: build
