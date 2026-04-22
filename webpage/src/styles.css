@@ -1,0 +1,143 @@
+@import url("https://fonts.googleapis.com/css2?family=Chango&family=Nova+Mono&family=Quicksand:wght@400;500;600;700&display=swap");
+
+@import "tailwindcss" source(none);
+@source "../src";
+
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-silicon-green: var(--silicon-green);
+  --color-silicon-orange: var(--silicon-orange);
+  --color-silicon-blue: var(--silicon-blue);
+  --color-silicon-magenta: var(--silicon-magenta);
+  --color-silicon-ink: var(--silicon-ink);
+
+  --font-display: "Chango", system-ui, sans-serif;
+  --font-mono: "Nova Mono", ui-monospace, monospace;
+  --font-sans: "Quicksand", ui-sans-serif, system-ui, sans-serif;
+}
+
+:root {
+  --radius: 1rem;
+
+  /* Silicon brand palette (from identity sheet) */
+  --silicon-green: #89f17f;
+  --silicon-orange: #ff9845;
+  --silicon-blue: #46a6ef;
+  --silicon-magenta: #ce35a8;
+  --silicon-ink: oklch(0.18 0.01 280);
+
+  --background: oklch(0.99 0.005 100);
+  --foreground: var(--silicon-ink);
+  --card: oklch(1 0 0);
+  --card-foreground: var(--silicon-ink);
+  --popover: oklch(1 0 0);
+  --popover-foreground: var(--silicon-ink);
+
+  --primary: var(--silicon-ink);
+  --primary-foreground: oklch(0.99 0.005 100);
+  --secondary: oklch(0.96 0.01 100);
+  --secondary-foreground: var(--silicon-ink);
+  --muted: oklch(0.95 0.008 100);
+  --muted-foreground: oklch(0.45 0.02 280);
+  --accent: var(--silicon-green);
+  --accent-foreground: var(--silicon-ink);
+  --destructive: oklch(0.6 0.22 27);
+  --destructive-foreground: oklch(0.99 0 0);
+  --border: oklch(0.2 0.01 280 / 12%);
+  --input: oklch(0.2 0.01 280 / 12%);
+  --ring: var(--silicon-ink);
+
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    background-image:
+      radial-gradient(oklch(0.2 0.01 280 / 8%) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+
+  h1, h2, h3 {
+    font-family: var(--font-display);
+    letter-spacing: 0.01em;
+  }
+
+  code, pre, .mono {
+    font-family: var(--font-mono);
+  }
+}
+
+@layer utilities {
+  .font-display { font-family: var(--font-display); }
+  .font-mono { font-family: var(--font-mono); }
+  .font-sans { font-family: var(--font-sans); }
+
+  .silicon-card {
+    background-color: var(--card);
+    border: 2px solid var(--silicon-ink);
+    border-radius: 1.25rem;
+    box-shadow: 6px 6px 0 0 var(--silicon-ink);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  .silicon-card:hover {
+    transform: translate(-2px, -2px);
+    box-shadow: 10px 10px 0 0 var(--silicon-ink);
+  }
+
+  .silicon-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.25rem;
+    border: 2px solid var(--silicon-ink);
+    border-radius: 0.75rem;
+    font-weight: 700;
+    background-color: var(--card);
+    color: var(--silicon-ink);
+    box-shadow: 4px 4px 0 0 var(--silicon-ink);
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+  }
+  .silicon-btn:hover {
+    transform: translate(-2px, -2px);
+    box-shadow: 6px 6px 0 0 var(--silicon-ink);
+  }
+  .silicon-btn:active {
+    transform: translate(2px, 2px);
+    box-shadow: 0 0 0 0 var(--silicon-ink);
+  }
+}

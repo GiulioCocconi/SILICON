@@ -6,7 +6,7 @@
     flake-utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = { self, nixpkgs, flake-utils }:
+outputs = { self, nixpkgs, flake-utils }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
@@ -39,6 +39,8 @@
           cmake
           ninja
         ];
+
+        bun = pkgs.buildPackages.bun;
       in
         {
           devShells = {
@@ -57,6 +59,11 @@
               packages = devPackages ++ libraries ++ nativeInputs ++ [pkgs.range-v3];
               hardeningDisable = [ "all" ];
             };
+
+            webpage = pkgs.mkShell {
+              name = "SILICON-webpage-dev";
+              packages = [ bun pkgs.doxygen pkgs.graphviz ];
+            };
           };
 
           packages.default = pkgs.stdenv.mkDerivation {
@@ -71,7 +78,7 @@
 
             cmakeFlags = [
               "-DSILICON_USE_VCPKG=OFF"
-	          "-DUSING_NIX=ON"
+	      "-DUSING_NIX=ON"
             ];
 
             doCheck = true;

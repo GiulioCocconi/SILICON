@@ -1,181 +1,314 @@
-@import url('https://fonts.googleapis.com/css2?family=Chango&family=Nova+Mono&family=Quicksand:wght@300..700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Chango&family=Nova+Mono&family=Quicksand:wght@400;500;600;700&display=swap');
+
+/* =========================================
+   OVERRIDE DOXYGEN AWESOME VARIABLES
+   ========================================= */
+html {
+    /* Set core backgrounds to transparent so our dot-matrix body shows */
+    --page-background-color: transparent !important;
+    --side-nav-background: transparent !important;
+
+    --code-background: #f4f4f5 !important;
+    --fragment-background: #f4f4f5 !important;
+
+    /* Force the requested fonts into Doxygen's variable system */
+    --font-family: "Quicksand", ui-sans-serif, system-ui, sans-serif !important;
+    --font-family-monospace: "Nova Mono", ui-monospace, monospace !important;
+    --toc-font-family: "Quicksand", sans-serif !important;
+
+    /* Silicon Brand Colors */
+    --primary-color: #ff9845 !important;       /* silicon-orange */
+    --primary-dark-color: #1c1b22 !important;  /* silicon-ink */
+    --primary-light-color: #89f17f !important; /* silicon-green */
+
+    --toc-active-color: #89f17f !important;
+    --toc-active-text-color: #1c1b22 !important;
+}
+
+/* =========================================
+   GLOBAL BACKGROUND & TYPOGRAPHY
+   ========================================= */
+body {
+    background-color: #fcfcfc !important;
+    /* Neo-brutalist Dot Matrix Background */
+    background-image: radial-gradient(rgba(28, 27, 34, 0.08) 2px, transparent 2px) !important;
+    background-size: 22px 22px !important;
+    color: #1c1b22 !important;
+    font-family: var(--font-family) !important;
+}
+
+/* Expose the background through the main wrappers */
+.contents, #doc-content, #side-nav {
+    background: transparent !important;
+}
+
+/* Apply display font to headers */
+h1, h2, h3, h4, h5, .title, .groupheader, .toc-title, caption {
+    font-family: "Chango", system-ui, sans-serif !important;
+    color: #1c1b22 !important;
+    font-weight: normal !important;
+    letter-spacing: 0.02em;
+}
+
+a:link, a:visited, a:focus, a:active {
+    font-weight: 700 !important;
+    color: #46a6ef !important; /* silicon-blue */
+    text-decoration: none !important;
+    transition: all 0.1s ease !important;
+}
+a:hover {
+    color: #ce35a8 !important; /* silicon-magenta */
+}
 
 /* =========================================
    TOP NAVBAR (Floating Card)
    ========================================= */
 #top {
-    background-color: var(--side-nav-background) !important;
-    border-radius: 16px !important;
-
-    /* Internal padding for the navbar */
-    padding-top: 12px !important;
-    box-sizing: border-box !important;
-
-    /* Changed top margin to 0 so Doxygen's math doesn't break the footer */
-    margin: 0 12px 0 12px !important;
-
-    /* Visually push it down 12px instead */
     position: relative !important;
-    top: 12px !important;
-    z-index: 10 !important; /* Keep it above the content */
+    background-color: #ffffff !important;
+    border: 2px solid #1c1b22 !important;
+    border-radius: 16px !important;
+    box-shadow: 6px 6px 0 0 #1c1b22 !important;
 
-    width: calc(100% - 24px) !important;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
-    border-bottom: none !important;
+    margin: 16px !important;
+    width: calc(100% - 32px) !important;
+    box-sizing: border-box !important;
+    padding: 8px !important;
+    border-bottom: 2px solid #1c1b22 !important;
 }
 
-#MSearchSelectWindow, #MSearchResultsWindow {
-    background-color: var(--side-nav-background) !important;
+/* =========================================
+   SIDEBARS (Left Tree & Right TOC)
+   ========================================= */
+#side-nav {
+    padding: 0 8px 16px 16px !important; /* Breathing room for the shadow */
 }
 
-.sm-dox ul {
-    background-color: var(--side-nav-background) !important;
-    background: var(--side-nav-background) !important;
-    border-radius: 12px !important;
-    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1) !important;
+#nav-tree {
+    background-color: #ffffff !important;
+    border: 2px solid #1c1b22 !important;
+    border-radius: 16px !important;
+    box-shadow: 6px 6px 0 0 #1c1b22 !important;
+    padding: 12px !important;
+}
+
+#splitbar {
+    background: transparent !important;
     border: none !important;
-    padding: 6px !important;
 }
 
-.sm-dox ul::before,
-.sm-dox ul::after {
+.item.selected {
+    background-color: #89f17f !important;
+    color: #1c1b22 !important;
+    font-weight: 700 !important;
+    border: 2px solid #1c1b22 !important;
+    border-radius: 8px !important;
+    box-shadow: 2px 2px 0 0 #1c1b22 !important;
+    margin-right: 4px !important;
+}
+
+div.toc, #page-nav {
+    background-color: #ffffff !important;
+    border: 2px solid #1c1b22 !important;
+    border-radius: 16px !important;
+    box-shadow: 6px 6px 0 0 #1c1b22 !important;
+    margin: 16px 16px 16px 8px !important;
+    padding: 16px !important;
+}
+
+/* =========================================
+   SUMMARY TABLES (Flexbox Upgrade - Gap Fix)
+   ========================================= */
+/* Unbind standard table rules */
+table.memberdecls,
+table.memberdecls tbody {
+    display: block !important;
+    width: 100% !important;
+}
+
+/* Make the row itself the single, solid Silicon Card */
+table.memberdecls tr[class^="memitem"] {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    align-items: baseline !important;
+
+    background-color: #ffffff !important;
+    border: 2px solid #1c1b22 !important;
+    border-radius: 12px !important;
+    box-shadow: 4px 4px 0 0 #1c1b22 !important;
+
+    margin-bottom: 12px !important;
+    padding: 8px 12px !important;
+}
+
+/* Strip borders from individual cells, let them flow naturally inside the row */
+table.memberdecls tr[class^="memitem"] td {
+    display: block !important;
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    padding: 4px 8px !important;
+}
+
+/* Clean up description text blocks right below the cards */
+table.memberdecls tr[class^="memdesc"] {
+    display: block !important;
+    margin-top: -4px !important;
+    margin-bottom: 24px !important;
+}
+table.memberdecls tr[class^="memdesc"] td {
+    display: block !important;
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    padding: 0 16px !important;
+    color: #4a4a55 !important;
+}
+
+/* Hide legacy separator lines that Doxygen injects */
+table.memberdecls tr.separator {
     display: none !important;
 }
 
-/* Ensure the main content doesn't tuck under the new floating navbar */
-#side-nav, #doc-content {
-    /* 12px for the header shift + 12px breathing room */
-    padding-top: 24px !important;
-}
-
 /* =========================================
-   SIDEBAR (Floating Card & Scrolling)
+   MEMBER DOC BLOCKS (Folder Tabs)
    ========================================= */
-/* 1. Make the outer container an invisible wrapper to create spacing */
-#side-nav {
-    background-color: transparent !important;
-    border: none !important;
-    padding: 12px !important;
-    box-sizing: border-box !important;
-    /* Let the inner #nav-tree handle the scrolling */
-    overflow: hidden !important;
+/* 1. The Title Tab (e.g. "◆ Simulator()") */
+.memtitle {
+    background-color: #f4f4f5 !important;
+    border: 2px solid #1c1b22 !important;
+    border-bottom: none !important; /* Open the bottom to merge with card */
+    border-radius: 12px 12px 0 0 !important; /* Top rounded, bottom square */
+    padding: 8px 16px !important;
+    font-family: "Chango", system-ui, sans-serif !important;
+    color: #1c1b22 !important;
+
+    display: inline-block !important; /* Make it tab-sized, not full width */
+    margin: 0 0 -2px 0 !important;    /* Pull the box below UP to overlap its border */
+    position: relative !important;
+    z-index: 2 !important;            /* Keep the tab above the box's top border */
 }
 
-/* 2. Make the inner scrolling tree the actual "floating card" */
-#nav-tree {
-    background-color: var(--side-nav-background) !important;
-    border-radius: 16px !important;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
-    height: 100% !important;
-    width: 100% !important;
-    box-sizing: border-box !important;
-
-    /* INTERNAL SCROLLING FOR SIDEBAR */
-    overflow-y: auto !important;
-    overflow-x: hidden !important;
-}
-
-/* 3. Hide the draggable splitbar line so it blends perfectly */
-#splitbar {
-    background-color: transparent !important;
-    border: none !important;
-}
-
-/* =========================================
-   PAGE NAV (Right Sidebar)
-   ========================================= */
-#page-nav {
-    background-color: var(--side-nav-background) !important;
-    border-radius: 16px !important;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
-    border: none !important;
-    margin: 12px !important;
-    padding: 16px !important;
-    box-sizing: border-box !important;
-    overflow-y: auto !important;
-    overflow-x: hidden !important;
-}
-
-#page-nav ul.page-outline .vis {
-    background: var(--side-nav-background) !important;
-}
-
-#page-nav h3,
-#page-nav .toc-title {
-    border-bottom: none !important;
-}
-
-/* =========================================
-   TYPOGRAPHY & COLORS
-   ========================================= */
-span.mlabel {
-    font-size: 10pt !important;
-}
-
+/* 2. The Main Box Container */
 .memitem {
-    background-color: var(--code-background) !important;
+    background-color: #ffffff !important;
+    border: 2px solid #1c1b22 !important;
+    /* Flat top-left corner because the tab sits perfectly there */
+    border-radius: 0 12px 12px 12px !important;
+    box-shadow: 6px 6px 0 0 #1c1b22 !important;
+
+    margin-bottom: 48px !important;
+    margin-top: 0 !important;
+    overflow: hidden !important;
+    padding: 0 !important;
+    position: relative !important;
+    z-index: 1 !important;
 }
 
+/* 3. The Function Signature (matches the tab color) */
+/* ===== */
+
+/* Target the Doxygen split-columns anywhere they appear */
+td.memItemLeft,
+td.memItemRight,
+.memItemLeft,
+.memItemRight {
+    display: inline-block !important; /* Force them to sit inline like normal text */
+    width: auto !important;           /* Strip any 100% width rules */
+    max-width: none !important;
+    text-align: left !important;      /* Kill Doxygen's right-alignment on the left column */
+    padding: 0 !important;            /* Strip structural padding */
+    margin: 0 !important;
+    vertical-align: baseline !important; /* Keep the text perfectly aligned */
+    border: none !important;
+    background: transparent !important;
+}
+
+/* Add a clean, consistent space between the Type and the Name */
+td.memItemLeft,
+.memItemLeft {
+    margin-right: 8px !important;
+}
+
+/* Ensure their parent row doesn't force them apart */
+tr[class^="memitem"],
+.memitem {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    align-items: baseline !important;
+    justify-content: flex-start !important; /* Pack them tightly to the left */
+}
+
+/* Hide any invisible spacers Doxygen injects */
+.memseparator {
+    display: none !important;
+}
+
+.memproto {
+    background-color: #f4f4f5 !important;
+    border-bottom: 2px dashed #1c1b22 !important;
+    padding: 16px !important;
+    margin: 0 !important;
+    font-family: var(--font-family-monospace) !important;
+}
+
+/* 4. The Description Body */
 .memdoc {
-    background-color: var(--code-background) !important;
+    background-color: #ffffff !important;
+    padding: 24px 16px !important;
+    margin: 0 !important;
+    border: none !important;
 }
 
+/* Header separating generic blocks */
 h2.groupheader {
+    border-bottom: 4px solid #1c1b22 !important;
+    padding-bottom: 8px !important;
+    margin-top: 48px !important;
     box-shadow: none !important;
 }
 
-a:link, a:visited, a:hover, a:focus, a:active {
-    font-weight: bold;
-}
-
-.title {
-    --font-family: "Chango" !important;
-}
-
-div.header {
-    border-bottom: none !important;
-}
-
-div.qindex {
-    border-bottom: none !important;
-}
-
-html {
-    --content-maxwidth: auto;
-    --page-background-color: #cbe9a2;
-    --fragment-background: var(--code-background);
-    --primary-color: #ff9955;
-    --invariant-color-dark: #9acd32;
-    --primary-dark-color: #c4459a;
-
-    --font-family: "Quicksand";
-    --font-family-monospace: "Nova Mono", monospace;
-}
-
 /* =========================================
-   FIXED VIEWPORT & INTERNAL SCROLLING
+   UI ELEMENTS (Badges, Inputs, Breadcrumbs)
    ========================================= */
-
-/* 1. Kill the main window scroll */
-html, body {
-  height: 100vh !important;
-  height: 100dvh !important; /* Modern fix for mobile browser URL bars */
-  max-height: 100vh !important;
-  margin: 0;
-  padding: 0;
-  overflow: hidden !important;
+/* Tags/Badges (like 'virtual', 'explicit', etc) */
+span.mlabel {
+    font-size: 10pt !important;
+    background-color: #ff9845 !important;
+    border: 2px solid #1c1b22 !important;
+    color: #1c1b22 !important;
+    box-shadow: 2px 2px 0 0 #1c1b22 !important;
+    border-radius: 6px !important;
+    padding: 2px 8px !important;
+    font-weight: bold !important;
 }
 
-/* 2. Main Content Area Scrolling */
-#doc-content {
-  overflow-y: auto !important;
-  overflow-x: auto !important;
-  box-sizing: border-box;
-  padding-bottom: 32px !important; /* Keeps content from sticking to bottom edge */
+/* Search Box */
+#MSearchBox {
+    background: #ffffff !important;
+    border: 2px solid #1c1b22 !important;
+    border-radius: 8px !important;
+    box-shadow: 3px 3px 0 0 #1c1b22 !important;
 }
 
-/* 3. Keep the footer (breadcrumbs) from being truncated */
+/* Breadcrumb nav floating pill */
 #nav-path {
-    bottom: 12px !important;
-    right: 12px !important;
+    position: fixed !important;
+    bottom: 24px !important;
+    right: 24px !important;
+    width: auto !important;
+    background: #ffffff !important;
+    border: 2px solid #1c1b22 !important;
+    border-radius: 32px !important;
+    box-shadow: 4px 4px 0 0 #1c1b22 !important;
+    padding: 8px 24px !important;
+    z-index: 100 !important;
+}
+#nav-path ul {
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
 }
