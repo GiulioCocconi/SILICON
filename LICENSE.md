@@ -627,6 +627,9 @@ This project also uses some licensed resources from third parties. These are lis
 for each of them is available inside the `resources/app/licenses` directory of the source code and inside the about dialog of the
 SILICON applications.
 
+### Icons
+Lucide, under ISC, _Copyright (c) 2026 Lucide Icons and Contributors_
+
 ### Font Resources
 Each font is licensed under `OFL`
 - Chango _Copyright (c) 2011 Fontstage (info@fontstage.com)_

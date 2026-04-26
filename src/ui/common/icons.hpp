@@ -17,8 +17,7 @@
 
 #pragma once
 
-#include <unordered_map>
-
+#include <QColor>
 #include <QFile>
 #include <QIcon>
 #include <QPainter>
@@ -30,41 +29,60 @@
 
 class Icon : public QIcon {
 public:
-  explicit Icon(const QString&           commonName,
-                const std::vector<QSize> targetSizes = {QSize(32, 32)});
+  explicit Icon(const QString&            commonName,
+                const std::vector<QSize>& targetSizes = {QSize(32, 32)});
+
+  explicit Icon(const QString& commonName, const QColor& color,
+                const std::vector<QSize>& targetSizes = {QSize(32, 32)});
 
 private:
-  // Little hack to prevent static initialization order issues
-  static const QHash<QString, QString>& getCommonToAwesomeMap()
+  static const QHash<QString, QString>& getCommonToLucideMap()
   {
-    static const QHash<QString, QString> commonToAwesomeMap{
+    static const QHash<QString, QString> commonToLucideMap{
         {"silicon", "silicon-icon"},
-        {"mouse-pointer", "arrow-pointer-solid"},
-        {"pan", "arrows-up-down-left-right-solid"},
-        {"chart", "chart-line-solid"},
-        {"check", "check-solid"},
-        {"info", "circle-info-solid"},
-        {"xmark-circle", "circle-xmark-solid"},
-        {"copy", "copy-solid"},
-        {"explosion", "explosion-solid"},
-        {"export", "file-export-solid"},
-        {"file", "file-regular"},
-        {"save", "floppy-disk-solid"},
-        {"open", "folder-open-regular"},
-        {"link", "link-solid"},
-        {"paste", "paste-solid"},
-        {"plug-error", "plug-circle-xmark-solid"},
-        {"play", "play-solid"},
-        {"plug", "plug-solid"},
-        {"plus", "plus-solid"},
-        {"print", "print-solid"},
-        {"undo", "rotate-left-solid"},
-        {"redo", "rotate-right-solid"},
-        {"rotate", "rotate-solid"},
-        {"cut", "scissors-solid"},
-        {"delete", "trash-solid"},
-        {"xmark", "xmark-solid"}};
-    return commonToAwesomeMap;
+        {"mouse-pointer", "mouse-pointer-2"},
+        {"pan", "move"},
+        {"chart", "file-chart-line"},
+        {"check", "circle-check"},
+        {"info", "info"},
+        {"xmark-circle", "circle-alert"},
+        {"copy", "copy"},
+        {"explosion", "zap"},
+        {"export", "file-output"},
+        {"file", "file"},
+        {"save", "save"},
+        {"open", "folder-open"},
+        {"link", "link"},
+        {"paste", "file-input"},
+        {"plug-error", "circle-alert"},
+        {"play", "play"},
+        {"plug", "plug"},
+        {"plus", "circle-plus"},
+        {"print", "printer"},
+        {"undo", "undo-2"},
+        {"redo", "redo-2"},
+        {"rotate", "rotate-cw"},
+        {"cut", "scissors"},
+        {"delete", "trash"},
+        {"xmark", "x"},
+        {"binary", "binary"},
+        {"box", "box"},
+        {"circle-power", "circle-power"},
+        {"circuit-board", "circuit-board"},
+        {"clock", "clock"},
+        {"container", "container"},
+        {"cpu", "cpu"},
+        {"file-cog", "file-cog"},
+        {"funnel", "funnel"},
+        {"hard-drive", "hard-drive"},
+        {"memory-stick", "memory-stick"},
+        {"puzzle", "puzzle"},
+        {"settings", "settings"},
+        {"sticky-note", "sticky-note"},
+        {"text-cursor-input", "text-cursor-input"},
+        {"toy-brick", "toy-brick"},
+        {"usb", "usb"}};
+    return commonToLucideMap;
   }
 
   static QString getPathFromCommonName(const QString& commonName);

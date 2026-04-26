@@ -17,7 +17,13 @@
 
 #include "icons.hpp"
 
-Icon::Icon(const QString& commonName, const std::vector<QSize> targetSizes)
+Icon::Icon(const QString& commonName, const std::vector<QSize>& targetSizes)
+  : Icon(commonName, QColor(), targetSizes)
+{
+}
+
+Icon::Icon(const QString& commonName, const QColor& color,
+           const std::vector<QSize>& targetSizes)
 {
   QSvgRenderer renderer{};
 
@@ -38,17 +44,24 @@ Icon::Icon(const QString& commonName, const std::vector<QSize> targetSizes)
     pixmap.fill(Qt::transparent);
 
     QPainter painter(&pixmap);
-
     renderer.render(&painter, pixmap.rect());
+
+    if (color.isValid()) {
+      painter.setCompositionMode(QPainter::CompositionMode_SourceIn);
+      painter.fillRect(pixmap.rect(), color);
+    }
+
+    painter.end();
+
     addPixmap(pixmap);
   }
 }
 
 QString Icon::getPathFromCommonName(const QString& commonName)
 {
-  auto it = getCommonToAwesomeMap().find(commonName);
+  auto it = getCommonToLucideMap().find(commonName);
 
-  if (it == getCommonToAwesomeMap().end())
+  if (it == getCommonToLucideMap().end())
     return "NOT_FOUND";
 
   auto path = QString(":/icons/%1.svg").arg(it.value());
