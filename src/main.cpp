@@ -26,13 +26,15 @@
 #include <QSplashScreen>
 
 #include <core/serialization/component_registration.hpp>
+
 #include <ui/common/icons.hpp>
+#include <ui/common/theme.hpp>
 #include <ui/logiFlow/logiFlowWindow.hpp>
 #include <ui/serialization/gui_component_registration.hpp>
 
 int siliconMain(int argc, char** argv)
 {
-  const QApplication app(argc, argv);
+  QApplication app(argc, argv);
   QApplication::setApplicationName("SILICON");
   QApplication::setStyle("Fusion");
   QApplication::setApplicationVersion(SILICON_VERSION);
@@ -47,13 +49,15 @@ int siliconMain(int argc, char** argv)
   QApplication::setWindowIcon(Icon("silicon", {QSize(32, 32), QSize(128, 128)}));
 
   // Command Line Parser
-
   QCommandLineParser parser;
   parser.setApplicationDescription("SILICON: Simulation of Interconnected Logical\
   Inputs, Circuits, and Output Nodes");
   parser.addHelpOption();
   parser.addVersionOption();
   parser.process(app);
+
+  // Theme
+  ThemeEngine::apply(app, SiliconTheme::Light);
 
   // Splash screen
   QSplashScreen splashScreen(QPixmap(":/splash.jpg"));

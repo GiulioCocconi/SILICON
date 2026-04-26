@@ -73,6 +73,7 @@ set(EXTRA_COMPONENTS_SOURCE_FILES
         ${src_dir}/extraComponents/utils.cpp)
 
 set(UI_SOURCE_FILES
+        ${src_dir}/ui/common/theme.cpp
         ${src_dir}/ui/common/componentSearchBox.cpp
         ${src_dir}/ui/common/diagramView.cpp
         ${src_dir}/ui/common/diagramScene.cpp
