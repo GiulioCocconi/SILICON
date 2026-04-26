@@ -57,7 +57,7 @@ int siliconMain(int argc, char** argv)
   parser.process(app);
 
   // Theme
-  ThemeEngine::apply(app, SiliconTheme::Light);
+  ThemeEngine::apply(app, SiliconTheme::Mode::Light);
 
   // Splash screen
   QSplashScreen splashScreen(QPixmap(":/splash.jpg"));

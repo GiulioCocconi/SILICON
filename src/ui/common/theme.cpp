@@ -48,14 +48,14 @@ SiliconTheme::ColorMap ThemeEngine::currentMap;
 void ThemeEngine::apply(QApplication& app, SiliconTheme::Mode mode)
 {
   currentMap =
-      (mode == SiliconTheme::Dark) ? SiliconTheme::dark() : SiliconTheme::light();
+      (mode == SiliconTheme::Mode::Dark) ? SiliconTheme::dark() : SiliconTheme::light();
 
   const QString base     = loadQssTemplate();
   const QString finalQss = injectTokens(base, currentMap);
   app.setStyleSheet(finalQss);
 
   /* CRITICAL: repolish everything */
-  for (QWidget* w : app.allWidgets()) {
+  for (QWidget* w : QApplication::allWidgets()) {
     w->style()->unpolish(w);
     w->style()->polish(w);
     w->update();

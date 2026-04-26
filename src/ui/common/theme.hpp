@@ -5,7 +5,7 @@
 
 namespace SiliconTheme {
 
-enum Mode { Light, Dark };
+enum class Mode { Light, Dark };
 
 using ColorMap = QMap<QString, QColor>;
 
