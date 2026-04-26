@@ -17,6 +17,7 @@
  */
 
 #include "graphicalWire.hpp"
+#include "theme.hpp"
 #include "wireManager.hpp"
 
 #include <core/wire.hpp>  // Gives access to State enum for coloring
@@ -70,19 +71,19 @@ QColor GraphicalWire::getColor() const
   // Show simulation state visually for single wires
   if (bus.size() == 1 && bus[0]) {
     switch (bus[0]->getCurrentState()) {
-      case State::HIGH: return AppColors::ORANGE;
-      case State::LOW: return AppColors::LIGHT_ORANGE;
-      case State::UNKNOWN: return AppColors::VIOLET;
+      case State::HIGH: return ThemeEngine::getColor("SILICON_ORANGE");
+      case State::LOW: return ThemeEngine::getColor("SILICON_LORANGE");
+      case State::UNKNOWN: return ThemeEngine::getColor("SILICON_VIOLET");
       default: qWarning() << "Unhandled wire status in getColor()"; return Qt::magenta;
     }
   }
-  return AppColors::GREEN;
+  return ThemeEngine::getColor("SILICON_GREEN");
 }
 
 QColor GraphicalWire::getColor(const GraphicalWire* w)
 {
   if (!w)
-    return AppColors::BLUE;
+    return ThemeEngine::getColor("SILICON_BLUE");
   return w->getColor();
 }
 
@@ -345,7 +346,7 @@ void GraphicalWireSegment::paint(QPainter*                       painter,
       if (pathAngle == 180.0)
         painter->rotate(180.0);
 
-      painter->setBrush(AppColors::INTERNAL);
+      painter->setBrush(ThemeEngine::getColor("SILICON_INTERNAL"));
       painter->drawRoundedRect(boxRect, 5, 5);
       painter->setBrush(Qt::black);
       painter->drawText(boxRect, sizeText, QTextOption(Qt::AlignCenter));
