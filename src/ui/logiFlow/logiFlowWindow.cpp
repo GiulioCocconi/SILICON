@@ -34,34 +34,6 @@
 #include <ui/common/diagramScene.hpp>
 #include <ui/logiFlow/components/graphicalLogicComponent.hpp>
 
-void PropertySpinBox::setMixed(bool mixed, const QString& placeholder)
-{
-  m_isMixed                = mixed;
-  const auto buttonSymbols = mixed ? NoButtons : UpDownArrows;
-
-  setButtonSymbols(buttonSymbols);
-
-  if (mixed) {
-    lineEdit()->setPlaceholderText(placeholder);
-    setValue(minimum());
-  } else {
-    lineEdit()->setPlaceholderText("");
-  }
-}
-
-bool PropertySpinBox::isMixed() const
-{
-  return m_isMixed;
-}
-
-QString PropertySpinBox::textFromValue(int val) const
-{
-  if (m_isMixed && val == minimum()) {
-    return "";
-  }
-  return QSpinBox::textFromValue(val);
-}
-
 LogiFlowWindow::~LogiFlowWindow()
 {
   if (diagramScene) {
@@ -114,8 +86,9 @@ LogiFlowWindow::LogiFlowWindow()
 
   setWindowTitle(tr("SILICON LogiFlow"));
   setMinimumSize(160, 160);
-}
 
+  updatePropertyDock();
+}
 void LogiFlowWindow::createActions()
 {
   newAct         = new QAction(Icon("file"), tr("&New"), this);
@@ -261,6 +234,29 @@ void LogiFlowWindow::contextMenuEvent(QContextMenuEvent* event)
   menu.exec(event->globalPos());
 }
 #endif  // QT_NO_CONTEXTMENU
+
+void LogiFlowWindow::resizeEvent(QResizeEvent* event)
+{
+  QMainWindow::resizeEvent(event);
+
+  const int currentWidth = event->size().width();
+  const int currentHeight = event->size().height();
+
+  const int minWidth     = currentWidth / 10;
+  const int maxWidth     = currentWidth / 2;
+
+  const int minHeight = currentHeight / 3;
+
+  auto configureSizeConstraints = [minWidth, maxWidth, minHeight](QDockWidget* widget) {
+    widget->setMinimumWidth(minWidth);
+    widget->setMaximumWidth(maxWidth);
+    widget->setMinimumHeight(minHeight);
+  };
+
+
+  configureSizeConstraints(componentsDock);
+  configureSizeConstraints(propertyDock);
+}
 
 /* ACTIONS IMPLEMENTATION */
 
@@ -507,4 +503,34 @@ void LogiFlowWindow::updatePropertyDock()
 
     std::visit(createPropertyWidget, initialValue);
   }
+}
+
+// --- Property SpinBox ------------------------------------------------------------------
+
+PropertySpinBox::PropertySpinBox(QWidget* parent) : QSpinBox(parent)
+{
+  setButtonSymbols(NoButtons);
+}
+
+void PropertySpinBox::setMixed(const bool mixed, const QString& placeholder)
+{
+  if (mixed) {
+    lineEdit()->setPlaceholderText(placeholder);
+    setValue(minimum());
+  } else {
+    lineEdit()->setPlaceholderText("");
+  }
+}
+
+bool PropertySpinBox::isMixed() const
+{
+  return m_isMixed;
+}
+
+QString PropertySpinBox::textFromValue(int val) const
+{
+  if (m_isMixed && val == minimum()) {
+    return "";
+  }
+  return QSpinBox::textFromValue(val);
 }

@@ -30,6 +30,7 @@
 #include <QMainWindow>
 #include <QMenu>
 #include <QMenuBar>
+#include <QResizeEvent>
 #include <QSpinBox>
 #include <QStatusBar>
 #include <QString>
@@ -51,22 +52,6 @@
 #  include <QContextMenuEvent>
 #endif
 
-class PropertySpinBox : public QSpinBox {
-  Q_OBJECT
-
-public:
-  explicit PropertySpinBox(QWidget* parent = nullptr) : QSpinBox(parent) {};
-
-  void setMixed(bool mixed, const QString& placeholder = QString());
-  bool isMixed() const;
-
-protected:
-  [[nodiscard]] QString textFromValue(int val) const override;
-
-private:
-  bool m_isMixed = false;
-};
-
 class LogiFlowWindow : public QMainWindow {
   Q_OBJECT
 
@@ -78,6 +63,7 @@ protected:
 #ifndef QT_NO_CONTEXTMENU
   void contextMenuEvent(QContextMenuEvent* event) override;
 #endif  // QT_NO_CONTEXTMENU
+  void resizeEvent(QResizeEvent* event) override;
 
 private slots:
   void newFile() {}
@@ -146,4 +132,20 @@ private:
   QUndoStack* undoStack;
 
   AboutDialog* aboutDialog;
+};
+
+class PropertySpinBox : public QSpinBox {
+  Q_OBJECT
+
+public:
+  explicit PropertySpinBox(QWidget* parent = nullptr);
+
+  void               setMixed(bool mixed, const QString& placeholder = QString());
+  [[nodiscard]] bool isMixed() const;
+
+protected:
+  [[nodiscard]] QString textFromValue(int val) const override;
+
+private:
+  bool m_isMixed = false;
 };
