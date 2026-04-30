@@ -18,9 +18,49 @@
 
 #include "logiFlowWindow.hpp"
 
-#include <ui/common/diagramScene.hpp>
-
+#include <limits>
+#include <ranges>
 #include <stdexcept>
+#include <variant>
+
+#include <QCheckBox>
+#include <QFormLayout>
+#include <QLabel>
+#include <QLineEdit>
+#include <QMessageBox>
+#include <QSpinBox>
+#include <QTimer>
+
+#include <ui/common/diagramScene.hpp>
+#include <ui/logiFlow/components/graphicalLogicComponent.hpp>
+
+void PropertySpinBox::setMixed(bool mixed, const QString& placeholder)
+{
+  m_isMixed                = mixed;
+  const auto buttonSymbols = mixed ? NoButtons : UpDownArrows;
+
+  setButtonSymbols(buttonSymbols);
+
+  if (mixed) {
+    lineEdit()->setPlaceholderText(placeholder);
+    setValue(minimum());
+  } else {
+    lineEdit()->setPlaceholderText("");
+  }
+}
+
+bool PropertySpinBox::isMixed() const
+{
+  return m_isMixed;
+}
+
+QString PropertySpinBox::textFromValue(int val) const
+{
+  if (m_isMixed && val == minimum()) {
+    return "";
+  }
+  return QSpinBox::textFromValue(val);
+}
 
 LogiFlowWindow::~LogiFlowWindow()
 {
@@ -315,7 +355,7 @@ void LogiFlowWindow::updateStatus() const
 
   statusBar()->showMessage(modeMsg);
 }
-void LogiFlowWindow::selectionChanged() const
+void LogiFlowWindow::selectionChanged()
 {
   auto interactionMode = diagramScene->getInteractionMode();
   // Enable rotation only when a single component is selected or when in component placing
@@ -333,4 +373,138 @@ void LogiFlowWindow::selectionChanged() const
   cutAct->setEnabled(cutCopyDelete);
   copyAct->setEnabled(cutCopyDelete);
   deleteAct->setEnabled(cutCopyDelete);
+
+  updatePropertyDock();
+}
+
+void LogiFlowWindow::updatePropertyDock()
+{
+  // 1. Assign the container immediately.
+  // QDockWidget::setWidget automatically deletes the previous widget.
+  auto* container = new QWidget();
+  auto* layout    = new QFormLayout(container);
+  propertyDock->setWidget(container);
+
+  // 2. Gather selected logic components cleanly
+  std::vector<GraphicalLogicComponent*> selectedNodes;
+  for (QGraphicsItem* item : diagramScene->selectedItems()) {
+    if (item->type() >= COMPONENT) {
+      if (auto* logicComp = dynamic_cast<GraphicalLogicComponent*>(item)) {
+        if (logicComp->getComponent() != nullptr) {
+          selectedNodes.push_back(logicComp);
+        }
+      }
+    }
+  }
+
+  if (selectedNodes.empty()) {
+    layout->addRow(
+        new QLabel(tr("Select one or more components\nto view their properties.")));
+    return;
+  }
+
+  // 3. Intersect properties to find common configurable keys
+  auto commonProps = selectedNodes.front()->getComponent()->getProperties();
+
+  for (const GraphicalLogicComponent* node : selectedNodes | std::views::drop(1)) {
+    const auto& props = node->getComponent()->getProperties();
+
+    std::erase_if(commonProps, [&](const auto& pair) {
+      const auto& [key, val] = pair;
+      auto it                = props.find(key);
+      return it == props.end() || it->second.index() != val.index();
+    });
+  }
+
+  if (commonProps.empty()) {
+    layout->addRow(new QLabel(tr("No common configurable\nproperties among selection.")));
+    return;
+  }
+
+  // Helper lambda to apply the property to all components and handle validation
+  // exceptions
+  auto applyProperty = [this, selectedNodes](const std::string&   key,
+                                             const PropertyValue& newVal) {
+    try {
+      for (GraphicalLogicComponent* node : selectedNodes) {
+        node->getComponent()->setProperty(key, newVal);
+        node->update();
+      }
+    } catch (const std::exception& e) {
+      QMessageBox::warning(this, tr("Invalid Property"), e.what());
+      QTimer::singleShot(0, this, &LogiFlowWindow::updatePropertyDock);
+    }
+  };
+
+  // 4. Build UI for common properties
+  for (const auto& [key, initialValue] : commonProps) {
+    // Check if the value differs across the selection
+    const bool isMixed = std::ranges::any_of(
+        selectedNodes | std::views::drop(1), [&](const GraphicalLogicComponent* node) {
+          return node->getComponent()->getProperty(key) != initialValue;
+        });
+
+    auto createPropertyWidget = [&]<typename T>(const T& arg) {
+      if constexpr (std::is_same_v<T, bool>) {
+        auto* checkBox = new QCheckBox(container);
+
+        if (isMixed) {
+          checkBox->setTristate(true);
+          checkBox->setCheckState(Qt::PartiallyChecked);
+        } else {
+          checkBox->setChecked(arg);
+        }
+
+        connect(checkBox, &QCheckBox::checkStateChanged, this, [=](Qt::CheckState state) {
+          if (state == Qt::PartiallyChecked)
+            return;
+          checkBox->setTristate(false);
+          applyProperty(key, state == Qt::Checked);
+        });
+
+        layout->addRow(QString::fromStdString(key), checkBox);
+      } else if constexpr (std::is_same_v<T, int>) {
+        auto*         spinBox = new PropertySpinBox(container);
+        constexpr int MIN_VAL = std::numeric_limits<int>::min();
+        constexpr int MAX_VAL = std::numeric_limits<int>::max();
+
+        spinBox->setRange(MIN_VAL, MAX_VAL);
+
+        if (isMixed) {
+          spinBox->setMixed(true, tr("Mixed values"));
+        } else {
+          spinBox->setValue(arg);
+        }
+
+        connect(spinBox, &QSpinBox::valueChanged, this, [=](int val) {
+          if (val == MIN_VAL && spinBox->isMixed())
+            return;
+          spinBox->setMixed(false);
+          applyProperty(key, val);
+        });
+
+        layout->addRow(QString::fromStdString(key), spinBox);
+      } else if constexpr (std::is_same_v<T, std::string>) {
+        auto* lineEdit = new QLineEdit(container);
+
+        if (isMixed) {
+          lineEdit->setPlaceholderText(tr("Mixed values..."));
+        } else {
+          lineEdit->setText(QString::fromStdString(arg));
+        }
+
+        connect(lineEdit, &QLineEdit::editingFinished, this, [=]() {
+          if (!lineEdit->isModified())
+            return;
+
+          applyProperty(key, lineEdit->text().toStdString());
+          lineEdit->setModified(false);
+        });
+
+        layout->addRow(QString::fromStdString(key), lineEdit);
+      }
+    };
+
+    std::visit(createPropertyWidget, initialValue);
+  }
 }
