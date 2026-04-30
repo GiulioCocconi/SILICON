@@ -239,11 +239,11 @@ void LogiFlowWindow::resizeEvent(QResizeEvent* event)
 {
   QMainWindow::resizeEvent(event);
 
-  const int currentWidth = event->size().width();
+  const int currentWidth  = event->size().width();
   const int currentHeight = event->size().height();
 
-  const int minWidth     = currentWidth / 10;
-  const int maxWidth     = currentWidth / 2;
+  const int minWidth = currentWidth / 10;
+  const int maxWidth = currentWidth / 2;
 
   const int minHeight = currentHeight / 3;
 
@@ -252,7 +252,6 @@ void LogiFlowWindow::resizeEvent(QResizeEvent* event)
     widget->setMaximumWidth(maxWidth);
     widget->setMinimumHeight(minHeight);
   };
-
 
   configureSizeConstraints(componentsDock);
   configureSizeConstraints(propertyDock);

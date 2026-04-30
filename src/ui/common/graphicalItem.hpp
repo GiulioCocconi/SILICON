@@ -118,6 +118,8 @@ protected:
   [[nodiscard]] CollidingStatus getCollidingStatus() const { return collidingStatus; }
 
 private:
+  void mouseReleaseEvent(QGraphicsSceneMouseEvent* event) override;
+
   /** @brief Current collision status */
   CollidingStatus collidingStatus = NOT_COLLIDING;
 };
