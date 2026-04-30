@@ -18,17 +18,26 @@
 
 #include "graphicalItem.hpp"
 
-#include "graphicalComponent.hpp"
-#include "graphicalWire.hpp"
-
 #include <stdexcept>
+
 #include <ui/common/diagramScene.hpp>
+#include <ui/common/graphicalComponent.hpp>
+#include <ui/common/graphicalWire.hpp>
 
 void GraphicalItem::setCollidingStatus(const CollidingStatus newStatus)
 {
   collidingStatus = newStatus;
   prepareGeometryChange();
 }
+
+void GraphicalItem::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
+{
+  if (this->isColliding())
+    this->setCollidingStatus(NOT_COLLIDING);
+
+  QGraphicsItem::mouseReleaseEvent(event);
+}
+
 QVariant GraphicalItem::itemChange(GraphicsItemChange change, const QVariant& value)
 {
   // Early exit if item is not yet added to a scene
@@ -169,6 +178,9 @@ QVariant GraphicalItem::itemChange(GraphicsItemChange change, const QVariant& va
     const auto ds = dynamic_cast<DiagramScene*>(this->scene());
     connect(ds, &DiagramScene::modeChanged, this, &GraphicalItem::modeChanged);
   }
+
+  if (change == ItemSelectedChange && isColliding())
+    setCollidingStatus(NOT_COLLIDING);
 
   // For all other item changes, use default Qt behavior
   return QGraphicsItem::itemChange(change, value);
