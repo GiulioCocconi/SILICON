@@ -23,7 +23,14 @@ Gate::Gate(const std::vector<Wire_ptr>& inputs, Wire_ptr output)
 {
   if (inputs.empty())
     throw std::invalid_argument("Gate requires at least one input");
+
   defineProperty("delay", 5);
+  setPropertyCallback("delay", [](const PropertyValue& value) {
+    if (std::get<int>(value) >= 0)
+      return value;
+
+    throw std::invalid_argument("Delays must be non-negative!");
+  });
 
   for (const auto& input : inputs)
     this->inputs.push_back({input});
