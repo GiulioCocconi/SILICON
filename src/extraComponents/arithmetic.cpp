@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2025 Giulio Cocconi
+  Copyright (C) 2026 Giulio Cocconi
 
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -19,8 +19,13 @@
 #include <core/simulator.hpp>
 #include <stdexcept>
 
+HalfAdder::HalfAdder()
+{
+  defineProperty("delay", 2);
+}
+
 HalfAdder::HalfAdder(std::array<Wire_ptr, 2> inputs, Wire_ptr sum, Wire_ptr cout)
-  : Component({{inputs[0]}, {inputs[1]}}, {{sum}, {cout}})
+  : HalfAdder()
 {
   /* PIN MAP:
       a    = inputs [0][0];
@@ -29,7 +34,8 @@ HalfAdder::HalfAdder(std::array<Wire_ptr, 2> inputs, Wire_ptr sum, Wire_ptr cout
       cout = outputs[1][0];
    */
 
-  defineProperty("delay", 2);
+  this->inputs  = {{inputs[0]}, {inputs[1]}};
+  this->outputs = {{sum}, {cout}};
 }
 
 void HalfAdder::simulate(Simulator& sim)
@@ -43,9 +49,14 @@ void HalfAdder::simulate(Simulator& sim)
                  weak_from_this());
 }
 
+FullAdder::FullAdder()
+{
+  defineProperty("delay", 3);
+}
+
 FullAdder::FullAdder(std::array<Wire_ptr, 2> inputs, Wire_ptr cin, Wire_ptr sum,
                      Wire_ptr cout)
-  : Component({{inputs[0]}, {inputs[1]}, {cin}}, {{sum}, {cout}})
+  : FullAdder()
 {
   /* PIN MAP:
      a    = inputs [0][0];
@@ -54,7 +65,8 @@ FullAdder::FullAdder(std::array<Wire_ptr, 2> inputs, Wire_ptr cin, Wire_ptr sum,
      sum  = outputs[0][0];
      cout = outputs[1][0]; */
 
-  defineProperty("delay", 3);
+  this->inputs  = {{inputs[0]}, {inputs[1]}, {cin}};
+  this->outputs = {{sum}, {cout}};
 }
 
 void FullAdder::simulate(Simulator& sim)
@@ -71,8 +83,12 @@ void FullAdder::simulate(Simulator& sim)
   sim.updateWire(this->outputs[1][0], cout, delay, weak_from_this());
 }
 
-AdderNBits::AdderNBits(std::array<Bus, 2> inputs, Bus sum, Wire_ptr cout)
-  : Component({inputs[0], inputs[1]}, {sum, {cout}})
+AdderNBits::AdderNBits()
+{
+  defineProperty("delay", 5);
+}
+
+AdderNBits::AdderNBits(std::array<Bus, 2> inputs, Bus sum, Wire_ptr cout) : AdderNBits()
 {
   /* PIN MAP:
      a    = inputs [0][0:N];
@@ -84,7 +100,8 @@ AdderNBits::AdderNBits(std::array<Bus, 2> inputs, Bus sum, Wire_ptr cout)
   if (inputs[0].size() != sum.size())
     throw std::invalid_argument("AdderNBits: input bus width must match sum bus width");
 
-  defineProperty("delay", 5);
+  this->inputs  = {inputs[0], inputs[1]};
+  this->outputs = {sum, {cout}};
 }
 
 void AdderNBits::simulate(Simulator& sim)
