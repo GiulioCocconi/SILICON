@@ -29,6 +29,7 @@
 #include <QKeyEvent>
 #include <QPainter>
 #include <QRect>
+#include <QUndoStack>
 
 #include <core/circuit.hpp>
 #include <core/simulator.hpp>
@@ -145,6 +146,8 @@ public:
 
   /** @brief Grid cell size in scene units */
   static constexpr int GRID_SIZE = 10;
+
+  [[nodiscard]] QUndoStack* getUndoStack() const;
 
   ~DiagramScene() override;
 

@@ -18,7 +18,9 @@
 
 #include "graphicalWire.hpp"
 #include "theme.hpp"
+#include "undoCommands.hpp"
 #include "wireManager.hpp"
+#include <ui/logiFlow/logiFlowWindow.hpp>
 
 #include <core/wire.hpp>  // Gives access to State enum for coloring
 
@@ -34,9 +36,7 @@
 // --- Graphical Wire --------------------------------------------------------------------
 
 GraphicalWire::GraphicalWire(unsigned int busSize)
-{
-  setBusSize(busSize);
-}
+{ setBusSize(busSize); }
 
 void GraphicalWire::addSegment(GraphicalWireSegment* segment)
 {
@@ -47,14 +47,10 @@ void GraphicalWire::addSegment(GraphicalWireSegment* segment)
 }
 
 void GraphicalWire::removeSegment(GraphicalWireSegment* segment)
-{
-  segments.erase(segment);
-}
+{ segments.erase(segment); }
 
 void GraphicalWire::setBusSize(unsigned int size)
-{
-  bus.setSize(size);
-}
+{ bus.setSize(size); }
 
 void GraphicalWire::clearBusState()
 {
@@ -495,6 +491,7 @@ bool GraphicalWireSegment::isAlignedWith(const GraphicalWireSegment* other) cons
 
   return (it != p1.end());
 }
+
 void GraphicalWireSegment::mousePressEvent(QGraphicsSceneMouseEvent* event)
 {
   if (event->button() == Qt::LeftButton) {
@@ -506,7 +503,7 @@ void GraphicalWireSegment::mousePressEvent(QGraphicsSceneMouseEvent* event)
       return;
     }
   }
-  QGraphicsItem::mousePressEvent(event);
+  GraphicalItem::mousePressEvent(event);
 }
 
 void GraphicalWireSegment::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
@@ -517,23 +514,35 @@ void GraphicalWireSegment::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
     event->accept();
     return;
   }
-  QGraphicsItem::mouseMoveEvent(event);
+  GraphicalItem::mouseMoveEvent(event);
 }
 
 void GraphicalWireSegment::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
 {
-  if (event->button() == Qt::LeftButton) {
-    // Notify the manager about the endpoint move so it can check collisions
-    // (updateSegmentTopology internally calls notifyTopologyChanged if a change occurred)
-    if (graphicalWire && graphicalWire->getManager()) {
-      graphicalWire->getManager()->updateSegmentTopology(this);
-    }
+  GraphicalItem::mouseReleaseEvent(event);
 
-    if (dragPointIndex >= 0)
-      dragPointIndex = -1;
+  if (event->button() != Qt::LeftButton) {
+    return;
   }
 
-  QGraphicsItem::mouseReleaseEvent(event);
+  const auto ds = qobject_cast<DiagramScene*>(scene());
+  if (!ds)
+    return;
+
+  if (dragPointIndex >= 0) {
+    const QPointF newPos = points[dragPointIndex];
+    if (newPos != dragStartPos) {
+      const auto undoStack = ds->getUndoStack();
+      const auto moveCmd =
+          new MoveWirePointCommand(this, dragPointIndex, dragStartPos, newPos);
+      undoStack->push(moveCmd);
+    }
+    dragPointIndex = -1;
+  }
+
+  if (graphicalWire && graphicalWire->getManager()) {
+    graphicalWire->getManager()->updateSegmentTopology(this);
+  }
 }
 
 void GraphicalWireSegment::hoverMoveEvent(QGraphicsSceneHoverEvent* event)
@@ -543,7 +552,8 @@ void GraphicalWireSegment::hoverMoveEvent(QGraphicsSceneHoverEvent* event)
     hoveredPointIndex = newHovered;
     update();
   }
-  QGraphicsItem::hoverMoveEvent(event);
+
+  GraphicalItem::hoverMoveEvent(event);
 }
 
 GraphicalWireSegment::~GraphicalWireSegment()

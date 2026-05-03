@@ -360,7 +360,7 @@ private:
   /** @brief Currently dragged point index */
   int dragPointIndex = -1;
 
-  /** @brief Starting position of drag */
+  /** @brief Starting position of point drag */
   QPointF dragStartPos;
 
   /** @brief Currently hovered point index */
