@@ -27,6 +27,7 @@
 #include "ui/logiFlow/components/graphicalGates.hpp"
 #include "ui/logiFlow/components/graphicalIO.hpp"
 #include "ui/logiFlow/components/graphicalUtils.hpp"
+#include "ui/logiFlow/logiFlowWindow.hpp"
 #include "ui/serialization/gui_component_factory.hpp"
 
 DiagramScene::DiagramScene(QObject* parent) : QGraphicsScene(parent)
@@ -379,6 +380,7 @@ void DiagramScene::clearWireShadow()
   if (!wireSegmentToBeDrawn)
     return;
 
+  wireSegmentToBeDrawn->setInitialPosition();
   wireSegmentToBeDrawn->setShowPoints({});
   wireSegmentToBeDrawn = nullptr;
 }
@@ -403,6 +405,7 @@ void DiagramScene::clearComponentShadow()
   if (!componentToBeDrawn)
     return;
   componentToBeDrawn->setOpacity(1.0);
+  componentToBeDrawn->setInitialPosition();
   componentToBeDrawn = nullptr;
 }
 
@@ -548,6 +551,12 @@ void DiagramScene::placeComponent(std::string typeName)
   setInteractionMode(InteractionMode::COMPONENT_PLACING_MODE);
   setComponentShadow();
   hideCSB();
+}
+
+QUndoStack* DiagramScene::getUndoStack() const
+{
+  const auto lfw = qobject_cast<LogiFlowWindow*>(views().first()->window());
+  return lfw->getUndoStack();
 }
 
 DiagramScene::~DiagramScene()

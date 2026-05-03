@@ -23,6 +23,8 @@
 #include <ui/common/diagramScene.hpp>
 #include <ui/common/graphicalComponent.hpp>
 #include <ui/common/graphicalWire.hpp>
+#include <ui/common/undoCommands.hpp>
+#include <ui/logiFlow/logiFlowWindow.hpp>
 
 void GraphicalItem::setCollidingStatus(const CollidingStatus newStatus)
 {
@@ -30,12 +32,50 @@ void GraphicalItem::setCollidingStatus(const CollidingStatus newStatus)
   prepareGeometryChange();
 }
 
+void GraphicalItem::mousePressEvent(QGraphicsSceneMouseEvent* event)
+{
+  QGraphicsObject::mousePressEvent(event);
+
+  if (event->button() == Qt::LeftButton) {
+    for (QGraphicsItem* item : scene()->selectedItems()) {
+      if (auto gi = dynamic_cast<GraphicalItem*>(item)) {
+        gi->setInitialPosition();
+      }
+    }
+  }
+}
+
 void GraphicalItem::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
 {
+  QGraphicsObject::mouseReleaseEvent(event);
+
+  const auto ds = qobject_cast<DiagramScene*>(scene());
+
+  if (!ds)
+    return;
+
   if (this->isColliding())
     this->setCollidingStatus(NOT_COLLIDING);
 
-  QGraphicsItem::mouseReleaseEvent(event);
+  bool itemsActuallyMoved = false;
+  auto undoStack          = ds->getUndoStack();
+  auto moveCmd            = new MoveItemCommand();
+
+  for (QGraphicsItem* item : scene()->selectedItems()) {
+    if (const auto gi = dynamic_cast<GraphicalItem*>(item)) {
+      if (gi->pos() != gi->getInitialPosition()) {
+        itemsActuallyMoved = true;
+        moveCmd->addItemMove(gi, gi->getInitialPosition(), gi->pos());
+        gi->setInitialPosition();  // Update for the next interaction
+      }
+    }
+  }
+
+  if (itemsActuallyMoved) {
+    undoStack->push(moveCmd);
+  } else {
+    delete moveCmd;
+  }
 }
 
 QVariant GraphicalItem::itemChange(GraphicsItemChange change, const QVariant& value)
@@ -75,6 +115,9 @@ QVariant GraphicalItem::itemChange(GraphicsItemChange change, const QVariant& va
           })
         | std::ranges::to<std::vector>();
 
+    QPointF finalPos          = proposedPos;
+    bool    collisionRejected = false;
+
     // Step 6: Analyze each potentially colliding item to determine collision type
     for (QGraphicsItem* collidingItem : collidingItems) {
       // Initialize containers to categorize the colliding pair
@@ -98,23 +141,19 @@ QVariant GraphicalItem::itemChange(GraphicsItemChange change, const QVariant& va
         continue;
 
       if (componentsInPair.empty()) {
-        // Wire-Wire collision
-        // TODO: IMPLEMENT
+        // Wire-Wire collision TODO
         continue;
-      }
-
-      else if (segmentsInPair.empty()) {
+      } else if (segmentsInPair.empty()) {
         // Component-component collision
         // Since we simply care if the bounding rects intersects we should reject all
         // changes
         for (auto el : componentsInPair)
           el->setCollidingStatus(COLLIDING_WITH_COMPONENT);
-        return pos();
-      }
 
-      // Component-wire collision
-      // The collision is checked against wire shape and the component's colliding rect
-      // for wires
+        finalPos          = pos();
+        collisionRejected = true;
+        break;  // Reject immediately, stop checking others
+      }
 
       // Extract the component and colliding segment
       auto        collidingComponent = *(componentsInPair.begin());
@@ -163,14 +202,17 @@ QVariant GraphicalItem::itemChange(GraphicsItemChange change, const QVariant& va
       // If collision detected, mark the component and reject the position change
       if (isCollidingWithWire) {
         collidingComponent->setCollidingStatus(COLLIDING_WITH_WIRE);
-        return pos();
+        finalPos          = pos();
+        collisionRejected = true;
+        break;  // Reject immediately
       }
     }
 
-    // No collisions detected - notify the item of the successful position change
-    onPositionChanged(offset);
-    // Return the proposed new position
-    return proposedPos;
+    if (!collisionRejected) {
+      onPositionChanged(offset);
+    }
+
+    return finalPos;
   } else if (change == ItemSceneHasChanged) {
     // Connect the modeChanged from the new scene (only one scene during the object
     // lifetime is supported)

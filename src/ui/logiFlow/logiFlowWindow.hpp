@@ -59,6 +59,8 @@ public:
   LogiFlowWindow();
   ~LogiFlowWindow() override;
 
+  [[nodiscard]] QUndoStack* getUndoStack() const { return this->undoStack; }
+
 protected:
 #ifndef QT_NO_CONTEXTMENU
   void contextMenuEvent(QContextMenuEvent* event) override;

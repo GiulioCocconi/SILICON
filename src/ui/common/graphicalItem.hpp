@@ -85,6 +85,17 @@ public:
     return getCollidingStatus() != NOT_COLLIDING;
   };
 
+  /**
+   * @brief Gets the original position of the item before it started moving.
+   */
+  [[nodiscard]] QPointF getInitialPosition() const { return initialPosition; }
+
+  /**
+   * @brief Sets the initialPosition of the item to its current position (should be used
+   * when placed)
+   */
+  void setInitialPosition() { this->initialPosition = pos(); }
+
 public slots:
   /**
    * @brief Called when the interaction mode changes.
@@ -117,9 +128,14 @@ protected:
    */
   [[nodiscard]] CollidingStatus getCollidingStatus() const { return collidingStatus; }
 
-private:
   void mouseReleaseEvent(QGraphicsSceneMouseEvent* event) override;
+  void mousePressEvent(QGraphicsSceneMouseEvent* event) override;
 
+
+private:
   /** @brief Current collision status */
   CollidingStatus collidingStatus = NOT_COLLIDING;
+
+  /** @brief Initial position before a move action starts */
+  QPointF initialPosition;
 };
