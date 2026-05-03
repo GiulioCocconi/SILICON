@@ -32,6 +32,7 @@
 #include <QTimer>
 
 #include <ui/common/diagramScene.hpp>
+#include <ui/common/undoCommands.hpp>
 #include <ui/logiFlow/components/graphicalLogicComponent.hpp>
 
 LogiFlowWindow::~LogiFlowWindow()
@@ -271,8 +272,13 @@ void LogiFlowWindow::rotate()
       if (selectedComponents.size() != 1)
         return;
 
-      auto component = qgraphicsitem_cast<GraphicalComponent*>(selectedComponents[0]);
+      auto component   = qgraphicsitem_cast<GraphicalComponent*>(selectedComponents[0]);
+      auto oldRotation = component->rotation();
       component->rotate();
+      auto newRotation = component->rotation();
+      component->setInitialRotation();
+      auto rotateCmd = new RotateItemCommand(component, oldRotation, newRotation);
+      undoStack->push(rotateCmd);
       break;
     }
     case InteractionMode::COMPONENT_PLACING_MODE: {

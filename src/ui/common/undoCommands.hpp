@@ -7,7 +7,7 @@
 #include <ui/common/graphicalWire.hpp>
 
 class GraphicalItem;
-class GraphicalWireSegment;
+class GraphicalComponent;
 
 class MoveItemCommand : public QUndoCommand {
 public:
@@ -55,4 +55,25 @@ private:
   size_t                pointIndex;
   QPointF               oldPos;
   QPointF               newPos;
+};
+
+class RotateItemCommand : public QUndoCommand {
+public:
+  explicit RotateItemCommand(GraphicalComponent* component, qreal oldRotation,
+                             qreal newRotation, QUndoCommand* parent = nullptr)
+    : QUndoCommand(parent),
+      component(component),
+      oldRotation(oldRotation),
+      newRotation(newRotation)
+  {
+    setText("Rotate Component");
+  }
+
+  void undo() override;
+  void redo() override;
+
+private:
+  GraphicalComponent* component;
+  qreal               oldRotation;
+  qreal               newRotation;
 };

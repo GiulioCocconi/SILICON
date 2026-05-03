@@ -1,4 +1,5 @@
 #include "undoCommands.hpp"
+#include "graphicalComponent.hpp"
 #include "graphicalItem.hpp"
 #include "wireManager.hpp"
 
@@ -44,7 +45,7 @@ void MoveWirePointCommand::undo()
 {
   if (segment) {
     segment->movePointTo(pointIndex, oldPos);
-    
+
     // Update topology for point modification
     if (auto* wire = segment->getGraphicalWire()) {
       if (auto* manager = wire->getManager()) {
@@ -65,5 +66,25 @@ void MoveWirePointCommand::redo()
         manager->updateSegmentTopology(segment);
       }
     }
+  }
+}
+
+// --- RotateItemCommand ---
+
+void RotateItemCommand::undo()
+{
+  if (component) {
+    component->setRotation(oldRotation);
+    component->setInitialRotation();
+    component->update();
+  }
+}
+
+void RotateItemCommand::redo()
+{
+  if (component) {
+    component->setRotation(newRotation);
+    component->setInitialRotation();
+    component->update();
   }
 }
