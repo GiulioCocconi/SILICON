@@ -44,7 +44,7 @@ class GraphicalWireSegment;
 class WireManager {
 public:
   WireManager() = default;
-  ~WireManager();
+  ~WireManager() { clear(); }
 
   WireManager(const WireManager&)            = delete;
   WireManager& operator=(const WireManager&) = delete;
@@ -124,6 +124,8 @@ public:
       onTopologyChanged();
     }
   }
+
+  void clear();
 
 private:
   std::vector<std::shared_ptr<GraphicalWire>> managedWires;

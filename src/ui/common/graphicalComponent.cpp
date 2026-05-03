@@ -23,6 +23,8 @@
 
 #include <utils/ranges_wrapper.hpp>
 
+#include <ui/serialization/gui_component_factory.hpp>
+
 GraphicalComponent::GraphicalComponent(QGraphicsItem* shape, QGraphicsItem* parent,
                                        bool scanShape)
   : GraphicalItem(parent)
@@ -314,4 +316,39 @@ PropertiesDialog::PropertiesDialog(const QList<QWidget*>& widgets, QWidget* pare
   confirmationLayout->addWidget(cancelButton);
 
   mainLayout->addItem(confirmationLayout);
+}
+
+std::string GraphicalComponent::getTypeName() const
+{
+  return "Unknown";
+}
+
+nlohmann::ordered_json GraphicalComponent::serialize() const
+{
+  return {{"position", {{"x", pos().x()}, {"y", pos().y()}}},
+          {"rotation", static_cast<int>(rotation())}};
+}
+
+std::unique_ptr<GraphicalComponent>
+GraphicalComponent::deserialize(const nlohmann::json& j, GUIComponentFactory& factory)
+{
+  std::string type = j.value("type", "");
+  if (type.empty()) {
+    throw std::runtime_error("GraphicalComponent deserialization: missing 'type' field");
+  }
+
+  auto component = factory.create(type);
+  if (!component) {
+    throw std::runtime_error(
+        std::format("GraphicalComponent deserialization: unknown type '{}'", type));
+  }
+
+  if (j.contains("position")) {
+    const auto& posJson = j["position"];
+    component->setPos(posJson.value("x", 0.0), posJson.value("y", 0.0));
+  }
+
+  component->setRotation(j.value("rotation", 0.0));
+
+  return component;
 }

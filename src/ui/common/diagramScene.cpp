@@ -559,6 +559,161 @@ QUndoStack* DiagramScene::getUndoStack() const
   return lfw->getUndoStack();
 }
 
+// --- Serialization ---------------------------------------------------------------------
+
+std::string DiagramScene::serialize() const
+{
+  nlohmann::ordered_json   j;
+  std::shared_ptr<Circuit> activeCircuit = circuit;
+
+  // Generate temporary circuit if none exists
+  if (!activeCircuit) {
+    calculateWiresForComponents();
+    Component_set coreComps;
+    for (auto* item : items()) {
+      const auto* comp = dynamic_cast<GraphicalLogicComponent*>(item);
+      if (comp && comp->getComponent()) {
+        coreComps.insert(comp->getComponent());
+      }
+    }
+    activeCircuit = std::make_shared<Circuit>(coreComps, false);
+  }
+
+  j["circuit"] = nlohmann::json::parse(activeCircuit->serialize());
+
+  // Visual Components
+  nlohmann::ordered_json visualComponents = nlohmann::ordered_json::array();
+  const auto&            compToVertexMap  = activeCircuit->getComponentToVertex();
+
+  for (auto* item : items()) {
+    if (auto* comp = dynamic_cast<GraphicalLogicComponent*>(item)) {
+      auto compJson    = comp->serialize();
+      compJson["type"] = comp->getTypeName();
+
+      if (auto component = comp->getComponent()) {
+        if (auto it = compToVertexMap.find(component.get());
+            it != compToVertexMap.end()) {
+          compJson["vertexId"] = static_cast<int>(it->second);
+        }
+      }
+      visualComponents.push_back(std::move(compJson));
+    }
+  }
+  j["visual"]["components"] = std::move(visualComponents);
+
+  // Visual Wires
+  auto wiresJson =
+      wireManager.getSegments()
+      | std::views::transform([](const auto& seg) { return seg->serialize(); })
+      | std::ranges::to<std::vector>();
+
+  j["visual"]["wires"] = wiresJson;
+
+  return j.dump(2);
+}
+
+void DiagramScene::deserialize(const std::string&       jsonStr,
+                               GUIComponentFactory&     guiFactory,
+                               const ComponentRegistry& coreRegistry)
+{
+  auto j = nlohmann::json::parse(jsonStr);
+
+  if (j.contains("circuit")) {
+    circuit = std::make_shared<Circuit>(
+        Circuit::deserialize(j["circuit"].dump(), coreRegistry));
+  }
+
+  if (!j.contains("visual"))
+    throw std::runtime_error("Opened file doesn't have the visual part!");
+
+  // Deserializing Wires
+  if (j["visual"].contains("wires")) {
+    std::map<uint64_t, std::shared_ptr<GraphicalWire>> wireIdToWire;
+    for (const auto& wireJson : j["visual"]["wires"]) {
+      uint64_t wireId = wireJson.value("wireId", 0ULL);
+
+      if (!wireJson.contains("wireId")) {
+        throw std::runtime_error("Wire segment missing wireId");
+      }
+
+      std::shared_ptr<GraphicalWire> wire;
+      if (wireIdToWire.contains(wireId)) {
+        wire = wireIdToWire[wireId];
+      } else {
+        wire                 = wireManager.createWire(1);
+        wireIdToWire[wireId] = wire;
+      }
+
+      if (!wireJson.contains("points") || !wireJson["points"].is_array())
+        continue;
+
+      std::vector<QPointF> segmentPoints;
+      segmentPoints.reserve(wireJson["points"].size());
+
+      for (const auto& pointJson : wireJson["points"]) {
+        segmentPoints.emplace_back(pointJson.value("x", 0.0), pointJson.value("y", 0.0));
+      }
+
+      if (segmentPoints.size() < 2)
+        continue;
+      auto* segment = new GraphicalWireSegment(segmentPoints.front());
+      segment->setPoints(std::move(segmentPoints));
+      addItem(segment);
+
+      // Set logic counterpart
+      segment->setGraphicalWire(wire.get());
+      wireManager.addSegment(segment);
+    }
+  }
+
+  // Deserializing Components
+  if (j["visual"].contains("components")) {
+    for (const auto& compJson : j["visual"]["components"]) {
+      auto component = GraphicalComponent::deserialize(compJson, guiFactory);
+      if (!component)
+        continue;
+
+      if (auto* logicComp = dynamic_cast<GraphicalLogicComponent*>(component.get())) {
+        if (compJson.contains("vertexId") && circuit) {
+          const int vertexId = compJson["vertexId"].get<int>();
+          if (auto coreComp = circuit->getComponentByVertexId(vertexId)) {
+            logicComp->setComponent(coreComp);
+          }
+        }
+      }
+
+      addItem(component.release());
+    }
+  }
+
+  setInteractionMode(InteractionMode::NORMAL_MODE, true);
+}
+
+
+// --- Clean up --------------------------------------------------------------------------
+
+void DiagramScene::clear()
+{
+  setInteractionMode(InteractionMode::NORMAL_MODE);
+
+  if (componentToBeDrawn) {
+    delete componentToBeDrawn;
+    componentToBeDrawn = nullptr;
+  }
+
+  if (wireSegmentToBeDrawn) {
+    delete wireSegmentToBeDrawn;
+    wireSegmentToBeDrawn = nullptr;
+  }
+
+  wireManager.clear();
+
+  if (getUndoStack())
+    getUndoStack()->clear();
+
+  QGraphicsScene::clear();
+}
+
 DiagramScene::~DiagramScene()
 {
   // Clean up any remaining wire segment being drawn

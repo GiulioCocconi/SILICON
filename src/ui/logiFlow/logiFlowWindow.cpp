@@ -31,9 +31,12 @@
 #include <QSpinBox>
 #include <QTimer>
 
+#include <core/serialization/component_registry.hpp>
+
 #include <ui/common/diagramScene.hpp>
 #include <ui/common/undoCommands.hpp>
 #include <ui/logiFlow/components/graphicalLogicComponent.hpp>
+#include <ui/serialization/gui_component_factory.hpp>
 
 LogiFlowWindow::~LogiFlowWindow()
 {
@@ -309,6 +312,87 @@ void LogiFlowWindow::del()
 
   for (const auto* item : itemsToDelete)
     delete item;
+}
+
+void LogiFlowWindow::open()
+{
+  // 1. Ask the user for the file
+  QString fileName = QFileDialog::getOpenFileName(
+      this, tr("Open Circuit"), QString(), tr("Silicon Circuit (*.sil);;All Files (*)"));
+
+  // User canceled the dialog
+  if (fileName.isEmpty()) {
+    return;
+  }
+
+  // 2. Open the file for reading
+  QFile file(fileName);
+  if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+    QMessageBox::warning(this, tr("Error"),
+                         tr("Cannot open file for reading:\n%1").arg(file.errorString()));
+    return;
+  }
+
+  // 3. Read the contents with strict UTF-8 encoding
+  QTextStream in(&file);
+  in.setEncoding(QStringConverter::Utf8);
+
+  QString fileContent = in.readAll();
+  file.close();
+
+  // 4. Deserialize and update the scene safely
+  try {
+    // Clear the current scene items to prepare for the new circuit.
+    diagramScene->clear();
+
+
+    // Fetch the global registry singletons
+    auto& guiFactory   = GUIComponentFactory::instance();
+    auto& coreRegistry = ComponentRegistry::instance();
+
+    // Delegate parsing to the scene
+    diagramScene->deserialize(fileContent.toStdString(), guiFactory, coreRegistry);
+
+    // 5. Update application state on success
+    currentFile             = fileName;
+    QString displayFileName = QFileInfo(currentFile).fileName();
+    setWindowTitle(tr("LogiFlow - %1").arg(displayFileName));
+
+  } catch (const nlohmann::json::exception& e) {
+    // Catches JSON parsing/formatting errors
+    QMessageBox::critical(
+        this, tr("Corrupted File"),
+        tr("The circuit file contains invalid JSON data:\n%1").arg(e.what()));
+  } catch (const std::exception& e) {
+    // Catches missing components, version mismatches (from Circuit::deserialize), etc.
+    QMessageBox::critical(this, tr("Load Error"),
+                          tr("Failed to load the circuit:\n%1").arg(e.what()));
+  }
+}
+
+void LogiFlowWindow::save()
+{
+  if (currentFile.isEmpty()) {
+    currentFile =
+        QFileDialog::getSaveFileName(this, tr("Save Circuit"), QString(),
+                                     tr("Silicon Circuit (*.sil);;All Files (*)"));
+    if (currentFile.isEmpty())
+      return;
+  }
+
+  QFile file(currentFile);
+  if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+    QMessageBox::warning(this, tr("Error"),
+                         tr("Cannot open file for writing: %1").arg(file.errorString()));
+    return;
+  }
+
+  QTextStream out(&file);
+  out.setEncoding(QStringConverter::Utf8);
+  out << QString::fromStdString(diagramScene->serialize());
+  file.close();
+
+  setWindowTitle(tr("LogiFlow - %1").arg(QFileInfo(currentFile).fileName()));
 }
 
 void LogiFlowWindow::about() const

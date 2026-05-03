@@ -23,6 +23,7 @@
 #include <QBrush>
 #include <QColor>
 #include <QDockWidget>
+#include <QFileDialog>
 #include <QGraphicsScene>
 #include <QGraphicsSvgItem>
 #include <QHBoxLayout>
@@ -69,8 +70,8 @@ protected:
 
 private slots:
   void newFile() {}
-  void open() {}
-  void save() {}
+  void open();
+  void save();
   void exportImage() {}
   void cut()
   {
@@ -132,6 +133,8 @@ private:
   QAction*    undoAct;
   QAction*    redoAct;
   QUndoStack* undoStack;
+
+  QString currentFile;
 
   AboutDialog* aboutDialog;
 };

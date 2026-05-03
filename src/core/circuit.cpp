@@ -69,6 +69,16 @@ void Circuit::makeInteractive()
   }
 }
 
+Component_ptr Circuit::getComponentByVertexId(VertexDescriptor vertexId) const
+{
+  auto it = std::ranges::find_if(ownedComponents, [&](const auto& comp) {
+    auto id = getVertexId(comp.get());
+    return id && *id == vertexId;
+  });
+
+  return it != ownedComponents.end() ? *it : nullptr;
+}
+
 void Circuit::updateComponentIO(const Component_ptr& component)
 {
   if (!component)
@@ -323,6 +333,17 @@ void Circuit::removeComponent(const Component_ptr& component)
 
   buildTopologyMap();
   notifyTopologyListeners();
+}
+
+std::optional<VertexDescriptor> Circuit::getVertexId(const Component* component) const
+{
+  if (!component)
+    return std::nullopt;
+
+  if (auto it = componentToVertex.find(component); it != componentToVertex.end())
+    return it->second;
+
+  return std::nullopt;
 }
 
 std::vector<Bus> Circuit::getInputs() const
