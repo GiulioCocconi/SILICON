@@ -27,7 +27,7 @@
 
 #include <ui/common/graphicalWire.hpp>
 
-WireManager::~WireManager()
+void WireManager::clear()
 {
   // Detach segments without side-effects (avoids creating new wires during
   // teardown, which would leave dangling pointers after managedWires is cleared).

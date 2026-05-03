@@ -33,6 +33,8 @@
 #include <core/wire.hpp>
 #include <ui/common/enums.hpp>
 #include <ui/common/graphicalItem.hpp>
+
+#include <nlohmann/json.hpp>
 #include <utils/ranges_wrapper.hpp>
 
 class GraphicalWireSegment;
@@ -334,6 +336,12 @@ public:
    * Removes collinear points to simplify the wire shape.
    */
   void optimize();
+
+  /**
+   * @brief Serializes the wire segment to JSON.
+   * @return JSON object with points and wire ID
+   */
+  [[nodiscard]] nlohmann::ordered_json serialize() const;
 
 private:
   /** @brief The main path */

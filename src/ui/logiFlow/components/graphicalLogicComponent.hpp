@@ -84,4 +84,18 @@ public:
    * @return Pointer to the component
    */
   [[nodiscard]] Component_ptr getComponent() const { return associatedComponent; }
+
+  /**
+   * @brief Sets the associated logical component.
+   * @param component The component to associate
+   */
+  void setComponent(const Component_ptr& component) { associatedComponent = component; }
+
+  [[nodiscard]] std::string getTypeName() const override
+  {
+    if (associatedComponent) {
+      return std::string(associatedComponent->typeName());
+    }
+    return "Unknown";
+  }
 };

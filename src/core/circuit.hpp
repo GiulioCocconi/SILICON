@@ -179,6 +179,31 @@ public:
   void removeComponent(const Component_ptr& component);
 
   /**
+   * @brief Gets the vertex ID for a component.
+   * @param component The component
+   * @return Vertex ID, or -1 if not found
+   */
+  [[nodiscard]] std::optional<VertexDescriptor>
+  getVertexId(const Component* component) const;
+
+  /**
+   * @brief Gets all component-to-vertex mappings.
+   * @return Map from component pointers to vertex IDs
+   */
+  [[nodiscard]] const std::unordered_map<const Component*, VertexDescriptor>&
+  getComponentToVertex() const
+  {
+    return componentToVertex;
+  }
+
+  /**
+   * @brief Gets a component by its vertex ID.
+   * @param vertexId The vertex ID
+   * @return Component pointer, or nullptr if not found
+   */
+  [[nodiscard]] Component_ptr getComponentByVertexId(VertexDescriptor vertexId) const;
+
+  /**
    * @brief Updates the circuit after a component's I/O has changed.
    *
    * Rebuilds all affected edges and notifies topology listeners.

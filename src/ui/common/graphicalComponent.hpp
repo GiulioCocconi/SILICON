@@ -34,6 +34,10 @@
 #include <ui/common/enums.hpp>
 #include <ui/common/graphicalItem.hpp>
 
+#include <nlohmann/json.hpp>
+
+class GUIComponentFactory;
+
 /**
  * @class Port
  * @brief Represents a connection point on a component.
@@ -236,6 +240,27 @@ public:
 
   /** @brief Gets all output ports */
   [[nodiscard]] std::vector<Port*> getOutputPorts() const { return outputPorts; };
+
+  /**
+   * @brief Gets the component type name for serialization.
+   * @return String representing the component type
+   */
+  [[nodiscard]] virtual std::string getTypeName() const;
+
+  /**
+   * @brief Serializes the component to JSON.
+   * @return JSON object with position, rotation, and type
+   */
+  [[nodiscard]] virtual nlohmann::ordered_json serialize() const;
+
+  /**
+   * @brief Deserializes a component from JSON using the factory.
+   * @param j JSON object
+   * @param factory Component factory for creating instances
+   * @return Unique pointer to deserialized component
+   */
+  static std::unique_ptr<GraphicalComponent> deserialize(const nlohmann::json& j,
+                                                         GUIComponentFactory&  factory);
 
 private:
   /**

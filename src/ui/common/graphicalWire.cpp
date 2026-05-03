@@ -570,3 +570,24 @@ GraphicalWireSegment::~GraphicalWireSegment()
   if (manager)
     manager->removeSegment(this);
 }
+
+nlohmann::ordered_json GraphicalWireSegment::serialize() const
+{
+  nlohmann::ordered_json j;
+
+  auto jsonPoints = points | std::views::transform([](const QPointF& p) {
+                      return nlohmann::ordered_json{{"x", p.x()}, {"y", p.y()}};
+                    })
+                    | std::ranges::to<std::vector>();
+
+  j["points"] = jsonPoints;
+
+  if (graphicalWire) {
+    const auto& bus = graphicalWire->getBus();
+    if (bus.size() > 0 && bus[0]) {
+      j["wireId"] = bus[0]->getId();
+    }
+  }
+
+  return j;
+}

@@ -38,8 +38,11 @@
 #include <ui/common/enums.hpp>
 #include <ui/common/wireManager.hpp>
 
+#include <nlohmann/json.hpp>
+
 class GraphicalComponent;
 class GraphicalWireSegment;
+class GUIComponentFactory;
 
 /**
  * @class DiagramScene
@@ -148,6 +151,23 @@ public:
   static constexpr int GRID_SIZE = 10;
 
   [[nodiscard]] QUndoStack* getUndoStack() const;
+
+  /**
+   * @brief Serializes the scene to JSON.
+   * @return JSON string representation
+   */
+  [[nodiscard]] std::string serialize() const;
+
+  /**
+   * @brief Deserializes the scene from JSON.
+   * @param jsonStr JSON string
+   * @param guiFactory Factory for creating graphical components
+   * @param coreRegistry Registry for creating core components
+   */
+  void deserialize(const std::string& jsonStr, GUIComponentFactory& guiFactory,
+                   const ComponentRegistry& coreRegistry);
+
+  void clear();
 
   ~DiagramScene() override;
 
