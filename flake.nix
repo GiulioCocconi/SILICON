@@ -62,7 +62,7 @@ outputs = { self, nixpkgs, flake-utils }:
 
             webpage = pkgs.mkShell {
               name = "SILICON-webpage-dev";
-              packages = [ bun pkgs.doxygen pkgs.graphviz ];
+              packages = [ bun pkgs.doxygen pkgs.graphviz pkgs.python3  pkgs.opencode ];
             };
           };
 
