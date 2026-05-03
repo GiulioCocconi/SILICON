@@ -64,30 +64,30 @@ const features = [
 
 const links = [
   {
+    href: `${GH}/releases`,
+    label: "Download",
+    sub: "Latest build",
+    color: "var(--silicon-orange)",
+    external: true,
+  },
+  {
+    href: "/wasm",
+    label: "Try online",
+    sub: "SILICON in the browser",
+    color: "var(--silicon-blue)",
+  },
+  {
     href: "internaldocs",
     label: "Internal Docs",
     sub: "Doxygen API reference",
-    color: "var(--silicon-orange)",
-  },
-  {
-    href: `${GH}/releases`,
-    label: "Releases",
-    sub: "Download latest builds",
-    color: "var(--silicon-blue)",
-    external: true,
+    color: "var(--silicon-green)",
   },
   {
     href: GH,
     label: "GitHub",
     sub: "Source code & issues",
-    color: "var(--silicon-green)",
-    external: true,
-  },
-  {
-    href: "blog",
-    label: "Blog",
-    sub: "News & devlogs",
     color: "var(--silicon-magenta)",
+    external: true,
   },
 ];
 
@@ -152,33 +152,11 @@ function Index() {
               </span>{" "}
               behind it all.
             </h1>
-            <p className="text-lg max-w-xl text-muted-foreground mb-8">
+            <p className="text-lg max-w-xl text-muted-foreground">
               <strong className="text-foreground">SILICON</strong> is an open source suite for simulating
               digital <em>circuits</em>, <em>finite state machines</em>, and{" "}
               <em>microcontrollers</em> — built with modern C++ and Qt6.
             </p>
-            <div className="flex flex-wrap gap-3">
-              <a
-                href={`${GH}/releases`}
-                target="_blank"
-                rel="noreferrer"
-                className="silicon-btn"
-                style={{ backgroundColor: "var(--silicon-blue)", color: "white" }}
-              >
-                ⬇ Download
-              </a>
-              <a href="internaldocs" className="silicon-btn">
-                📖 Read the docs
-              </a>
-              <a
-                href={GH}
-                target="_blank"
-                rel="noreferrer"
-                className="silicon-btn"
-              >
-                {"</>"} View source
-              </a>
-            </div>
           </div>
           <div className="hidden md:block">
             <div
