@@ -19,11 +19,8 @@
 #include <core/simulator.hpp>
 #include <stdexcept>
 
-Gate::Gate(const std::vector<Wire_ptr>& inputs, Wire_ptr output)
+Gate::Gate()
 {
-  if (inputs.empty())
-    throw std::invalid_argument("Gate requires at least one input");
-
   defineProperty("delay", 5);
   setPropertyCallback("delay", [](const PropertyValue& value) {
     if (std::get<int>(value) >= 0)
@@ -31,6 +28,12 @@ Gate::Gate(const std::vector<Wire_ptr>& inputs, Wire_ptr output)
 
     throw std::invalid_argument("Delays must be non-negative!");
   });
+}
+
+Gate::Gate(const std::vector<Wire_ptr>& inputs, Wire_ptr output) : Gate()
+{
+  if (inputs.empty())
+    throw std::invalid_argument("Gate requires at least one input");
 
   for (const auto& input : inputs)
     this->inputs.push_back({input});

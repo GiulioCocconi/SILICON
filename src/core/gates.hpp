@@ -27,7 +27,7 @@
 class Gate : public Component {
 public:
   Gate(const std::vector<Wire_ptr>& inputs, Wire_ptr output);
-  Gate() = default;
+  Gate();
 };
 
 class AndGate : public Gate {

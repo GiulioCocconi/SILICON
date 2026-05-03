@@ -30,7 +30,7 @@ public:
   static constexpr std::string_view Type = "HalfAdder";
   std::string_view                  typeName() const override { return Type; }
 
-  HalfAdder() = default;
+  HalfAdder();
   HalfAdder(std::array<Wire_ptr, 2> inputs, Wire_ptr sum, Wire_ptr cout);
 
   void simulate(class Simulator& sim) override;
@@ -41,7 +41,7 @@ public:
   static constexpr std::string_view Type = "FullAdder";
   std::string_view                  typeName() const override { return Type; }
 
-  FullAdder() = default;
+  FullAdder();
   FullAdder(std::array<Wire_ptr, 2> inputs, Wire_ptr cin, Wire_ptr sum, Wire_ptr cout);
 
   void simulate(Simulator& sim) override;
@@ -52,7 +52,7 @@ public:
   static constexpr std::string_view Type = "AdderNBits";
   std::string_view                  typeName() const override { return Type; }
 
-  AdderNBits() = default;
+  AdderNBits();
   AdderNBits(std::array<Bus, 2> inputs, Bus sum, Wire_ptr cout);
 
   void simulate(Simulator& sim) override;
