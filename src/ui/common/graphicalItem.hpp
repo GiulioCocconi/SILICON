@@ -90,11 +90,15 @@ public:
    */
   [[nodiscard]] QPointF getInitialPosition() const { return initialPosition; }
 
+  [[nodiscard]] qreal getInitialRotation() const { return initialRotation; }
+
   /**
    * @brief Sets the initialPosition of the item to its current position (should be used
    * when placed)
    */
   void setInitialPosition() { this->initialPosition = pos(); }
+
+  void setInitialRotation() { this->initialRotation = rotation(); }
 
 public slots:
   /**
@@ -131,11 +135,13 @@ protected:
   void mouseReleaseEvent(QGraphicsSceneMouseEvent* event) override;
   void mousePressEvent(QGraphicsSceneMouseEvent* event) override;
 
-
 private:
   /** @brief Current collision status */
   CollidingStatus collidingStatus = NOT_COLLIDING;
 
   /** @brief Initial position before a move action starts */
   QPointF initialPosition;
+
+  /** @brief Initial rotation before a rotate action starts */
+  qreal initialRotation = 0;
 };
