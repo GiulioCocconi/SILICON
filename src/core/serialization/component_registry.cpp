@@ -52,6 +52,11 @@ Component_ptr ComponentRegistry::create(std::string_view type) const
   return it->second();
 }
 
+bool ComponentRegistry::hasType(std::string_view type) const
+{
+  return types_.contains(type);
+}
+
 std::vector<std::string> ComponentRegistry::availableTypes() const
 {
   std::vector<std::string> types;
