@@ -307,13 +307,14 @@ WireManager::segmentNeighbors(GraphicalWireSegment* segment)
 
   const auto colliding = segment->scene()->collidingItems(segment);
 
-  auto neighbors = colliding | std::views::transform([](QGraphicsItem* item) {
-                     return dynamic_cast<GraphicalWireSegment*>(item);
-                   })
-                   | std::views::filter([&](const GraphicalWireSegment* sibling) {
-                       return sibling && segmentsTouching(segment, sibling);
-                     })
-                   | std::ranges::to<std::vector>();
+  auto neighbors =
+      colliding | std::views::transform([](QGraphicsItem* item) {
+        return category_cast<GraphicalWireSegment>(item, ItemCategory::WireSegment);
+      })
+      | std::views::filter([&](const GraphicalWireSegment* sibling) {
+          return sibling && segmentsTouching(segment, sibling);
+        })
+      | std::ranges::to<std::vector>();
 
   neighbors.push_back(segment);
   return neighbors;

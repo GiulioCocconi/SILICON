@@ -19,12 +19,22 @@
 #include "graphicalItem.hpp"
 
 #include <stdexcept>
+#include <utility>
+
+#include <QVariant>
 
 #include <ui/common/diagramScene.hpp>
 #include <ui/common/graphicalComponent.hpp>
 #include <ui/common/graphicalWire.hpp>
 #include <ui/common/undoCommands.hpp>
 #include <ui/logiFlow/logiFlowWindow.hpp>
+
+GraphicalItem::GraphicalItem(ItemCategory category, QGraphicsItem* parent)
+  : QGraphicsObject(parent)
+{
+  setData(std::to_underlying(ItemDataRole::Category),
+          std::to_underlying(category | ItemCategory::GraphicalItem));
+}
 
 void GraphicalItem::setCollidingStatus(const CollidingStatus newStatus)
 {
@@ -126,10 +136,11 @@ QVariant GraphicalItem::itemChange(GraphicsItemChange change, const QVariant& va
 
       // Lambda function to categorize items as components or wire segments
       auto categorizeItem = [&](QGraphicsItem* item) {
-        if (item->type() >= COMPONENT)
-          componentsInPair.insert(qgraphicsitem_cast<GraphicalComponent*>(item));
-        else if (item->type() == WIRE_SEGMENT)
-          segmentsInPair.insert(qgraphicsitem_cast<GraphicalWireSegment*>(item));
+        if (auto* comp = category_cast<GraphicalComponent>(item, ItemCategory::Component))
+          componentsInPair.insert(comp);
+        else if (auto* seg =
+                     category_cast<GraphicalWireSegment>(item, ItemCategory::WireSegment))
+          segmentsInPair.insert(seg);
       };
 
       // Categorize both the current item and the colliding item
@@ -190,8 +201,9 @@ QVariant GraphicalItem::itemChange(GraphicsItemChange change, const QVariant& va
       collisionPath = collisionPath.subtracted(toBeSubtractedWire);
 
       // Determine the component position for collision check
-      QPointF collidingComponentOffset =
-          (this->type() >= COMPONENT) ? proposedPos : collidingComponent->pos();
+      QPointF collidingComponentOffset = hasCategory(this, ItemCategory::Component)
+                                             ? proposedPos
+                                             : collidingComponent->pos();
 
       // Check if the wire's collision path intersects with the component's wire collision
       // area

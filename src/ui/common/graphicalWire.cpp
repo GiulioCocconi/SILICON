@@ -113,7 +113,7 @@ QPainterPath GraphicalWire::shape() const
 // --- GraphicalWireSegment --------------------------------------------------------------
 
 GraphicalWireSegment::GraphicalWireSegment(QPointF firstPoint, QGraphicsItem* parent)
-  : GraphicalItem(parent)
+  : GraphicalItem(ItemCategory::WireSegment, parent)
 {
   setFlag(QGraphicsItem::ItemSendsGeometryChanges);
   setFlag(QGraphicsItem::ItemIsSelectable, true);
@@ -125,6 +125,13 @@ GraphicalWireSegment::GraphicalWireSegment(QPointF firstPoint, QGraphicsItem* pa
 
   points.push_back(firstPoint);
   updatePath();
+}
+
+void GraphicalWireSegment::updateTopology()
+{
+  if (graphicalWire && graphicalWire->getManager()) {
+    graphicalWire->getManager()->updateSegmentTopology(this);
+  }
 }
 
 void GraphicalWireSegment::setGraphicalWire(GraphicalWire* newWire)
