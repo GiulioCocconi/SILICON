@@ -41,6 +41,7 @@ public:
 
   void                     registerType(std::string type, Factory factory);
   Component_ptr            create(std::string_view type) const;
+  bool                     hasType(std::string_view type) const;
   std::vector<std::string> availableTypes() const;
 
 private:

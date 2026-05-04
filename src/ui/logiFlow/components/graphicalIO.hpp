@@ -42,11 +42,18 @@ public:
   explicit GraphicalInput(QGraphicsItem* parent = nullptr);
   int type() const override { return SiliconTypes::SINGLE_INPUT; }
 
+  [[nodiscard]] std::string getTypeName() const override
+  {
+    return std::string(ComponentType);
+  }
+
   State getState();
 
   void toggle();
 
   void setState(State state);
+
+  void triggerGeometryChange() { prepareGeometryChange(); }
 
   void paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
              QWidget* widget) override;
@@ -89,6 +96,7 @@ public:
   {
     defineProperty("name", std::move(name));
   }
+
   void setState(int value) { this->outputs[0].setCurrentValue(value, weak_from_this()); };
   std::string_view typeName() const override { return Type; }
 
@@ -102,6 +110,11 @@ public:
 
   explicit GraphicalOutputSingle(QGraphicsItem* parent = nullptr);
   int type() const override { return SiliconTypes::SINGLE_OUTPUT; }
+
+  [[nodiscard]] std::string getTypeName() const override
+  {
+    return std::string(ComponentType);
+  }
 
   void setState(State state);
 

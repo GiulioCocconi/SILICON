@@ -22,6 +22,7 @@
 #include <stdexcept>
 
 #include <QDebug>
+#include <QPointer>
 
 #include "ui/common/graphicalWire.hpp"
 #include "ui/logiFlow/components/graphicalGates.hpp"
@@ -29,6 +30,9 @@
 #include "ui/logiFlow/components/graphicalUtils.hpp"
 #include "ui/logiFlow/logiFlowWindow.hpp"
 #include "ui/serialization/gui_component_factory.hpp"
+
+// ADDED: Missing include for the ComponentRegistry so it is fully defined
+#include <core/serialization/component_registry.hpp>
 
 DiagramScene::DiagramScene(QObject* parent) : QGraphicsScene(parent)
 {
@@ -619,8 +623,21 @@ void DiagramScene::deserialize(const std::string&       jsonStr,
   auto j = nlohmann::json::parse(jsonStr);
 
   if (j.contains("circuit")) {
+    ComponentRegistry mergedRegistry = coreRegistry;
+
+    if (!mergedRegistry.hasType("DummyInputComponent")) {
+      mergedRegistry.registerType("DummyInputComponent", [] {
+        return std::make_shared<DummyInputComponent>(Bus(1), "in");
+      });
+    }
+    if (!mergedRegistry.hasType("DummyOutputComponent")) {
+      mergedRegistry.registerType("DummyOutputComponent", [] {
+        return std::make_shared<DummyOutputComponent>(Bus(1), "out");
+      });
+    }
+
     circuit = std::make_shared<Circuit>(
-        Circuit::deserialize(j["circuit"].dump(), coreRegistry));
+        Circuit::deserialize(j["circuit"].dump(), mergedRegistry));
   }
 
   if (!j.contains("visual"))
@@ -678,6 +695,21 @@ void DiagramScene::deserialize(const std::string&       jsonStr,
           const int vertexId = compJson["vertexId"].get<int>();
           if (auto coreComp = circuit->getComponentByVertexId(vertexId)) {
             logicComp->setComponent(coreComp);
+
+            if (auto* gOut = dynamic_cast<GraphicalOutputSingle*>(logicComp)) {
+              if (auto dOut = std::dynamic_pointer_cast<DummyOutputComponent>(coreComp)) {
+                dOut->setSkin(gOut);
+              }
+            } else if (auto* gIn = dynamic_cast<GraphicalInput*>(logicComp)) {
+              QPointer<GraphicalInput> safeGIn(gIn);
+              coreComp->setPropertyCallback("name",
+                                            [safeGIn](const PropertyValue& value) {
+                                              if (!safeGIn)
+                                                return value;
+                                              safeGIn->triggerGeometryChange();
+                                              return value;
+                                            });
+            }
           }
         }
       }
