@@ -265,17 +265,19 @@ void LogiFlowWindow::resizeEvent(QResizeEvent* event)
 
 void LogiFlowWindow::rotate()
 {
-  auto selectedComponents =
-      std::ranges::views::filter(diagramScene->selectedItems(),
-                                 [](auto el) { return el->type() >= COMPONENT; })
-      | std::ranges::to<std::vector>();
+  auto selectedComponents = diagramScene->selectedItems()
+                            | std::views::filter([](auto el) {
+                                return hasCategory(el, ItemCategory::Component);
+                              })
+                            | std::ranges::to<std::vector>();
 
   switch (diagramScene->getInteractionMode()) {
     case InteractionMode::NORMAL_MODE: {
       if (selectedComponents.size() != 1)
         return;
 
-      auto component   = qgraphicsitem_cast<GraphicalComponent*>(selectedComponents[0]);
+      auto component   = category_cast<GraphicalComponent>(selectedComponents[0],
+                                                           ItemCategory::Component);
       auto oldRotation = component->rotation();
       component->rotate();
       auto newRotation = component->rotation();
@@ -344,7 +346,6 @@ void LogiFlowWindow::open()
   try {
     // Clear the current scene items to prepare for the new circuit.
     diagramScene->clear();
-
 
     // Fetch the global registry singletons
     auto& guiFactory   = GUIComponentFactory::instance();
@@ -473,11 +474,10 @@ void LogiFlowWindow::updatePropertyDock()
   // 2. Gather selected logic components cleanly
   std::vector<GraphicalLogicComponent*> selectedNodes;
   for (QGraphicsItem* item : diagramScene->selectedItems()) {
-    if (item->type() >= COMPONENT) {
-      if (auto* logicComp = dynamic_cast<GraphicalLogicComponent*>(item)) {
-        if (logicComp->getComponent() != nullptr) {
-          selectedNodes.push_back(logicComp);
-        }
+    if (auto* logicComp =
+            category_cast<GraphicalLogicComponent>(item, ItemCategory::LogicComponent)) {
+      if (logicComp->getComponent() != nullptr) {
+        selectedNodes.push_back(logicComp);
       }
     }
   }

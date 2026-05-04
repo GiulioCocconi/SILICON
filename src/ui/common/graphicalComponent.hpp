@@ -205,13 +205,11 @@ public slots:
    */
   virtual void propertiesDialogRejected();
 
+protected:
+  explicit GraphicalComponent(ItemCategory category, QGraphicsItem* shape,
+                              QGraphicsItem* parent = nullptr, bool scanShape = false);
+
 public:
-  /**
-   * @brief Constructs a graphical component.
-   * @param shape The visual shape item
-   * @param parent Optional parent graphics item
-   * @param scanShape Enable alpha scanning for port positions
-   */
   explicit GraphicalComponent(QGraphicsItem* shape, QGraphicsItem* parent = nullptr,
                               bool scanShape = false);
 

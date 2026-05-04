@@ -199,9 +199,7 @@ void DiagramScene::enterSimulationMode()
   // Restore inputs to neutral state & inject LOW into the logic bus
   // Do this BEFORE creating the Simulator to avoid double-evaluations
   for (auto* item : items()) {
-    if (item && item->type() == SiliconTypes::SINGLE_INPUT) {
-      auto* input = qgraphicsitem_cast<GraphicalInput*>(item);
-
+    if (auto* input = category_cast<GraphicalInput>(item, ItemCategory::Input)) {
       // Updates visual shape
       input->setState(State::LOW);
 
@@ -218,11 +216,10 @@ void DiagramScene::enterSimulationMode()
   // 2. Gather core components
   Component_set coreComps;
   for (auto* item : items()) {
-    if (item && item->type() >= COMPONENT) {
-      auto* comp = qgraphicsitem_cast<GraphicalLogicComponent*>(item);
-      if (comp && comp->getComponent()) {
-        coreComps.insert(comp->getComponent());
-      }
+    const auto* comp =
+            category_cast<GraphicalLogicComponent>(item, ItemCategory::LogicComponent);
+    if (comp && comp->getComponent()) {
+      coreComps.insert(comp->getComponent());
     }
   }
 
@@ -241,8 +238,7 @@ void DiagramScene::exitSimulationMode()
 {
   // Disconnect signals from inputs
   for (auto* item : items()) {
-    if (item && item->type() == SiliconTypes::SINGLE_INPUT) {
-      auto* input = qgraphicsitem_cast<GraphicalInput*>(item);
+    if (auto* input = category_cast<GraphicalInput>(item, ItemCategory::Input)) {
       disconnect(input, &GraphicalInput::inputToggled, this,
                  &DiagramScene::handleInputToggled);
     }
@@ -253,10 +249,8 @@ void DiagramScene::exitSimulationMode()
   this->circuit.reset();
 
   for (auto* item : items()) {
-    if (item && item->type() == SiliconTypes::SINGLE_OUTPUT) {
-      auto* out = qgraphicsitem_cast<GraphicalOutputSingle*>(item);
-      if (out)
-        out->setState(State::UNKNOWN);
+    if (auto* out = category_cast<GraphicalOutputSingle>(item, ItemCategory::Output)) {
+      out->setState(State::UNKNOWN);
     }
   }
 
@@ -349,8 +343,7 @@ void DiagramScene::mousePressEvent(QGraphicsSceneMouseEvent* mouseEvent)
       auto itemsAtPos = items(cursorPos);
 
       for (auto item : itemsAtPos) {
-        if (item && item->type() == SiliconTypes::SINGLE_INPUT) {
-          auto* input = qgraphicsitem_cast<GraphicalInput*>(item);
+        if (auto* input = category_cast<GraphicalInput>(item, ItemCategory::Input)) {
           input->toggle();
         }
       }
@@ -444,9 +437,7 @@ void DiagramScene::handleInputToggled(Bus targetBus, unsigned int value,
 void DiagramScene::refreshGraphicalOutputs()
 {
   for (auto* item : items()) {
-    if (item->type() == SiliconTypes::SINGLE_OUTPUT) {
-      auto* out = qgraphicsitem_cast<GraphicalOutputSingle*>(item);
-
+    if (auto* out = category_cast<GraphicalOutputSingle>(item, ItemCategory::Output)) {
       if (!out->getComponent())
         continue;
 
@@ -473,10 +464,8 @@ void DiagramScene::calculateWiresForComponents() const
 
   // Process all components that are >= COMPONENT type
   for (auto* item : items()) {
-    if (!item || item->type() < COMPONENT)
-      continue;
-
-    auto* graphicalComponent = qgraphicsitem_cast<GraphicalLogicComponent*>(item);
+    auto* graphicalComponent =
+        category_cast<GraphicalLogicComponent>(item, ItemCategory::LogicComponent);
     if (!graphicalComponent)
       throw std::logic_error("calculateWiresForComponents: null component encountered");
 
@@ -490,10 +479,10 @@ void DiagramScene::calculateWiresForComponents() const
     std::unordered_set<GraphicalWire*> seenWires;
     std::vector<GraphicalWire*>        collidingWires;
     for (auto* el : colliding) {
-      if (el->type() != SiliconTypes::WIRE_SEGMENT)
+      auto* seg = category_cast<GraphicalWireSegment>(el, ItemCategory::WireSegment);
+      if (!seg)
         continue;
-      auto* seg  = qgraphicsitem_cast<GraphicalWireSegment*>(el);
-      auto* wire = seg ? seg->getGraphicalWire() : nullptr;
+      auto* wire = seg->getGraphicalWire();
       if (wire && seenWires.insert(wire).second)
         collidingWires.push_back(wire);
     }
@@ -575,7 +564,8 @@ std::string DiagramScene::serialize() const
     calculateWiresForComponents();
     Component_set coreComps;
     for (auto* item : items()) {
-      const auto* comp = dynamic_cast<GraphicalLogicComponent*>(item);
+      auto* comp =
+              category_cast<GraphicalLogicComponent>(item, ItemCategory::LogicComponent);
       if (comp && comp->getComponent()) {
         coreComps.insert(comp->getComponent());
       }
@@ -590,7 +580,8 @@ std::string DiagramScene::serialize() const
   const auto&            compToVertexMap  = activeCircuit->getComponentToVertex();
 
   for (auto* item : items()) {
-    if (auto* comp = dynamic_cast<GraphicalLogicComponent*>(item)) {
+    if (auto* comp =
+            category_cast<GraphicalLogicComponent>(item, ItemCategory::LogicComponent)) {
       auto compJson    = comp->serialize();
       compJson["type"] = comp->getTypeName();
 
@@ -690,17 +681,20 @@ void DiagramScene::deserialize(const std::string&       jsonStr,
       if (!component)
         continue;
 
-      if (auto* logicComp = dynamic_cast<GraphicalLogicComponent*>(component.get())) {
+      if (auto* logicComp = category_cast<GraphicalLogicComponent>(
+              component.get(), ItemCategory::LogicComponent)) {
         if (compJson.contains("vertexId") && circuit) {
           const int vertexId = compJson["vertexId"].get<int>();
           if (auto coreComp = circuit->getComponentByVertexId(vertexId)) {
             logicComp->setComponent(coreComp);
 
-            if (auto* gOut = dynamic_cast<GraphicalOutputSingle*>(logicComp)) {
+            if (auto* gOut = category_cast<GraphicalOutputSingle>(logicComp,
+                                                                  ItemCategory::Output)) {
               if (auto dOut = std::dynamic_pointer_cast<DummyOutputComponent>(coreComp)) {
                 dOut->setSkin(gOut);
               }
-            } else if (auto* gIn = dynamic_cast<GraphicalInput*>(logicComp)) {
+            } else if (auto* gIn = category_cast<GraphicalInput>(logicComp,
+                                                                 ItemCategory::Input)) {
               QPointer<GraphicalInput> safeGIn(gIn);
               coreComp->setPropertyCallback("name",
                                             [safeGIn](const PropertyValue& value) {

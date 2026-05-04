@@ -27,7 +27,13 @@
 
 GraphicalComponent::GraphicalComponent(QGraphicsItem* shape, QGraphicsItem* parent,
                                        bool scanShape)
-  : GraphicalItem(parent)
+  : GraphicalComponent(ItemCategory::Component, shape, parent, scanShape)
+{
+}
+
+GraphicalComponent::GraphicalComponent(ItemCategory category, QGraphicsItem* shape,
+                                       QGraphicsItem* parent, bool scanShape)
+  : GraphicalItem(category | ItemCategory::Component, parent)
 {
   setFlag(QGraphicsItem::ItemSendsGeometryChanges);
 

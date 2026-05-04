@@ -18,6 +18,50 @@
 
 #pragma once
 #include <QGraphicsItem>
+#include <QVariant>
+#include <utility>
+
+// 1. Define safe roles and categories
+enum class ItemDataRole { Category = Qt::UserRole + 1 };
+
+enum class ItemCategory : uint32_t {
+  None           = 0,
+  GraphicalItem  = 1 << 0,
+  WireSegment    = 1 << 1,
+  Component      = 1 << 2,
+  LogicComponent = 1 << 3,
+  Input          = 1 << 4,
+  Output         = 1 << 5
+};
+
+constexpr ItemCategory operator|(ItemCategory a, ItemCategory b)
+{
+  return static_cast<ItemCategory>(std::to_underlying(a) | std::to_underlying(b));
+}
+
+constexpr ItemCategory operator&(ItemCategory a, ItemCategory b)
+{
+  return static_cast<ItemCategory>(std::to_underlying(a) & std::to_underlying(b));
+}
+
+inline bool hasCategory(const QGraphicsItem* item, ItemCategory cat)
+{
+  if (!item)
+    return false;
+  QVariant val = item->data(std::to_underlying(ItemDataRole::Category));
+  if (!val.isValid())
+    return false;
+  return (val.toUInt() & std::to_underlying(cat)) == std::to_underlying(cat);
+}
+
+template <typename TargetType>
+TargetType* category_cast(QGraphicsItem* item, ItemCategory expectedCategory)
+{
+  if (hasCategory(item, expectedCategory)) {
+    return static_cast<TargetType*>(item);
+  }
+  return nullptr;
+}
 
 enum SiliconTypes {
   UNKNOWN = QGraphicsItem::UserType,

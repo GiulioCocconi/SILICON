@@ -21,9 +21,9 @@
 #include <stdexcept>
 
 GraphicalInput::GraphicalInput(QGraphicsItem* parent)
-  : GraphicalLogicComponent(std::make_shared<DummyInputComponent>(Bus(1), "in"),
-                            new QGraphicsSvgItem(":/other_components/input_off.svg"),
-                            parent)
+  : GraphicalLogicComponent(
+        ItemCategory::Input, std::make_shared<DummyInputComponent>(Bus(1), "in"),
+        new QGraphicsSvgItem(":/other_components/input_off.svg"), parent)
 {
   isEditable = false;
 
@@ -116,9 +116,9 @@ State GraphicalInput::getState()
 // --- Graphical Output ------------------------------------------------------------------
 
 GraphicalOutputSingle::GraphicalOutputSingle(QGraphicsItem* parent)
-  : GraphicalLogicComponent(std::make_shared<DummyOutputComponent>(Bus(1), "out"),
-                            new QGraphicsSvgItem(":/other_components/output_unknown.svg"),
-                            parent)
+  : GraphicalLogicComponent(
+        ItemCategory::Output, std::make_shared<DummyOutputComponent>(Bus(1), "out"),
+        new QGraphicsSvgItem(":/other_components/output_unknown.svg"), parent)
 {
   isEditable = false;
   setPorts({std::pair<std::string, QPoint>{"in", QPoint(20, 60)}}, {});

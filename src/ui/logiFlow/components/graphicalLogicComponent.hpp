@@ -57,6 +57,11 @@ protected:
   /** @brief Whether the component allows property editing */
   bool isEditable = false;
 
+protected:
+  explicit GraphicalLogicComponent(ItemCategory category, const Component_ptr& component,
+                                   QGraphicsItem* shape, QGraphicsItem* parent,
+                                   bool scanShape = false);
+
 public:
   /**
    * @brief Constructs a logic component.

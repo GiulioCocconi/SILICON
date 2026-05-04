@@ -320,6 +320,8 @@ public:
    */
   void detachFromWire() { graphicalWire = nullptr; }
 
+  void updateTopology() override;
+
   ~GraphicalWireSegment() override;
 
   /**

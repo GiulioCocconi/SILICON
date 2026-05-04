@@ -60,7 +60,8 @@ enum CollidingStatus {
 class GraphicalItem : public QGraphicsObject {
   Q_OBJECT
 public:
-  using QGraphicsObject::QGraphicsObject;
+  explicit GraphicalItem(ItemCategory   category = ItemCategory::GraphicalItem,
+                         QGraphicsItem* parent   = nullptr);
 
   /**
    * @brief Sets the collision status.
@@ -99,6 +100,8 @@ public:
   void setInitialPosition() { this->initialPosition = pos(); }
 
   void setInitialRotation() { this->initialRotation = rotation(); }
+
+  virtual void updateTopology() {}
 
 public slots:
   /**

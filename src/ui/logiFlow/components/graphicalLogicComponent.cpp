@@ -20,12 +20,21 @@
 
 #include <stdexcept>
 
+GraphicalLogicComponent::GraphicalLogicComponent(ItemCategory         category,
+                                                 const Component_ptr& component,
+                                                 QGraphicsItem*       shape,
+                                                 QGraphicsItem* parent, bool scanShape)
+  : GraphicalComponent(category | ItemCategory::LogicComponent, shape, parent, scanShape)
+{
+  this->associatedComponent = component;
+}
+
 GraphicalLogicComponent::GraphicalLogicComponent(const Component_ptr& component,
                                                  QGraphicsItem*       shape,
                                                  QGraphicsItem* parent, bool scanShape)
-  : GraphicalComponent(shape, parent, scanShape)
+  : GraphicalLogicComponent(ItemCategory::LogicComponent, component, shape, parent,
+                            scanShape)
 {
-  this->associatedComponent = component;
 }
 void GraphicalLogicComponent::setPorts(
     const std::vector<std::pair<std::string, QPoint>>& busToPortInputs,

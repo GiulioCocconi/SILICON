@@ -10,15 +10,7 @@ void MoveItemCommand::undo()
   for (const auto& move : moves) {
     move.item->setPos(move.oldPos);
     move.item->setInitialPosition();
-
-    // If the moved item is a wire segment, update the topology
-    if (auto* segment = dynamic_cast<GraphicalWireSegment*>(move.item)) {
-      if (auto* wire = segment->getGraphicalWire()) {
-        if (auto* manager = wire->getManager()) {
-          manager->updateSegmentTopology(segment);
-        }
-      }
-    }
+    move.item->updateTopology();
   }
 }
 
@@ -27,15 +19,7 @@ void MoveItemCommand::redo()
   for (const auto& move : moves) {
     move.item->setPos(move.newPos);
     move.item->setInitialPosition();
-
-    // If the moved item is a wire segment, update the topology
-    if (auto* segment = dynamic_cast<GraphicalWireSegment*>(move.item)) {
-      if (auto* wire = segment->getGraphicalWire()) {
-        if (auto* manager = wire->getManager()) {
-          manager->updateSegmentTopology(segment);
-        }
-      }
-    }
+    move.item->updateTopology();
   }
 }
 
