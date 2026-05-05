@@ -217,7 +217,7 @@ void DiagramScene::enterSimulationMode()
   Component_set coreComps;
   for (auto* item : items()) {
     const auto* comp =
-            category_cast<GraphicalLogicComponent>(item, ItemCategory::LogicComponent);
+        category_cast<GraphicalLogicComponent>(item, ItemCategory::LogicComponent);
     if (comp && comp->getComponent()) {
       coreComps.insert(comp->getComponent());
     }
@@ -457,65 +457,52 @@ void DiagramScene::refreshGraphicalOutputs()
 
 void DiagramScene::calculateWiresForComponents() const
 {
-  // Set all wires to initial state
+  // 1. Reset all wires to their initial state
   for (const auto& wire : wireManager.wires()) {
     wire->clearBusState();
   }
 
-  // Process all components that are >= COMPONENT type
+  // 2. Disconnect all logic components so we can rebuild connections cleanly
   for (auto* item : items()) {
-    auto* graphicalComponent =
-        category_cast<GraphicalLogicComponent>(item, ItemCategory::LogicComponent);
-    if (!graphicalComponent)
-      throw std::logic_error("calculateWiresForComponents: null component encountered");
-
-    // Disconnect the component from all wires (TODO: Make more efficient)
-    graphicalComponent->getComponent()->clearWires();
-
-    // Find wire segments colliding with the component, then deduplicate by GraphicalWire
-    const auto colliding = collidingItems(graphicalComponent);
-
-    // Deduplicate: collect the unique GraphicalWire* from the colliding segments
-    std::unordered_set<GraphicalWire*> seenWires;
-    std::vector<GraphicalWire*>        collidingWires;
-    for (auto* el : colliding) {
-      auto* seg = category_cast<GraphicalWireSegment>(el, ItemCategory::WireSegment);
-      if (!seg)
-        continue;
-      auto* wire = seg->getGraphicalWire();
-      if (wire && seenWires.insert(wire).second)
-        collidingWires.push_back(wire);
-    }
-
-    // For each wire that collides with the component we need to find the port the wire
-    // is connected to
-    for (GraphicalWire* wire : collidingWires) {
-      const auto vertices = wire->getVertices();
-
-      // Check for collision with input ports
-      for (const auto& [index, p] :
-           graphicalComponent->getInputPorts() | silicon::views::enumerate) {
-        const auto portPositionInScene = graphicalComponent->mapToScene(p->getPosition());
-        const auto findResult          = std::ranges::find(vertices, portPositionInScene);
-        if (findResult != vertices.end()) {
-          // If it collides with an input port then we need to set the corresponding input
-          // to the wire's bus itself
-          graphicalComponent->getComponent()->setInput(index, wire->getBus());
-        }
+    if (const auto* gComp =
+            category_cast<GraphicalLogicComponent>(item, ItemCategory::LogicComponent)) {
+      if (gComp->getComponent()) {
+        gComp->getComponent()->clearWires();
       }
+    }
+  }
 
-      for (const auto& [index, p] :
-           graphicalComponent->getOutputPorts() | silicon::views::enumerate) {
-        const auto portPositionInScene = graphicalComponent->mapToScene(p->getPosition());
-        const auto findResult          = std::ranges::find(vertices, portPositionInScene);
-        if (findResult != vertices.end()) {
-          // If it collides with an output port then we need to set the wire dimension to
-          // match the output dimension and set the corresponding output to the wire's bus
-          // itself
-          auto outputSize =
-              graphicalComponent->getComponent()->getOutputs()[index].size();
+  // 3. Drive connections natively from the Wire's endpoints (vertices)
+  for (const auto& wire : wireManager.wires()) {
+    for (const QPointF& vertex : wire->getVertices()) {
+      // Get the graphical items located exactly at the wire's endpoint
+      const auto itemsAtVertex = items(vertex);
+
+      for (QGraphicsItem* item : itemsAtVertex) {
+        const auto* gComp =
+            category_cast<GraphicalLogicComponent>(item, ItemCategory::LogicComponent);
+        if (!gComp || !gComp->getComponent())
+          continue;
+        // Check if the vertex aligns with any Input port
+        for (const auto& [index, p] :
+             gComp->getInputPorts() | silicon::views::enumerate) {
+          if (gComp->mapToScene(p->getPosition()) == vertex) {
+            gComp->getComponent()->setInput(index, wire->getBus());
+          }
+        }
+
+        // Check if the vertex aligns with any Output port
+        for (const auto& [index, p] :
+             gComp->getOutputPorts() | silicon::views::enumerate) {
+          if (gComp->mapToScene(p->getPosition()) != vertex)
+            continue;
+
+          // Adjust the bus dimension to match the output size
+          const auto outputSize = gComp->getComponent()->getOutputs()[index].size();
           wire->setBusSize(outputSize);
-          graphicalComponent->getComponent()->setOutput(index, wire->getBus());
+
+          // Connect it to the core component
+          gComp->getComponent()->setOutput(index, wire->getBus());
         }
       }
     }
@@ -565,7 +552,7 @@ std::string DiagramScene::serialize() const
     Component_set coreComps;
     for (auto* item : items()) {
       auto* comp =
-              category_cast<GraphicalLogicComponent>(item, ItemCategory::LogicComponent);
+          category_cast<GraphicalLogicComponent>(item, ItemCategory::LogicComponent);
       if (comp && comp->getComponent()) {
         coreComps.insert(comp->getComponent());
       }
