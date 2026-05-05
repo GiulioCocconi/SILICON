@@ -58,12 +58,7 @@ public:
   void paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
              QWidget* widget) override;
 
-  void showPropertiesDialog() override;
-
   const QFont font = QFont("NovaMono", 12);
-
-private slots:
-  void propertiesDialogAccepted() override;
 
 signals:
   void inputToggled(Bus targetBus, unsigned int value, Component_weakPtr source);
