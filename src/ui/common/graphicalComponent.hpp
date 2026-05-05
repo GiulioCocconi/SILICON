@@ -104,23 +104,6 @@ public:
 };
 
 /**
- * @class PropertiesDialog
- * @brief Dialog for editing component properties.
- *
- * A modal dialog that displays editable property widgets
- * for component configuration.
- */
-class PropertiesDialog : public QDialog {
-public:
-  /**
-   * @brief Constructs a properties dialog.
-   * @param widgets List of property widgets to display
-   * @param parent Optional parent widget
-   */
-  explicit PropertiesDialog(const QList<QWidget*>& widgets, QWidget* parent = nullptr);
-};
-
-/**
  * @class GraphicalComponent
  * @brief Base class for graphical circuit components.
  *
@@ -191,20 +174,6 @@ protected:
   /** @brief Whether to scan shape alpha for port placement */
   bool scanShape = false;
 
-  /** @brief Properties dialog for this component */
-  PropertiesDialog* propertiesDialog = nullptr;
-
-public slots:
-  /**
-   * @brief Called when properties dialog is accepted.
-   */
-  virtual void propertiesDialogAccepted() {};
-
-  /**
-   * @brief Called when properties dialog is rejected.
-   */
-  virtual void propertiesDialogRejected();
-
 protected:
   explicit GraphicalComponent(ItemCategory category, QGraphicsItem* shape,
                               QGraphicsItem* parent = nullptr, bool scanShape = false);
@@ -227,11 +196,6 @@ public:
   virtual void
   setPorts(const std::vector<std::pair<std::string, QPoint>>& busToPortInputs,
            const std::vector<std::pair<std::string, QPoint>>& busToPortOutputs);
-
-  /**
-   * @brief Shows the properties dialog if available.
-   */
-  virtual void showPropertiesDialog();
 
   /** @brief Gets all input ports */
   [[nodiscard]] std::vector<Port*> getInputPorts() const { return inputPorts; };

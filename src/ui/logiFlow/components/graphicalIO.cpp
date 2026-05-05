@@ -41,19 +41,6 @@ GraphicalInput::GraphicalInput(QGraphicsItem* parent)
 
   nameLayout->addWidget(nameLabel);
   nameLayout->addWidget(nameInput);
-
-  auto propertiesWidget = new QWidget();
-  propertiesWidget->setLayout(nameLayout);
-
-  propertiesDialog = new PropertiesDialog({propertiesWidget});
-
-  connect(this->propertiesDialog, &PropertiesDialog::accepted, this,
-          &GraphicalInput::propertiesDialogAccepted);
-
-  connect(this->propertiesDialog, &PropertiesDialog::rejected, this,
-          &GraphicalInput::propertiesDialogRejected);
-
-  GraphicalInput::showPropertiesDialog();
 }
 
 void GraphicalInput::toggle()
@@ -82,21 +69,6 @@ void GraphicalInput::paint(QPainter* painter, const QStyleOptionGraphicsItem* op
                                         *this->getComponent()->getProperty("name"))));
 
   GraphicalLogicComponent::paint(painter, option, widget);
-}
-
-void GraphicalInput::showPropertiesDialog()
-{
-  nameInput->setText(QString::fromStdString(
-      std::get<std::string>(*this->getComponent()->getProperty("name"))));
-  GraphicalLogicComponent::showPropertiesDialog();
-}
-
-void GraphicalInput::propertiesDialogAccepted()
-{
-  const auto newName = nameInput->text().toStdString();
-  this->associatedComponent->setProperty("name", newName);
-
-  prepareGeometryChange();
 }
 
 QRectF GraphicalInput::boundingRect() const
