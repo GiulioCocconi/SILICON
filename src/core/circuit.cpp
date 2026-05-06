@@ -693,9 +693,10 @@ Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry
     return buses;
   };
 
-  std::vector<Component_ptr> componentList;
+  std::vector<std::pair<int, Component_ptr>> parsedComponents;
 
   if (auto it = j.find("components"); it != j.end() && it->is_array()) {
+    parsedComponents.reserve(it->size());
     for (const auto& compJson : *it) {
       auto type_it = compJson.find("type");
       if (type_it == compJson.end())
@@ -740,13 +741,40 @@ Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry
         }
       }
 
-      componentList.push_back(std::move(cPtr));
+      /* --- CRITICAL ORDERING STEP ------------------------------------------------------
+       * Boost.Graph (using boost::vecS) assigns VertexDescriptors strictly as sequential
+       * integers (0, 1, 2...) based on the order vertices are added.
+       * Visual components in the JSON rely on these exact VertexDescriptors ('vertexId')
+       * to link back to the correct underlying logic component.
+       * We must sort the components by their serialized 'id' before inserting them into
+       * the graph so that Boost reassigns them the exact same IDs they had when saved.
+       */
+
+      // Extract the serialized ID so we know what VertexDescriptor this component
+      // originally had
+      int id = compJson["id"].get<int>();
+      parsedComponents.emplace_back(id, std::move(cPtr));
     }
   }
 
-  Circuit result(componentList | std::ranges::to<Component_set>(), true);
-  result.ownedComponents = std::move(componentList);
-  result.ownedWires      = wireMap | std::views::values | std::ranges::to<std::vector>();
+  std::ranges::sort(parsedComponents,
+                    [](const auto& a, const auto& b) { return a.first < b.first; });
+
+  Circuit result;
+  result.ownedComponents.reserve(parsedComponents.size());
+
+  // Insert components in strict serialized order
+  for (auto& [id, cPtr] : parsedComponents) {
+    result.getOrAddVertex(cPtr);  // Boost assigns ID: 0, then 1, then 2...
+    result.ownedComponents.push_back(std::move(cPtr));
+  }
+
+  // Rebuild the edges for the correctly-aligned vertices
+  for (auto v : boost::make_iterator_range(boost::vertices(result.graph))) {
+    result.rebuildEdges(v);
+  }
+
+  result.ownedWires = wireMap | std::views::values | std::ranges::to<std::vector>();
 
   if (auto it = j.find("name"); it != j.end() && it->is_string()) {
     result.name = it->get<std::string>();
