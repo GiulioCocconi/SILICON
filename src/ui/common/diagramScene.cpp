@@ -18,18 +18,20 @@
 
 #include "diagramScene.hpp"
 
-#include <memory>
 #include <stdexcept>
 
-#include <QDebug>
 #include <QPointer>
 
-#include "ui/common/graphicalWire.hpp"
-#include "ui/logiFlow/components/graphicalGates.hpp"
-#include "ui/logiFlow/components/graphicalIO.hpp"
-#include "ui/logiFlow/components/graphicalUtils.hpp"
-#include "ui/logiFlow/logiFlowWindow.hpp"
-#include "ui/serialization/gui_component_factory.hpp"
+#include <nlohmann/json.hpp>
+
+#include <utils/ranges_wrapper.hpp>
+
+#include <ui/common/enums.hpp>
+#include <ui/common/graphicalWire.hpp>
+#include <ui/logiFlow/components/graphicalIO.hpp>
+#include <ui/logiFlow/components/graphicalUtils.hpp>
+#include <ui/logiFlow/logiFlowWindow.hpp>
+#include <ui/serialization/gui_component_factory.hpp>
 
 // ADDED: Missing include for the ComponentRegistry so it is fully defined
 #include <core/serialization/component_registry.hpp>
@@ -701,7 +703,6 @@ void DiagramScene::deserialize(const std::string&       jsonStr,
 
   setInteractionMode(InteractionMode::NORMAL_MODE, true);
 }
-
 
 // --- Clean up --------------------------------------------------------------------------
 

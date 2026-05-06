@@ -22,18 +22,27 @@
 #include <ranges>
 #include <stdexcept>
 #include <variant>
+#include <vector>
 
 #include <QCheckBox>
+#include <QDockWidget>
+#include <QFileDialog>
 #include <QFormLayout>
+#include <QGraphicsScene>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMenuBar>
 #include <QMessageBox>
+#include <QResizeEvent>
 #include <QSpinBox>
+#include <QStatusBar>
+#include <QString>
 #include <QTimer>
+#include <QToolBar>
 
 #include <core/serialization/component_registry.hpp>
-
-#include <ui/common/diagramScene.hpp>
+#include <ui/common/icons.hpp>
 #include <ui/common/undoCommands.hpp>
 #include <ui/logiFlow/components/graphicalLogicComponent.hpp>
 #include <ui/serialization/gui_component_factory.hpp>

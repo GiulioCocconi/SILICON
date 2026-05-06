@@ -15,11 +15,12 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "circuit.hpp"
+
 #include <algorithm>
 #include <format>
 #include <ranges>
 
-#include <core/circuit.hpp>
 #include <core/component.hpp>
 #include <core/serialization/component_registry.hpp>
 

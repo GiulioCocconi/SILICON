@@ -18,12 +18,15 @@
 
 #include "graphicalComponent.hpp"
 
-#include <QLabel>
 #include <stdexcept>
 
 #include <utils/ranges_wrapper.hpp>
 
 #include <ui/serialization/gui_component_factory.hpp>
+
+#include <QDialog>
+#include <QLabel>
+#include <QPainter>
 
 GraphicalComponent::GraphicalComponent(QGraphicsItem* shape, QGraphicsItem* parent,
                                        bool scanShape)

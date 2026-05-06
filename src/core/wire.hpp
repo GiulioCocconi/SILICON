@@ -16,7 +16,6 @@
 */
 
 #pragma once
-#include <algorithm>
 #include <atomic>
 #include <compare>
 #include <format>

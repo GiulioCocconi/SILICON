@@ -18,36 +18,13 @@
 
 #pragma once
 
-#include <vector>
-
-#include <QBrush>
-#include <QColor>
-#include <QDockWidget>
-#include <QFileDialog>
-#include <QGraphicsScene>
-#include <QGraphicsSvgItem>
-#include <QHBoxLayout>
-#include <QLabel>
 #include <QMainWindow>
-#include <QMenu>
-#include <QMenuBar>
-#include <QResizeEvent>
 #include <QSpinBox>
-#include <QStatusBar>
-#include <QString>
-#include <QToolBar>
 #include <QUndoStack>
 
 #include <ui/common/aboutDialog.hpp>
-#include <ui/common/componentSearchBox.hpp>
 #include <ui/common/diagramScene.hpp>
 #include <ui/common/diagramView.hpp>
-#include <ui/common/graphicalComponent.hpp>
-#include <ui/common/graphicalWire.hpp>
-#include <ui/common/icons.hpp>
-
-#include <ui/logiFlow/components/graphicalGates.hpp>
-#include <ui/logiFlow/components/graphicalIO.hpp>
 
 #ifndef QT_NO_CONTEXTMENU
 #  include <QContextMenuEvent>

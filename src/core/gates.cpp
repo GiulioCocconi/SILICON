@@ -16,8 +16,10 @@
 */
 
 #include "gates.hpp"
-#include <core/simulator.hpp>
+
 #include <stdexcept>
+
+#include <core/simulator.hpp>
 
 Gate::Gate()
 {

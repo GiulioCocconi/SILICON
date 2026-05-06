@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2025. Giulio Cocconi
+ Copyright (c) 2026. Giulio Cocconi
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -19,7 +19,6 @@
 #pragma once
 
 #include <memory>
-#include <ranges>
 #include <string>
 
 #include <QCursor>
@@ -35,10 +34,7 @@
 #include <core/simulator.hpp>
 
 #include <ui/common/componentSearchBox.hpp>
-#include <ui/common/enums.hpp>
 #include <ui/common/wireManager.hpp>
-
-#include <nlohmann/json.hpp>
 
 class GraphicalComponent;
 class GraphicalWireSegment;

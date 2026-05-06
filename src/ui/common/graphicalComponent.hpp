@@ -20,21 +20,14 @@
 
 #include <QGraphicsItem>
 #include <QKeyEvent>
-#include <QPainter>
 #include <QPoint>
 #include <QRect>
 
-#include <QDialog>
-#include <QHBoxLayout>
-#include <QPushButton>
-#include <QVBoxLayout>
+#include <nlohmann/json.hpp>
 
-#include <core/component.hpp>
 #include <ui/common/diagramScene.hpp>
 #include <ui/common/enums.hpp>
 #include <ui/common/graphicalItem.hpp>
-
-#include <nlohmann/json.hpp>
 
 class GUIComponentFactory;
 
