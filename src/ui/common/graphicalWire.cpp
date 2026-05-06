@@ -17,26 +17,29 @@
  */
 
 #include "graphicalWire.hpp"
-#include "theme.hpp"
-#include "undoCommands.hpp"
-#include "wireManager.hpp"
-#include <ui/logiFlow/logiFlowWindow.hpp>
-
-#include <core/wire.hpp>  // Gives access to State enum for coloring
 
 #include <QDebug>
 #include <QGraphicsSceneMouseEvent>
 #include <QLineF>
 #include <algorithm>
-#include <queue>
 #include <ranges>
 #include <stdexcept>
 #include <unordered_set>
 
+#include <utils/ranges_wrapper.hpp>
+
+#include <core/wire.hpp>  // Gives access to State enum for coloring
+#include <ui/common/theme.hpp>
+#include <ui/common/undoCommands.hpp>
+#include <ui/common/wireManager.hpp>
+#include <ui/logiFlow/logiFlowWindow.hpp>
+
 // --- Graphical Wire --------------------------------------------------------------------
 
 GraphicalWire::GraphicalWire(unsigned int busSize)
-{ setBusSize(busSize); }
+{
+  setBusSize(busSize);
+}
 
 void GraphicalWire::addSegment(GraphicalWireSegment* segment)
 {
@@ -47,10 +50,14 @@ void GraphicalWire::addSegment(GraphicalWireSegment* segment)
 }
 
 void GraphicalWire::removeSegment(GraphicalWireSegment* segment)
-{ segments.erase(segment); }
+{
+  segments.erase(segment);
+}
 
 void GraphicalWire::setBusSize(unsigned int size)
-{ bus.setSize(size); }
+{
+  bus.setSize(size);
+}
 
 void GraphicalWire::clearBusState()
 {

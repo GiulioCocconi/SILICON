@@ -17,8 +17,8 @@
  */
 
 #pragma once
-#include <vector>
 #include <ranges>
+#include <vector>
 #include <version>
 
 #ifndef __cpp_lib_ranges_slide
@@ -32,8 +32,8 @@ static inline constexpr auto enumerate = [](auto&& r) {
   return std::views::zip(std::views::iota(0, static_cast<ptrdiff_t>(r.size())), r);
 };
 
-template<typename R>
-auto operator|(R&& r, decltype(silicon::views::enumerate)) {
+template <typename R> auto operator|(R&& r, decltype(silicon::views::enumerate))
+{
   return silicon::views::enumerate(std::forward<R>(r));
 }
 #else

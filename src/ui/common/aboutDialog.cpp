@@ -16,6 +16,13 @@
 
 #include <stdexcept>
 
+#include <QApplication>
+#include <QDir>
+#include <QFile>
+#include <QMainWindow>
+#include <QPushButton>
+#include <QStringBuilder>
+
 AboutDialog::AboutDialog(const QString& title, QWidget* parent) : QDialog(parent)
 {
   setWindowTitle(QString("About %1").arg(title));

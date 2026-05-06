@@ -17,6 +17,7 @@
  */
 
 #include "component.hpp"
+
 #include <format>
 #include <ranges>
 #include <stdexcept>

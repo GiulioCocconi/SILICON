@@ -18,8 +18,6 @@
 
 #include "wireManager.hpp"
 
-#include <QDebug>
-#include <QLineF>
 #include <algorithm>
 #include <queue>
 #include <stdexcept>

@@ -18,7 +18,6 @@
 
 #pragma once
 
-#include <ranges>
 #include <unordered_set>
 #include <vector>
 
@@ -35,7 +34,6 @@
 #include <ui/common/graphicalItem.hpp>
 
 #include <nlohmann/json.hpp>
-#include <utils/ranges_wrapper.hpp>
 
 class GraphicalWireSegment;
 class WireManager;

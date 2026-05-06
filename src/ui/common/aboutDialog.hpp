@@ -15,15 +15,9 @@
 
 #pragma once
 
-#include <QApplication>
 #include <QDialog>
-#include <QDir>
-#include <QFile>
 #include <QLabel>
-#include <QMainWindow>
 #include <QPlainTextEdit>
-#include <QPushButton>
-#include <QStringBuilder>
 #include <QVBoxLayout>
 
 #include <ui/common/icons.hpp>

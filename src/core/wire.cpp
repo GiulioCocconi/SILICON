@@ -16,6 +16,8 @@
 */
 
 #include "wire.hpp"
+
+#include <algorithm>
 #include <iostream>
 #include <stdexcept>
 
