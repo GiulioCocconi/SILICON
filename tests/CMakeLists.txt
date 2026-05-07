@@ -18,6 +18,7 @@ add_executable(logic_tests logic.cpp)
 add_executable(arithmetic_tests arithmetic.cpp)
 add_executable(utils_tests utils.cpp)
 add_executable(libfst_tests fstlib.cpp)
+add_executable(fstwrapper_tests fstWrapper.cpp)
 add_executable(circuit_tests circuit.cpp)
 add_executable(factory_tests factory.cpp)
 
@@ -60,9 +61,16 @@ target_sources(libfst_tests
         ${src_dir}/extraComponents/utils.cpp
         ${COMMON_SOURCE_FILES})
 
-foreach (target logic_tests arithmetic_tests utils_tests libfst_tests circuit_tests factory_tests)
-    target_link_libraries(${target} GTest::gtest_main GTest::gtest Boost::graph nlohmann_json)
+target_sources(fstwrapper_tests
+        PRIVATE
+        ${src_dir}/extraComponents/arithmetic.cpp
+        ${src_dir}/extraComponents/utils.cpp
+        ${COMMON_SOURCE_FILES})
+
+foreach (target logic_tests arithmetic_tests utils_tests libfst_tests fstwrapper_tests circuit_tests factory_tests)
+    target_link_libraries(${target} GTest::gtest_main GTest::gtest Boost::graph nlohmann_json fst)
     gtest_discover_tests(${target})
 endforeach ()
 
 target_link_libraries(libfst_tests fst)
+target_link_libraries(fstwrapper_tests fst)
