@@ -18,7 +18,9 @@
 
 #include "diagramScene.hpp"
 
+#include <algorithm>
 #include <stdexcept>
+#include <variant>
 
 #include <QPointer>
 
@@ -35,6 +37,25 @@
 
 // ADDED: Missing include for the ComponentRegistry so it is fully defined
 #include <core/serialization/component_registry.hpp>
+
+namespace {
+
+std::string componentNameOr(const Component_ptr& component, const std::string& fallback)
+{
+  if (!component)
+    return fallback;
+
+  const auto property = component->getProperty("name");
+  if (!property)
+    return fallback;
+
+  if (const auto* name = std::get_if<std::string>(&*property); name && !name->empty())
+    return *name;
+
+  return fallback;
+}
+
+}  // namespace
 
 DiagramScene::DiagramScene(QObject* parent) : QGraphicsScene(parent)
 {
@@ -58,6 +79,9 @@ DiagramScene::DiagramScene(QObject* parent) : QGraphicsScene(parent)
 
       // 2. Refresh graphical output states
       this->refreshGraphicalOutputs();
+      this->resetWaveformTrace();
+      this->configureSimulatorTrace();
+      this->applyFstTraceWriter();
 
       // 3. Force a visual repaint so wires update their simulation colors
       this->update();
@@ -228,9 +252,13 @@ void DiagramScene::enterSimulationMode()
   // 3. Initialize Circuit & Simulator frameworks
   this->circuit = std::make_shared<Circuit>(coreComps, false);
 
-  // The Simulator constructor automatically calls recompile() and evaluates the
-  // entire circuit exactly once, using the LOW logic values we just injected!
-  this->simulator = std::make_unique<Simulator>(this->circuit, 1, true);
+  // The simulator constructor evaluates the circuit once at time zero. Attach tracing
+  // before advancing time so waveform exports include the initial 0ns snapshot.
+  this->simulator = std::make_unique<Simulator>(this->circuit, 0, true);
+  resetWaveformTrace();
+  configureSimulatorTrace();
+  applyFstTraceWriter();
+  simulator->run(1);
 
   refreshGraphicalOutputs();
   update();
@@ -434,6 +462,113 @@ void DiagramScene::handleInputToggled(Bus targetBus, unsigned int value,
 
   refreshGraphicalOutputs();
   update();
+}
+
+void DiagramScene::setFstTraceFile(std::optional<std::string> fileName)
+{
+  fstTraceFile = std::move(fileName);
+
+  if (!simulator)
+    return;
+
+  resetWaveformTrace();
+  configureSimulatorTrace();
+  applyFstTraceWriter();
+}
+
+void DiagramScene::applyFstTraceWriter()
+{
+  if (!simulator)
+    return;
+
+  if (!fstTraceFile) {
+    simulator->setFstWriter(nullptr);
+    return;
+  }
+
+  simulator->setFstWriter(std::make_unique<SiliconFstWriter>(
+      *fstTraceFile, collectTraceBuses(), SiliconFstWriter::Options{}));
+}
+
+void DiagramScene::configureSimulatorTrace()
+{
+  if (!simulator)
+    return;
+
+  simulator->setTraceBuses(collectTraceBuses());
+  simulator->setTraceSink([this](uint64_t time, const std::vector<std::string>& values) {
+    QStringList qtValues;
+    qtValues.reserve(values.size());
+    for (const auto& value : values)
+      qtValues.push_back(QString::fromStdString(value));
+
+    emit waveformTraceSnapshot(time, qtValues);
+  });
+}
+
+void DiagramScene::resetWaveformTrace()
+{
+  QStringList names;
+  for (const auto& [name, bus] : collectTraceBuses())
+    names.push_back(QString::fromStdString(name));
+
+  emit waveformTraceReset(names, collectTraceInputCount());
+}
+
+int DiagramScene::collectTraceInputCount() const
+{
+  int count = 0;
+  for (auto* item : items()) {
+    if (auto* input = category_cast<GraphicalInput>(item, ItemCategory::Input)) {
+      const auto component = input->getComponent();
+      if (component && !component->getOutputs().empty())
+        ++count;
+    }
+  }
+
+  return count;
+}
+
+std::vector<SiliconFstWriter::NamedBus> DiagramScene::collectTraceBuses() const
+{
+  std::vector<GraphicalInput*> inputs;
+  std::vector<GraphicalOutputSingle*> outputs;
+
+  for (auto* item : items()) {
+    if (auto* input = category_cast<GraphicalInput>(item, ItemCategory::Input))
+      inputs.push_back(input);
+    else if (auto* output = category_cast<GraphicalOutputSingle>(item,
+                                                                 ItemCategory::Output))
+      outputs.push_back(output);
+  }
+
+  const auto byPosition = [](const auto* a, const auto* b) {
+    if (a->scenePos().y() != b->scenePos().y())
+      return a->scenePos().y() < b->scenePos().y();
+    return a->scenePos().x() < b->scenePos().x();
+  };
+
+  std::ranges::sort(inputs, byPosition);
+  std::ranges::sort(outputs, byPosition);
+
+  std::vector<SiliconFstWriter::NamedBus> buses;
+  buses.reserve(inputs.size() + outputs.size());
+
+  for (const auto& [index, input] : inputs | silicon::views::enumerate) {
+    const auto component = input->getComponent();
+    if (component && !component->getOutputs().empty())
+      buses.emplace_back(componentNameOr(component, QString("input_%1").arg(index).toStdString()),
+                         component->getOutputs()[0]);
+  }
+
+  for (const auto& [index, output] : outputs | silicon::views::enumerate) {
+    const auto component = output->getComponent();
+    if (component && !component->getInputs().empty())
+      buses.emplace_back(componentNameOr(component, QString("output_%1").arg(index).toStdString()),
+                         component->getInputs()[0]);
+  }
+
+  return buses;
 }
 
 void DiagramScene::refreshGraphicalOutputs()

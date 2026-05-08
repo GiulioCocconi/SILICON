@@ -58,6 +58,7 @@ private:
         {"play", "play"},
         {"plug", "plug"},
         {"plus", "circle-plus"},
+        {"minus", "circle-minus"},
         {"print", "printer"},
         {"undo", "undo-2"},
         {"redo", "redo-2"},
