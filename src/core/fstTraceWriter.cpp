@@ -37,15 +37,15 @@ uint32_t checkedFstWidth(const std::size_t width)
 
 }  // namespace
 
-FstTraceWriter::FstTraceWriter(const std::string& fileName,
+FstTraceWriter::FstTraceWriter(const std::string&              fileName,
                                const std::vector<TraceSignal>& signals)
   : FstTraceWriter(fileName, signals, Options{})
 {
 }
 
-FstTraceWriter::FstTraceWriter(const std::string& fileName,
+FstTraceWriter::FstTraceWriter(const std::string&              fileName,
                                const std::vector<TraceSignal>& traceSignals,
-                               Options options)
+                               Options                         options)
   : writer([&] {
       FstHierarchyBuilder builder(fileName);
       builder.setTimeScale(options.timescale);
@@ -62,8 +62,7 @@ FstTraceWriter::FstTraceWriter(const std::string& fileName,
           continue;
 
         const auto handle = builder.createVar(FST_VT_VCD_WIRE, FST_VD_IMPLICIT,
-                                              checkedFstWidth(signal.width),
-                                              signal.name);
+                                              checkedFstWidth(signal.width), signal.name);
         registeredSignals.push_back(RegisteredSignal{
             signal.name, static_cast<std::size_t>(index), signal.width, handle});
         handlesBySignalName.try_emplace(signal.name, handle);
@@ -75,15 +74,15 @@ FstTraceWriter::FstTraceWriter(const std::string& fileName,
 {
 }
 
-void FstTraceWriter::emitSnapshot(const uint64_t time,
+void FstTraceWriter::emitSnapshot(const uint64_t                     time,
                                   const std::span<const std::string> values)
 {
   writer.emitTimeChange(time);
 
   for (const auto& signal : registeredSignals) {
-    const std::string_view value =
-        signal.valueIndex < values.size() ? std::string_view(values[signal.valueIndex])
-                                          : std::string_view{};
+    const std::string_view value = signal.valueIndex < values.size()
+                                       ? std::string_view(values[signal.valueIndex])
+                                       : std::string_view{};
     writer.emitValueChange(signal.handle, normalizeValue(value, signal.width));
   }
 }
@@ -102,7 +101,7 @@ std::optional<fstHandle> FstTraceWriter::handleForSignal(std::string_view name) 
   return it->second;
 }
 
-std::string FstTraceWriter::normalizeValue(std::string_view value,
+std::string FstTraceWriter::normalizeValue(std::string_view  value,
                                            const std::size_t width)
 {
   std::string normalized(value);

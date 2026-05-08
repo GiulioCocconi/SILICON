@@ -86,7 +86,7 @@ private:
   QDockWidget* componentsDock;
   QDockWidget* propertyDock;
 
-  QDialog* waveformWindow;
+  QDialog*        waveformWindow;
   WaveformViewer* waveformViewer;
 
   DiagramScene* diagramScene;

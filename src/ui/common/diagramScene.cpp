@@ -531,14 +531,14 @@ int DiagramScene::collectTraceInputCount() const
 
 std::vector<SiliconFstWriter::NamedBus> DiagramScene::collectTraceBuses() const
 {
-  std::vector<GraphicalInput*> inputs;
+  std::vector<GraphicalInput*>        inputs;
   std::vector<GraphicalOutputSingle*> outputs;
 
   for (auto* item : items()) {
     if (auto* input = category_cast<GraphicalInput>(item, ItemCategory::Input))
       inputs.push_back(input);
-    else if (auto* output = category_cast<GraphicalOutputSingle>(item,
-                                                                 ItemCategory::Output))
+    else if (auto* output =
+                 category_cast<GraphicalOutputSingle>(item, ItemCategory::Output))
       outputs.push_back(output);
   }
 
@@ -557,15 +557,17 @@ std::vector<SiliconFstWriter::NamedBus> DiagramScene::collectTraceBuses() const
   for (const auto& [index, input] : inputs | silicon::views::enumerate) {
     const auto component = input->getComponent();
     if (component && !component->getOutputs().empty())
-      buses.emplace_back(componentNameOr(component, QString("input_%1").arg(index).toStdString()),
-                         component->getOutputs()[0]);
+      buses.emplace_back(
+          componentNameOr(component, QString("input_%1").arg(index).toStdString()),
+          component->getOutputs()[0]);
   }
 
   for (const auto& [index, output] : outputs | silicon::views::enumerate) {
     const auto component = output->getComponent();
     if (component && !component->getInputs().empty())
-      buses.emplace_back(componentNameOr(component, QString("output_%1").arg(index).toStdString()),
-                         component->getInputs()[0]);
+      buses.emplace_back(
+          componentNameOr(component, QString("output_%1").arg(index).toStdString()),
+          component->getInputs()[0]);
   }
 
   return buses;

@@ -252,7 +252,7 @@ private:
   void configureSimulatorTrace();
 
   [[nodiscard]] std::vector<SiliconFstWriter::NamedBus> collectTraceBuses() const;
-  [[nodiscard]] int collectTraceInputCount() const;
+  [[nodiscard]] int                                     collectTraceInputCount() const;
 
   /**
    * @brief Handles mouse movement for wire/component dragging.
