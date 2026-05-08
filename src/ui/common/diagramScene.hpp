@@ -19,7 +19,9 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <string>
+#include <vector>
 
 #include <QCursor>
 #include <QGraphicsScene>
@@ -28,6 +30,7 @@
 #include <QKeyEvent>
 #include <QPainter>
 #include <QRect>
+#include <QStringList>
 #include <QUndoStack>
 
 #include <core/circuit.hpp>
@@ -165,6 +168,17 @@ public:
 
   void clear();
 
+  /**
+   * @brief Enables or disables simulation FST tracing.
+   *
+   * When enabled during simulation mode, the active simulator immediately starts writing
+   * snapshots to the configured file. When enabled before entering simulation mode, the
+   * writer is attached during simulation initialization.
+   */
+  void setFstTraceFile(std::optional<std::string> fileName);
+
+  [[nodiscard]] bool isFstTracingEnabled() const { return fstTraceFile.has_value(); }
+
   ~DiagramScene() override;
 
 public slots:
@@ -204,6 +218,16 @@ signals:
    */
   void modeChanged(InteractionMode mode);
 
+  /**
+   * @brief Emitted when interactive waveform signals should be rebuilt.
+   */
+  void waveformTraceReset(QStringList signalNames, int inputCount);
+
+  /**
+   * @brief Emitted when the simulator reaches a new visible waveform state.
+   */
+  void waveformTraceSnapshot(qulonglong time, QStringList values);
+
 private:
   /**
    * @brief Draws the background grid.
@@ -223,6 +247,12 @@ private:
   void exitComponentPlacingMode();
   void enterSimulationMode();
   void exitSimulationMode();
+  void applyFstTraceWriter();
+  void resetWaveformTrace();
+  void configureSimulatorTrace();
+
+  [[nodiscard]] std::vector<SiliconFstWriter::NamedBus> collectTraceBuses() const;
+  [[nodiscard]] int collectTraceInputCount() const;
 
   /**
    * @brief Handles mouse movement for wire/component dragging.
@@ -262,6 +292,9 @@ private:
 
   /** @brief Logic simulation engine */
   std::unique_ptr<Simulator> simulator;
+
+  /** @brief Optional output file for interactive simulation traces */
+  std::optional<std::string> fstTraceFile;
 };
 
 /**

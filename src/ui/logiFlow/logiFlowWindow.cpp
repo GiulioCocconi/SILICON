@@ -25,8 +25,10 @@
 #include <vector>
 
 #include <QCheckBox>
+#include <QDialog>
 #include <QDockWidget>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QFormLayout>
 #include <QGraphicsScene>
 #include <QHBoxLayout>
@@ -35,15 +37,18 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QResizeEvent>
+#include <QSignalBlocker>
 #include <QSpinBox>
 #include <QStatusBar>
 #include <QString>
 #include <QTimer>
 #include <QToolBar>
+#include <QVBoxLayout>
 
 #include <core/serialization/component_registry.hpp>
 #include <ui/common/icons.hpp>
 #include <ui/common/undoCommands.hpp>
+#include <ui/common/waveformViewer.hpp>
 #include <ui/logiFlow/components/graphicalLogicComponent.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
 
@@ -65,6 +70,7 @@ LogiFlowWindow::LogiFlowWindow()
 
   componentsDock = new QDockWidget(this);
   propertyDock   = new QDockWidget(this);
+  waveformWindow = nullptr;
 
   addDockWidget(Qt::LeftDockWidgetArea, componentsDock);
   addDockWidget(Qt::LeftDockWidgetArea, propertyDock);
@@ -96,6 +102,7 @@ LogiFlowWindow::LogiFlowWindow()
   createActions();
   createMenus();
   createToolBar();
+  createWaveformWindow();
 
   setWindowTitle(tr("SILICON LogiFlow"));
   setMinimumSize(160, 160);
@@ -133,6 +140,8 @@ void LogiFlowWindow::createActions()
   setPanModeAct          = new QAction(Icon("pan"), "", this);
   setWireCreationModeAct = new QAction(Icon("link"), "", this);
   setSimulationModeAct   = new QAction(Icon("play"), "", this);
+  toggleFstTraceAct      = new QAction(Icon("chart"), tr("Trace"), this);
+  toggleFstTraceAct->setCheckable(true);
 
   setComponentPlacingModeAct = new QAction(Icon("plus"), "", this);
 
@@ -153,6 +162,7 @@ void LogiFlowWindow::createActions()
   setSimulationModeAct->setShortcut(Qt::AltModifier | Qt::ControlModifier | Qt::Key_S);
   setComponentPlacingModeAct->setShortcut(Qt::AltModifier | Qt::Key_A);
 
+  toggleFstTraceAct->setStatusTip(tr("Show waveform viewer"));
   newAct->setStatusTip(tr("Create a new file"));
   openAct->setStatusTip(tr("Open an existing logiFlow file"));
   saveAct->setStatusTip(tr("Save the circuit to disk"));
@@ -185,6 +195,7 @@ void LogiFlowWindow::createActions()
           &LogiFlowWindow::setSimulationMode);
   connect(setComponentPlacingModeAct, &QAction::triggered, this,
           &LogiFlowWindow::setComponentPlacingMode);
+  connect(toggleFstTraceAct, &QAction::toggled, this, &LogiFlowWindow::toggleFstTracing);
 }
 
 void LogiFlowWindow::createMenus()
@@ -194,6 +205,7 @@ void LogiFlowWindow::createMenus()
   fileMenu->addAction(openAct);
   fileMenu->addAction(saveAct);
   fileMenu->addAction(exportImageAct);
+  fileMenu->addAction(toggleFstTraceAct);
   fileMenu->addSeparator();
   fileMenu->addAction(exitAct);
 
@@ -228,11 +240,35 @@ void LogiFlowWindow::createToolBar()
   toolBar->addAction(setPanModeAct);
   toolBar->addAction(setWireCreationModeAct);
   toolBar->addAction(setSimulationModeAct);
+  toolBar->addAction(toggleFstTraceAct);
 
   toolBar->addSeparator();
   toolBar->addAction(setComponentPlacingModeAct);
 
   addToolBar(toolBar);
+}
+
+void LogiFlowWindow::createWaveformWindow()
+{
+  waveformWindow = new QDialog(this);
+  waveformWindow->setWindowTitle(tr("Waveform"));
+  waveformWindow->setModal(false);
+  waveformWindow->resize(900, 420);
+
+  const auto layout = new QVBoxLayout(waveformWindow);
+  layout->setContentsMargins(0, 0, 0, 0);
+
+  waveformViewer = new WaveformViewer(waveformWindow);
+  layout->addWidget(waveformViewer);
+
+  connect(waveformWindow, &QDialog::finished, this, [this] {
+    const QSignalBlocker blocker(toggleFstTraceAct);
+    toggleFstTraceAct->setChecked(false);
+  });
+  connect(diagramScene, &DiagramScene::waveformTraceReset, waveformViewer,
+          &WaveformViewer::resetTrace);
+  connect(diagramScene, &DiagramScene::waveformTraceSnapshot, waveformViewer,
+          &WaveformViewer::appendSnapshot);
 }
 
 #ifndef QT_NO_CONTEXTMENU
@@ -433,6 +469,18 @@ void LogiFlowWindow::setSimulationMode()
 void LogiFlowWindow::setComponentPlacingMode()
 {
   diagramScene->setInteractionMode(InteractionMode::COMPONENT_PLACING_MODE);
+}
+
+void LogiFlowWindow::toggleFstTracing(bool enabled)
+{
+  if (!waveformWindow)
+    return;
+
+  waveformWindow->setVisible(enabled);
+  if (enabled) {
+    waveformWindow->raise();
+    waveformWindow->activateWindow();
+  }
 }
 
 void LogiFlowWindow::updateStatus() const

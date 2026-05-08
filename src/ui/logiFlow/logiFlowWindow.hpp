@@ -22,6 +22,9 @@
 #include <QSpinBox>
 #include <QUndoStack>
 
+class QDialog;
+class WaveformViewer;
+
 #include <ui/common/aboutDialog.hpp>
 #include <ui/common/diagramScene.hpp>
 #include <ui/common/diagramView.hpp>
@@ -66,6 +69,7 @@ private slots:
   void setWireCreationMode();
   void setSimulationMode();
   void setComponentPlacingMode();
+  void toggleFstTracing(bool enabled);
 
   void updateStatus() const;
   void selectionChanged();
@@ -75,11 +79,15 @@ private:
   void createActions();
   void createMenus();
   void createToolBar();
+  void createWaveformWindow();
 
   QToolBar* toolBar;
 
   QDockWidget* componentsDock;
   QDockWidget* propertyDock;
+
+  QDialog* waveformWindow;
+  WaveformViewer* waveformViewer;
 
   DiagramScene* diagramScene;
   DiagramView*  diagramView;
@@ -104,6 +112,7 @@ private:
   QAction* setPanModeAct;
   QAction* setWireCreationModeAct;
   QAction* setSimulationModeAct;
+  QAction* toggleFstTraceAct;
 
   QAction* setComponentPlacingModeAct;
 
