@@ -18,8 +18,8 @@
 #include "simulator.hpp"
 
 #include <algorithm>
-#include <utility>
 #include <ranges>
+#include <utility>
 
 #include <core/component.hpp>
 
@@ -61,15 +61,15 @@ void Simulator::recompile()
   executionBlocks = circuit->splitCyclic();
 }
 
-void Simulator::enableFstTracing(const std::string& fileName,
+void Simulator::enableFstTracing(const std::string&        fileName,
                                  SiliconFstWriter::Options options)
 {
   if (!traceBuses.empty()) {
-    setFstWriter(std::make_unique<SiliconFstWriter>(fileName, traceBuses,
-                                                    std::move(options)));
+    setFstWriter(
+        std::make_unique<SiliconFstWriter>(fileName, traceBuses, std::move(options)));
   } else {
-    setFstWriter(std::make_unique<SiliconFstWriter>(fileName, *circuit,
-                                                    std::move(options)));
+    setFstWriter(
+        std::make_unique<SiliconFstWriter>(fileName, *circuit, std::move(options)));
   }
 }
 

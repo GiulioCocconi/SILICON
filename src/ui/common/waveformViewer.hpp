@@ -72,11 +72,11 @@ protected:
   void mouseMoveEvent(QMouseEvent* event) override;
 
 private:
-  QStringList     signalNames;
+  QStringList         signalNames;
   std::vector<Sample> traceSamples;
-  double          pixelsPerTick = 12.0;
-  int             inputSignalCount = 0;
-  int             selectedSampleIndex = -1;
+  double              pixelsPerTick       = 12.0;
+  int                 inputSignalCount    = 0;
+  int                 selectedSampleIndex = -1;
 
   [[nodiscard]] int     rowHeight() const { return 28; }
   [[nodiscard]] int     rulerHeight() const { return 24; }
@@ -90,8 +90,7 @@ private:
 
   void drawScalar(QPainter& painter, int row, int x0, int x1, const QString& value) const;
   void drawScalarTransition(QPainter& painter, int row, int x,
-                            const QString& previousValue,
-                            const QString& nextValue) const;
+                            const QString& previousValue, const QString& nextValue) const;
   void drawBus(QPainter& painter, int row, int x0, int x1, const QString& value) const;
 };
 
@@ -107,25 +106,25 @@ public slots:
 
 private:
   SignalListWidget* signalList;
-  WaveformCanvas* canvas;
-  QScrollArea*    labelScrollArea;
-  QScrollArea*    scrollArea;
-  QAction*        newAct;
-  QAction*        openAct;
-  QAction*        saveAct;
-  QAction*        zoomInAct;
-  QAction*        zoomOutAct;
+  WaveformCanvas*   canvas;
+  QScrollArea*      labelScrollArea;
+  QScrollArea*      scrollArea;
+  QAction*          newAct;
+  QAction*          openAct;
+  QAction*          saveAct;
+  QAction*          zoomInAct;
+  QAction*          zoomOutAct;
 
-  QStringList                     names;
+  QStringList                         names;
   std::vector<WaveformCanvas::Sample> samples;
-  int                             inputSignalCount = 0;
-  int                             selectedSampleIndex = -1;
-  double                          pixelsPerTick = 12.0;
-  bool                            syncingScrollBars = false;
+  int                                 inputSignalCount    = 0;
+  int                                 selectedSampleIndex = -1;
+  double                              pixelsPerTick       = 12.0;
+  bool                                syncingScrollBars   = false;
 
-  void refreshSignalList();
-  void refreshCanvas();
+  void                      refreshSignalList();
+  void                      refreshCanvas();
   [[nodiscard]] QStringList displayedValues() const;
-  void saveTrace();
-  void writeFstTrace(const std::string& fileName) const;
+  void                      saveTrace();
+  void                      writeFstTrace(const std::string& fileName) const;
 };

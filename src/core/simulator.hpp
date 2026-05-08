@@ -71,8 +71,8 @@ public:
    * @throws std::invalid_argument If c is null
    */
   explicit Simulator(std::shared_ptr<Circuit> c, uint64_t initialSimulationTime = 0,
-                     bool isInteractive = false,
-                     std::unique_ptr<SiliconFstWriter> fstWriter = nullptr);
+                     bool                              isInteractive = false,
+                     std::unique_ptr<SiliconFstWriter> fstWriter     = nullptr);
   /**
    * @brief Destructor - removes topology listener
    */
@@ -100,7 +100,7 @@ public:
    * The writer is initialized from the simulator's circuit and immediately receives a
    * snapshot for the current simulation time.
    */
-  void enableFstTracing(const std::string& fileName,
+  void enableFstTracing(const std::string&        fileName,
                         SiliconFstWriter::Options options = {});
 
   /**

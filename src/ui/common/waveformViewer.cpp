@@ -35,8 +35,8 @@
 #include <QFrame>
 #include <QMessageBox>
 #include <QMouseEvent>
-#include <QPainter>
 #include <QPaintEvent>
+#include <QPainter>
 #include <QPen>
 #include <QScrollBar>
 #include <QToolBar>
@@ -138,8 +138,8 @@ void SignalListWidget::paintEvent(QPaintEvent* event)
 
   const QColor gridColor(220, 220, 220);
   const QColor groupColor = palette().alternateBase().color();
-  const QColor textColor = palette().text().color();
-  const int valueX = valueColumnX();
+  const QColor textColor  = palette().text().color();
+  const int    valueX     = valueColumnX();
 
   painter.setPen(gridColor);
   painter.drawLine(valueX - 8, 0, valueX - 8, height());
@@ -160,7 +160,7 @@ void SignalListWidget::paintEvent(QPaintEvent* event)
     drawGroup(yForSignalRow(inputSignalCount) - groupHeaderHeightPx, tr("Outputs"));
 
   for (const auto& [row, name] : names | silicon::views::enumerate) {
-    const int y = yForSignalRow(static_cast<int>(row));
+    const int     y     = yForSignalRow(static_cast<int>(row));
     const QString value = row < values.size() ? values[row] : QString("x");
 
     painter.setPen(textColor);
@@ -181,15 +181,14 @@ WaveformCanvas::WaveformCanvas(QWidget* parent) : QWidget(parent)
   setMinimumSize(480, rulerHeight());
 }
 
-void WaveformCanvas::setTrace(const QStringList& names,
+void WaveformCanvas::setTrace(const QStringList&         names,
                               const std::vector<Sample>& samples)
 {
   setTrace(names, samples, inputSignalCount);
 }
 
-void WaveformCanvas::setTrace(const QStringList& names,
-                              const std::vector<Sample>& samples,
-                              const int inputCount)
+void WaveformCanvas::setTrace(const QStringList&         names,
+                              const std::vector<Sample>& samples, const int inputCount)
 {
   signalNames      = names;
   traceSamples     = samples;
@@ -197,11 +196,11 @@ void WaveformCanvas::setTrace(const QStringList& names,
   if (selectedSampleIndex >= static_cast<int>(traceSamples.size()))
     selectedSampleIndex = -1;
 
-  const int      width         = std::max(480, xForTime(endTime()) + 160);
+  const int       width         = std::max(480, xForTime(endTime()) + 160);
   const qsizetype minimumHeight = rulerHeight() + rowHeight();
   const qsizetype contentHeight = rulerHeight() + groupHeaderCount() * groupHeaderHeight()
                                   + signalNames.size() * rowHeight();
-  const qsizetype height        = std::max(minimumHeight, contentHeight);
+  const qsizetype height = std::max(minimumHeight, contentHeight);
   setMinimumSize(width, height);
   resize(width, height);
   update();
@@ -216,7 +215,9 @@ void WaveformCanvas::setPixelsPerTick(const double value)
 void WaveformCanvas::setSelectedSampleIndex(const int sampleIndex)
 {
   const int nextIndex =
-      sampleIndex >= 0 && sampleIndex < static_cast<int>(traceSamples.size()) ? sampleIndex : -1;
+      sampleIndex >= 0 && sampleIndex < static_cast<int>(traceSamples.size())
+          ? sampleIndex
+          : -1;
   if (selectedSampleIndex == nextIndex)
     return;
 
@@ -261,7 +262,7 @@ void WaveformCanvas::paintEvent(QPaintEvent* event)
   painter.fillRect(rect(), palette().base());
 
   const QColor gridColor(220, 220, 220);
-  const QColor textColor = palette().text().color();
+  const QColor textColor   = palette().text().color();
   const QRect  visibleRect = event ? event->rect() : rect();
 
   painter.setPen(gridColor);
@@ -274,12 +275,11 @@ void WaveformCanvas::paintEvent(QPaintEvent* event)
     using VisibleSampleRange = std::ranges::subrange<std::vector<Sample>::const_iterator>;
 
     if (traceSamples.empty())
-      return VisibleSampleRange {traceEnd, traceEnd};
+      return VisibleSampleRange{traceEnd, traceEnd};
 
     // Keep one sample to the left so the segment entering the viewport is preserved.
-    auto firstVisible = std::ranges::lower_bound(traceSamples,
-                                                 visibleTimeForX(visibleRect.left()),
-                                                 {}, &Sample::time);
+    auto firstVisible = std::ranges::lower_bound(
+        traceSamples, visibleTimeForX(visibleRect.left()), {}, &Sample::time);
     if (firstVisible != traceSamples.cbegin())
       firstVisible = std::prev(firstVisible);
 
@@ -290,7 +290,7 @@ void WaveformCanvas::paintEvent(QPaintEvent* event)
     if (lastVisible != traceEnd)
       lastVisible = std::next(lastVisible);
 
-    return VisibleSampleRange {firstVisible, lastVisible};
+    return VisibleSampleRange{firstVisible, lastVisible};
   }();
 
   for (const Sample& sample : visibleSamples) {
@@ -336,8 +336,9 @@ void WaveformCanvas::paintEvent(QPaintEvent* event)
     const int x1 = xForTime(traceSamples[i + 1].time);
 
     for (int row = 0; row < signalNames.size(); ++row) {
-      const QString value =
-          row < traceSamples[i].values.size() ? traceSamples[i].values[row] : QString("x");
+      const QString value     = row < traceSamples[i].values.size()
+                                    ? traceSamples[i].values[row]
+                                    : QString("x");
       const QString nextValue = row < traceSamples[i + 1].values.size()
                                     ? traceSamples[i + 1].values[row]
                                     : QString("x");
@@ -351,7 +352,8 @@ void WaveformCanvas::paintEvent(QPaintEvent* event)
     }
   }
 
-  if (selectedSampleIndex >= 0 && selectedSampleIndex < static_cast<int>(traceSamples.size())) {
+  if (selectedSampleIndex >= 0
+      && selectedSampleIndex < static_cast<int>(traceSamples.size())) {
     const int     x     = xForTime(traceSamples[selectedSampleIndex].time);
     const QString label = QString::number(traceSamples[selectedSampleIndex].time);
     const int     labelWidth =
@@ -372,8 +374,9 @@ void WaveformCanvas::mouseMoveEvent(QMouseEvent* event)
   if (traceSamples.empty())
     return;
 
-  const int mouseX = event->position().toPoint().x();
-  const auto it = std::lower_bound(traceSamples.begin(), traceSamples.end(), mouseX,
+  const int  mouseX = event->position().toPoint().x();
+  const auto it     = std::lower_bound(
+      traceSamples.begin(), traceSamples.end(), mouseX,
       [this](const Sample& sample, const int x) { return xForTime(sample.time) < x; });
 
   auto       closestIndex    = 0;
@@ -470,7 +473,7 @@ WaveformViewer::WaveformViewer(QWidget* parent) : QWidget(parent)
 
   const auto splitter = new QSplitter(this);
   splitter->setHandleWidth(0);
-  const auto labelPane = new QWidget();
+  const auto labelPane   = new QWidget();
   const auto labelLayout = new QVBoxLayout(labelPane);
   labelLayout->setContentsMargins(0, 0, 0, 0);
   labelLayout->setSpacing(0);
@@ -635,7 +638,7 @@ void WaveformViewer::writeFstTrace(const std::string& fileName) const
   if (names.empty())
     throw std::runtime_error("no waveform signals are available");
 
-  std::vector<std::size_t> widths;
+  std::vector<std::size_t>                 widths;
   std::vector<FstTraceWriter::TraceSignal> traceSignals;
   widths.reserve(names.size());
   traceSignals.reserve(names.size());

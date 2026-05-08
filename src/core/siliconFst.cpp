@@ -24,7 +24,7 @@
 
 namespace {
 
-SiliconFstWriter::Options optionsForCircuit(const Circuit& circuit,
+SiliconFstWriter::Options optionsForCircuit(const Circuit&            circuit,
                                             SiliconFstWriter::Options options)
 {
   if (options.topScopeName.empty() && !circuit.getName().empty())
@@ -113,17 +113,17 @@ SiliconFstWriter::SiliconFstWriter(const std::string& fileName, const Circuit& c
 {
 }
 
-SiliconFstWriter::SiliconFstWriter(const std::string& fileName,
+SiliconFstWriter::SiliconFstWriter(const std::string&           fileName,
                                    const std::vector<NamedBus>& buses)
   : SiliconFstWriter(fileName, buses, Options{})
 {
 }
 
-SiliconFstWriter::SiliconFstWriter(const std::string& fileName,
+SiliconFstWriter::SiliconFstWriter(const std::string&           fileName,
                                    const std::vector<NamedBus>& namedBuses,
-                                   Options options)
-  : buses(registeredBusesFor(namedBuses))
-  , writer(fileName, traceSignalsFor(namedBuses), std::move(options))
+                                   Options                      options)
+  : buses(registeredBusesFor(namedBuses)),
+    writer(fileName, traceSignalsFor(namedBuses), std::move(options))
 {
 }
 

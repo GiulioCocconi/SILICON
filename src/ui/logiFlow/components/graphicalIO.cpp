@@ -95,11 +95,11 @@ GraphicalOutputSingle::GraphicalOutputSingle(QGraphicsItem* parent)
   isEditable = false;
   setPorts({std::pair<std::string, QPoint>{"in", QPoint(20, 60)}}, {});
 
-  this->associatedComponent->setPropertyCallback(
-      "name", [this](const PropertyValue& value) {
-        prepareGeometryChange();
-        return value;
-      });
+  this->associatedComponent->setPropertyCallback("name",
+                                                 [this](const PropertyValue& value) {
+                                                   prepareGeometryChange();
+                                                   return value;
+                                                 });
 
   (std::static_pointer_cast<DummyOutputComponent>(associatedComponent))->setSkin(this);
 }
@@ -116,8 +116,8 @@ void GraphicalOutputSingle::setState(State state)
   setItemShape(new QGraphicsSvgItem(shapePath));
 }
 
-void GraphicalOutputSingle::paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
-                                  QWidget* widget)
+void GraphicalOutputSingle::paint(QPainter*                       painter,
+                                  const QStyleOptionGraphicsItem* option, QWidget* widget)
 {
   painter->setFont(font);
   const auto nameProperty = this->getComponent()->getProperty("name");
