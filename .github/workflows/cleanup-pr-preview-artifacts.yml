@@ -1,0 +1,42 @@
+name: Cleanup PR Preview Artifacts
+
+on:
+  pull_request:
+    branches: [ "main" ]
+    types: [closed]
+
+env:
+  CLOUDSMITH_OWNER: ${{ vars.CLOUDSMITH_OWNER }}
+  CLOUDSMITH_PR_REPO: ${{ vars.CLOUDSMITH_PR_REPO }}
+  CLOUDSMITH_OIDC_NAMESPACE: ${{ vars.CLOUDSMITH_OIDC_NAMESPACE }}
+  CLOUDSMITH_OIDC_SERVICE_SLUG: ${{ vars.CLOUDSMITH_OIDC_SERVICE_SLUG }}
+
+jobs:
+  cleanup:
+    if: github.event.pull_request.merged == true && github.event.pull_request.head.repo.fork == false
+    name: Delete PR preview packages
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Authenticate with Cloudsmith
+        uses: cloudsmith-io/cloudsmith-cli-action@v2
+        with:
+          oidc-namespace: ${{ env.CLOUDSMITH_OIDC_NAMESPACE }}
+          oidc-service-slug: ${{ env.CLOUDSMITH_OIDC_SERVICE_SLUG }}
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Delete all versions for this PR preview package
+        shell: bash
+        run: |
+          bash ./ci/delete_cloudsmith_pr_preview.sh \
+            "${CLOUDSMITH_OWNER}" \
+            "${CLOUDSMITH_PR_REPO}" \
+            "wasm-${{ github.event.pull_request.number }}" \
+            "windows-${{ github.event.pull_request.number }}"

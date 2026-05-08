@@ -1,61 +1,79 @@
-name: Build CI
+name: Snapshot Artifacts
 
 on:
   pull_request:
     branches: [ "main" ]
     paths:
-      - '**.cpp'
-      - '**.hpp'
-      - '**/CMakeLists.txt'
-      - '**.cmake'
-      - 'flake.nix'
-      - 'flake.lock'
-      - '.github/workflows/build.yml'
-      - 'vcpkg.json'
+      - "**.cpp"
+      - "**.hpp"
+      - "**/CMakeLists.txt"
+      - "**.cmake"
+      - "flake.nix"
+      - "flake.lock"
+      - ".github/workflows/**"
+      - "ci/**"
+      - "vcpkg.json"
   push:
     branches: [ "main" ]
     paths:
-      - '**.cpp'
-      - '**.hpp'
-      - '**/CMakeLists.txt'
-      - '**.cmake'
-      - 'flake.nix'
-      - 'flake.lock'
-      - '.github/workflows/build.yml'
-      - 'vcpkg.json'
+      - "**.cpp"
+      - "**.hpp"
+      - "**/CMakeLists.txt"
+      - "**.cmake"
+      - "flake.nix"
+      - "flake.lock"
+      - ".github/workflows/**"
+      - "ci/**"
+      - "vcpkg.json"
 
 concurrency:
-  group: build-${{ github.event.pull_request.number || github.ref }}
+  group: snapshot-artifacts-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  set-label:
-    if: github.event_name == 'pull_request'
-    name: Set build label
+  prepare:
+    name: Prepare snapshot metadata
     runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
-
+    outputs:
+      publish_wasm: ${{ steps.meta.outputs.publish_wasm }}
+      publish_windows: ${{ steps.meta.outputs.publish_windows }}
+      snapshot_version: ${{ steps.meta.outputs.snapshot_version }}
+      wasm_package_name: ${{ steps.meta.outputs.wasm_package_name }}
+      windows_package_name: ${{ steps.meta.outputs.windows_package_name }}
+      cloudsmith_repo: ${{ steps.meta.outputs.cloudsmith_repo }}
     steps:
-      - env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        shell: bash
         run: |
-          gh pr edit ${{ github.event.pull_request.number }} \
-            --add-label "build" \
-            --repo ${{ github.repository }}
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            echo "wasm_package_name=wasm-${{ github.event.pull_request.number }}" >> "${GITHUB_OUTPUT}"
+            echo "windows_package_name=windows-${{ github.event.pull_request.number }}" >> "${GITHUB_OUTPUT}"
+            echo "snapshot_version=${{ github.event.pull_request.head.sha }}" >> "${GITHUB_OUTPUT}"
+            echo "cloudsmith_repo=${{ vars.CLOUDSMITH_PR_REPO }}" >> "${GITHUB_OUTPUT}"
 
+            if [[ "${{ github.event.pull_request.head.repo.fork }}" == "true" ]]; then
+              echo "publish_wasm=false" >> "${GITHUB_OUTPUT}"
+              echo "publish_windows=false" >> "${GITHUB_OUTPUT}"
+            else
+              echo "publish_wasm=true" >> "${GITHUB_OUTPUT}"
+              echo "publish_windows=true" >> "${GITHUB_OUTPUT}"
+            fi
+          else
+            short_sha="${GITHUB_SHA::7}"
+            echo "wasm_package_name=silicon-unstable-wasm" >> "${GITHUB_OUTPUT}"
+            echo "windows_package_name=silicon-unstable-windows" >> "${GITHUB_OUTPUT}"
+            echo "snapshot_version=v${short_sha}-unstable" >> "${GITHUB_OUTPUT}"
+            echo "cloudsmith_repo=${{ vars.CLOUDSMITH_RELEASE_REPO }}" >> "${GITHUB_OUTPUT}"
+            echo "publish_wasm=true" >> "${GITHUB_OUTPUT}"
+            echo "publish_windows=true" >> "${GITHUB_OUTPUT}"
+          fi
 
-  # -----------------------------------------------------------------------------
-  # LINUX BUILD (Nix Flakes)
-  # -----------------------------------------------------------------------------
   build-linux:
     name: Linux (Nix)
     runs-on: ubuntu-latest
-
     permissions:
-      id-token: "write"
-      contents: "read"
-
+      contents: read
+      id-token: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -63,111 +81,37 @@ jobs:
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v22
 
-
-      # REMOVED CACHE SINCE IT FILLS UP THE GA CACHE STORAGE
-      # - name: Cache Nix store
-      #  uses: DeterminateSystems/magic-nix-cache-action@v13
-
       - name: Build with Nix
         run: nix build --print-build-logs
 
-  # -----------------------------------------------------------------------------
-  # WINDOWS BUILD (MinGW + vcpkg)
-  # -----------------------------------------------------------------------------
-  build-windows:
-    name: Windows (MinGW)
-    runs-on: windows-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
+  wasm-snapshot:
+    name: WASM snapshot
+    needs: prepare
+    uses: ./.github/workflows/reusable-build-wasm.yml
+    with:
+      publish: ${{ needs.prepare.outputs.publish_wasm == 'true' }}
+      package_name: ${{ needs.prepare.outputs.wasm_package_name }}
+      package_version: ${{ needs.prepare.outputs.snapshot_version }}
+      cloudsmith_owner: ${{ vars.CLOUDSMITH_OWNER }}
+      cloudsmith_repo: ${{ needs.prepare.outputs.cloudsmith_repo }}
+      cloudsmith_oidc_namespace: ${{ vars.CLOUDSMITH_OIDC_NAMESPACE }}
+      cloudsmith_oidc_service_slug: ${{ vars.CLOUDSMITH_OIDC_SERVICE_SLUG }}
+    permissions:
+      contents: read
+      id-token: write
 
-      - name: Setup MinGW
-        uses: egor-tensin/setup-mingw@v3
-
-      - name: Install Ninja
-        run: choco install ninja
-
-      # Caching is critical for Windows/vcpkg to avoid hour-long builds
-      - name: Restore vcpkg Cache
-        uses: actions/cache@v5
-        id: vcpkg-cache
-        with:
-          path: |
-            build/vcpkg_installed
-            build/_deps
-          # Invalidate cache if vcpkg manifest changes
-          key: ${{ runner.os }}-vcpkg-${{ hashFiles('**/vcpkg.json') }}
-          restore-keys: |
-            ${{ runner.os }}-vcpkg-
-
-      - name: Configure CMake
-        # Setting CC/CXX ensures CMake picks up MinGW instead of MSVC
-        run: |
-          cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -Bbuild
-        env:
-          CC: gcc
-          CXX: g++
-
-      - name: Build
-        run: ninja -C build
-
-      - name: Test
-        run: ctest --test-dir build --output-on-failure
-
-
-  # -----------------------------------------------------------------------------
-  # WASM BUILD (Linux + Emscripten + vcpkg)
-  # -----------------------------------------------------------------------------
-  build-wasm:
-    name: WASM (Emscripten)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-      - name: Install Emscripten
-        uses: mymindstorm/setup-emsdk@v14
-        with:
-          version: 4.0.7
-
-      - name: Install Qt for WASM
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: "6.11.0"
-          host: "all_os"
-          target: "wasm"
-          arch: "wasm_singlethread"
-
-      - name: Install build deps
-        run: sudo apt-get install ninja-build autoconf autoconf-archive automake libtool jq
-
-      - name: Remove unwanted dependencyes from vcpkg.json
-        run: bash ./ci/wasm_remove_deps.sh
-
-      - name: Restore vcpkg Cache
-        uses: actions/cache@v5
-        id: vcpkg-cache
-        with:
-          path: |
-            build/vcpkg_installed
-            build/_deps
-          key: wasm-vcpkg-${{ hashFiles('**/vcpkg.json') }}
-          restore-keys: |
-            wasm-vcpkg-
-
-      - name: Configure CMake
-        run: |
-          chmod +x ~/work/SILICON/Qt/6.11.0/wasm_singlethread/bin/qt-cmake
-          ~/work/SILICON/Qt/6.11.0/wasm_singlethread/bin/qt-cmake -Bbuild -G Ninja
-          emcmake cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -Bbuild
-      - name: Build
-        run: ninja -C build
-
-      - name: Upload WASM artifacts
-        uses: actions/upload-artifact@v7
-        with:
-          name: silicon-wasm
-          path: |
-            bin/*.js
-            bin/*.wasm
-            bin/*.html
-          retention-days: 30
+  windows-snapshot:
+    name: Windows snapshot
+    needs: prepare
+    uses: ./.github/workflows/reusable-build-windows.yml
+    with:
+      publish: ${{ needs.prepare.outputs.publish_windows == 'true' }}
+      package_name: ${{ needs.prepare.outputs.windows_package_name }}
+      package_version: ${{ needs.prepare.outputs.snapshot_version }}
+      cloudsmith_owner: ${{ vars.CLOUDSMITH_OWNER }}
+      cloudsmith_repo: ${{ needs.prepare.outputs.cloudsmith_repo }}
+      cloudsmith_oidc_namespace: ${{ vars.CLOUDSMITH_OIDC_NAMESPACE }}
+      cloudsmith_oidc_service_slug: ${{ vars.CLOUDSMITH_OIDC_SERVICE_SLUG }}
+    permissions:
+      contents: read
+      id-token: write

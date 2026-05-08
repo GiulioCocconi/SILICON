@@ -1,0 +1,125 @@
+name: Reusable WASM Build
+
+on:
+  workflow_call:
+    inputs:
+      publish:
+        required: true
+        type: boolean
+      package_name:
+        required: true
+        type: string
+      package_version:
+        required: true
+        type: string
+      cloudsmith_owner:
+        required: true
+        type: string
+      cloudsmith_repo:
+        required: true
+        type: string
+      cloudsmith_oidc_namespace:
+        required: true
+        type: string
+      cloudsmith_oidc_service_slug:
+        required: true
+        type: string
+
+jobs:
+  build:
+    name: Build WASM
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 4.0.7
+
+      - name: Install Qt for WASM
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.11.0"
+          host: "all_os"
+          target: "wasm"
+          arch: "wasm_singlethread"
+
+      - name: Install build dependencies
+        shell: bash
+        run: sudo apt-get update && sudo apt-get install -y ninja-build autoconf autoconf-archive automake libtool jq zip
+
+      - name: Prepare vcpkg manifest for WASM
+        shell: bash
+        run: bash ./ci/wasm_remove_deps.sh
+
+      - name: Restore vcpkg cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            build/vcpkg_installed
+            build/_deps
+          key: wasm-vcpkg-${{ hashFiles('**/vcpkg.json') }}
+          restore-keys: |
+            wasm-vcpkg-
+
+      - name: Configure CMake
+        shell: bash
+        run: |
+          # Replace this section if the project's real Qt for WASM configure step changes.
+          chmod +x ~/work/SILICON/Qt/6.11.0/wasm_singlethread/bin/qt-cmake
+          ~/work/SILICON/Qt/6.11.0/wasm_singlethread/bin/qt-cmake -Bbuild -G Ninja
+          emcmake cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -Bbuild
+
+      - name: Build
+        shell: bash
+        run: |
+          # Replace this section if the project's real Qt for WASM build command changes.
+          ninja -C build
+
+      - name: Package WASM artifact
+        shell: bash
+        run: |
+          bash ./ci/package_wasm_artifact.sh \
+            "${{ inputs.package_name }}" \
+            "${{ inputs.package_version }}"
+
+      - name: Upload packaged WASM artifact for handoff
+        uses: actions/upload-artifact@v7
+        with:
+          name: wasm-package
+          path: out/*.zip
+          retention-days: 1
+
+  publish:
+    if: inputs.publish
+    name: Publish WASM to Cloudsmith
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download packaged WASM artifact
+        uses: actions/download-artifact@v6
+        with:
+          name: wasm-package
+          path: out
+
+      - name: Authenticate with Cloudsmith
+        uses: cloudsmith-io/cloudsmith-cli-action@v2
+        with:
+          oidc-namespace: ${{ inputs.cloudsmith_oidc_namespace }}
+          oidc-service-slug: ${{ inputs.cloudsmith_oidc_service_slug }}
+
+      - name: Publish WASM raw package
+        shell: bash
+        run: |
+          cloudsmith push raw \
+            "${{ inputs.cloudsmith_owner }}/${{ inputs.cloudsmith_repo }}" \
+            "out/${{ inputs.package_name }}-${{ inputs.package_version }}.zip" \
+            --name "${{ inputs.package_name }}" \
+            --version "${{ inputs.package_version }}"

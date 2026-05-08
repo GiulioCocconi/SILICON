@@ -1,0 +1,50 @@
+name: Release Artifacts
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  validate-release:
+    name: Validate release tag
+    runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.validate.outputs.release_tag }}
+    steps:
+      - id: validate
+        shell: bash
+        run: |
+          tag="${{ github.event.release.tag_name }}"
+          if [[ ! "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-(rc|beta)\.[0-9]+)?$ ]]; then
+            echo "Invalid release tag: ${tag}" >&2
+            echo "Accepted examples: v1.2.3, v1.2.3-rc.1, v1.2.3-beta.1" >&2
+            exit 1
+          fi
+
+          echo "release_tag=${tag}" >> "${GITHUB_OUTPUT}"
+
+  release-wasm:
+    name: Release WASM artifact
+    needs: validate-release
+    uses: ./.github/workflows/reusable-build-wasm.yml
+    with:
+      publish: true
+      package_name: silicon-release-wasm
+      package_version: ${{ needs.validate-release.outputs.release_tag }}
+      cloudsmith_owner: ${{ vars.CLOUDSMITH_OWNER }}
+      cloudsmith_repo: ${{ vars.CLOUDSMITH_RELEASE_REPO }}
+      cloudsmith_oidc_namespace: ${{ vars.CLOUDSMITH_OIDC_NAMESPACE }}
+      cloudsmith_oidc_service_slug: ${{ vars.CLOUDSMITH_OIDC_SERVICE_SLUG }}
+
+  release-windows:
+    name: Release Windows artifact
+    needs: validate-release
+    uses: ./.github/workflows/reusable-build-windows.yml
+    with:
+      publish: true
+      package_name: silicon-release-windows
+      package_version: ${{ needs.validate-release.outputs.release_tag }}
+      cloudsmith_owner: ${{ vars.CLOUDSMITH_OWNER }}
+      cloudsmith_repo: ${{ vars.CLOUDSMITH_RELEASE_REPO }}
+      cloudsmith_oidc_namespace: ${{ vars.CLOUDSMITH_OIDC_NAMESPACE }}
+      cloudsmith_oidc_service_slug: ${{ vars.CLOUDSMITH_OIDC_SERVICE_SLUG }}
