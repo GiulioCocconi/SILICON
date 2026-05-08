@@ -475,6 +475,12 @@ public:
     fstWriterEmitValueChangeVec64(context.get(), handle, bits, val);
   }
 
+  inline void flush()
+  {
+    assert(context);
+    fstWriterFlushContext(context.get());
+  }
+
 private:
   /**
    * Only FstHierarchyBuilder may construct a writer.
