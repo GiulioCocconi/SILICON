@@ -1,6 +1,14 @@
 ![Silicon](./resources/banner.png)
 An Open Source Suite for simulating Circuits, Finite State Machines and Microcontrollers (WIP)
 
+
+
+_Package repository hosting is graciously provided by [Cloudsmith](https://cloudsmith.com).
+Cloudsmith is the only fully hosted, cloud-native, universal package management solution, that
+enables your organization to create, store and share packages in any format, to any place, with total
+confidence._
+
+
 ## TODOs
 
 Since it's a pre-alpha product, there are quite a lot of things to be done:
