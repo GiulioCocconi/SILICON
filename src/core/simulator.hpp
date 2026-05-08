@@ -17,9 +17,12 @@
 
 #pragma once
 #include <core/circuit.hpp>
+#include <core/siliconFst.hpp>
+#include <functional>
 #include <memory>
 #include <queue>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 /**
@@ -56,16 +59,20 @@ struct TimedEvent {
  */
 class Simulator {
 public:
+  using TraceSink = std::function<void(uint64_t, const std::vector<std::string>&)>;
+
   /**
    * @brief Constructs a Simulator for the given circuit.
    * @param c The circuit to simulate
    * @param initialSimulationTime If != 0 also simulate the circuit using
    * initialSimulationTime as duration
    * @param isInteractive If true make the circuit interactive
+   * @param fstWriter Optional waveform writer used to trace simulation snapshots
    * @throws std::invalid_argument If c is null
    */
   explicit Simulator(std::shared_ptr<Circuit> c, uint64_t initialSimulationTime = 0,
-                     bool isInteractive = false);
+                     bool isInteractive = false,
+                     std::unique_ptr<SiliconFstWriter> fstWriter = nullptr);
   /**
    * @brief Destructor - removes topology listener
    */
@@ -86,6 +93,31 @@ public:
    * @brief Recompiles the execution blocks from the circuit topology.
    */
   void recompile();
+
+  /**
+   * @brief Enables FST tracing for this simulator.
+   *
+   * The writer is initialized from the simulator's circuit and immediately receives a
+   * snapshot for the current simulation time.
+   */
+  void enableFstTracing(const std::string& fileName,
+                        SiliconFstWriter::Options options = {});
+
+  /**
+   * @brief Installs a caller-created FST writer.
+   *
+   * Ownership transfers to the simulator. Passing nullptr disables tracing.
+   */
+  void setFstWriter(std::unique_ptr<SiliconFstWriter> writer);
+
+  /**
+   * @brief Configures bus-level waveform snapshots emitted by the simulator.
+   *
+   * The same registered buses are used for UI waveform snapshots and optional FST
+   * export, ensuring both observe exactly the same simulation timing.
+   */
+  void setTraceBuses(std::vector<SiliconFstWriter::NamedBus> buses);
+  void setTraceSink(TraceSink sink);
 
   /**
    * @brief Forces a bus to a specific value and propagates the change through the
@@ -165,10 +197,26 @@ private:
   /** @brief Current simulation time */
   uint64_t currentTime = 0;
 
+  /** @brief Optional waveform writer for simulation tracing */
+  std::unique_ptr<SiliconFstWriter> fstWriter;
+
+  /** @brief Bus list observed by waveform tracing */
+  std::vector<SiliconFstWriter::NamedBus> traceBuses;
+
+  /** @brief Optional callback for live waveform viewers */
+  TraceSink traceSink;
+
   /** @brief Maximum number of delta cycles for convergence */
   static constexpr int MAX_DELTA = 1000;
 
   bool cyclicStateChanged = false;
+
+  /**
+   * @brief Emits a waveform snapshot when tracing is enabled.
+   */
+  void emitTraceSnapshot();
+
+  [[nodiscard]] static std::string encodeTraceBusValue(const Bus& bus);
 
   /**
    * @brief Executes all components in a simulation block.

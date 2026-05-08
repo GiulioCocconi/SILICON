@@ -18,13 +18,14 @@
 #include "simulator.hpp"
 
 #include <algorithm>
+#include <utility>
 #include <ranges>
 
 #include <core/component.hpp>
 
 Simulator::Simulator(std::shared_ptr<Circuit> c, uint64_t initialSimulationTime,
-                     bool isInteractive)
-  : circuit(std::move(c))
+                     bool isInteractive, std::unique_ptr<SiliconFstWriter> fstWriter)
+  : circuit(std::move(c)), fstWriter(std::move(fstWriter))
 {
   if (!circuit) {
     throw std::invalid_argument("Simulator requires a valid Circuit pointer");
@@ -42,6 +43,7 @@ Simulator::Simulator(std::shared_ptr<Circuit> c, uint64_t initialSimulationTime,
   for (const auto& block : executionBlocks) {
     evaluateBlock(block);
   }
+  emitTraceSnapshot();
 
   if (initialSimulationTime != 0)
     run(initialSimulationTime);
@@ -57,6 +59,71 @@ Simulator::~Simulator()
 void Simulator::recompile()
 {
   executionBlocks = circuit->splitCyclic();
+}
+
+void Simulator::enableFstTracing(const std::string& fileName,
+                                 SiliconFstWriter::Options options)
+{
+  if (!traceBuses.empty()) {
+    setFstWriter(std::make_unique<SiliconFstWriter>(fileName, traceBuses,
+                                                    std::move(options)));
+  } else {
+    setFstWriter(std::make_unique<SiliconFstWriter>(fileName, *circuit,
+                                                    std::move(options)));
+  }
+}
+
+void Simulator::setFstWriter(std::unique_ptr<SiliconFstWriter> writer)
+{
+  fstWriter = std::move(writer);
+  emitTraceSnapshot();
+}
+
+void Simulator::setTraceBuses(std::vector<SiliconFstWriter::NamedBus> buses)
+{
+  traceBuses = std::move(buses);
+  emitTraceSnapshot();
+}
+
+void Simulator::setTraceSink(TraceSink sink)
+{
+  traceSink = std::move(sink);
+  emitTraceSnapshot();
+}
+
+void Simulator::emitTraceSnapshot()
+{
+  if (fstWriter) {
+    fstWriter->emitSnapshot(currentTime);
+    fstWriter->flush();
+  }
+
+  if (!traceSink || traceBuses.empty())
+    return;
+
+  std::vector<std::string> values;
+  values.reserve(traceBuses.size());
+  for (const auto& [name, bus] : traceBuses)
+    values.push_back(encodeTraceBusValue(bus));
+
+  traceSink(currentTime, values);
+}
+
+std::string Simulator::encodeTraceBusValue(const Bus& bus)
+{
+  std::string value;
+  value.reserve(bus.size());
+
+  for (auto it = bus.end(); it != bus.begin();) {
+    --it;
+    if (!*it) {
+      value.push_back('x');
+    } else {
+      value.push_back(SiliconFstWriter::stateToFstValue((*it)->getCurrentState()));
+    }
+  }
+
+  return value;
 }
 
 void Simulator::updateWire(const Wire_ptr& target, State newState, uint64_t delay,
@@ -136,11 +203,14 @@ void Simulator::run(uint64_t duration)
       for (const auto& block : executionBlocks) {
         evaluateBlock(block);
       }
+      emitTraceSnapshot();
     }
   }
 
-  if (currentTime < minimumEndTime)
+  if (currentTime < minimumEndTime) {
     currentTime = minimumEndTime;
+    emitTraceSnapshot();
+  }
 }
 
 void Simulator::setBus(Bus bus, unsigned int value)
@@ -165,6 +235,7 @@ void Simulator::setBus(Bus bus, const unsigned int value, const Component_weakPt
   for (const auto& block : blocks) {
     evaluateBlock(block);
   }
+  emitTraceSnapshot();
 }
 
 void Simulator::simulateBus(const Bus& bus)
@@ -175,4 +246,5 @@ void Simulator::simulateBus(const Bus& bus)
   for (const auto& block : blocks) {
     evaluateBlock(block);
   }
+  emitTraceSnapshot();
 }
