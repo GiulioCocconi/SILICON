@@ -113,6 +113,11 @@ public:
 
   void setState(State state);
 
+  void paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
+             QWidget* widget) override;
+
+  const QFont font = QFont("NovaMono", 12);
+
 private:
   const static QString& getUnknownShapePath()
   {
@@ -131,6 +136,8 @@ private:
     static QString OFF_SHAPE_PATH = ":/other_components/output_off.svg";
     return OFF_SHAPE_PATH;
   }
+
+  QRectF boundingRect() const override;
 };
 
 class DummyOutputComponent : public Component {

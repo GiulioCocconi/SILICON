@@ -96,7 +96,10 @@ GraphicalOutputSingle::GraphicalOutputSingle(QGraphicsItem* parent)
   setPorts({std::pair<std::string, QPoint>{"in", QPoint(20, 60)}}, {});
 
   this->associatedComponent->setPropertyCallback(
-      "name", [](const PropertyValue& value) { return value; });
+      "name", [this](const PropertyValue& value) {
+        prepareGeometryChange();
+        return value;
+      });
 
   (std::static_pointer_cast<DummyOutputComponent>(associatedComponent))->setSkin(this);
 }
@@ -111,6 +114,26 @@ void GraphicalOutputSingle::setState(State state)
     shapePath = getUnknownShapePath();
 
   setItemShape(new QGraphicsSvgItem(shapePath));
+}
+
+void GraphicalOutputSingle::paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
+                                  QWidget* widget)
+{
+  painter->setFont(font);
+  const auto nameProperty = this->getComponent()->getProperty("name");
+  if (nameProperty.has_value()) {
+    if (const auto* name = std::get_if<std::string>(&*nameProperty))
+      painter->drawText(QPointF(0, -1), QString::fromStdString(*name));
+  }
+
+  GraphicalLogicComponent::paint(painter, option, widget);
+}
+
+QRectF GraphicalOutputSingle::boundingRect() const
+{
+  const auto fontHeight = QFontMetrics(font).height();
+  auto       rect       = GraphicalLogicComponent::boundingRect();
+  return rect.adjusted(0, -fontHeight, 0, 0);
 }
 
 // --- Dummy Output Component ------------------------------------------------------------
