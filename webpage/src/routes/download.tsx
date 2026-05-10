@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { SiteHeader } from "@/components/SiteHeader";
-import siliconLogo from "@/assets/silicon-icon.svg";
+import { SiteFooter } from "@/components/SiteFooter";
 
 export const Route = createFileRoute("/download")({
   head: () => ({
@@ -152,26 +152,26 @@ function Download() {
   }
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen overflow-x-hidden">
       <SiteHeader />
 
       <main>
-        <section className="mx-auto max-w-6xl px-6 pt-16 pb-20">
+        <section className="page-shell hero-section">
           <div className="grid lg:grid-cols-[1fr_360px] gap-10 items-start">
             <div>
-              <div className="mono text-xs uppercase tracking-widest mb-4 inline-block px-2 py-1 border-2 border-foreground rounded-md bg-[var(--silicon-blue)]">
+              <div className="hero-kicker mono bg-[var(--silicon-blue)]">
                 Cloudsmith artifacts
               </div>
-              <h1 className="font-display text-5xl md:text-7xl leading-[1.05] mb-6">
-                Download <br />
+              <h1 className="hero-title font-display">
+                Download <br className="hidden sm:block" />
                 <span
-                  className="inline-block px-3 py-1 rounded-xl"
+                  className="inline-block max-w-full px-3 py-1 rounded-xl"
                   style={{ backgroundColor: "var(--silicon-orange)" }}
                 >
                   SILICON
                 </span>
               </h1>
-              <p className="text-lg max-w-2xl text-muted-foreground">
+              <p className="hero-copy max-w-2xl text-muted-foreground">
                 Windows binaries are published from CI to Cloudsmith. Tagged releases are the stable
                 channel; nightly builds track the latest successful build from{" "}
                 <strong className="text-foreground">main</strong>.
@@ -187,8 +187,8 @@ function Download() {
               )}
             </div>
 
-            <aside className="silicon-card p-6">
-              <h2 className="font-display text-2xl mb-3">Release notes</h2>
+            <aside className="silicon-card card-pad">
+              <h2 className="card-title font-display mb-3">Release notes</h2>
               <p className="text-muted-foreground mb-5">
                 GitHub remains the source of tagged release notes, changelogs, and source archives.
               </p>
@@ -196,7 +196,7 @@ function Download() {
                 href={`${GH}/releases`}
                 target="_blank"
                 rel="noreferrer"
-                className="silicon-btn w-full justify-center"
+                className="silicon-btn w-full justify-center text-center"
                 style={{ backgroundColor: "var(--silicon-magenta)" }}
               >
                 Open GitHub releases
@@ -204,16 +204,16 @@ function Download() {
             </aside>
           </div>
 
-          <div className="mt-14 grid md:grid-cols-2 gap-6">
+          <div className="mt-12 sm:mt-14 grid md:grid-cols-2 gap-6">
             {packages.map((pkg) => (
-              <article key={pkg.key} className="silicon-card p-6">
+              <article key={pkg.key} className="silicon-card card-pad">
                 <div
-                  className="w-14 h-14 rounded-xl border-2 border-foreground mb-5"
+                  className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl border-2 border-foreground mb-5"
                   style={{ backgroundColor: pkg.color }}
                 />
                 <div className="flex items-start justify-between gap-4 mb-3">
-                  <h2 className="font-display text-3xl">{pkg.title}</h2>
-                  <span className="mono text-xs px-2 py-1 rounded-md border-2 border-foreground bg-secondary">
+                  <h2 className="card-title font-display">{pkg.title}</h2>
+                  <span className="mono text-xs px-2 py-1 rounded-md border-2 border-foreground bg-secondary shrink-0">
                     {pkg.badge}
                   </span>
                 </div>
@@ -239,7 +239,7 @@ function Download() {
                     View in Cloudsmith
                   </a>
                 </div>
-                <p className="mono text-xs text-muted-foreground mt-4">
+                <p className="mono text-xs text-muted-foreground mt-4 break-all">
                   package: {pkg.packageName}
                 </p>
               </article>
@@ -267,9 +267,9 @@ function Download() {
         </section>
 
         <section className="border-t-2 border-foreground bg-card">
-          <div className="mx-auto max-w-6xl px-6 py-20">
+          <div className="page-shell content-section">
             <div className="flex items-end justify-between flex-wrap gap-4 mb-12">
-              <h2 className="font-display text-4xl md:text-5xl">Build on Linux</h2>
+              <h2 className="section-title font-display">Build on Linux</h2>
               <p className="mono text-sm text-muted-foreground max-w-md">
                 {"// "}Nix is the supported path because it pins Qt6, CMake, Ninja, and the native
                 libraries.
@@ -277,30 +277,30 @@ function Download() {
             </div>
 
             <div className="grid lg:grid-cols-2 gap-6">
-              <article className="silicon-card p-6">
-                <h3 className="font-display text-2xl mb-3">Release-style build</h3>
+              <article className="silicon-card card-pad">
+                <h3 className="card-title font-display mb-3">Release-style build</h3>
                 <p className="text-muted-foreground mb-4">
                   Use this if you only want a reproducible local build from the current repository
                   state.
                 </p>
-                <pre className="mono text-sm overflow-auto rounded-xl border-2 border-foreground bg-secondary p-4">
+                <pre className="code-pane mono">
                   <code>{buildSteps}</code>
                 </pre>
               </article>
 
-              <article className="silicon-card p-6">
-                <h3 className="font-display text-2xl mb-3">Development build</h3>
+              <article className="silicon-card card-pad">
+                <h3 className="card-title font-display mb-3">Development build</h3>
                 <p className="text-muted-foreground mb-4">
                   Use this when editing the codebase and rebuilding incrementally.
                 </p>
-                <pre className="mono text-sm overflow-auto rounded-xl border-2 border-foreground bg-secondary p-4">
+                <pre className="code-pane mono">
                   <code>{devSteps}</code>
                 </pre>
               </article>
             </div>
 
-            <div className="mt-8 silicon-card p-6">
-              <h3 className="font-display text-2xl mb-3">Before running Nix</h3>
+            <div className="mt-8 silicon-card card-pad">
+              <h3 className="card-title font-display mb-3">Before running Nix</h3>
               <p className="text-muted-foreground mb-4">
                 On non-NixOS distributions, install Nix or Lix first and enable flakes. The
                 repository README has the full setup notes.
@@ -328,35 +328,7 @@ function Download() {
           </div>
         </section>
       </main>
-
-      <footer className="border-t-2 border-foreground bg-background">
-        <div className="mx-auto max-w-6xl px-6 py-10 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <img src={siliconLogo} alt="" width={32} height={32} className="rounded-md" />
-            <span className="font-display text-lg">SILICON</span>
-            <span className="mono text-xs text-muted-foreground">. downloads . Cloudsmith</span>
-          </div>
-          <div className="mono text-xs text-muted-foreground flex flex-wrap gap-4">
-            <a href="#/" className="hover:text-foreground">
-              home
-            </a>
-            <a href="internaldocs" className="hover:text-foreground">
-              internaldocs
-            </a>
-            <a
-              href={`${GH}/releases`}
-              target="_blank"
-              rel="noreferrer"
-              className="hover:text-foreground"
-            >
-              github releases
-            </a>
-            <a href={GH} target="_blank" rel="noreferrer" className="hover:text-foreground">
-              github
-            </a>
-          </div>
-        </div>
-      </footer>
+      <SiteFooter />
     </div>
   );
 }
