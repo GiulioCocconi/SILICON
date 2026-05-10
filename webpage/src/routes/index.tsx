@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { SiteHeader } from "@/components/SiteHeader";
 import siliconLogo from "@/assets/silicon-icon.svg";
 import demoGif from "@/assets/demo.gif";
 
@@ -65,11 +66,10 @@ const features = [
 
 const links = [
   {
-    href: `${GH}/releases`,
+    href: "#/download",
     label: "Download",
-    sub: "Latest build",
+    sub: "Releases & nightlies",
     color: "var(--silicon-orange)",
-    external: true,
   },
   {
     href: "/wasm",
@@ -95,49 +95,7 @@ const links = [
 function Index() {
   return (
     <div className="min-h-screen">
-      {/* NAV */}
-      <header className="border-b-2 border-foreground bg-background/80 backdrop-blur sticky top-0 z-50">
-        <div className="mx-auto max-w-6xl px-6 py-4 flex items-center justify-between">
-          <a href="/" className="flex items-center gap-3">
-            <img
-              src={siliconLogo}
-              alt="SILICON logo"
-              width={44}
-              height={44}
-              className="rounded-xl"
-            />
-            <span className="font-display text-2xl tracking-wide">SILICON</span>
-          </a>
-          <nav className="hidden md:flex items-center gap-2 mono text-sm">
-            <a href="#features" className="px-3 py-1.5 rounded-md hover:bg-muted">
-              features
-            </a>
-            <a href="internaldocs" className="px-3 py-1.5 rounded-md hover:bg-muted">
-              docs
-            </a>
-            <a
-              href={`${GH}/releases`}
-              className="px-3 py-1.5 rounded-md hover:bg-muted"
-              target="_blank"
-              rel="noreferrer"
-            >
-              releases
-            </a>
-            <a href="blog" className="px-3 py-1.5 rounded-md hover:bg-muted">
-              blog
-            </a>
-          </nav>
-          <a
-            href={GH}
-            target="_blank"
-            rel="noreferrer"
-            className="silicon-btn text-sm"
-            style={{ backgroundColor: "var(--silicon-green)" }}
-          >
-            ★ Star on GitHub
-          </a>
-        </div>
-      </header>
+      <SiteHeader />
 
       {/* HERO */}
       <section className="mx-auto max-w-6xl px-6 pt-16 pb-20">
@@ -148,29 +106,23 @@ function Index() {
             </div>
             <h1 className="font-display text-5xl md:text-7xl leading-[1.05] mb-6">
               Simulate the <br />
-              <span className="inline-block px-3 py-1 rounded-xl" style={{ backgroundColor: "var(--silicon-orange)" }}>
+              <span
+                className="inline-block px-3 py-1 rounded-xl"
+                style={{ backgroundColor: "var(--silicon-orange)" }}
+              >
                 silicon
               </span>{" "}
               behind it all.
             </h1>
             <p className="text-lg max-w-xl text-muted-foreground">
-              <strong className="text-foreground">SILICON</strong> is an open source suite for simulating
-              digital <em>circuits</em>, <em>finite state machines</em>, and{" "}
+              <strong className="text-foreground">SILICON</strong> is an open source suite for
+              simulating digital <em>circuits</em>, <em>finite state machines</em>, and{" "}
               <em>microcontrollers</em> — built with modern C++ and Qt6.
             </p>
           </div>
           <div className="hidden md:block">
-            <div
-              className="silicon-card p-6"
-              style={{ backgroundColor: "var(--silicon-green)" }}
-            >
-              <img
-                src={siliconLogo}
-                alt=""
-                width={240}
-                height={240}
-                className="block"
-              />
+            <div className="silicon-card p-6" style={{ backgroundColor: "var(--silicon-green)" }}>
+              <img src={siliconLogo} alt="" width={240} height={240} className="block" />
             </div>
           </div>
         </div>
@@ -238,24 +190,22 @@ function Index() {
           <div>
             <h2 className="font-display text-4xl md:text-5xl mb-4">Built for hackers.</h2>
             <p className="text-muted-foreground mb-6">
-              Modern C++, Qt6 GUI, CMake + Nix dependency management. Cross-platform
-              builds for Linux and Windows. Continuous integration via GitHub Actions.
+              Modern C++, Qt6 GUI, CMake + Nix dependency management. Cross-platform builds for
+              Linux and Windows. Continuous integration via GitHub Actions.
             </p>
             <div className="flex flex-wrap gap-2 mono text-xs">
-              {["C++", "Qt6", "CMake", "Nix", "MinGW", "GitHub Actions", "Doxygen"].map(
-                (t) => (
-                  <span
-                    key={t}
-                    className="px-3 py-1 rounded-md border-2 border-foreground bg-secondary"
-                  >
-                    {t}
-                  </span>
-                ),
-              )}
+              {["C++", "Qt6", "CMake", "Nix", "MinGW", "GitHub Actions", "Doxygen"].map((t) => (
+                <span
+                  key={t}
+                  className="px-3 py-1 rounded-md border-2 border-foreground bg-secondary"
+                >
+                  {t}
+                </span>
+              ))}
             </div>
           </div>
 
-<div className="silicon-card p-0 overflow-hidden">
+          <div className="silicon-card p-0 overflow-hidden">
             <div
               className="px-4 py-2 mono text-sm border-b-2 border-foreground flex items-center gap-2"
               style={{ backgroundColor: "var(--silicon-orange)" }}
@@ -265,11 +215,14 @@ function Index() {
             </div>
             <img src={demoGif} alt="sr latch demo" className="block w-full h-auto" />
           </div>
-	</div>
+        </div>
       </section>
 
       {/* CTA */}
-      <section className="border-t-2 border-foreground" style={{ backgroundColor: "var(--silicon-magenta)" }}>
+      <section
+        className="border-t-2 border-foreground"
+        style={{ backgroundColor: "var(--silicon-magenta)" }}
+      >
         <div className="mx-auto max-w-6xl px-6 py-20 text-center text-primary-foreground">
           <h2 className="font-display text-4xl md:text-6xl mb-4 text-background">
             Ready to wire things up?
@@ -279,13 +232,11 @@ function Index() {
           </p>
           <div className="flex flex-wrap justify-center gap-3">
             <a
-              href={`${GH}/releases`}
-              target="_blank"
-              rel="noreferrer"
+              href="#/download"
               className="silicon-btn"
               style={{ backgroundColor: "var(--silicon-green)" }}
             >
-              Get latest release
+              Download SILICON
             </a>
             <a href="internaldocs" className="silicon-btn">
               Browse the API
@@ -300,15 +251,21 @@ function Index() {
           <div className="flex items-center gap-3">
             <img src={siliconLogo} alt="" width={32} height={32} className="rounded-md" />
             <span className="font-display text-lg">SILICON</span>
-            <span className="mono text-xs text-muted-foreground">
-              · open source · GPL
-            </span>
+            <span className="mono text-xs text-muted-foreground">· open source · GPL</span>
           </div>
           <div className="mono text-xs text-muted-foreground flex flex-wrap gap-4">
-            <a href="internaldocs" className="hover:text-foreground">internaldocs</a>
-            <a href={`${GH}/releases`} target="_blank" rel="noreferrer" className="hover:text-foreground">releases</a>
-            <a href={GH} target="_blank" rel="noreferrer" className="hover:text-foreground">github</a>
-            <a href="blog" className="hover:text-foreground">blog</a>
+            <a href="internaldocs" className="hover:text-foreground">
+              internaldocs
+            </a>
+            <a href="#/download" className="hover:text-foreground">
+              download
+            </a>
+            <a href={GH} target="_blank" rel="noreferrer" className="hover:text-foreground">
+              github
+            </a>
+            <a href="blog" className="hover:text-foreground">
+              blog
+            </a>
           </div>
         </div>
       </footer>

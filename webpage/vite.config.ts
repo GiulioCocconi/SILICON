@@ -6,13 +6,8 @@ import tsConfigPaths from "vite-tsconfig-paths";
 
 export default defineConfig({
   base: "/SILICON/",
-  plugins: [
-    tsConfigPaths(),
-    tailwindcss(),
-    tanstackRouter(),
-    react(),
-  ],
+  plugins: [tsConfigPaths(), tailwindcss(), tanstackRouter(), react()],
   build: {
-    outdir: "dist",
+    outDir: "dist",
   },
 });
