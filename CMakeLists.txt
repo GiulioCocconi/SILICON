@@ -157,11 +157,15 @@ target_compile_options(SILICON PRIVATE -Werror)
 add_subdirectory(libfst)
 
 target_link_libraries(SILICON PRIVATE
-  Qt6::Widgets
-  Qt6::SvgWidgets
-  fst
-  Boost::graph
-  nlohmann_json)
+        Qt6::Widgets
+        Qt6::SvgWidgets
+        fst
+        Boost::graph
+        nlohmann_json)
+
+set_target_properties(SILICON PROPERTIES
+        # Spawn a console windows (on Windows) only when in debug mode
+        WIN32_EXECUTABLE $<CONFIG:Release>)
 
 if ((CMAKE_CXX_COMPILER_ID MATCHES "Clang") OR EMSCRIPTEN)
     # Some view/ranges features are not yet implemented in clang libc++
