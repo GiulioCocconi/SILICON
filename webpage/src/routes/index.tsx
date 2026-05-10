@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { SiteHeader } from "@/components/SiteHeader";
+import { SiteFooter } from "@/components/SiteFooter";
 import siliconLogo from "@/assets/silicon-icon.svg";
 import demoGif from "@/assets/demo.gif";
 
@@ -94,27 +95,27 @@ const links = [
 
 function Index() {
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen overflow-x-hidden">
       <SiteHeader />
 
       {/* HERO */}
-      <section className="mx-auto max-w-6xl px-6 pt-16 pb-20">
+      <section className="page-shell hero-section">
         <div className="grid md:grid-cols-[1fr_auto] gap-10 items-center">
           <div>
-            <div className="mono text-xs uppercase tracking-widest mb-4 inline-block px-2 py-1 border-2 border-foreground rounded-md bg-[var(--silicon-green)]">
+            <div className="hero-kicker mono bg-[var(--silicon-green)]">
               v0.1 · pre-alpha · open source
             </div>
-            <h1 className="font-display text-5xl md:text-7xl leading-[1.05] mb-6">
-              Simulate the <br />
+            <h1 className="hero-title font-display">
+              Simulate the <br className="hidden sm:block" />
               <span
-                className="inline-block px-3 py-1 rounded-xl"
+                className="inline-block max-w-full px-3 py-1 rounded-xl"
                 style={{ backgroundColor: "var(--silicon-orange)" }}
               >
                 silicon
               </span>{" "}
               behind it all.
             </h1>
-            <p className="text-lg max-w-xl text-muted-foreground">
+            <p className="hero-copy max-w-xl text-muted-foreground">
               <strong className="text-foreground">SILICON</strong> is an open source suite for
               simulating digital <em>circuits</em>, <em>finite state machines</em>, and{" "}
               <em>microcontrollers</em> — built with modern C++ and Qt6.
@@ -128,21 +129,21 @@ function Index() {
         </div>
 
         {/* Quick links bar */}
-        <div className="mt-16 grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="mt-12 sm:mt-16 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
           {links.map((l) => (
             <a
               key={l.label}
               href={l.href}
               target={l.external ? "_blank" : undefined}
               rel={l.external ? "noreferrer" : undefined}
-              className="silicon-card p-4 block"
+              className="silicon-card p-4 block min-w-0"
             >
               <div
                 className="w-10 h-10 rounded-lg border-2 border-foreground mb-3"
                 style={{ backgroundColor: l.color }}
               />
-              <div className="font-display text-lg">{l.label}</div>
-              <div className="mono text-xs text-muted-foreground mt-1">{l.sub}</div>
+              <div className="font-display text-lg break-words">{l.label}</div>
+              <div className="mono text-xs text-muted-foreground mt-1 break-words">{l.sub}</div>
             </a>
           ))}
         </div>
@@ -150,9 +151,9 @@ function Index() {
 
       {/* FEATURES */}
       <section id="features" className="border-t-2 border-foreground bg-card">
-        <div className="mx-auto max-w-6xl px-6 py-20">
+        <div className="page-shell content-section">
           <div className="flex items-end justify-between flex-wrap gap-4 mb-12">
-            <h2 className="font-display text-4xl md:text-5xl">Features</h2>
+            <h2 className="section-title font-display">Features</h2>
             <p className="mono text-sm text-muted-foreground max-w-md">
               {"// "}A modular suite — pick what you need, ignore the rest.
             </p>
@@ -160,16 +161,16 @@ function Index() {
 
           <div className="grid md:grid-cols-2 gap-6">
             {features.map((f) => (
-              <article key={f.title} className="silicon-card p-6">
+              <article key={f.title} className="silicon-card card-pad">
                 <div className="flex items-start gap-4">
                   <div
-                    className="w-14 h-14 rounded-xl border-2 border-foreground shrink-0"
+                    className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl border-2 border-foreground shrink-0"
                     style={{ backgroundColor: f.color }}
                   />
-                  <div className="flex-1">
-                    <h3 className="font-display text-2xl mb-2">{f.title}</h3>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="card-title font-display mb-2">{f.title}</h3>
                     <p className="text-muted-foreground mb-4">{f.desc}</p>
-                    <ul className="grid grid-cols-2 gap-x-4 gap-y-1 mono text-sm">
+                    <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 mono text-sm">
                       {f.items.map((it) => (
                         <li key={it} className="flex items-center gap-2">
                           <span className="text-foreground">▸</span> {it}
@@ -186,9 +187,9 @@ function Index() {
 
       {/* TRUTH TABLE / TECH */}
       <section className="border-t-2 border-foreground">
-        <div className="mx-auto max-w-6xl px-6 py-20 grid md:grid-cols-2 gap-10 items-center">
+        <div className="page-shell content-section grid md:grid-cols-2 gap-10 items-center">
           <div>
-            <h2 className="font-display text-4xl md:text-5xl mb-4">Built for hackers.</h2>
+            <h2 className="section-title font-display mb-4">Built for hackers.</h2>
             <p className="text-muted-foreground mb-6">
               Modern C++, Qt6 GUI, CMake + Nix dependency management. Cross-platform builds for
               Linux and Windows. Continuous integration via GitHub Actions.
@@ -205,7 +206,7 @@ function Index() {
             </div>
           </div>
 
-          <div className="silicon-card p-0 overflow-hidden">
+          <div className="silicon-card p-0 overflow-hidden min-w-0">
             <div
               className="px-4 py-2 mono text-sm border-b-2 border-foreground flex items-center gap-2"
               style={{ backgroundColor: "var(--silicon-orange)" }}
@@ -223,8 +224,8 @@ function Index() {
         className="border-t-2 border-foreground"
         style={{ backgroundColor: "var(--silicon-magenta)" }}
       >
-        <div className="mx-auto max-w-6xl px-6 py-20 text-center text-primary-foreground">
-          <h2 className="font-display text-4xl md:text-6xl mb-4 text-background">
+        <div className="page-shell content-section text-center text-primary-foreground">
+          <h2 className="font-display text-3xl sm:text-4xl md:text-6xl mb-4 text-background">
             Ready to wire things up?
           </h2>
           <p className="mono text-sm mb-8 text-background/80">
@@ -244,31 +245,7 @@ function Index() {
           </div>
         </div>
       </section>
-
-      {/* FOOTER */}
-      <footer className="border-t-2 border-foreground bg-background">
-        <div className="mx-auto max-w-6xl px-6 py-10 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <img src={siliconLogo} alt="" width={32} height={32} className="rounded-md" />
-            <span className="font-display text-lg">SILICON</span>
-            <span className="mono text-xs text-muted-foreground">· open source · GPL</span>
-          </div>
-          <div className="mono text-xs text-muted-foreground flex flex-wrap gap-4">
-            <a href="internaldocs" className="hover:text-foreground">
-              internaldocs
-            </a>
-            <a href="#/download" className="hover:text-foreground">
-              download
-            </a>
-            <a href={GH} target="_blank" rel="noreferrer" className="hover:text-foreground">
-              github
-            </a>
-            <a href="blog" className="hover:text-foreground">
-              blog
-            </a>
-          </div>
-        </div>
-      </footer>
+      <SiteFooter />
     </div>
   );
 }
