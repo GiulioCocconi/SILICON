@@ -5,6 +5,11 @@ on:
     branches: [ "main" ]
     types: [closed]
 
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CLOUDSMITH_OWNER: ${{ vars.CLOUDSMITH_OWNER }}
   CLOUDSMITH_PR_REPO: ${{ vars.CLOUDSMITH_PR_REPO }}

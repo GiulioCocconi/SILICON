@@ -25,7 +25,7 @@ for package_name in "$@"; do
 
   for package_id in "${package_ids[@]}"; do
     echo "Deleting ${owner}/${repo}/${package_id}"
-    cloudsmith delete "${owner}/${repo}/${package_id}"
+    cloudsmith delete -y "${owner}/${repo}/${package_id}"
     deleted_any=true
   done
 done
