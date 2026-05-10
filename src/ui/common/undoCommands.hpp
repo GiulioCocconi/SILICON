@@ -31,6 +31,7 @@ private:
     QPointF        newPos;
   };
   std::vector<ItemMove> moves;
+  bool                  skipInitialRedo = true;
 };
 
 class MoveWirePointCommand : public QUndoCommand {
@@ -55,6 +56,7 @@ private:
   size_t                pointIndex;
   QPointF               oldPos;
   QPointF               newPos;
+  bool                  skipInitialRedo = true;
 };
 
 class RotateItemCommand : public QUndoCommand {
@@ -76,4 +78,5 @@ private:
   GraphicalComponent* component;
   qreal               oldRotation;
   qreal               newRotation;
+  bool                skipInitialRedo = true;
 };

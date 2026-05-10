@@ -16,6 +16,11 @@ void MoveItemCommand::undo()
 
 void MoveItemCommand::redo()
 {
+  if (skipInitialRedo) {
+    skipInitialRedo = false;
+    return;
+  }
+
   for (const auto& move : moves) {
     move.item->setPos(move.newPos);
     move.item->setInitialPosition();
@@ -41,6 +46,11 @@ void MoveWirePointCommand::undo()
 
 void MoveWirePointCommand::redo()
 {
+  if (skipInitialRedo) {
+    skipInitialRedo = false;
+    return;
+  }
+
   if (segment) {
     segment->movePointTo(pointIndex, newPos);
 
@@ -66,6 +76,11 @@ void RotateItemCommand::undo()
 
 void RotateItemCommand::redo()
 {
+  if (skipInitialRedo) {
+    skipInitialRedo = false;
+    return;
+  }
+
   if (component) {
     component->setRotation(newRotation);
     component->setInitialRotation();
