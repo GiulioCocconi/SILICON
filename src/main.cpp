@@ -59,6 +59,12 @@ int siliconMain(int argc, char** argv)
   // Theme
   ThemeEngine::apply(app, SiliconTheme::Mode::Light);
 
+#ifdef __MINGW32__
+  QFont font = QApplication::font();
+  font.setHintingPreference(QFont::PreferNoHinting);
+  QApplication::setFont(font);
+#endif
+
   // Splash screen
   QSplashScreen splashScreen(QPixmap(":/splash.jpg"));
   splashScreen.show();
