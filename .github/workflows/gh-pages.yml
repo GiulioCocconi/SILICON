@@ -37,6 +37,9 @@ jobs:
 
       - name: Build webpage
         working-directory: webpage
+        env:
+          VITE_CLOUDSMITH_OWNER: ${{ vars.CLOUDSMITH_OWNER }}
+          VITE_CLOUDSMITH_RELEASE_REPO: ${{ vars.CLOUDSMITH_RELEASE_REPO }}
         run: bun run build
 
       - name: Prepare Pages site
