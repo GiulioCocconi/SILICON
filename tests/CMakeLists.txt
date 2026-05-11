@@ -22,55 +22,11 @@ add_executable(fstwrapper_tests fstWrapper.cpp)
 add_executable(circuit_tests circuit.cpp)
 add_executable(factory_tests factory.cpp)
 
-
-
-target_sources(logic_tests
-        PRIVATE
-        ${src_dir}/extraComponents/arithmetic.cpp
-        ${src_dir}/extraComponents/utils.cpp
-        ${COMMON_SOURCE_FILES})
-
-
-target_sources(arithmetic_tests
-        PRIVATE
-        ${src_dir}/extraComponents/arithmetic.cpp
-        ${src_dir}/extraComponents/utils.cpp
-        ${COMMON_SOURCE_FILES})
-
-target_sources(utils_tests
-        PRIVATE
-        ${src_dir}/extraComponents/arithmetic.cpp
-        ${src_dir}/extraComponents/utils.cpp
-        ${COMMON_SOURCE_FILES})
-
-target_sources(circuit_tests
-        PRIVATE
-        ${src_dir}/extraComponents/arithmetic.cpp
-        ${src_dir}/extraComponents/utils.cpp
-        ${COMMON_SOURCE_FILES})
-
-target_sources(factory_tests
-        PRIVATE
-        ${src_dir}/extraComponents/arithmetic.cpp
-        ${src_dir}/extraComponents/utils.cpp
-        ${COMMON_SOURCE_FILES})
-
-target_sources(libfst_tests
-        PRIVATE
-        ${src_dir}/extraComponents/arithmetic.cpp
-        ${src_dir}/extraComponents/utils.cpp
-        ${COMMON_SOURCE_FILES})
-
-target_sources(fstwrapper_tests
-        PRIVATE
-        ${src_dir}/extraComponents/arithmetic.cpp
-        ${src_dir}/extraComponents/utils.cpp
-        ${COMMON_SOURCE_FILES})
-
 foreach (target logic_tests arithmetic_tests utils_tests libfst_tests fstwrapper_tests circuit_tests factory_tests)
-    target_link_libraries(${target} GTest::gtest_main GTest::gtest Boost::graph nlohmann_json fst)
+    set_target_properties(${target} PROPERTIES
+            AUTOMOC OFF
+            AUTOUIC OFF
+            AUTORCC OFF)
+    target_link_libraries(${target} GTest::gtest_main GTest::gtest silicon_core)
     gtest_discover_tests(${target})
 endforeach ()
-
-target_link_libraries(libfst_tests fst)
-target_link_libraries(fstwrapper_tests fst)
