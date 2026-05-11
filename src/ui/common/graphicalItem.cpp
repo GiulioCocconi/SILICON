@@ -116,19 +116,26 @@ QVariant GraphicalItem::itemChange(GraphicsItemChange change, const QVariant& va
     }
 
     // Find all graphics items that intersect with our collision rectangle
-    // Filter out: current item, child items, and items without valid types
+    // Filter out: current item, other selected items (as they are moving too), child
+    // items, and items without valid types
+
+    /*  FIXME: Because we are ignoring selected items for the collision check some things
+     * are not allowed (for example moving two different horizzontaly aligned items
+     * against a wall will lead to the overlapping of the two items without triggering
+     * collision detection */
+
     const auto collidingItems =
         scene()->items(newCollisionRect, Qt::IntersectsItemBoundingRect)
         | std::views::filter([this](auto item) {
-            return item != this && !(childItems().contains(item))
-                   && item->type() > UNKNOWN;
+            return !(item == this || item->isSelected() || childItems().contains(item)
+                     || item->type() <= UNKNOWN);
           })
         | std::ranges::to<std::vector>();
 
     QPointF finalPos          = proposedPos;
     bool    collisionRejected = false;
 
-    // Step 6: Analyze each potentially colliding item to determine collision type
+    // Analyze each potentially colliding item to determine collision type
     for (QGraphicsItem* collidingItem : collidingItems) {
       // Initialize containers to categorize the colliding pair
       std::unordered_set<GraphicalComponent*>   componentsInPair;

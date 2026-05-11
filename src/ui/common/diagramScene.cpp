@@ -30,15 +30,13 @@
 
 #include <utils/ranges_wrapper.hpp>
 
+#include <core/serialization/component_registry.hpp>
 #include <ui/common/enums.hpp>
 #include <ui/common/graphicalWire.hpp>
 #include <ui/logiFlow/components/graphicalIO.hpp>
 #include <ui/logiFlow/components/graphicalUtils.hpp>
 #include <ui/logiFlow/logiFlowWindow.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
-
-// ADDED: Missing include for the ComponentRegistry so it is fully defined
-#include <core/serialization/component_registry.hpp>
 
 namespace {
 
