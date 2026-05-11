@@ -231,6 +231,7 @@ QVariant GraphicalItem::itemChange(GraphicsItemChange change, const QVariant& va
 
     const auto ds = dynamic_cast<DiagramScene*>(this->scene());
     connect(ds, &DiagramScene::modeChanged, this, &GraphicalItem::modeChanged);
+    modeChanged(ds->getInteractionMode());
   }
 
   if (change == ItemSelectedChange && isColliding())

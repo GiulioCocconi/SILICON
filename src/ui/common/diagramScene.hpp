@@ -33,6 +33,8 @@
 #include <QStringList>
 #include <QUndoStack>
 
+#include <nlohmann/json.hpp>
+
 #include <core/circuit.hpp>
 #include <core/simulator.hpp>
 
@@ -158,6 +160,17 @@ public:
   [[nodiscard]] std::string serialize() const;
 
   /**
+   * @brief Serializes the selected components and wire segments for clipboard use.
+   *
+   * The returned JSON is an intermediate representation: callers choose the transport
+   * encoding, such as BSON for clipboard operations.
+   *
+   * @return JSON payload containing selected visual items and related core component
+   * state
+   */
+  [[nodiscard]] nlohmann::ordered_json serializeSelection() const;
+
+  /**
    * @brief Deserializes the scene from JSON.
    * @param jsonStr JSON string
    * @param guiFactory Factory for creating graphical components
@@ -165,6 +178,21 @@ public:
    */
   void deserialize(const std::string& jsonStr, GUIComponentFactory& guiFactory,
                    const ComponentRegistry& coreRegistry);
+
+  /**
+   * @brief Inserts a clipboard selection payload into the current scene.
+   *
+   * The payload's top-left origin is mapped to @p targetOrigin. Inserted items are
+   * selected and reconnected through the scene's wire topology.
+   *
+   * @param payload Decoded clipboard payload
+   * @param guiFactory Factory for creating graphical components
+   * @param coreRegistry Registry for creating core components
+   * @param targetOrigin Scene position where the payload origin should be placed
+   * @return True when any item was inserted
+   */
+  bool insertSelection(const nlohmann::json& payload, GUIComponentFactory& guiFactory,
+                       const ComponentRegistry& coreRegistry, QPointF targetOrigin);
 
   void clear();
 

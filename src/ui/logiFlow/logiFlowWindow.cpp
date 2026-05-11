@@ -18,13 +18,18 @@
 
 #include "logiFlowWindow.hpp"
 
+#include <cstdint>
 #include <limits>
 #include <ranges>
 #include <stdexcept>
 #include <variant>
 #include <vector>
 
+#include <QApplication>
 #include <QCheckBox>
+#include <QClipboard>
+#include <QByteArray>
+#include <QCursor>
 #include <QDialog>
 #include <QDockWidget>
 #include <QFileDialog>
@@ -36,6 +41,7 @@
 #include <QLineEdit>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QMimeData>
 #include <QResizeEvent>
 #include <QSignalBlocker>
 #include <QSpinBox>
@@ -51,6 +57,30 @@
 #include <ui/common/waveformViewer.hpp>
 #include <ui/logiFlow/components/graphicalLogicComponent.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
+
+namespace {
+
+// Clipboard data is intentionally BSON-only so partial JSON fallbacks cannot drift
+// from the native LogiFlow selection format.
+constexpr auto LogiFlowSelectionMimeType =
+    "application/vnd.silicon.logiflow-selection+bson";
+
+bool hasClipboardItems(const nlohmann::json& payload)
+{
+  if (!payload.contains("visual") || !payload["visual"].is_object())
+    return false;
+
+  const auto& visual = payload["visual"];
+  const bool  hasComponents =
+      visual.contains("components") && visual["components"].is_array()
+      && !visual["components"].empty();
+  const bool hasWires = visual.contains("wires") && visual["wires"].is_array()
+                        && !visual["wires"].empty();
+
+  return hasComponents || hasWires;
+}
+
+}  // namespace
 
 LogiFlowWindow::~LogiFlowWindow()
 {
@@ -307,6 +337,67 @@ void LogiFlowWindow::resizeEvent(QResizeEvent* event)
 }
 
 /* ACTIONS IMPLEMENTATION */
+
+bool LogiFlowWindow::copySelectionToClipboard()
+{
+  try {
+    const auto payload = diagramScene->serializeSelection();
+    if (!hasClipboardItems(payload))
+      return false;
+
+    const auto bson = nlohmann::json::to_bson(payload);
+    QByteArray bytes(reinterpret_cast<const char*>(bson.data()),
+                     static_cast<qsizetype>(bson.size()));
+
+    auto* mimeData = new QMimeData();
+    mimeData->setData(LogiFlowSelectionMimeType, bytes);
+    QApplication::clipboard()->setMimeData(mimeData);
+
+    return true;
+  } catch (const std::exception&) {
+    return false;
+  }
+}
+
+void LogiFlowWindow::copy()
+{
+  copySelectionToClipboard();
+}
+
+void LogiFlowWindow::paste()
+{
+  // Ignore anything that is not a Silicon LogiFlow selection payload.
+  const QMimeData* mimeData = QApplication::clipboard()->mimeData();
+  if (!mimeData || !mimeData->hasFormat(LogiFlowSelectionMimeType))
+    return;
+
+  const QByteArray bytes = mimeData->data(LogiFlowSelectionMimeType);
+  if (bytes.isEmpty())
+    return;
+
+  try {
+    std::vector<std::uint8_t> bson;
+    bson.reserve(static_cast<size_t>(bytes.size()));
+    for (const char byte : bytes)
+      bson.push_back(static_cast<std::uint8_t>(byte));
+
+    auto& guiFactory   = GUIComponentFactory::instance();
+    auto& coreRegistry = ComponentRegistry::instance();
+    const auto payload = nlohmann::json::from_bson(bson);
+
+    // Pasting changes scene topology, so leave simulation/placement modes first.
+    if (diagramScene->getInteractionMode() != InteractionMode::NORMAL_MODE)
+      diagramScene->setInteractionMode(InteractionMode::NORMAL_MODE);
+
+    const QPointF targetOrigin =
+        diagramView->mapToScene(diagramView->mapFromGlobal(QCursor::pos()));
+    diagramScene->insertSelection(payload, guiFactory, coreRegistry, targetOrigin);
+  } catch (const nlohmann::json::exception&) {
+    return;
+  } catch (const std::exception&) {
+    return;
+  }
+}
 
 void LogiFlowWindow::rotate()
 {

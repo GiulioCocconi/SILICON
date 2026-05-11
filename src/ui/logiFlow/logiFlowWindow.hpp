@@ -53,13 +53,33 @@ private slots:
   void open();
   void save();
   void exportImage() {}
+
+  /**
+   * @brief Copies the current selection to the clipboard, then deletes it.
+   *
+   * Deletion only happens after the selection is successfully serialized into the
+   * application clipboard MIME format.
+   */
   void cut()
   {
-    copy();
-    del();
+    if (copySelectionToClipboard())
+      del();
   }
-  void copy() {}
-  void paste() {}
+
+  /**
+   * @brief Copies the current diagram selection to the clipboard.
+   *
+   * The clipboard payload uses the Silicon LogiFlow BSON MIME format.
+   */
+  void copy();
+
+  /**
+   * @brief Pastes a Silicon LogiFlow selection from the clipboard.
+   *
+   * Invalid, empty, or unrelated clipboard data is ignored.
+   */
+  void paste();
+
   void rotate();
   void del();  // Delete is a CPP keyword
   void about() const;
@@ -80,6 +100,12 @@ private:
   void createMenus();
   void createToolBar();
   void createWaveformWindow();
+
+  /**
+   * @brief Serializes the current selection and stores it on the system clipboard.
+   * @return True when a non-empty selection was copied successfully
+   */
+  bool copySelectionToClipboard();
 
   QToolBar* toolBar;
 
