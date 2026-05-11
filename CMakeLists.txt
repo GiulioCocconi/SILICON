@@ -102,6 +102,7 @@ set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0")
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
 option(SILICON_BUILD_TESTS "Build silicon tests" ON)
 
@@ -140,32 +141,19 @@ endif ()
 find_package(Boost REQUIRED COMPONENTS graph)
 find_package(nlohmann_json REQUIRED)
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets SvgWidgets)
-qt_standard_project_setup()
-
-qt_add_executable(SILICON
-        ${src_dir}/main.cpp)
-
-target_sources(SILICON
-        PRIVATE
-        ${COMMON_SOURCE_FILES}
-        ${EXTRA_COMPONENTS_SOURCE_FILES}
-        ${UI_SOURCE_FILES})
-
-target_compile_options(SILICON PRIVATE -Werror)
-
 add_subdirectory(libfst)
 
-target_link_libraries(SILICON PRIVATE
-        Qt6::Widgets
-        Qt6::SvgWidgets
+add_library(silicon_core STATIC
+        ${COMMON_SOURCE_FILES}
+        ${EXTRA_COMPONENTS_SOURCE_FILES})
+
+target_compile_options(silicon_core PRIVATE -Werror)
+
+target_link_libraries(silicon_core
+        PUBLIC
         fst
         Boost::graph
         nlohmann_json)
-
-set_target_properties(SILICON PROPERTIES
-        # Spawn a console windows (on Windows) only when in debug mode
-        WIN32_EXECUTABLE $<CONFIG:Release>)
 
 if ((CMAKE_CXX_COMPILER_ID MATCHES "Clang") OR EMSCRIPTEN)
     # Some view/ranges features are not yet implemented in clang libc++
@@ -186,8 +174,29 @@ if ((CMAKE_CXX_COMPILER_ID MATCHES "Clang") OR EMSCRIPTEN)
         find_package(range-v3 REQUIRED)
     endif()
 
-    target_link_libraries(SILICON PRIVATE range-v3)
+    target_link_libraries(silicon_core PUBLIC range-v3)
 endif ()
+
+find_package(Qt6 REQUIRED COMPONENTS Widgets SvgWidgets)
+qt_standard_project_setup()
+
+qt_add_executable(SILICON
+        ${src_dir}/main.cpp)
+
+target_sources(SILICON
+        PRIVATE
+        ${UI_SOURCE_FILES})
+
+target_compile_options(SILICON PRIVATE -Werror)
+
+target_link_libraries(SILICON PRIVATE
+        Qt6::Widgets
+        Qt6::SvgWidgets
+        silicon_core)
+
+set_target_properties(SILICON PROPERTIES
+        # Spawn a console windows (on Windows) only when in debug mode
+        WIN32_EXECUTABLE $<CONFIG:Release>)
 
 win_deploy_qt(SILICON)
 
