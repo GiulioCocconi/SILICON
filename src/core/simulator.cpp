@@ -23,6 +23,12 @@
 
 #include <core/component.hpp>
 
+#include <logging/logger.hpp>
+
+namespace {
+Logger simulationLog("simulation");
+}
+
 Simulator::Simulator(std::shared_ptr<Circuit> c, uint64_t initialSimulationTime,
                      bool isInteractive, std::unique_ptr<SiliconFstWriter> fstWriter)
   : circuit(std::move(c)), fstWriter(std::move(fstWriter))
@@ -168,23 +174,30 @@ void Simulator::evaluateBlock(const Circuit::SimulationBlock& block)
     });
 
     if (!isStable) {
-      throw std::runtime_error(
-          "Delta cycle limit exceeded! Unstable zero-delay loop detected.");
+      const std::string errorMsg =
+          "Delta cycle limit exceeded! Unstable zero-delay loop detected.";
+      simulationLog.warning(errorMsg);
+      throw std::runtime_error(errorMsg);
     }
   }
 }
 
 void Simulator::run(uint64_t duration)
 {
-  uint64_t minimumEndTime = currentTime + duration;
+  simulationLog.info(std::format("Running simulation with a duration of {}", duration));
+  const uint64_t minimumEndTime = currentTime + duration;
 
   // Safeguard: Prevent GUI thread freezing if the circuit contains an oscillator.
   // Allows signals to propagate far into the future, but eventually stops.
-  uint64_t safetyTimeout = minimumEndTime + 100000;
+  const uint64_t safetyTimeout = minimumEndTime + 100000;
 
   while (!eventQueue.empty()) {
-    if (eventQueue.top().time > safetyTimeout)
-      break;
+    if (eventQueue.top().time > safetyTimeout) {
+      simulationLog.warning("Simulation time got past timeout but the simulation queue "
+                            "is not empty. This might be an unstable circuit, if that's "
+                            "not the case please increase the safety timeout");
+      return;
+    }
 
     currentTime        = eventQueue.top().time;
     bool inputsChanged = false;
@@ -211,6 +224,8 @@ void Simulator::run(uint64_t duration)
     currentTime = minimumEndTime;
     emitTraceSnapshot();
   }
+
+  simulationLog.info("Circuit state stabilized (simulation complete)");
 }
 
 void Simulator::setBus(Bus bus, unsigned int value)

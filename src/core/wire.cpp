@@ -18,8 +18,9 @@
 #include "wire.hpp"
 
 #include <algorithm>
-#include <iostream>
 #include <stdexcept>
+
+#include <logging/logger.hpp>
 
 State operator&&(const State& a, const State& b)
 {
@@ -116,8 +117,10 @@ void Wire::setCurrentState(const State newState, const Component_weakPtr& reques
 
   const bool changeIsAuthorized = this->authorizedComponent.lock() == requestedBy.lock();
 
-  if (!changeIsAuthorized)
-    std::cout << "Change not authorized\n";
+  if (!changeIsAuthorized) {
+    static const Logger log("wire");
+    log.error("Unauthorized wire state change detected");
+  }
 
   this->forceSetCurrentState(changeIsAuthorized ? newState : State::ERROR);
 }

@@ -25,7 +25,10 @@
 #include <QMainWindow>
 #include <QSplashScreen>
 
+#include <iostream>
+
 #include <core/serialization/component_registration.hpp>
+#include <logging/logger.hpp>
 
 #include <ui/common/icons.hpp>
 #include <ui/common/theme.hpp>
@@ -34,6 +37,10 @@
 
 int siliconMain(int argc, char** argv)
 {
+  Logger::initialize();
+  Logger::addConsoleSink(std::clog);
+  Logger::setMinimumLevel(LogLevel::Debug);
+
   QApplication app(argc, argv);
   QApplication::setApplicationName("SILICON");
   QApplication::setStyle("Fusion");
@@ -84,8 +91,15 @@ int siliconMain(int argc, char** argv)
   lfWin.resize(QGuiApplication::primaryScreen()->size() * 0.6);
   lfWin.show();
 
+  Logger::setMinimumLevel(LogLevel::Debug);
+
+  Logger uiLog("ui");
+  uiLog.info("SILICON UI started");
+
   splashScreen.finish(&lfWin);
-  return QApplication::exec();
+  const int exitCode = QApplication::exec();
+  Logger::shutdown();
+  return exitCode;
 }
 
 int main(int argc, char** argv)

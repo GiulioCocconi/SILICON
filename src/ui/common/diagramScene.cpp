@@ -33,6 +33,8 @@
 
 #include <utils/ranges_wrapper.hpp>
 
+#include <logging/logger.hpp>
+
 #include <core/serialization/component_registry.hpp>
 #include <ui/common/enums.hpp>
 #include <ui/common/graphicalWire.hpp>
@@ -43,6 +45,8 @@
 #include <ui/serialization/gui_component_factory.hpp>
 
 namespace {
+
+Logger uiLogger("ui scene");
 
 std::string componentNameOr(const Component_ptr& component, const std::string& fallback)
 {
@@ -981,10 +985,17 @@ QUndoStack* DiagramScene::getUndoStack() const
   return lfw->getUndoStack();
 }
 
+LogSideView* DiagramScene::getLogSideView() const
+{
+  const auto lfw = qobject_cast<LogiFlowWindow*>(views().first()->window());
+  return lfw->getLogSideView();
+}
+
 // --- Serialization ---------------------------------------------------------------------
 
 std::string DiagramScene::serialize() const
 {
+  uiLogger.info("Serializing the scene...");
   nlohmann::ordered_json   j;
   std::shared_ptr<Circuit> activeCircuit = circuit;
 
@@ -1278,6 +1289,9 @@ void DiagramScene::clear()
 
   if (getUndoStack())
     getUndoStack()->clear();
+
+  if (getLogSideView())
+    getLogSideView()->clear();
 
   QGraphicsScene::clear();
 }

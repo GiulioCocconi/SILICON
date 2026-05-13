@@ -24,10 +24,18 @@
 #include <core/component.hpp>
 #include <core/serialization/component_registry.hpp>
 
+#include <logging/logger.hpp>
+
 #include <boost/graph/strong_components.hpp>
 #include <boost/graph/topological_sort.hpp>
 
 #include <nlohmann/json.hpp>
+
+namespace {
+
+Logger circuitLog("circuit");
+
+}
 
 // --- Topology Observers & Live Editing -------------------------------------------------
 
@@ -514,6 +522,7 @@ std::vector<Component_weakPtr> Circuit::topologicalOrder() const
   order.reserve(boost::num_vertices(graph));
 
   try {
+    circuitLog.debug("Topologically sorting the circuit...");
     boost::topological_sort(graph, std::back_inserter(order));
   } catch (const boost::not_a_dag&) {
     return {};
@@ -532,6 +541,7 @@ std::vector<Component_weakPtr> Circuit::topologicalOrder() const
 
 std::vector<Circuit::SimulationBlock> Circuit::splitCyclic() const
 {
+  circuitLog.debug("Splitting the circuit in cyclic and acyclic blocks...");
   const auto n = boost::num_vertices(graph);
 
   // Early exit: Avoids allocating maps and vectors if there's nothing to process.
@@ -612,6 +622,7 @@ std::vector<Circuit::SimulationBlock> Circuit::splitCyclic() const
 
   // Finalize the final DAG tail (that's present if the circuit ends with a DAG block)
   flushDag();
+  circuitLog.debug(std::format("Found {} blocks!", blocks.size()));
   return blocks;
 }
 

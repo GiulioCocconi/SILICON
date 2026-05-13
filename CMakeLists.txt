@@ -76,6 +76,8 @@ set(EXTRA_COMPONENTS_SOURCE_FILES
         ${src_dir}/extraComponents/utils.cpp)
 
 set(UI_SOURCE_FILES
+        ${src_dir}/ui/common/graphicalLogStream.cpp
+        ${src_dir}/ui/common/logSideView.cpp
         ${src_dir}/ui/common/theme.cpp
         ${src_dir}/ui/common/componentSearchBox.cpp
         ${src_dir}/ui/common/diagramView.cpp
@@ -138,10 +140,21 @@ if (UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
 endif ()
 
 
-find_package(Boost REQUIRED COMPONENTS graph)
+find_package(Boost REQUIRED COMPONENTS graph log log_setup thread)
 find_package(nlohmann_json REQUIRED)
 
 add_subdirectory(libfst)
+
+add_library(silicon_logging STATIC
+        ${src_dir}/logging/logger.cpp)
+
+target_compile_options(silicon_logging PRIVATE -Werror)
+
+target_link_libraries(silicon_logging
+        PUBLIC
+        Boost::log
+        Boost::log_setup
+        Boost::thread)
 
 add_library(silicon_core STATIC
         ${COMMON_SOURCE_FILES}
@@ -153,6 +166,7 @@ target_link_libraries(silicon_core
         PUBLIC
         fst
         Boost::graph
+        silicon_logging
         nlohmann_json)
 
 if ((CMAKE_CXX_COMPILER_ID MATCHES "Clang") OR EMSCRIPTEN)
