@@ -274,7 +274,8 @@ std::string GraphicalComponent::getTypeName() const
 
 nlohmann::ordered_json GraphicalComponent::serialize() const
 {
-  return {{"position", {{"x", pos().x()}, {"y", pos().y()}}},
+  return {{"uiId", getUiId()},
+          {"position", {{"x", pos().x()}, {"y", pos().y()}}},
           {"rotation", static_cast<int>(rotation())}};
 }
 
@@ -296,6 +297,9 @@ GraphicalComponent::deserialize(const nlohmann::json& j, GUIComponentFactory& fa
     const auto& posJson = j["position"];
     component->setPos(posJson.value("x", 0.0), posJson.value("y", 0.0));
   }
+
+  if (j.contains("uiId"))
+    component->setUiId(j["uiId"].get<uint64_t>());
 
   component->setRotation(j.value("rotation", 0.0));
 

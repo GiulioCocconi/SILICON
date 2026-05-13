@@ -18,6 +18,7 @@
 
 #include "graphicalItem.hpp"
 
+#include <atomic>
 #include <stdexcept>
 #include <utility>
 
@@ -29,11 +30,28 @@
 #include <ui/common/undoCommands.hpp>
 #include <ui/logiFlow/logiFlowWindow.hpp>
 
+namespace {
+
+std::atomic<uint64_t> NextGraphicalItemUiId = 1;
+
+}
+
 GraphicalItem::GraphicalItem(ItemCategory category, QGraphicsItem* parent)
-  : QGraphicsObject(parent)
+  : QGraphicsObject(parent), uiId(generateUiId())
 {
   setData(std::to_underlying(ItemDataRole::Category),
           std::to_underlying(category | ItemCategory::GraphicalItem));
+}
+
+GraphicalItem::~GraphicalItem()
+{
+  if (owningScene)
+    owningScene->unregisterGraphicalItem(this);
+}
+
+uint64_t GraphicalItem::generateUiId()
+{
+  return NextGraphicalItemUiId.fetch_add(1, std::memory_order_relaxed);
 }
 
 void GraphicalItem::setCollidingStatus(const CollidingStatus newStatus)
@@ -90,9 +108,23 @@ void GraphicalItem::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
 
 QVariant GraphicalItem::itemChange(GraphicsItemChange change, const QVariant& value)
 {
-  // Early exit if item is not yet added to a scene
-  if (!scene())
+  auto* ds = dynamic_cast<DiagramScene*>(scene());
+  if (!ds)
     return QGraphicsItem::itemChange(change, value);
+
+  if (change == ItemSceneHasChanged) {
+    // Keep the scene lookup table in sync as Qt reparents/moves items between scenes.
+    if (owningScene != ds) {
+      if (owningScene)
+        owningScene->unregisterGraphicalItem(this);
+
+      ds->registerGraphicalItem(this);
+      connect(ds, &DiagramScene::modeChanged, this, &GraphicalItem::modeChanged,
+              Qt::UniqueConnection);
+    }
+
+    modeChanged(ds->getInteractionMode());
+  }
 
   if (change == ItemPositionChange) {
     // ==== Collision detection ====
@@ -232,13 +264,6 @@ QVariant GraphicalItem::itemChange(GraphicsItemChange change, const QVariant& va
     }
 
     return finalPos;
-  } else if (change == ItemSceneHasChanged) {
-    // Connect the modeChanged from the new scene (only one scene during the object
-    // lifetime is supported)
-
-    const auto ds = dynamic_cast<DiagramScene*>(this->scene());
-    connect(ds, &DiagramScene::modeChanged, this, &GraphicalItem::modeChanged);
-    modeChanged(ds->getInteractionMode());
   }
 
   if (change == ItemSelectedChange && isColliding())

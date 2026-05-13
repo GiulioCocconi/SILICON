@@ -1,34 +1,36 @@
 #pragma once
 
+#include <QByteArray>
 #include <QPointF>
 #include <QUndoCommand>
 #include <vector>
+
+#include <nlohmann/json.hpp>
 
 #include <ui/common/graphicalWire.hpp>
 
 class GraphicalItem;
 class GraphicalComponent;
+class DiagramScene;
 
 class MoveItemCommand : public QUndoCommand {
 public:
   explicit MoveItemCommand(QUndoCommand* parent = nullptr) : QUndoCommand(parent)
   {
-    setText("Move Component(s)");
+    setText("Move Item(s)");
   }
 
-  void addItemMove(GraphicalItem* item, const QPointF& oldPos, const QPointF& newPos)
-  {
-    moves.push_back({item, oldPos, newPos});
-  }
+  void addItemMove(GraphicalItem* item, const QPointF& oldPos, const QPointF& newPos);
 
   void undo() override;
   void redo() override;
 
 private:
   struct ItemMove {
-    GraphicalItem* item;
-    QPointF        oldPos;
-    QPointF        newPos;
+    DiagramScene* scene;
+    uint64_t      uiId;
+    QPointF       oldPos;
+    QPointF       newPos;
   };
   std::vector<ItemMove> moves;
   bool                  skipInitialRedo = true;
@@ -38,45 +40,55 @@ class MoveWirePointCommand : public QUndoCommand {
 public:
   explicit MoveWirePointCommand(GraphicalWireSegment* segment, size_t pointIndex,
                                 const QPointF& oldPos, const QPointF& newPos,
-                                QUndoCommand* parent = nullptr)
-    : QUndoCommand(parent),
-      segment(segment),
-      pointIndex(pointIndex),
-      oldPos(oldPos),
-      newPos(newPos)
-  {
-    setText("Move Wire Point");
-  }
+                                QUndoCommand* parent = nullptr);
 
   void undo() override;
   void redo() override;
 
 private:
-  GraphicalWireSegment* segment;
-  size_t                pointIndex;
-  QPointF               oldPos;
-  QPointF               newPos;
-  bool                  skipInitialRedo = true;
+  DiagramScene* scene;
+  uint64_t      uiId;
+  size_t        pointIndex;
+  QPointF       oldPos;
+  QPointF       newPos;
+  bool          skipInitialRedo = true;
 };
 
 class RotateItemCommand : public QUndoCommand {
 public:
   explicit RotateItemCommand(GraphicalComponent* component, qreal oldRotation,
-                             qreal newRotation, QUndoCommand* parent = nullptr)
-    : QUndoCommand(parent),
-      component(component),
-      oldRotation(oldRotation),
-      newRotation(newRotation)
-  {
-    setText("Rotate Component");
-  }
+                             qreal newRotation, QUndoCommand* parent = nullptr);
 
   void undo() override;
   void redo() override;
 
 private:
-  GraphicalComponent* component;
-  qreal               oldRotation;
-  qreal               newRotation;
-  bool                skipInitialRedo = true;
+  DiagramScene* scene;
+  uint64_t      uiId;
+  qreal         oldRotation;
+  qreal         newRotation;
+  bool          skipInitialRedo = true;
+};
+
+class SceneSelectionCommand : public QUndoCommand {
+public:
+  enum class Operation { Add, Remove };
+
+  SceneSelectionCommand(DiagramScene* scene, const nlohmann::json& payload,
+                        Operation operation, bool skipInitialRedo = false,
+                        QUndoCommand* parent = nullptr);
+
+  void undo() override;
+  void redo() override;
+
+private:
+  [[nodiscard]] nlohmann::json payload() const;
+  static QByteArray            encodePayload(const nlohmann::json& payload);
+  static nlohmann::json        decodePayload(const QByteArray& payload);
+  static QPointF               payloadOrigin(const nlohmann::json& payload);
+
+  DiagramScene* scene;
+  QByteArray    bsonPayload;
+  Operation     operation;
+  bool          skipInitialRedo;
 };
