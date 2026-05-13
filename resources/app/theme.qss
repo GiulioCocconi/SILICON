@@ -26,7 +26,7 @@ QLabel[heading="true"], QLabel#titleLabel {
 }
 
 QTextEdit.mono, QPlainTextEdit, QLabel.mono {
-    font-family: "Nova Mono";
+    font-family: "NovaMono";
 }
 
 /* --- SILICON CARD --- */

@@ -21,12 +21,13 @@ add_executable(libfst_tests fstlib.cpp)
 add_executable(fstwrapper_tests fstWrapper.cpp)
 add_executable(circuit_tests circuit.cpp)
 add_executable(factory_tests factory.cpp)
+add_executable(logger_tests logger.cpp)
 
-foreach (target logic_tests arithmetic_tests utils_tests libfst_tests fstwrapper_tests circuit_tests factory_tests)
+foreach (target logic_tests arithmetic_tests utils_tests libfst_tests fstwrapper_tests circuit_tests factory_tests logger_tests)
     set_target_properties(${target} PROPERTIES
             AUTOMOC OFF
             AUTOUIC OFF
             AUTORCC OFF)
-    target_link_libraries(${target} GTest::gtest_main GTest::gtest silicon_core)
+    target_link_libraries(${target} GTest::gtest_main GTest::gtest silicon_core silicon_logging)
     gtest_discover_tests(${target})
 endforeach ()

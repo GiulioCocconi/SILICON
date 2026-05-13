@@ -52,7 +52,10 @@
 #include <QVBoxLayout>
 
 #include <core/serialization/component_registry.hpp>
+#include <logging/logger.hpp>
+#include <ui/common/graphicalLogStream.hpp>
 #include <ui/common/icons.hpp>
+#include <ui/common/logSideView.hpp>
 #include <ui/common/undoCommands.hpp>
 #include <ui/common/waveformViewer.hpp>
 #include <ui/logiFlow/components/graphicalLogicComponent.hpp>
@@ -80,6 +83,8 @@ bool hasClipboardItems(const nlohmann::json& payload)
   return hasComponents || hasWires;
 }
 
+Logger uiLog("ui");
+
 }  // namespace
 
 LogiFlowWindow::~LogiFlowWindow()
@@ -100,16 +105,22 @@ LogiFlowWindow::LogiFlowWindow()
 
   componentsDock = new QDockWidget(this);
   propertyDock   = new QDockWidget(this);
+  logDock        = new QDockWidget(this);
   waveformWindow = nullptr;
 
   addDockWidget(Qt::LeftDockWidgetArea, componentsDock);
   addDockWidget(Qt::LeftDockWidgetArea, propertyDock);
+  addDockWidget(Qt::BottomDockWidgetArea, logDock);
 
   propertyDock->setFeatures(QDockWidget::DockWidgetMovable);
   componentsDock->setFeatures(QDockWidget::DockWidgetMovable);
+  logDock->setFeatures(QDockWidget::DockWidgetMovable);
+  logDock->setAllowedAreas(Qt::BottomDockWidgetArea | Qt::TopDockWidgetArea);
 
   propertyDock->setWindowTitle("Properties");
   componentsDock->setWindowTitle("Components");
+  logDock->setWindowTitle("Logs");
+
   splitDockWidget(componentsDock, propertyDock, Qt::Vertical);
 
   diagramScene = new DiagramScene(this);
@@ -133,10 +144,25 @@ LogiFlowWindow::LogiFlowWindow()
   createToolBar();
   createWaveformWindow();
 
+  logSideView        = new LogSideView(logDock);
+  graphicalLogStream = new GraphicalLogStream(this);
+  logDock->setWidget(logSideView);
+  logDock->setMinimumHeight(logSideView->minimumSizeHint().height());
+  logDock->resize(width(), logSideView->sizeHint().height());
+
+  connect(graphicalLogStream, &GraphicalLogStream::lineReceived, logSideView,
+          &LogSideView::appendLine, Qt::QueuedConnection);
+  graphicalLogStream->attachToBoostLog();
+
+  resizeDocks({componentsDock, propertyDock}, {320, 260}, Qt::Vertical);
+  resizeDocks({logDock}, {180}, Qt::Vertical);
+
   setWindowTitle(tr("SILICON LogiFlow"));
   setMinimumSize(160, 160);
 
   updatePropertyDock();
+
+  uiLog.info("Qt logging sideview initialized");
 }
 void LogiFlowWindow::createActions()
 {
@@ -333,6 +359,11 @@ void LogiFlowWindow::resizeEvent(QResizeEvent* event)
 
   configureSizeConstraints(componentsDock);
   configureSizeConstraints(propertyDock);
+
+  logDock->setMinimumWidth(160);
+  logDock->setMaximumWidth(QWIDGETSIZE_MAX);
+  logDock->setMinimumHeight(120);
+  logDock->setMaximumHeight(std::max(160, currentHeight / 3));
 }
 
 /* ACTIONS IMPLEMENTATION */
@@ -464,6 +495,8 @@ void LogiFlowWindow::open()
   if (fileName.isEmpty()) {
     return;
   }
+
+  uiLog.info(std::format("Opening {}", fileName.toStdString()));
 
   // 2. Open the file for reading
   QFile file(fileName);

@@ -23,6 +23,8 @@
 #include <QUndoStack>
 
 class QDialog;
+class GraphicalLogStream;
+class LogSideView;
 class WaveformViewer;
 
 #include <ui/common/aboutDialog.hpp>
@@ -41,6 +43,7 @@ public:
   ~LogiFlowWindow() override;
 
   [[nodiscard]] QUndoStack* getUndoStack() const { return this->undoStack; }
+  [[nodiscard]] LogSideView* getLogSideView() const { return this->logSideView; }
 
 protected:
 #ifndef QT_NO_CONTEXTMENU
@@ -111,9 +114,12 @@ private:
 
   QDockWidget* componentsDock;
   QDockWidget* propertyDock;
+  QDockWidget* logDock;
 
   QDialog*        waveformWindow;
   WaveformViewer* waveformViewer;
+  LogSideView*        logSideView;
+  GraphicalLogStream* graphicalLogStream;
 
   DiagramScene* diagramScene;
   DiagramView*  diagramView;

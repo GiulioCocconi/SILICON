@@ -47,6 +47,8 @@ if (SILICON_USE_VCPKG AND NOT USING_NIX)
         set(VCPKG_EXECUTABLE "${vcpkg_SOURCE_DIR}/vcpkg")
     endif ()
 
+
+
     # TODO: Differenciate between build-types in order to download release or debug dependencies but not both
     if (CMAKE_BUILD_TYPE STREQUAL "Debug")
         set(VCPKG_BUILD_TYPE "debug")
@@ -82,7 +84,19 @@ if (SILICON_USE_VCPKG AND NOT USING_NIX)
             message(FATAL_ERROR "Cannot find Emscripten CMake toolchain at: ${_EMSCRIPTEN_TOOLCHAIN}")
         endif ()
 
-        set(VCPKG_CHAINLOAD_TOOLCHAIN_FILE "${_EMSCRIPTEN_TOOLCHAIN}")
+        set(VCPKG_CHAINLOAD_TOOLCHAIN_FILE "${_EMSCRIPTEN_TOOLCHAIN}" CACHE FILEPATH "" FORCE)
+
+        # boost-log is marked unsupported for emscripten (because of threading), ignore the mark
+        list(FIND VCPKG_INSTALL_OPTIONS "--allow-unsupported" _SILICON_ALLOW_UNSUPPORTED_INDEX)
+        if (_SILICON_ALLOW_UNSUPPORTED_INDEX EQUAL -1)
+            list(APPEND VCPKG_INSTALL_OPTIONS "--allow-unsupported")
+        endif ()
+
+        set(VCPKG_INSTALL_OPTIONS "${VCPKG_INSTALL_OPTIONS}" CACHE STRING "Additional options passed to vcpkg install" FORCE)
+
+        message(STATUS "VCPKG_INSTALL_OPTIONS=${VCPKG_INSTALL_OPTIONS}")
+
+        unset(_SILICON_ALLOW_UNSUPPORTED_INDEX)
     endif ()
 
     # Enable Manifest Mode (uses vcpkg.json)

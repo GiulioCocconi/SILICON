@@ -18,6 +18,8 @@
 
 #pragma once
 
+#include "logSideView.hpp"
+
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -155,6 +157,7 @@ public:
   static constexpr int GRID_SIZE = 10;
 
   [[nodiscard]] QUndoStack* getUndoStack() const;
+  [[nodiscard]] LogSideView* getLogSideView() const;
 
   /**
    * @brief Serializes the scene to JSON.
