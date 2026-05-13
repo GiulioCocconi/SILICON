@@ -588,6 +588,7 @@ GraphicalWireSegment::~GraphicalWireSegment()
 nlohmann::ordered_json GraphicalWireSegment::serialize() const
 {
   nlohmann::ordered_json j;
+  j["uiId"] = getUiId();
 
   auto jsonPoints = points | std::views::transform([](const QPointF& p) {
                       return nlohmann::ordered_json{{"x", p.x()}, {"y", p.y()}};

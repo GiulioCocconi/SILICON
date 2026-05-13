@@ -24,11 +24,12 @@
 #include <QRectF>
 #include <QTransform>
 
-#include <ui/common/diagramScene.hpp>
-#include <ui/common/enums.hpp>
-
+#include <cstdint>
 #include <unordered_set>
 #include <vector>
+
+#include <ui/common/diagramScene.hpp>
+#include <ui/common/enums.hpp>
 
 class DiagramScene;
 class GraphicalComponent;
@@ -62,6 +63,7 @@ class GraphicalItem : public QGraphicsObject {
 public:
   explicit GraphicalItem(ItemCategory   category = ItemCategory::GraphicalItem,
                          QGraphicsItem* parent   = nullptr);
+  ~GraphicalItem() override;
 
   /**
    * @brief Sets the collision status.
@@ -92,6 +94,7 @@ public:
   [[nodiscard]] QPointF getInitialPosition() const { return initialPosition; }
 
   [[nodiscard]] qreal getInitialRotation() const { return initialRotation; }
+  [[nodiscard]] uint64_t getUiId() const { return uiId; }
 
   /**
    * @brief Sets the initialPosition of the item to its current position (should be used
@@ -100,6 +103,10 @@ public:
   void setInitialPosition() { this->initialPosition = pos(); }
 
   void setInitialRotation() { this->initialRotation = rotation(); }
+  void setUiId(uint64_t newUiId) { uiId = newUiId; }
+  void setOwningScene(DiagramScene* scene) { owningScene = scene; }
+
+  [[nodiscard]] static uint64_t generateUiId();
 
   virtual void updateTopology() {}
 
@@ -147,4 +154,10 @@ private:
 
   /** @brief Initial rotation before a rotate action starts */
   qreal initialRotation = 0;
+
+  /** @brief Stable runtime identifier used by DiagramScene payloads */
+  uint64_t uiId = 0;
+
+  /** @brief Scene used for `uiId` registration bookkeeping during destruction */
+  DiagramScene* owningScene = nullptr;
 };

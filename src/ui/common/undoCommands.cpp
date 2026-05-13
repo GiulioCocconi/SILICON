@@ -3,14 +3,62 @@
 #include "graphicalItem.hpp"
 #include "wireManager.hpp"
 
+#include <cstdint>
+#include <utility>
+
+#include <core/serialization/component_registry.hpp>
+#include <ui/common/diagramScene.hpp>
+#include <ui/serialization/gui_component_factory.hpp>
+
+namespace {
+
+DiagramScene* itemScene(const QGraphicsItem* item)
+{
+  if (!item || !item->scene())
+    return nullptr;
+  return qobject_cast<DiagramScene*>(item->scene());
+}
+
+GraphicalItem* findItem(DiagramScene* scene, const uint64_t uiId)
+{
+  if (!scene)
+    return nullptr;
+  return scene->findGraphicalItemByUiId(uiId);
+}
+
+GraphicalWireSegment* findWireSegment(DiagramScene* scene, const uint64_t uiId)
+{
+  return dynamic_cast<GraphicalWireSegment*>(findItem(scene, uiId));
+}
+
+GraphicalComponent* findComponent(DiagramScene* scene, const uint64_t uiId)
+{
+  return dynamic_cast<GraphicalComponent*>(findItem(scene, uiId));
+}
+
+}  // namespace
+
 // --- MoveItemCommand ---
+
+void MoveItemCommand::addItemMove(GraphicalItem* item, const QPointF& oldPos,
+                                  const QPointF& newPos)
+{
+  if (!item)
+    return;
+
+  // Commands store scene + uiId instead of raw item pointers so undo survives
+  // delete/recreate cycles triggered by selection-level commands.
+  moves.push_back({itemScene(item), item->getUiId(), oldPos, newPos});
+}
 
 void MoveItemCommand::undo()
 {
   for (const auto& move : moves) {
-    move.item->setPos(move.oldPos);
-    move.item->setInitialPosition();
-    move.item->updateTopology();
+    if (auto* item = findItem(move.scene, move.uiId)) {
+      item->setPos(move.oldPos);
+      item->setInitialPosition();
+      item->updateTopology();
+    }
   }
 }
 
@@ -22,17 +70,32 @@ void MoveItemCommand::redo()
   }
 
   for (const auto& move : moves) {
-    move.item->setPos(move.newPos);
-    move.item->setInitialPosition();
-    move.item->updateTopology();
+    if (auto* item = findItem(move.scene, move.uiId)) {
+      item->setPos(move.newPos);
+      item->setInitialPosition();
+      item->updateTopology();
+    }
   }
 }
 
 // --- MoveWirePointCommand ---
 
+MoveWirePointCommand::MoveWirePointCommand(GraphicalWireSegment* segment,
+                                           const size_t pointIndex, const QPointF& oldPos,
+                                           const QPointF& newPos, QUndoCommand* parent)
+  : QUndoCommand(parent),
+    scene(itemScene(segment)),
+    uiId(segment ? segment->getUiId() : 0),
+    pointIndex(pointIndex),
+    oldPos(oldPos),
+    newPos(newPos)
+{
+  setText("Move Wire Point");
+}
+
 void MoveWirePointCommand::undo()
 {
-  if (segment) {
+  if (auto* segment = findWireSegment(scene, uiId)) {
     segment->movePointTo(pointIndex, oldPos);
 
     // Update topology for point modification
@@ -51,7 +114,7 @@ void MoveWirePointCommand::redo()
     return;
   }
 
-  if (segment) {
+  if (auto* segment = findWireSegment(scene, uiId)) {
     segment->movePointTo(pointIndex, newPos);
 
     // Update topology for point modification
@@ -65,9 +128,21 @@ void MoveWirePointCommand::redo()
 
 // --- RotateItemCommand ---
 
+RotateItemCommand::RotateItemCommand(GraphicalComponent* component,
+                                     const qreal oldRotation, const qreal newRotation,
+                                     QUndoCommand* parent)
+  : QUndoCommand(parent),
+    scene(itemScene(component)),
+    uiId(component ? component->getUiId() : 0),
+    oldRotation(oldRotation),
+    newRotation(newRotation)
+{
+  setText("Rotate Component");
+}
+
 void RotateItemCommand::undo()
 {
-  if (component) {
+  if (auto* component = findComponent(scene, uiId)) {
     component->setRotation(oldRotation);
     component->setInitialRotation();
     component->update();
@@ -81,9 +156,97 @@ void RotateItemCommand::redo()
     return;
   }
 
-  if (component) {
+  if (auto* component = findComponent(scene, uiId)) {
     component->setRotation(newRotation);
     component->setInitialRotation();
     component->update();
   }
+}
+
+// --- SceneSelectionCommand ---
+
+SceneSelectionCommand::SceneSelectionCommand(DiagramScene*         scene,
+                                             const nlohmann::json& payload,
+                                             const Operation       operation,
+                                             const bool            skipInitialRedo,
+                                             QUndoCommand*         parent)
+  : QUndoCommand(parent),
+    scene(scene),
+    bsonPayload(encodePayload(payload)),
+    operation(operation),
+    skipInitialRedo(skipInitialRedo)
+{
+  setText(operation == Operation::Add ? "Add Selection" : "Remove Selection");
+}
+
+nlohmann::json SceneSelectionCommand::payload() const
+{
+  return decodePayload(bsonPayload);
+}
+
+QByteArray SceneSelectionCommand::encodePayload(const nlohmann::json& payload)
+{
+  const auto bson = nlohmann::json::to_bson(payload);
+  return {reinterpret_cast<const char*>(bson.data()),
+          static_cast<QByteArray::size_type>(bson.size())};
+}
+
+nlohmann::json SceneSelectionCommand::decodePayload(const QByteArray& payload)
+{
+  const auto* ptr = reinterpret_cast<const std::uint8_t*>(payload.constData());
+  return nlohmann::json::from_bson(ptr, ptr + payload.size());
+}
+
+QPointF SceneSelectionCommand::payloadOrigin(const nlohmann::json& payload)
+{
+  if (!payload.contains("origin") || !payload["origin"].is_object())
+    return {};
+
+  return {payload["origin"].value("x", 0.0), payload["origin"].value("y", 0.0)};
+}
+
+void SceneSelectionCommand::undo()
+{
+  if (!scene)
+    return;
+
+  if (scene->getInteractionMode() != InteractionMode::NORMAL_MODE)
+    scene->setInteractionMode(InteractionMode::NORMAL_MODE);
+
+  const auto selectionPayload = payload();
+
+  if (operation == Operation::Add) {
+    // Undoing an insertion removes the exact serialized objects by their stable UI ids.
+    scene->removeSelection(selectionPayload);
+    return;
+  }
+
+  scene->insertSelection(selectionPayload, GUIComponentFactory::instance(),
+                         ComponentRegistry::instance(), payloadOrigin(selectionPayload));
+}
+
+void SceneSelectionCommand::redo()
+{
+  if (!scene)
+    return;
+
+  if (skipInitialRedo) {
+    skipInitialRedo = false;
+    return;
+  }
+
+  if (scene->getInteractionMode() != InteractionMode::NORMAL_MODE)
+    scene->setInteractionMode(InteractionMode::NORMAL_MODE);
+
+  const auto selectionPayload = payload();
+
+  if (operation == Operation::Add) {
+    // Redo rebuilds the serialized selection in place without generating fresh paste ids.
+    scene->insertSelection(selectionPayload, GUIComponentFactory::instance(),
+                           ComponentRegistry::instance(),
+                           payloadOrigin(selectionPayload));
+    return;
+  }
+
+  scene->removeSelection(selectionPayload);
 }

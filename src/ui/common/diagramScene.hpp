@@ -18,9 +18,11 @@
 
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <QCursor>
@@ -42,6 +44,7 @@
 #include <ui/common/wireManager.hpp>
 
 class GraphicalComponent;
+class GraphicalItem;
 class GraphicalWireSegment;
 class GUIComponentFactory;
 
@@ -165,10 +168,25 @@ public:
    * The returned JSON is an intermediate representation: callers choose the transport
    * encoding, such as BSON for clipboard operations.
    *
+   * @note Uses serializeItems internally
+   *
    * @return JSON payload containing selected visual items and related core component
    * state
    */
   [[nodiscard]] nlohmann::ordered_json serializeSelection() const;
+
+  /**
+   * @brief Serializes arbitrary scene items using the internal selection payload format.
+   *
+   * @param sceneItems Items to serialize
+   * @return JSON payload containing the provided items and related core component state
+   */
+  [[nodiscard]] nlohmann::ordered_json
+  serializeItems(const std::vector<QGraphicsItem*>& sceneItems) const;
+
+  [[nodiscard]] GraphicalItem* findGraphicalItemByUiId(uint64_t uiId) const;
+  void                         registerGraphicalItem(GraphicalItem* item);
+  void                         unregisterGraphicalItem(GraphicalItem* item);
 
   /**
    * @brief Deserializes the scene from JSON.
@@ -189,10 +207,30 @@ public:
    * @param guiFactory Factory for creating graphical components
    * @param coreRegistry Registry for creating core components
    * @param targetOrigin Scene position where the payload origin should be placed
+   * @param isPaste True iff is called by a paste action, remaps items ids
    * @return True when any item was inserted
    */
   bool insertSelection(const nlohmann::json& payload, GUIComponentFactory& guiFactory,
-                       const ComponentRegistry& coreRegistry, QPointF targetOrigin);
+                       const ComponentRegistry& coreRegistry, QPointF targetOrigin,
+                       bool isPaste = false);
+
+  /**
+   * @brief Removes the given scene items and refreshes the logical topology.
+   *
+   * Callers should pass only top-level user-editable items.
+   */
+  void removeItems(const std::vector<QGraphicsItem*>& sceneItems);
+
+  /**
+   * @brief Removes items matching a serialized selection payload from the current scene.
+   *
+   * Matching is performed against the same visual serialization used for clipboard and
+   * undo operations.
+   *
+   * @param payload Serialized selection payload
+   * @return True when any matching item was removed
+   */
+  bool removeSelection(const nlohmann::json& payload);
 
   void clear();
 
@@ -317,6 +355,9 @@ private:
 
   /** @brief Underlying logic circuit model */
   std::shared_ptr<Circuit> circuit;
+
+  /** @brief O(1) lookup table for runtime graphical items by stable UI id */
+  std::unordered_map<uint64_t, GraphicalItem*> itemsByUiId;
 
   /** @brief Logic simulation engine */
   std::unique_ptr<Simulator> simulator;

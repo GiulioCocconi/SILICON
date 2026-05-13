@@ -26,9 +26,9 @@
 #include <vector>
 
 #include <QApplication>
+#include <QByteArray>
 #include <QCheckBox>
 #include <QClipboard>
-#include <QByteArray>
 #include <QCursor>
 #include <QDialog>
 #include <QDockWidget>
@@ -70,12 +70,12 @@ bool hasClipboardItems(const nlohmann::json& payload)
   if (!payload.contains("visual") || !payload["visual"].is_object())
     return false;
 
-  const auto& visual = payload["visual"];
-  const bool  hasComponents =
-      visual.contains("components") && visual["components"].is_array()
-      && !visual["components"].empty();
-  const bool hasWires = visual.contains("wires") && visual["wires"].is_array()
-                        && !visual["wires"].empty();
+  const auto& visual        = payload["visual"];
+  const bool  hasComponents = visual.contains("components")
+                             && visual["components"].is_array()
+                             && !visual["components"].empty();
+  const bool hasWires =
+      visual.contains("wires") && visual["wires"].is_array() && !visual["wires"].empty();
 
   return hasComponents || hasWires;
 }
@@ -110,7 +110,6 @@ LogiFlowWindow::LogiFlowWindow()
 
   propertyDock->setWindowTitle("Properties");
   componentsDock->setWindowTitle("Components");
-
   splitDockWidget(componentsDock, propertyDock, Qt::Vertical);
 
   diagramScene = new DiagramScene(this);
@@ -381,9 +380,9 @@ void LogiFlowWindow::paste()
     for (const char byte : bytes)
       bson.push_back(static_cast<std::uint8_t>(byte));
 
-    auto& guiFactory   = GUIComponentFactory::instance();
-    auto& coreRegistry = ComponentRegistry::instance();
-    const auto payload = nlohmann::json::from_bson(bson);
+    auto&      guiFactory   = GUIComponentFactory::instance();
+    auto&      coreRegistry = ComponentRegistry::instance();
+    const auto payload      = nlohmann::json::from_bson(bson);
 
     // Pasting changes scene topology, so leave simulation/placement modes first.
     if (diagramScene->getInteractionMode() != InteractionMode::NORMAL_MODE)
@@ -391,7 +390,13 @@ void LogiFlowWindow::paste()
 
     const QPointF targetOrigin =
         diagramView->mapToScene(diagramView->mapFromGlobal(QCursor::pos()));
-    diagramScene->insertSelection(payload, guiFactory, coreRegistry, targetOrigin);
+    if (!diagramScene->insertSelection(payload, guiFactory, coreRegistry, targetOrigin,
+                                       true))
+      return;
+
+    undoStack->push(
+        new SceneSelectionCommand(diagramScene, diagramScene->serializeSelection(),
+                                  SceneSelectionCommand::Operation::Add, true));
   } catch (const nlohmann::json::exception&) {
     return;
   } catch (const std::exception&) {
@@ -433,23 +438,20 @@ void LogiFlowWindow::rotate()
 
 void LogiFlowWindow::del()
 {
-  // Collect items to delete first, then remove all from the scene before deleting
-  // any. This avoids crashes where removeItem() on one item triggers scene callbacks
-  // (e.g. collision detection via virtual getCollisionRect()) that reach items that
-  // have already been deleted in a prior iteration — which can corrupt vtable lookups
-  // and produce "pure virtual method called" errors.
-
   auto itemsToDelete = diagramScene->selectedItems() | std::views::filter([](auto el) {
                          // Trying to remove non user-defined components leads to crash
                          return el->type() > UNKNOWN;
                        })
                        | std::ranges::to<std::vector>();
 
-  for (auto* item : itemsToDelete)
-    diagramScene->removeItem(item);
+  if (itemsToDelete.empty())
+    return;
 
-  for (const auto* item : itemsToDelete)
-    delete item;
+  const auto payload = diagramScene->serializeItems(itemsToDelete);
+  diagramScene->removeItems(itemsToDelete);
+
+  undoStack->push(new SceneSelectionCommand(
+      diagramScene, payload, SceneSelectionCommand::Operation::Remove, true));
 }
 
 void LogiFlowWindow::open()
