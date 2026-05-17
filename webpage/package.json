@@ -5,9 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
+    "docs:dev": "node scripts/vitepress-userdocs.mjs dev",
     "build": "vite build",
+    "build:docs": "node scripts/vitepress-userdocs.mjs build",
+    "build:all": "vite build && node scripts/vitepress-userdocs.mjs build",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
+    "preview:docs": "node scripts/vitepress-userdocs.mjs preview",
     "lint": "eslint .",
     "format": "prettier --write ."
   },
@@ -28,6 +32,7 @@
     "tailwindcss": "^4.2.1",
     "typescript": "^5.8.3",
     "vite": "^7.3.1",
+    "vitepress": "^1.6.4",
     "vite-tsconfig-paths": "^6.0.2"
   }
 }

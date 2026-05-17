@@ -79,9 +79,9 @@ const links = [
     color: "var(--silicon-blue)",
   },
   {
-    href: "internaldocs",
-    label: "Internal Docs",
-    sub: "Doxygen API reference",
+    href: "docs/",
+    label: "User Docs",
+    sub: "Guides & workflows",
     color: "var(--silicon-green)",
   },
   {
@@ -239,8 +239,8 @@ function Index() {
             >
               Download SILICON
             </a>
-            <a href="internaldocs" className="silicon-btn">
-              Browse the API
+            <a href="docs/" className="silicon-btn">
+              Read the Docs
             </a>
           </div>
         </div>
