@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "build": "vite build",
-    "build:dev": "vite build --mode development",
-    "preview": "vite preview",
+"docs:dev": "vitepress dev userdocs",
+    "build:docs": "vitepress build userdocs",
+    "build:all": "vite build && vitepress build userdocs",
+    "preview:docs": "vitepress preview userdocs",
     "lint": "eslint .",
     "format": "prettier --write ."
   },
@@ -28,6 +29,7 @@
     "tailwindcss": "^4.2.1",
     "typescript": "^5.8.3",
     "vite": "^7.3.1",
+    "vitepress": "^1.6.4",
     "vite-tsconfig-paths": "^6.0.2"
   }
 }

@@ -40,7 +40,7 @@ jobs:
         env:
           VITE_CLOUDSMITH_OWNER: ${{ vars.CLOUDSMITH_OWNER }}
           VITE_CLOUDSMITH_RELEASE_REPO: ${{ vars.CLOUDSMITH_RELEASE_REPO }}
-        run: bun run build
+        run: bun run build:all
 
       - name: Prepare Pages site
         run: |

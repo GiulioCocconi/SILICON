@@ -33,6 +33,9 @@ export function SiteHeader() {
             features
           </a>
           <a href="internaldocs" className="px-3 py-1.5 rounded-md hover:bg-muted">
+            api
+          </a>
+          <a href="docs/" className="px-3 py-1.5 rounded-md hover:bg-muted">
             docs
           </a>
           <a href="#/download" className="px-3 py-1.5 rounded-md hover:bg-muted">

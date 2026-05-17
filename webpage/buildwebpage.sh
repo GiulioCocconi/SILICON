@@ -6,7 +6,7 @@ mkdir -p $TMP/SILICON
 
 cd $(dirname "$0")
 bun install
-bun run build
+bun run build:all
 
 cp -r dist/* $TMP/SILICON
 

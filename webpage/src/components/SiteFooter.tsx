@@ -18,8 +18,11 @@ export function SiteFooter() {
           <a href="#/download" className="hover:text-foreground">
             download
           </a>
+          <a href="docs/" className="hover:text-foreground">
+            docs
+          </a>
           <a href="internaldocs" className="hover:text-foreground">
-            internaldocs
+            api
           </a>
           <a href="blog" className="hover:text-foreground">
             blog
