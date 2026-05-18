@@ -52,7 +52,7 @@ protected:
   void resizeEvent(QResizeEvent* event) override;
 
 private slots:
-  void newFile() {}
+  void newFile();
   void open();
   void save();
   void exportImage() {}
@@ -104,6 +104,8 @@ private:
   void createToolBar();
   void createWaveformWindow();
 
+  void setFileName(const QString& fn);
+
   /**
    * @brief Serializes the current selection and stores it on the system clipboard.
    * @return True when a non-empty selection was copied successfully
@@ -152,7 +154,7 @@ private:
   QAction*    redoAct;
   QUndoStack* undoStack;
 
-  QString currentFile;
+  QString currentFileName;
 
   AboutDialog* aboutDialog;
 };

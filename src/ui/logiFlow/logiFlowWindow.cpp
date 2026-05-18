@@ -326,6 +326,17 @@ void LogiFlowWindow::createWaveformWindow()
           &WaveformViewer::appendSnapshot);
 }
 
+void LogiFlowWindow::setFileName(const QString& fn)
+{
+  currentFileName               = fn;
+  const QString displayFileName = QFileInfo(currentFileName).fileName();
+
+  if (!displayFileName.isEmpty())
+    setWindowTitle(QString("LogiFlow - %1").arg(displayFileName));
+  else
+    setWindowTitle("SILICON LogiFlow");
+}
+
 #ifndef QT_NO_CONTEXTMENU
 void LogiFlowWindow::contextMenuEvent(QContextMenuEvent* event)
 {
@@ -367,6 +378,12 @@ void LogiFlowWindow::resizeEvent(QResizeEvent* event)
 }
 
 /* ACTIONS IMPLEMENTATION */
+
+void LogiFlowWindow::newFile()
+{
+  setFileName("");
+  diagramScene->clear();
+}
 
 bool LogiFlowWindow::copySelectionToClipboard()
 {
@@ -526,9 +543,7 @@ void LogiFlowWindow::open()
     diagramScene->deserialize(fileContent.toStdString(), guiFactory, coreRegistry);
 
     // 5. Update application state on success
-    currentFile             = fileName;
-    QString displayFileName = QFileInfo(currentFile).fileName();
-    setWindowTitle(tr("LogiFlow - %1").arg(displayFileName));
+    setFileName(fileName);
 
   } catch (const nlohmann::json::exception& e) {
     // Catches JSON parsing/formatting errors
@@ -544,15 +559,17 @@ void LogiFlowWindow::open()
 
 void LogiFlowWindow::save()
 {
-  if (currentFile.isEmpty()) {
-    currentFile =
+  if (currentFileName.isEmpty()) {
+    QString desiredFileName =
         QFileDialog::getSaveFileName(this, tr("Save Circuit"), QString(),
                                      tr("Silicon Circuit (*.sil);;All Files (*)"));
-    if (currentFile.isEmpty())
+    if (desiredFileName.isEmpty())
       return;
+
+    setFileName(desiredFileName);
   }
 
-  QFile file(currentFile);
+  QFile file(currentFileName);
   if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
     QMessageBox::warning(this, tr("Error"),
                          tr("Cannot open file for writing: %1").arg(file.errorString()));
@@ -563,8 +580,6 @@ void LogiFlowWindow::save()
   out.setEncoding(QStringConverter::Utf8);
   out << QString::fromStdString(diagramScene->serialize());
   file.close();
-
-  setWindowTitle(tr("LogiFlow - %1").arg(QFileInfo(currentFile).fileName()));
 }
 
 void LogiFlowWindow::about() const
