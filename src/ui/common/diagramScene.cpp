@@ -1294,6 +1294,8 @@ void DiagramScene::clear()
     getLogSideView()->clear();
 
   QGraphicsScene::clear();
+
+  resetWaveformTrace();
 }
 
 DiagramScene::~DiagramScene()
