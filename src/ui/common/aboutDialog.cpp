@@ -33,7 +33,7 @@ AboutDialog::AboutDialog(const QString& title, QWidget* parent) : QDialog(parent
     throw std::logic_error("AboutDialog: application window icon is not set");
 
   titleLabel = new QLabel(title, this);
-  titleLabel->setFont(QFont("Chango", 50, QFont::Bold));
+  titleLabel->setObjectName("titleLabel");
 
   iconLabel = new QLabel(this);
   iconLabel->setPixmap(icon.pixmap(QSize(128, 128)));
