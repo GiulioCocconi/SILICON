@@ -181,6 +181,12 @@ public:
    */
   [[nodiscard]] uint64_t getCurrentTime() const { return currentTime; }
 
+  static void setMaxSimulationSteps(uint64_t value);
+  static void setMaxTransitionsPerDeltaCycle(int value);
+
+  [[nodiscard]] static uint64_t getMaxSimulationSteps();
+  [[nodiscard]] static int      getMaxTransitionsPerDeltaCycle();
+
 private:
   /** @brief The circuit being simulated */
   std::shared_ptr<Circuit> circuit;
@@ -206,8 +212,8 @@ private:
   /** @brief Optional callback for live waveform viewers */
   TraceSink traceSink;
 
-  /** @brief Maximum number of delta cycles for convergence */
-  static constexpr int MAX_DELTA = 1000;
+  static uint64_t maxSimulationSteps;
+  static int      maxTransitionsPerDeltaCycle;
 
   bool cyclicStateChanged = false;
 

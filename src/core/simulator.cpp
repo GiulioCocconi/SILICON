@@ -29,6 +29,9 @@ namespace {
 Logger simulationLog("simulation");
 }
 
+uint64_t Simulator::maxSimulationSteps          = 100000;
+int      Simulator::maxTransitionsPerDeltaCycle = 1000;
+
 Simulator::Simulator(std::shared_ptr<Circuit> c, uint64_t initialSimulationTime,
                      bool isInteractive, std::unique_ptr<SiliconFstWriter> fstWriter)
   : circuit(std::move(c)), fstWriter(std::move(fstWriter))
@@ -166,12 +169,13 @@ void Simulator::evaluateBlock(const Circuit::SimulationBlock& block)
         | std::views::filter([](const auto& comp) { return comp != nullptr; })
         | std::ranges::to<std::vector>();
 
-    const bool isStable = std::ranges::any_of(std::views::iota(0, MAX_DELTA), [&](int) {
-      cyclicStateChanged = false;
-      std::ranges::for_each(cyclicComps,
-                            [&](const auto& comp) { comp->simulate(*this); });
-      return !cyclicStateChanged;
-    });
+    const bool isStable =
+        std::ranges::any_of(std::views::iota(0, maxTransitionsPerDeltaCycle), [&](int) {
+          cyclicStateChanged = false;
+          std::ranges::for_each(cyclicComps,
+                                [&](const auto& comp) { comp->simulate(*this); });
+          return !cyclicStateChanged;
+        });
 
     if (!isStable) {
       const std::string errorMsg =
@@ -187,17 +191,14 @@ void Simulator::run(uint64_t duration)
   simulationLog.info(std::format("Running simulation with a duration of {}", duration));
   const uint64_t minimumEndTime = currentTime + duration;
 
-  // Safeguard: Prevent GUI thread freezing if the circuit contains an oscillator.
-  // Allows signals to propagate far into the future, but eventually stops.
-  const uint64_t safetyTimeout = minimumEndTime + 100000;
-
+  uint64_t processedSteps = 0;
   while (!eventQueue.empty()) {
-    if (eventQueue.top().time > safetyTimeout) {
-      simulationLog.warning("Simulation time got past timeout but the simulation queue "
-                            "is not empty. This might be an unstable circuit, if that's "
-                            "not the case please increase the safety timeout");
+    if (processedSteps >= maxSimulationSteps) {
+      simulationLog.warning("Simulation step limit exceeded before the event queue "
+                            "stabilized. This might be an unstable circuit.");
       return;
     }
+    ++processedSteps;
 
     currentTime        = eventQueue.top().time;
     bool inputsChanged = false;
@@ -226,6 +227,26 @@ void Simulator::run(uint64_t duration)
   }
 
   simulationLog.info("Circuit state stabilized (simulation complete)");
+}
+
+void Simulator::setMaxSimulationSteps(uint64_t value)
+{
+  maxSimulationSteps = std::max<uint64_t>(1, value);
+}
+
+void Simulator::setMaxTransitionsPerDeltaCycle(int value)
+{
+  maxTransitionsPerDeltaCycle = std::max(1, value);
+}
+
+uint64_t Simulator::getMaxSimulationSteps()
+{
+  return maxSimulationSteps;
+}
+
+int Simulator::getMaxTransitionsPerDeltaCycle()
+{
+  return maxTransitionsPerDeltaCycle;
 }
 
 void Simulator::setBus(Bus bus, unsigned int value)

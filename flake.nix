@@ -32,7 +32,8 @@ outputs = { self, nixpkgs, flake-utils }:
           qt6.qtsvg
           boost
           pegtl
-	  nlohmann_json
+          nlohmann_json
+          tomlplusplus
         ];
 
         nativeInputs = with pkgs; [

@@ -23,8 +23,10 @@ inline ColorMap light()
 
 inline ColorMap dark()
 {
-  // TODO!
-  return light();
+  return {{"SILICON_ORANGE", {"#ffad66"}}, {"SILICON_LORANGE", {"#7a4b2c"}},
+          {"SILICON_BLUE", {"#67b7ff"}},   {"SILICON_GREEN", {"#91e58c"}},
+          {"SILICON_VIOLET", {"#df62c2"}}, {"SILICON_INTERNAL", {"#3a2f2b"}},
+          {"SILICON_INK", {"#f1edf6"}},    {"SILICON_BACKGROUND", {"#17161b"}}};
 }
 
 }  // namespace SiliconTheme

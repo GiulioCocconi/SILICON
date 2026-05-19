@@ -644,3 +644,4 @@ Each font is licensed under `OFL`
 - Boost Graph, under BSL, _Copyright 2002 Indiana University_
 - Boost Log, under BSL, _Copyright 2007-2015 Andrey Semashev_
 - Json for Modern C++, under MIT, _Copyright (c) 2013-2026 Niels Lohmann_
+- TOML++, under MIT, _Copyright (c) Mark Gillard <mark.gillard@outlook.com.au>_

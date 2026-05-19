@@ -37,6 +37,7 @@
 #include <QFormLayout>
 #include <QGraphicsScene>
 #include <QHBoxLayout>
+#include <QKeySequence>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenuBar>
@@ -52,10 +53,13 @@
 #include <QVBoxLayout>
 
 #include <core/serialization/component_registry.hpp>
+#include <core/simulator.hpp>
 #include <logging/logger.hpp>
 #include <ui/common/graphicalLogStream.hpp>
 #include <ui/common/icons.hpp>
 #include <ui/common/logSideView.hpp>
+#include <ui/common/settingsWindow.hpp>
+#include <ui/common/theme.hpp>
 #include <ui/common/undoCommands.hpp>
 #include <ui/common/waveformViewer.hpp>
 #include <ui/logiFlow/components/graphicalLogicComponent.hpp>
@@ -67,6 +71,20 @@ namespace {
 // from the native LogiFlow selection format.
 constexpr auto LogiFlowSelectionMimeType =
     "application/vnd.silicon.logiflow-selection+bson";
+
+ShortcutSetting shortcut(const QString& key, const QString& label, QAction* action,
+                         const QKeySequence& defaultShortcut)
+{
+  return {
+      .setting =
+          {
+              .name         = key,
+              .defaultValue = QVariant::fromValue(defaultShortcut),
+          },
+      .label  = label,
+      .action = action,
+  };
+}
 
 bool hasClipboardItems(const nlohmann::json& payload)
 {
@@ -140,6 +158,7 @@ LogiFlowWindow::LogiFlowWindow()
   undoStack = new QUndoStack(this);
 
   createActions();
+  applyStoredSettings();
   createMenus();
   createToolBar();
   createWaveformWindow();
@@ -177,6 +196,7 @@ void LogiFlowWindow::createActions()
   rotateAct      = new QAction(Icon("rotate"), tr("&Rotate"), this);
   deleteAct      = new QAction(Icon("delete"), tr("&Delete"), this);
   aboutAct       = new QAction(Icon("info"), tr("&About"), this);
+  settingsAct    = new QAction(Icon("settings"), tr("&Settings..."), this);
 
   undoAct = undoStack->createUndoAction(this, tr("&Undo"));
   undoAct->setIcon(Icon("undo"));
@@ -200,23 +220,6 @@ void LogiFlowWindow::createActions()
 
   setComponentPlacingModeAct = new QAction(Icon("plus"), "", this);
 
-  newAct->setShortcuts(QKeySequence::New);
-  openAct->setShortcuts(QKeySequence::Open);
-  saveAct->setShortcuts(QKeySequence::Save);
-  exportImageAct->setShortcuts(QKeySequence::Print);
-  exitAct->setShortcuts(QKeySequence::Quit);
-  undoAct->setShortcuts(QKeySequence::Undo);
-  redoAct->setShortcuts(QKeySequence::Redo);
-  cutAct->setShortcuts(QKeySequence::Cut);
-  copyAct->setShortcuts(QKeySequence::Copy);
-  rotateAct->setShortcut(Qt::AltModifier | Qt::Key_R);
-  deleteAct->setShortcuts(QKeySequence::Delete);
-  pasteAct->setShortcuts(QKeySequence::Paste);
-
-  setWireCreationModeAct->setShortcut(Qt::AltModifier | Qt::Key_W);
-  setSimulationModeAct->setShortcut(Qt::AltModifier | Qt::ControlModifier | Qt::Key_S);
-  setComponentPlacingModeAct->setShortcut(Qt::AltModifier | Qt::Key_A);
-
   toggleFstTraceAct->setStatusTip(tr("Show waveform viewer"));
   newAct->setStatusTip(tr("Create a new file"));
   openAct->setStatusTip(tr("Open an existing logiFlow file"));
@@ -229,6 +232,7 @@ void LogiFlowWindow::createActions()
   pasteAct->setStatusTip(tr("Paste the clipboard's contents into the current selection"));
   deleteAct->setStatusTip(tr("Delete selected components"));
   aboutAct->setStatusTip(tr("Show the application's about box"));
+  settingsAct->setStatusTip(tr("Edit application settings"));
 
   connect(newAct, &QAction::triggered, this, &LogiFlowWindow::newFile);
   connect(openAct, &QAction::triggered, this, &LogiFlowWindow::open);
@@ -241,6 +245,7 @@ void LogiFlowWindow::createActions()
   connect(rotateAct, &QAction::triggered, this, &LogiFlowWindow::rotate);
   connect(deleteAct, &QAction::triggered, this, &LogiFlowWindow::del);
   connect(aboutAct, &QAction::triggered, this, &LogiFlowWindow::about);
+  connect(settingsAct, &QAction::triggered, this, &LogiFlowWindow::openSettings);
 
   connect(setNormalModeAct, &QAction::triggered, this, &LogiFlowWindow::setNormalMode);
   connect(setPanModeAct, &QAction::triggered, this, &LogiFlowWindow::setPanMode);
@@ -251,6 +256,68 @@ void LogiFlowWindow::createActions()
   connect(setComponentPlacingModeAct, &QAction::triggered, this,
           &LogiFlowWindow::setComponentPlacingMode);
   connect(toggleFstTraceAct, &QAction::toggled, this, &LogiFlowWindow::toggleFstTracing);
+}
+
+QVector<ShortcutSetting> LogiFlowWindow::shortcutSettings() const
+{
+  return {
+      shortcut(QStringLiteral("keybindings/new"), tr("New"), newAct,
+               QKeySequence(QKeySequence::New)),
+      shortcut(QStringLiteral("keybindings/open"), tr("Open"), openAct,
+               QKeySequence(QKeySequence::Open)),
+      shortcut(QStringLiteral("keybindings/save"), tr("Save"), saveAct,
+               QKeySequence(QKeySequence::Save)),
+      shortcut(QStringLiteral("keybindings/exportImage"), tr("Export"), exportImageAct,
+               QKeySequence(QKeySequence::Print)),
+      shortcut(QStringLiteral("keybindings/exit"), tr("Exit"), exitAct,
+               QKeySequence(QKeySequence::Quit)),
+      shortcut(QStringLiteral("keybindings/undo"), tr("Undo"), undoAct,
+               QKeySequence(QKeySequence::Undo)),
+      shortcut(QStringLiteral("keybindings/redo"), tr("Redo"), redoAct,
+               QKeySequence(QKeySequence::Redo)),
+      shortcut(QStringLiteral("keybindings/cut"), tr("Cut"), cutAct,
+               QKeySequence(QKeySequence::Cut)),
+      shortcut(QStringLiteral("keybindings/copy"), tr("Copy"), copyAct,
+               QKeySequence(QKeySequence::Copy)),
+      shortcut(QStringLiteral("keybindings/paste"), tr("Paste"), pasteAct,
+               QKeySequence(QKeySequence::Paste)),
+      shortcut(QStringLiteral("keybindings/rotate"), tr("Rotate"), rotateAct,
+               QKeySequence(Qt::AltModifier | Qt::Key_R)),
+      shortcut(QStringLiteral("keybindings/delete"), tr("Delete"), deleteAct,
+               QKeySequence(QKeySequence::Delete)),
+      shortcut(QStringLiteral("keybindings/normalMode"), tr("Normal mode"),
+               setNormalModeAct, QKeySequence()),
+      shortcut(QStringLiteral("keybindings/panMode"), tr("Pan mode"), setPanModeAct,
+               QKeySequence()),
+      shortcut(QStringLiteral("keybindings/wireCreationMode"), tr("Wire creation mode"),
+               setWireCreationModeAct, QKeySequence(Qt::AltModifier | Qt::Key_W)),
+      shortcut(QStringLiteral("keybindings/simulationMode"), tr("Simulation mode"),
+               setSimulationModeAct,
+               QKeySequence(Qt::AltModifier | Qt::ControlModifier | Qt::Key_S)),
+      shortcut(QStringLiteral("keybindings/componentPlacingMode"),
+               tr("Component placing mode"), setComponentPlacingModeAct,
+               QKeySequence(Qt::AltModifier | Qt::Key_A)),
+      shortcut(QStringLiteral("keybindings/toggleTrace"), tr("Waveform trace"),
+               toggleFstTraceAct, QKeySequence()),
+      shortcut(QStringLiteral("keybindings/settings"), tr("Settings"), settingsAct,
+               QKeySequence()),
+  };
+}
+
+void LogiFlowWindow::applyStoredSettings()
+{
+  SiliconSettings            settings("LogiFlow", this);
+  const CommonSettingsValues values = readCommonSettings(settings);
+
+  Simulator::setMaxSimulationSteps(static_cast<uint64_t>(values.maxSimulationSteps));
+  Simulator::setMaxTransitionsPerDeltaCycle(values.maxTransitionsPerDeltaCycle);
+
+  ThemeEngine::apply(*qApp, themeModeFromText(values.theme));
+
+  for (const ShortcutSetting& shortcut : shortcutSettings()) {
+    shortcut.action->setShortcut(
+        SiliconSetting::value(settings, shortcut.setting).value<QKeySequence>());
+  }
 }
 
 void LogiFlowWindow::createMenus()
@@ -274,6 +341,7 @@ void LogiFlowWindow::createMenus()
   editMenu->addAction(rotateAct);
   editMenu->addAction(deleteAct);
   editMenu->addSeparator();
+  editMenu->addAction(settingsAct);
 
   helpMenu = menuBar()->addMenu(tr("&Help"));
   helpMenu->addAction(aboutAct);
@@ -585,6 +653,12 @@ void LogiFlowWindow::save()
 void LogiFlowWindow::about() const
 {
   aboutDialog->show();
+}
+
+void LogiFlowWindow::openSettings()
+{
+  SettingsWindow settingsWindow("LogiFlow", shortcutSettings(), this);
+  settingsWindow.exec();
 }
 
 void LogiFlowWindow::setNormalMode()

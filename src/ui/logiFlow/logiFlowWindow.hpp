@@ -21,10 +21,12 @@
 #include <QMainWindow>
 #include <QSpinBox>
 #include <QUndoStack>
+#include <QVector>
 
 class QDialog;
 class GraphicalLogStream;
 class LogSideView;
+struct ShortcutSetting;
 class WaveformViewer;
 
 #include <ui/common/aboutDialog.hpp>
@@ -42,7 +44,7 @@ public:
   LogiFlowWindow();
   ~LogiFlowWindow() override;
 
-  [[nodiscard]] QUndoStack* getUndoStack() const { return this->undoStack; }
+  [[nodiscard]] QUndoStack*  getUndoStack() const { return this->undoStack; }
   [[nodiscard]] LogSideView* getLogSideView() const { return this->logSideView; }
 
 protected:
@@ -86,6 +88,7 @@ private slots:
   void rotate();
   void del();  // Delete is a CPP keyword
   void about() const;
+  void openSettings();
 
   void setNormalMode();
   void setPanMode();
@@ -103,6 +106,7 @@ private:
   void createMenus();
   void createToolBar();
   void createWaveformWindow();
+  void applyStoredSettings();
 
   void setFileName(const QString& fn);
 
@@ -110,7 +114,8 @@ private:
    * @brief Serializes the current selection and stores it on the system clipboard.
    * @return True when a non-empty selection was copied successfully
    */
-  bool copySelectionToClipboard();
+  bool                     copySelectionToClipboard();
+  QVector<ShortcutSetting> shortcutSettings() const;
 
   QToolBar* toolBar;
 
@@ -118,8 +123,8 @@ private:
   QDockWidget* propertyDock;
   QDockWidget* logDock;
 
-  QDialog*        waveformWindow;
-  WaveformViewer* waveformViewer;
+  QDialog*            waveformWindow;
+  WaveformViewer*     waveformViewer;
   LogSideView*        logSideView;
   GraphicalLogStream* graphicalLogStream;
 
@@ -141,6 +146,7 @@ private:
   QAction* rotateAct;
   QAction* deleteAct;
   QAction* aboutAct;
+  QAction* settingsAct;
 
   QAction* setNormalModeAct;
   QAction* setPanModeAct;
