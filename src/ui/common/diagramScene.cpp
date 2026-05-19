@@ -339,6 +339,8 @@ DiagramScene::DiagramScene(QObject* parent) : QGraphicsScene(parent)
   csb = new ComponentSearchBox(GUIComponentFactory::instance().availableTypes());
   csb->setParent(this);
   connect(csb, &ComponentSearchBox::requestHide, this, &DiagramScene::hideCSB);
+  connect(csb, &ComponentSearchBox::requestCancel, this,
+          [this] { setInteractionMode(InteractionMode::NORMAL_MODE); });
   connect(csb, &ComponentSearchBox::selectedComponent, this,
           &DiagramScene::placeComponent);
 
@@ -1025,7 +1027,7 @@ std::string DiagramScene::serialize() const
   for (auto* item : items()) {
     if (auto* comp =
             category_cast<GraphicalLogicComponent>(item, ItemCategory::LogicComponent)) {
-      auto compJson    = comp->serialize();
+      auto compJson = comp->serialize();
       compJson.erase("uiId");
       compJson["type"] = comp->getTypeName();
 
