@@ -17,44 +17,117 @@
 
 #include "icons.hpp"
 
-Icon::Icon(const QString& commonName, const std::vector<QSize>& targetSizes)
-  : Icon(commonName, QColor(), targetSizes)
+#include <utility>
+
+#include <QIconEngine>
+
+#include <ui/common/theme.hpp>
+
+namespace {
+
+QColor themedIconColor()
 {
+  const QColor color = ThemeEngine::getColor("SILICON_INK");
+  return color.isValid() ? color : QColor(Qt::black);
 }
 
-Icon::Icon(const QString& commonName, const QColor& color,
-           const std::vector<QSize>& targetSizes)
+QColor disabledIconColor()
 {
-  QSvgRenderer renderer{};
+  const QColor color = ThemeEngine::getColor("SILICON_DISABLED");
+  return color.isValid() ? color : themedIconColor();
+}
 
-  const QString path = Icon::getPathFromCommonName(commonName);
-
-  if (!QFile::exists(path)) {
-    qWarning() << "SVG file does not exist:" << path;
-    return;
+class SvgIconEngine : public QIconEngine {
+public:
+  SvgIconEngine(QString path, bool themed, QColor color, std::vector<QSize> targetSizes)
+    : path(std::move(path)),
+      themed(themed),
+      color(std::move(color)),
+      targetSizes(std::move(targetSizes))
+  {
   }
 
-  if (!renderer.load(path)) {
-    qWarning() << "Failed to load SVG file or invalid SVG format:" << path;
-    return;
+  SvgIconEngine* clone() const override { return new SvgIconEngine(*this); }
+
+  void paint(QPainter* painter, const QRect& rect, QIcon::Mode mode,
+             QIcon::State state) override
+  {
+    painter->drawPixmap(rect, pixmap(rect.size(), mode, state));
   }
 
-  for (auto ts : targetSizes) {
-    QPixmap pixmap(ts);
+  QPixmap pixmap(const QSize& size, QIcon::Mode mode, QIcon::State state) override
+  {
+    Q_UNUSED(state)
+
+    QSvgRenderer renderer{};
+    if (!QFile::exists(path)) {
+      qWarning() << "SVG file does not exist:" << path;
+      return {};
+    }
+
+    if (!renderer.load(path)) {
+      qWarning() << "Failed to load SVG file or invalid SVG format:" << path;
+      return {};
+    }
+
+    QPixmap pixmap(size);
     pixmap.fill(Qt::transparent);
 
     QPainter painter(&pixmap);
     renderer.render(&painter, pixmap.rect());
 
-    if (color.isValid()) {
+    const QColor iconColor = colorForMode(mode);
+    if (iconColor.isValid()) {
       painter.setCompositionMode(QPainter::CompositionMode_SourceIn);
-      painter.fillRect(pixmap.rect(), color);
+      painter.fillRect(pixmap.rect(), iconColor);
     }
 
     painter.end();
-
-    addPixmap(pixmap);
+    return pixmap;
   }
+
+  QSize actualSize(const QSize& size, QIcon::Mode mode, QIcon::State state) override
+  {
+    Q_UNUSED(mode)
+    Q_UNUSED(state)
+
+    if (size.isValid())
+      return size;
+
+    return targetSizes.empty() ? QSize(32, 32) : targetSizes.front();
+  }
+
+private:
+  QString            path;
+  bool               themed;
+  QColor             color;
+  std::vector<QSize> targetSizes;
+
+  QColor colorForMode(QIcon::Mode mode) const
+  {
+    if (mode == QIcon::Disabled)
+      return disabledIconColor();
+
+    if (color.isValid())
+      return color;
+
+    return themed ? themedIconColor() : QColor();
+  }
+};
+
+}  // namespace
+
+Icon::Icon(const QString& commonName, const std::vector<QSize>& targetSizes)
+  : QIcon(new SvgIconEngine(Icon::getPathFromCommonName(commonName),
+                            commonName != "silicon", QColor(), targetSizes))
+{
+}
+
+Icon::Icon(const QString& commonName, const QColor& color,
+           const std::vector<QSize>& targetSizes)
+  : QIcon(new SvgIconEngine(Icon::getPathFromCommonName(commonName), color.isValid(),
+                            color, targetSizes))
+{
 }
 
 QString Icon::getPathFromCommonName(const QString& commonName)

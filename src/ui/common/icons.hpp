@@ -27,6 +27,8 @@
 
 #include <QDebug>
 
+#include <vector>
+
 class Icon : public QIcon {
 public:
   explicit Icon(const QString&            commonName,

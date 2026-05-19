@@ -38,6 +38,7 @@
 #include <core/serialization/component_registry.hpp>
 #include <ui/common/enums.hpp>
 #include <ui/common/graphicalWire.hpp>
+#include <ui/common/theme.hpp>
 #include <ui/common/undoCommands.hpp>
 #include <ui/logiFlow/components/graphicalIO.hpp>
 #include <ui/logiFlow/components/graphicalUtils.hpp>
@@ -375,7 +376,9 @@ void DiagramScene::drawBackground(QPainter* painter, const QRectF& rect)
 {
   // Draw the grid to help with components alignment
 
-  QPen pen;
+  painter->fillRect(rect, ThemeEngine::getColor("SILICON_BACKGROUND"));
+
+  QPen pen(ThemeEngine::getColor("SILICON_GRID"));
   painter->setPen(pen);
 
   const qreal left = int(rect.left()) - (int(rect.left()) % DiagramScene::GRID_SIZE);

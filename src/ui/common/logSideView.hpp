@@ -16,6 +16,11 @@ public slots:
   void appendLine(const QString& line);
   void clear();
 
+protected:
+  void changeEvent(QEvent* event) override;
+
 private:
+  void repaintLogText();
+
   QTextEdit* logOutput;
 };

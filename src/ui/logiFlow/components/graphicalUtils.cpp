@@ -1,5 +1,7 @@
 #include <ui/logiFlow/components/graphicalUtils.hpp>
 
+#include <ui/common/theme.hpp>
+
 GraphicalWireSplitter::GraphicalWireSplitter(QGraphicsItem* parent)
   : GraphicalLogicComponent(std::make_shared<WireSplitter>(Bus(), (std::vector<Bus>){}),
                             nullptr, parent)
@@ -35,7 +37,7 @@ int GraphicalWireSplitter::setSize(const int newSize)
   }
 
   auto shape = new QGraphicsPathItem(path, this);
-  shape->setPen(QPen(Qt::black, 3));
+  shape->setPen(QPen(ThemeEngine::getColor("SILICON_INK"), 3));
 
   this->setItemShape(shape);
   this->setPorts({std::pair<std::string, QPoint>{"b", QPoint(-20, 0)}}, outputPorts);
@@ -77,7 +79,7 @@ int GraphicalWireMerger::setSize(const int newSize)
   }
 
   auto shape = new QGraphicsPathItem(path, this);
-  shape->setPen(QPen(Qt::black, 3));
+  shape->setPen(QPen(ThemeEngine::getColor("SILICON_INK"), 3));
 
   this->setItemShape(shape);
   this->setPorts(inputPorts, {std::pair<std::string, QPoint>{"b", QPoint(20, 0)}});

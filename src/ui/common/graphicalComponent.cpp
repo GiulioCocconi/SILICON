@@ -27,6 +27,23 @@
 #include <QDialog>
 #include <QLabel>
 #include <QPainter>
+#include <ui/common/theme.hpp>
+
+namespace {
+
+class ThemedPortLineItem : public QGraphicsLineItem {
+public:
+  using QGraphicsLineItem::QGraphicsLineItem;
+
+  void paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
+             QWidget* widget) override
+  {
+    setPen(QPen(QBrush(ThemeEngine::getColor("SILICON_INK")), 3));
+    QGraphicsLineItem::paint(painter, option, widget);
+  }
+};
+
+}  // namespace
 
 GraphicalComponent::GraphicalComponent(QGraphicsItem* shape, QGraphicsItem* parent,
                                        bool scanShape)
@@ -86,7 +103,7 @@ void GraphicalComponent::paint(QPainter* painter, const QStyleOptionGraphicsItem
                                QWidget* widget)
 {
   if (isSelected()) {
-    auto color = isColliding() ? Qt::red : Qt::black;
+    auto color = isColliding() ? Qt::red : ThemeEngine::getColor("SILICON_INK");
     auto style = isColliding() ? Qt::SolidLine : Qt::DotLine;
 
     painter->setPen(QPen(color, 3, style));
@@ -237,7 +254,7 @@ void GraphicalComponent::setPortLine(Port* port)
     throw std::logic_error("setPortLine: port position is not outside the shape");
 
   // Create the line from port position to the projection
-  port->setLine(new QGraphicsLineItem(QLineF(portPos, projectionOnShape), this));
+  port->setLine(new ThemedPortLineItem(QLineF(portPos, projectionOnShape), this));
 }
 
 Port::Port(const unsigned int index, const QPoint position, std::string name,
@@ -252,7 +269,6 @@ Port::Port(const unsigned int index, const QPoint position, std::string name,
 void Port::setLine(QGraphicsLineItem* line)
 {
   this->line = line;
-  this->line->setPen(QPen(QBrush(Qt::black), 3));
   setParentItem(line->parentItem());
 }
 

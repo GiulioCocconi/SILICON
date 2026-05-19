@@ -18,9 +18,53 @@
 
 #include "theme.hpp"
 
+#include <algorithm>
+
 #include <QFile>
+#include <QPalette>
 #include <QStyle>
 #include <QWidget>
+
+namespace {
+
+QColor color(const SiliconTheme::ColorMap& tokens, const QString& key)
+{
+  return tokens.value(key);
+}
+
+QPalette paletteFromTokens(const SiliconTheme::ColorMap& tokens)
+{
+  QPalette palette;
+
+  const QColor background = color(tokens, "SILICON_BACKGROUND");
+  const QColor surface    = color(tokens, "SILICON_SURFACE");
+  const QColor raised     = color(tokens, "SILICON_SURFACE_RAISED");
+  const QColor ink        = color(tokens, "SILICON_INK");
+  const QColor disabled   = color(tokens, "SILICON_DISABLED");
+  const QColor blue       = color(tokens, "SILICON_BLUE");
+
+  palette.setColor(QPalette::Window, background);
+  palette.setColor(QPalette::WindowText, ink);
+  palette.setColor(QPalette::Base, surface);
+  palette.setColor(QPalette::AlternateBase, raised);
+  palette.setColor(QPalette::Text, ink);
+  palette.setColor(QPalette::Button, surface);
+  palette.setColor(QPalette::ButtonText, ink);
+  palette.setColor(QPalette::BrightText, color(tokens, "SILICON_ORANGE"));
+  palette.setColor(QPalette::Highlight, blue);
+  palette.setColor(QPalette::HighlightedText, ink);
+  palette.setColor(QPalette::Link, blue);
+  palette.setColor(QPalette::ToolTipBase, raised);
+  palette.setColor(QPalette::ToolTipText, ink);
+
+  palette.setColor(QPalette::Disabled, QPalette::WindowText, disabled);
+  palette.setColor(QPalette::Disabled, QPalette::Text, disabled);
+  palette.setColor(QPalette::Disabled, QPalette::ButtonText, disabled);
+
+  return palette;
+}
+
+}  // namespace
 
 QString ThemeEngine::loadQssTemplate()
 {
@@ -37,8 +81,13 @@ QString ThemeEngine::injectTokens(const QString&                qss,
 {
   QString out = qss;
 
-  for (auto it = tokens.begin(); it != tokens.end(); ++it) {
-    out.replace(it.key(), it.value().name());
+  QList<QString> keys = tokens.keys();
+  std::sort(keys.begin(), keys.end(), [](const QString& lhs, const QString& rhs) {
+    return lhs.size() > rhs.size();
+  });
+
+  for (const QString& key : keys) {
+    out.replace(key, tokens.value(key).name());
   }
   return out;
 }
@@ -52,6 +101,7 @@ void ThemeEngine::apply(QApplication& app, SiliconTheme::Mode mode)
 
   const QString base     = loadQssTemplate();
   const QString finalQss = injectTokens(base, currentMap);
+  app.setPalette(paletteFromTokens(currentMap));
   app.setStyleSheet(finalQss);
 
   /* CRITICAL: repolish everything */
