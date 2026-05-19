@@ -22,9 +22,11 @@
 
 #include <QAbstractItemView>
 #include <QCompleter>
+#include <QEvent>
 #include <QGraphicsProxyWidget>
 #include <QKeyEvent>
 #include <QLineEdit>
+#include <QStringListModel>
 
 #include <ui/common/enums.hpp>
 
@@ -37,6 +39,7 @@ public:
   void showCompleter() const;
 
   void keyPressEvent(QKeyEvent* event) override;
+  bool eventFilter(QObject* watched, QEvent* event) override;
 
   void focus() { le->setFocus(Qt::OtherFocusReason); }
   void clear() { le->clear(); }
@@ -44,16 +47,25 @@ public:
   void setCompletionList(std::vector<std::string> list)
   {
     this->completionList = std::move(list);
+    updateCompletionModel();
   }
 
 signals:
 
   void requestHide();
+  void requestCancel();
   void selectedComponent(std::string typeName, QPointF pos);
 
 private:
+  void                      updateCompletionModel() const;
+  [[nodiscard]] std::string selectedTypeName() const;
+  [[nodiscard]] QString     activeCompletionText() const;
+  [[nodiscard]] std::string typeNameForCompletion(QString completion) const;
+  void                      acceptCompletion(QString completion);
+
   QLineEdit*         le;
   QCompleter*        completer;
+  QStringListModel*  completionModel;
   QGraphicsTextItem* titleItem;
 
   std::vector<std::string> completionList;
