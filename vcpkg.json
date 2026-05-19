@@ -35,6 +35,9 @@
     },
     {
       "name": "nlohmann-json"
+    },
+    {
+      "name": "tomlplusplus"
     }
   ]
 }

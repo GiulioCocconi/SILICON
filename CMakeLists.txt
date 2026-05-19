@@ -90,6 +90,8 @@ set(UI_SOURCE_FILES
         ${src_dir}/ui/common/undoCommands.cpp
         ${src_dir}/ui/common/icons.cpp
         ${src_dir}/ui/common/aboutDialog.cpp
+        ${src_dir}/ui/common/siliconSettings.cpp
+        ${src_dir}/ui/common/settingsWindow.cpp
         ${src_dir}/ui/logiFlow/components/graphicalLogicComponent.cpp
         ${src_dir}/ui/logiFlow/components/graphicalIO.cpp
         ${src_dir}/ui/logiFlow/components/graphicalGates.cpp
@@ -142,6 +144,7 @@ endif ()
 
 find_package(Boost REQUIRED COMPONENTS graph log log_setup thread)
 find_package(nlohmann_json REQUIRED)
+find_package(tomlplusplus REQUIRED)
 
 add_subdirectory(libfst)
 
