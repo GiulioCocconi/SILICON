@@ -358,7 +358,7 @@ void GraphicalWireSegment::paint(QPainter*                       painter,
 
       painter->setBrush(ThemeEngine::getColor("SILICON_INTERNAL"));
       painter->drawRoundedRect(boxRect, 5, 5);
-      painter->setBrush(Qt::black);
+      painter->setBrush(ThemeEngine::getColor("SILICON_INK"));
       painter->drawText(boxRect, sizeText, QTextOption(Qt::AlignCenter));
     }
 

@@ -1,9 +1,12 @@
 #include "logSideView.hpp"
 
+#include <QEvent>
 #include <QFont>
 #include <QFrame>
 #include <QRegularExpression>
+#include <QSignalBlocker>
 #include <QSizePolicy>
+#include <QTextBlock>
 #include <QTextCharFormat>
 #include <QTextCursor>
 #include <QTextEdit>
@@ -49,6 +52,19 @@ QColor levelColor(const QString& level)
   return ThemeEngine::getColor("SILICON_INK");
 }
 
+QTextCharFormat formatForLine(const QString& line)
+{
+  QTextCharFormat format;
+  const QString   level = getLevel(line);
+
+  format.setForeground(levelColor(level));
+
+  if (isBold(level))
+    format.setFontWeight(QFont::Bold);
+
+  return format;
+}
+
 }  // namespace
 
 LogSideView::LogSideView(QWidget* parent) : QWidget(parent)
@@ -79,17 +95,9 @@ QSize LogSideView::minimumSizeHint() const
 
 void LogSideView::appendLine(const QString& line)
 {
-  QTextCharFormat format;
-  const QString   level = getLevel(line);
-
-  format.setForeground(levelColor(level));
-
-  if (isBold(level))
-    format.setFontWeight(QFont::Bold);
-
   QTextCursor cursor(logOutput->document());
   cursor.movePosition(QTextCursor::End);
-  cursor.insertText(line, format);
+  cursor.insertText(line, formatForLine(line));
   cursor.insertBlock();
 
   logOutput->setTextCursor(cursor);
@@ -99,4 +107,34 @@ void LogSideView::appendLine(const QString& line)
 void LogSideView::clear()
 {
   logOutput->clear();
+}
+
+void LogSideView::changeEvent(QEvent* event)
+{
+  QWidget::changeEvent(event);
+
+  if (event->type() == QEvent::PaletteChange
+      || event->type() == QEvent::ApplicationPaletteChange
+      || event->type() == QEvent::StyleChange) {
+    repaintLogText();
+  }
+}
+
+void LogSideView::repaintLogText()
+{
+  const QSignalBlocker blocker(logOutput);
+  QTextCursor          cursor(logOutput->document());
+
+  for (QTextBlock block = logOutput->document()->begin(); block.isValid();
+       block            = block.next()) {
+    const QString line = block.text();
+    if (line.isEmpty())
+      continue;
+
+    cursor.setPosition(block.position());
+    cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
+    cursor.setCharFormat(formatForLine(line));
+  }
+
+  logOutput->viewport()->update();
 }
