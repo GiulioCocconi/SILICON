@@ -53,6 +53,8 @@ class FormatAssistant:
         for fn in changed_files_list:
             # strip whitespace to avoid matching errors
             fn = fn.strip()
+            if fn.startswith("vendor/"):
+                continue
             for wildcard in self.matching_files_wildcard:
                 if fnmatch(fn, wildcard):
                     print(f"[{self.name}] Processing {fn}...")

@@ -181,9 +181,6 @@ void GraphicalWireSegment::setGraphicalWire(GraphicalWire* newWire)
 
 void GraphicalWireSegment::setShowPoints(const std::vector<QPointF>& scenePoints)
 {
-  if (scenePoints.size() > 2)
-    throw std::invalid_argument("setShowPoints: at most 2 points allowed");
-
   std::vector<QPointF> localPoints;
   localPoints.reserve(scenePoints.size());
   for (const auto& pt : scenePoints)
