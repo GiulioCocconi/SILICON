@@ -109,6 +109,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
+option(SILICON_ENABLE_SANITIZERS "Enable address and undefined behavior sanitizers" ON)
 option(SILICON_BUILD_TESTS "Build silicon tests" ON)
 
 add_compile_definitions(
@@ -137,7 +138,7 @@ elseif (EMSCRIPTEN)
     add_link_options(--emrun)
 endif ()
 
-if (UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
+if (UNIX AND NOT APPLE AND NOT EMSCRIPTEN AND SILICON_ENABLE_SANITIZERS)
     add_compile_options(-fsanitize=address -fsanitize=undefined)
     add_link_options(-fsanitize=address -fsanitize=undefined)
 endif ()

@@ -3,6 +3,10 @@ name: Reusable Windows Build
 on:
   workflow_call:
     inputs:
+      build_type:
+        required: false
+        type: string
+        default: "Release"
       publish:
         required: true
         type: boolean
@@ -59,7 +63,7 @@ jobs:
           CXX: g++
         run: |
           # Replace this section if the project's real Windows configure step changes.
-          cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -Bbuild
+          cmake -G Ninja -DCMAKE_BUILD_TYPE=${{ inputs.build_type }} -Bbuild
 
       - name: Build
         shell: powershell
