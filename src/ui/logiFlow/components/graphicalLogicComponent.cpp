@@ -27,6 +27,7 @@ GraphicalLogicComponent::GraphicalLogicComponent(ItemCategory         category,
   : GraphicalComponent(category | ItemCategory::LogicComponent, shape, parent, scanShape)
 {
   this->associatedComponent = component;
+  refreshComponentIOListener();
 }
 
 GraphicalLogicComponent::GraphicalLogicComponent(const Component_ptr& component,
@@ -36,6 +37,54 @@ GraphicalLogicComponent::GraphicalLogicComponent(const Component_ptr& component,
                             scanShape)
 {
 }
+
+GraphicalLogicComponent::~GraphicalLogicComponent()
+{
+  if (associatedComponent && componentIOListenerId != 0)
+    associatedComponent->removeIOListener(componentIOListenerId);
+}
+
+void GraphicalLogicComponent::refreshComponentIOListener()
+{
+  if (!associatedComponent)
+    return;
+
+  if (componentIOListenerId != 0)
+    associatedComponent->removeIOListener(componentIOListenerId);
+
+  componentIOListenerId = associatedComponent->addIOListener([this](Component*) {
+    updatePortSizes();
+  });
+}
+
+void GraphicalLogicComponent::updatePortSizes()
+{
+  if (!associatedComponent)
+    return;
+
+  const std::vector<Bus> componentInputs  = associatedComponent->getInputs();
+  const std::vector<Bus> componentOutputs = associatedComponent->getOutputs();
+
+  for (size_t i = 0; i < inputPorts.size() && i < componentInputs.size(); ++i)
+    inputPorts[i]->setSize(componentInputs[i].size());
+
+  for (size_t i = 0; i < outputPorts.size() && i < componentOutputs.size(); ++i)
+    outputPorts[i]->setSize(componentOutputs[i].size());
+
+  update();
+}
+
+void GraphicalLogicComponent::setComponent(const Component_ptr& component)
+{
+  if (associatedComponent && componentIOListenerId != 0)
+    associatedComponent->removeIOListener(componentIOListenerId);
+
+  componentIOListenerId = 0;
+  associatedComponent   = component;
+  refreshComponentIOListener();
+  updatePortSizes();
+}
+
 void GraphicalLogicComponent::setPorts(
     const std::vector<std::pair<std::string, QPoint>>& busToPortInputs,
     const std::vector<std::pair<std::string, QPoint>>& busToPortOutputs)
@@ -51,4 +100,5 @@ void GraphicalLogicComponent::setPorts(
   }
 
   GraphicalComponent::setPorts(busToPortInputs, busToPortOutputs);
+  updatePortSizes();
 }

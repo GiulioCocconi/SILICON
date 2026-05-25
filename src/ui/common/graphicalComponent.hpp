@@ -31,6 +31,11 @@
 
 class GUIComponentFactory;
 
+enum class PortDirection {
+  Horizontal,
+  Vertical,
+};
+
 /**
  * @class Port
  * @brief Represents a connection point on a component.
@@ -41,6 +46,8 @@ class GUIComponentFactory;
  * detection for wire connections.
  */
 class Port : public QGraphicsItem {
+  friend class GraphicalComponent;
+
 private:
   /** @brief Port index in the port list */
   unsigned int index;
@@ -49,10 +56,16 @@ private:
   QPoint position;
 
   /** @brief Visual line connecting to component */
-  QGraphicsLineItem* line;
+  QGraphicsLineItem* line = nullptr;
 
   /** @brief Port name (bus name) */
   std::string name;
+
+  /** @brief Number of wires represented by this port */
+  unsigned int size = 1;
+
+  /** @brief Direction of the connecting line from port to component */
+  PortDirection direction = PortDirection::Horizontal;
 
 public:
   /**
@@ -69,10 +82,10 @@ public:
    * @brief Painting is handled by the parent component.
    */
   void paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
-             QWidget* widget) override {};
+             QWidget* widget) override;
 
-  /** @brief Gets the bounding rectangle from the line */
-  QRectF boundingRect() const override { return this->line->boundingRect(); };
+  /** @brief Gets the bounding rectangle from the line and bus-size marker */
+  QRectF boundingRect() const override;
 
   /** @brief Gets the port index */
   unsigned int getIndex() const { return this->index; }
@@ -82,6 +95,15 @@ public:
 
   /** @brief Gets the port name */
   std::string getName() const { return this->name; }
+
+  /** @brief Gets the port bus size */
+  unsigned int getSize() const { return this->size; }
+
+  /** @brief Gets the port line direction */
+  PortDirection getDirection() const { return this->direction; }
+
+  /** @brief Sets the port bus size */
+  void setSize(unsigned int newSize);
 
   /**
    * @brief Sets the connecting line.
@@ -166,6 +188,9 @@ protected:
 
   /** @brief Whether to scan shape alpha for port placement */
   bool scanShape = false;
+
+  /** @brief Removes existing input/output ports and their line items */
+  void clearPorts();
 
 protected:
   explicit GraphicalComponent(ItemCategory category, QGraphicsItem* shape,

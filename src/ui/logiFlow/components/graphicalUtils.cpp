@@ -6,12 +6,23 @@ GraphicalWireSplitter::GraphicalWireSplitter(QGraphicsItem* parent)
   : GraphicalLogicComponent(std::make_shared<WireSplitter>(Bus(), (std::vector<Bus>){}),
                             nullptr, parent)
 {
+  installSizeCallback();
+};
+
+void GraphicalWireSplitter::installSizeCallback()
+{
   this->associatedComponent->setPropertyCallback("size",
                                                  [this](const PropertyValue& value) {
                                                    int newSize = std::get<int>(value);
                                                    return this->setSize(newSize);
                                                  });
-};
+}
+
+void GraphicalWireSplitter::setComponent(const Component_ptr& component)
+{
+  GraphicalLogicComponent::setComponent(component);
+  installSizeCallback();
+}
 
 int GraphicalWireSplitter::setSize(const int newSize)
 {
@@ -49,12 +60,23 @@ GraphicalWireMerger::GraphicalWireMerger(QGraphicsItem* parent)
   : GraphicalLogicComponent(std::make_shared<WireMerger>((std::vector<Bus>){}, Bus()),
                             nullptr, parent)
 {
+  installSizeCallback();
+};
+
+void GraphicalWireMerger::installSizeCallback()
+{
   this->associatedComponent->setPropertyCallback(
       "size", [this](const PropertyValue& value) {
         const int newSize = std::get<int>(value);
         return this->setSize(newSize);
       });
-};
+}
+
+void GraphicalWireMerger::setComponent(const Component_ptr& component)
+{
+  GraphicalLogicComponent::setComponent(component);
+  installSizeCallback();
+}
 
 int GraphicalWireMerger::setSize(const int newSize)
 {

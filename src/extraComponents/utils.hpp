@@ -23,11 +23,14 @@
 #include <vector>
 
 class WireSplitter : public Component {
+private:
+  void initializeProperties();
+
 public:
   static constexpr std::string_view Type = "WireSplitter";
   std::string_view                  typeName() const override { return Type; }
 
-  WireSplitter() = default;
+  WireSplitter();
   WireSplitter(Bus input, const std::vector<Bus>& outputs);
 
   int setSize(int newSize);
@@ -36,11 +39,14 @@ public:
 };
 
 class WireMerger : public Component {
+private:
+  void initializeProperties();
+
 public:
   static constexpr std::string_view Type = "WireMerger";
   std::string_view                  typeName() const override { return Type; }
 
-  WireMerger() = default;
+  WireMerger();
   WireMerger(const std::vector<Bus>& inputs, Bus output);
 
   int setSize(int newSize);

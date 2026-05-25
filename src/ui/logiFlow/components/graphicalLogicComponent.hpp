@@ -54,8 +54,17 @@ protected:
   /** @brief The logical component this graphical component represents */
   Component_ptr associatedComponent;
 
+  /** @brief Listener id for associated component I/O changes */
+  uint64_t componentIOListenerId = 0;
+
   /** @brief Whether the component allows property editing */
   bool isEditable = false;
+
+  /** @brief Installs the listener that keeps graphical ports synced to bus sizes */
+  void refreshComponentIOListener();
+
+  /** @brief Copies associated component bus sizes into graphical ports */
+  void updatePortSizes();
 
 protected:
   explicit GraphicalLogicComponent(ItemCategory category, const Component_ptr& component,
@@ -73,6 +82,8 @@ public:
    */
   GraphicalLogicComponent(const Component_ptr& component, QGraphicsItem* shape,
                           QGraphicsItem* parent, bool scanShape = false);
+
+  ~GraphicalLogicComponent() override;
 
   /**
    * @brief Sets ports and validates against component I/O.
@@ -94,7 +105,7 @@ public:
    * @brief Sets the associated logical component.
    * @param component The component to associate
    */
-  void setComponent(const Component_ptr& component) { associatedComponent = component; }
+  virtual void setComponent(const Component_ptr& component);
 
   [[nodiscard]] std::string getTypeName() const override
   {
