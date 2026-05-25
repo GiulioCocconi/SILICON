@@ -19,15 +19,28 @@
 
 #include <core/simulator.hpp>
 
+WireSplitter::WireSplitter()
+{
+  initializeProperties();
+}
+
 WireSplitter::WireSplitter(Bus input, const std::vector<Bus>& outputs)
   : Component({std::move(input)}, outputs)
 {
+  initializeProperties();
+}
+
+void WireSplitter::initializeProperties()
+{
+  // Default-constructed components are used by the registry and must keep empty
+  // buses. The size callback only reshapes I/O after real buses have been attached.
   defineProperty("size", 2);
   defineProperty("delay", 0);
 
   setPropertyCallback("size", [this](const PropertyValue& value) {
     int newSize = std::get<int>(value);
-    this->setSize(newSize);
+    if (!this->inputs.empty())
+      this->setSize(newSize);
     return value;
   });
 }
@@ -64,15 +77,28 @@ void WireSplitter::simulate(Simulator& sim)
   }
 }
 
+WireMerger::WireMerger()
+{
+  initializeProperties();
+}
+
 WireMerger::WireMerger(const std::vector<Bus>& inputs, Bus output)
   : Component(inputs, {std::move(output)})
 {
+  initializeProperties();
+}
+
+void WireMerger::initializeProperties()
+{
+  // Default-constructed components are used by the registry and must keep empty
+  // buses. The size callback only reshapes I/O after real buses have been attached.
   defineProperty("size", 2);
   defineProperty("delay", 0);
 
   setPropertyCallback("size", [this](const PropertyValue& value) {
     int newSize = std::get<int>(value);
-    this->setSize(newSize);
+    if (!this->outputs.empty())
+      this->setSize(newSize);
     return value;
   });
 }

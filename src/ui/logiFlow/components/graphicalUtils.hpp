@@ -32,9 +32,12 @@ public:
   int type() const override { return SiliconTypes::WIRE_SPLITTER; }
 
   int setSize(int newSize);
+  void setComponent(const Component_ptr& component) override;
 
 private:
-  unsigned int size{};
+  void installSizeCallback();
+
+  unsigned int size = 1;
 };
 
 class GraphicalWireMerger : public GraphicalLogicComponent {
@@ -43,7 +46,10 @@ public:
   int type() const override { return SiliconTypes::WIRE_MERGER; }
 
   int setSize(int newSize);
+  void setComponent(const Component_ptr& component) override;
 
 private:
-  unsigned int size;
+  void installSizeCallback();
+
+  unsigned int size = 1;
 };
