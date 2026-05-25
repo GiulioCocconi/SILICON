@@ -22,9 +22,6 @@
 #include <QGraphicsSvgItem>
 #include <QPainter>
 
-#include <QHBoxLayout>
-#include <QLabel>
-
 #include <core/component.hpp>
 #include <core/wire.hpp>
 
@@ -65,8 +62,6 @@ signals:
 
 private:
   State skinState = State::LOW;
-
-  QLineEdit* nameInput = new QLineEdit();
 
   const static QString& getOnShapePath()
   {
