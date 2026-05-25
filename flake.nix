@@ -42,32 +42,8 @@ outputs = { self, nixpkgs, flake-utils }:
         ];
 
         bun = pkgs.buildPackages.bun;
-      in
-        {
-          devShells = {
-            default = pkgs.mkShell {
-              name = "SILICON-dev";
 
-              packages = devPackages ++ libraries ++ nativeInputs;
-
-              hardeningDisable = [ "all" ];
-              NIX_LANG_CPP = "TRUE";
-
-            };
-
-            clang = (pkgs.mkShell.override { stdenv = pkgs.llvmPackages_20.libcxxStdenv; }) {
-              name = "SILICON-dev-clang";
-              packages = devPackages ++ libraries ++ nativeInputs ++ [pkgs.range-v3];
-              hardeningDisable = [ "all" ];
-            };
-
-            webpage = pkgs.mkShell {
-              name = "SILICON-webpage-dev";
-              packages = [ bun pkgs.doxygen pkgs.graphviz pkgs.python3  pkgs.opencode ];
-            };
-          };
-
-          packages.default = pkgs.stdenv.mkDerivation {
+        mkSilicon = { release ? false }: pkgs.stdenv.mkDerivation {
             pname = "SILICON";
             version = "0.1.0-pre-alpha";
 
@@ -79,7 +55,10 @@ outputs = { self, nixpkgs, flake-utils }:
 
             cmakeFlags = [
               "-DSILICON_USE_VCPKG=OFF"
-	      "-DUSING_NIX=ON"
+              "-DUSING_NIX=ON"
+            ] ++ pkgs.lib.optionals release [
+              "-DCMAKE_BUILD_TYPE=Release"
+              "-DSILICON_ENABLE_SANITIZERS=OFF"
             ];
 
             doCheck = true;
@@ -91,6 +70,30 @@ outputs = { self, nixpkgs, flake-utils }:
               platforms = platforms.linux;
             };
           };
+      in
+        {
+          devShells = {
+            default = pkgs.mkShell {
+              name = "SILICON-dev";
+              packages = devPackages ++ libraries ++ nativeInputs;
+              hardeningDisable = [ "all" ];
+              NIX_LANG_CPP = "TRUE";
+            };
+
+            clang = (pkgs.mkShell.override { stdenv = pkgs.llvmPackages_20.libcxxStdenv; }) {
+              name = "SILICON-dev-clang";
+              packages = devPackages ++ libraries ++ nativeInputs ++ [pkgs.range-v3];
+              hardeningDisable = [ "all" ];
+            };
+
+            webpage = pkgs.mkShell {
+              name = "SILICON-webpage-dev";
+              packages = [ bun pkgs.doxygen pkgs.graphviz pkgs.python3 pkgs.opencode ];
+            };
+          };
+
+          packages.default = mkSilicon { };
+          packages.release = mkSilicon { release = true; };
         }
     );
 }

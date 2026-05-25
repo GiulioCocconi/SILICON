@@ -3,6 +3,10 @@ name: Reusable WASM Build
 on:
   workflow_call:
     inputs:
+      build_type:
+        required: false
+        type: string
+        default: "Release"
       publish:
         required: true
         type: boolean
@@ -72,7 +76,7 @@ jobs:
           # Replace this section if the project's real Qt for WASM configure step changes.
           chmod +x ~/work/SILICON/Qt/6.11.0/wasm_singlethread/bin/qt-cmake
           ~/work/SILICON/Qt/6.11.0/wasm_singlethread/bin/qt-cmake -Bbuild -G Ninja
-          emcmake cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -Bbuild
+          emcmake cmake -G Ninja -DCMAKE_BUILD_TYPE=${{ inputs.build_type }} -Bbuild
 
       - name: Build
         shell: bash

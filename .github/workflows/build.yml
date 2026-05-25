@@ -35,6 +35,7 @@ jobs:
     name: Prepare snapshot metadata
     runs-on: ubuntu-latest
     outputs:
+      build_type: ${{ steps.meta.outputs.build_type }}
       publish_wasm: ${{ steps.meta.outputs.publish_wasm }}
       publish_windows: ${{ steps.meta.outputs.publish_windows }}
       snapshot_version: ${{ steps.meta.outputs.snapshot_version }}
@@ -46,6 +47,7 @@ jobs:
         shell: bash
         run: |
           if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            echo "build_type=Debug" >> "${GITHUB_OUTPUT}"
             echo "wasm_package_name=wasm-${{ github.event.pull_request.number }}" >> "${GITHUB_OUTPUT}"
             echo "windows_package_name=windows-${{ github.event.pull_request.number }}" >> "${GITHUB_OUTPUT}"
             echo "snapshot_version=${{ github.event.pull_request.head.sha }}" >> "${GITHUB_OUTPUT}"
@@ -60,6 +62,7 @@ jobs:
             fi
           else
             short_sha="${GITHUB_SHA::7}"
+            echo "build_type=Release" >> "${GITHUB_OUTPUT}"
             echo "wasm_package_name=silicon-unstable-wasm" >> "${GITHUB_OUTPUT}"
             echo "windows_package_name=silicon-unstable-windows" >> "${GITHUB_OUTPUT}"
             echo "snapshot_version=v${short_sha}-unstable" >> "${GITHUB_OUTPUT}"
@@ -82,13 +85,20 @@ jobs:
         uses: DeterminateSystems/nix-installer-action@v22
 
       - name: Build with Nix
-        run: nix build --print-build-logs
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            nix build --print-build-logs
+          else
+            nix build --print-build-logs '.#release'
+          fi
 
   wasm-snapshot:
     name: WASM snapshot
     needs: prepare
     uses: ./.github/workflows/reusable-build-wasm.yml
     with:
+      build_type: ${{ needs.prepare.outputs.build_type }}
       publish: ${{ needs.prepare.outputs.publish_wasm == 'true' }}
       package_name: ${{ needs.prepare.outputs.wasm_package_name }}
       package_version: ${{ needs.prepare.outputs.snapshot_version }}
@@ -105,6 +115,7 @@ jobs:
     needs: prepare
     uses: ./.github/workflows/reusable-build-windows.yml
     with:
+      build_type: ${{ needs.prepare.outputs.build_type }}
       publish: ${{ needs.prepare.outputs.publish_windows == 'true' }}
       package_name: ${{ needs.prepare.outputs.windows_package_name }}
       package_version: ${{ needs.prepare.outputs.snapshot_version }}
