@@ -98,6 +98,7 @@ int siliconMain(int argc, char** argv)
 
   splashScreen.finish(&lfWin);
   const int exitCode = QApplication::exec();
+  QFontDatabase::removeAllApplicationFonts();
   Logger::shutdown();
   return exitCode;
 }

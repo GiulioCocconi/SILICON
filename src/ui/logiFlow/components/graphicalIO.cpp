@@ -35,12 +35,6 @@ GraphicalInput::GraphicalInput(QGraphicsItem* parent)
                                                    prepareGeometryChange();
                                                    return value;
                                                  });
-
-  auto nameLayout = new QHBoxLayout();
-  auto nameLabel  = new QLabel("Name:");
-
-  nameLayout->addWidget(nameLabel);
-  nameLayout->addWidget(nameInput);
 }
 
 void GraphicalInput::toggle()
