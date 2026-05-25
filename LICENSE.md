@@ -642,6 +642,7 @@ Each font is licensed under `OFL`
 - LZ4, under BSD, _Copyright (C) 2011-2023, Yann Collet_
 - Qt, under GPL, _Copyright (C) 2018 The Qt Company Ltd. and other contributors_
 - Boost Graph, under BSL, _Copyright 2002 Indiana University_
+- avoidlib, under LGPL, _Copyright (C) 2004-2013  Monash University_ (with some minor modifications)
 - Boost Log, under BSL, _Copyright 2007-2015 Andrey Semashev_
 - Json for Modern C++, under MIT, _Copyright (c) 2013-2026 Niels Lohmann_
 - TOML++, under MIT, _Copyright (c) Mark Gillard <mark.gillard@outlook.com.au>_

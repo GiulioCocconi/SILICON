@@ -84,6 +84,7 @@ set(UI_SOURCE_FILES
         ${src_dir}/ui/common/diagramScene.cpp
         ${src_dir}/ui/common/graphicalWire.cpp
         ${src_dir}/ui/common/wireManager.cpp
+        ${src_dir}/ui/common/wireRouting.cpp
         ${src_dir}/ui/common/waveformViewer.cpp
         ${src_dir}/ui/common/graphicalComponent.cpp
         ${src_dir}/ui/common/graphicalItem.cpp
@@ -146,7 +147,8 @@ find_package(Boost REQUIRED COMPONENTS graph log log_setup thread)
 find_package(nlohmann_json REQUIRED)
 find_package(tomlplusplus REQUIRED)
 
-add_subdirectory(libfst)
+add_subdirectory(vendor/libfst)
+add_subdirectory(vendor/libavoid)
 
 add_library(silicon_logging STATIC
         ${src_dir}/logging/logger.cpp)
@@ -209,6 +211,7 @@ target_compile_options(SILICON PRIVATE -Werror)
 target_link_libraries(SILICON PRIVATE
         Qt6::Widgets
         Qt6::SvgWidgets
+        avoid
         silicon_core)
 
 set_target_properties(SILICON PROPERTIES

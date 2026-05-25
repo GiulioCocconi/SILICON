@@ -37,9 +37,11 @@
 
 #include <core/serialization/component_registry.hpp>
 #include <ui/common/enums.hpp>
+#include <ui/common/graphicalComponent.hpp>
 #include <ui/common/graphicalWire.hpp>
 #include <ui/common/theme.hpp>
 #include <ui/common/undoCommands.hpp>
+#include <ui/common/wireRouting.hpp>
 #include <ui/logiFlow/components/graphicalIO.hpp>
 #include <ui/logiFlow/components/graphicalUtils.hpp>
 #include <ui/logiFlow/logiFlowWindow.hpp>
@@ -595,23 +597,35 @@ void DiagramScene::mouseMoveEvent(QGraphicsSceneMouseEvent* mouseEvent)
       if (!wireSegmentToBeDrawn)
         break;
 
-      /* Calculate path to the cursor */
+      // HELPER: Get the obstacles for autorouting
+      auto wireRoutingObstacles = [this]()
+      {
+        constexpr float MARGIN = GRID_SIZE / 2.0;
+        std::vector<QRectF> obstacles;
 
-      const QPointF lp =
+        for (auto* item : items()) {
+          const auto* component = category_cast<GraphicalComponent>(item, ItemCategory::Component);
+          if (!component)
+            continue;
+
+          obstacles.push_back(component->mapToScene(component->collisionRectForWires())
+                                  .boundingRect()
+                                  .adjusted(-MARGIN, -MARGIN, MARGIN, MARGIN));
+        }
+
+        return obstacles;
+      };
+
+      const QPointF lastPoint =
           wireSegmentToBeDrawn->mapToScene(wireSegmentToBeDrawn->lastPoint());
 
-      const QPointF displacement    = cursorPos - lp;
-      const QPointF intermediatePos = (displacement.x() >= displacement.y())
-                                          ? QPointF(cursorPos.x(), lp.y())
-                                          : QPointF(lp.x(), cursorPos.y());
+      auto route = silicon::routeOrthogonalWire(
+          lastPoint, cursorPos, wireRoutingObstacles());
 
-      std::vector<QPointF> pointsToBeAdded = {intermediatePos, cursorPos};
+      if (!route.empty())
+        route.erase(route.begin());
 
-      // Remove duplicates (if cursorPos is reachable moving only in one direction)
-      pointsToBeAdded.erase(std::ranges::unique(pointsToBeAdded).begin(),
-                            pointsToBeAdded.end());
-
-      wireSegmentToBeDrawn->setShowPoints(pointsToBeAdded);
+      wireSegmentToBeDrawn->setShowPoints(route);
       break;
     }
 
