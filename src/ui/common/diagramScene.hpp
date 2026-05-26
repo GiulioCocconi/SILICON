@@ -156,7 +156,7 @@ public:
   /** @brief Grid cell size in scene units */
   static constexpr int GRID_SIZE = 10;
 
-  [[nodiscard]] QUndoStack* getUndoStack() const;
+  [[nodiscard]] QUndoStack*  getUndoStack() const;
   [[nodiscard]] LogSideView* getLogSideView() const;
 
   /**

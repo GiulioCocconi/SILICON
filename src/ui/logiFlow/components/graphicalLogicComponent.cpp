@@ -52,9 +52,8 @@ void GraphicalLogicComponent::refreshComponentIOListener()
   if (componentIOListenerId != 0)
     associatedComponent->removeIOListener(componentIOListenerId);
 
-  componentIOListenerId = associatedComponent->addIOListener([this](Component*) {
-    updatePortSizes();
-  });
+  componentIOListenerId =
+      associatedComponent->addIOListener([this](Component*) { updatePortSizes(); });
 }
 
 void GraphicalLogicComponent::updatePortSizes()

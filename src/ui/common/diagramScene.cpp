@@ -598,13 +598,13 @@ void DiagramScene::mouseMoveEvent(QGraphicsSceneMouseEvent* mouseEvent)
         break;
 
       // HELPER: Get the obstacles for autorouting
-      auto wireRoutingObstacles = [this]()
-      {
-        constexpr float MARGIN = GRID_SIZE / 2.0;
+      auto wireRoutingObstacles = [this]() {
+        constexpr float     MARGIN = GRID_SIZE / 2.0;
         std::vector<QRectF> obstacles;
 
         for (auto* item : items()) {
-          const auto* component = category_cast<GraphicalComponent>(item, ItemCategory::Component);
+          const auto* component =
+              category_cast<GraphicalComponent>(item, ItemCategory::Component);
           if (!component)
             continue;
 
@@ -619,8 +619,8 @@ void DiagramScene::mouseMoveEvent(QGraphicsSceneMouseEvent* mouseEvent)
       const QPointF lastPoint =
           wireSegmentToBeDrawn->mapToScene(wireSegmentToBeDrawn->lastPoint());
 
-      auto route = silicon::routeOrthogonalWire(
-          lastPoint, cursorPos, wireRoutingObstacles());
+      auto route =
+          silicon::routeOrthogonalWire(lastPoint, cursorPos, wireRoutingObstacles());
 
       if (!route.empty())
         route.erase(route.begin());

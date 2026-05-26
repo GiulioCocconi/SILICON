@@ -29,44 +29,43 @@ namespace silicon {
 
 namespace {
 
-QPointF nearestPointOutside(const QPointF point, const QRectF& rect)
-{
-  const QRectF normalized = rect.normalized();
-  if (!normalized.contains(point))
-    return point;
+  QPointF nearestPointOutside(const QPointF point, const QRectF& rect)
+  {
+    const QRectF normalized = rect.normalized();
+    if (!normalized.contains(point))
+      return point;
 
-  struct Candidate {
-    QPointF point;
-    qreal   distanceSquared;
-  };
+    struct Candidate {
+      QPointF point;
+      qreal   distanceSquared;
+    };
 
-  const std::array candidates = {
-      Candidate{QPointF(normalized.left(), point.y()),
-                (point.x() - normalized.left()) * (point.x() - normalized.left())},
-      Candidate{QPointF(normalized.right(), point.y()),
-                (point.x() - normalized.right()) * (point.x() - normalized.right())},
-      Candidate{QPointF(point.x(), normalized.top()),
-                (point.y() - normalized.top()) * (point.y() - normalized.top())},
-      Candidate{QPointF(point.x(), normalized.bottom()),
-                (point.y() - normalized.bottom()) * (point.y() - normalized.bottom())},
-  };
+    const std::array candidates = {
+        Candidate{QPointF(normalized.left(), point.y()),
+                  (point.x() - normalized.left()) * (point.x() - normalized.left())},
+        Candidate{QPointF(normalized.right(), point.y()),
+                  (point.x() - normalized.right()) * (point.x() - normalized.right())},
+        Candidate{QPointF(point.x(), normalized.top()),
+                  (point.y() - normalized.top()) * (point.y() - normalized.top())},
+        Candidate{QPointF(point.x(), normalized.bottom()),
+                  (point.y() - normalized.bottom()) * (point.y() - normalized.bottom())},
+    };
 
-  const auto closest =
-      std::ranges::min_element(candidates, {}, &Candidate::distanceSquared);
-  return closest->point;
-}
+    const auto closest =
+        std::ranges::min_element(candidates, {}, &Candidate::distanceSquared);
+    return closest->point;
+  }
 
-std::vector<QPointF> removeConsecutiveDuplicates(std::vector<QPointF> points)
-{
-  points.erase(std::ranges::unique(points).begin(), points.end());
-  return points;
-}
+  std::vector<QPointF> removeConsecutiveDuplicates(std::vector<QPointF> points)
+  {
+    points.erase(std::ranges::unique(points).begin(), points.end());
+    return points;
+  }
 
-}
+}  // namespace
 
-std::vector<QPointF>
-routeOrthogonalWire(const QPointF start, const QPointF end,
-                    const std::vector<QRectF>& obstacleRects)
+std::vector<QPointF> routeOrthogonalWire(const QPointF start, const QPointF end,
+                                         const std::vector<QRectF>& obstacleRects)
 {
   if (start == end)
     return {start};
@@ -78,8 +77,8 @@ routeOrthogonalWire(const QPointF start, const QPointF end,
 
   for (const QRectF& obstacleRect : obstacleRects) {
     const QRectF normalized = obstacleRect.normalized();
-    routedStart            = nearestPointOutside(routedStart, normalized);
-    routedEnd              = nearestPointOutside(routedEnd, normalized);
+    routedStart             = nearestPointOutside(routedStart, normalized);
+    routedEnd               = nearestPointOutside(routedEnd, normalized);
   }
 
   std::vector<Avoid::Rectangle> obstacles;
@@ -140,4 +139,4 @@ routeOrthogonalWire(const QPointF start, const QPointF end,
   return removeConsecutiveDuplicates(std::move(routedPoints));
 }
 
-}
+}  // namespace silicon
