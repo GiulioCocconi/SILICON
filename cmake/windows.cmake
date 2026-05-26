@@ -19,19 +19,21 @@
 # -- Deployment --
 
 if (WIN32)
-    # 1. Locate windeployqt.exe
     if (NOT TARGET Qt6::qmake)
         find_package(Qt6 REQUIRED COMPONENTS Core)
     endif ()
 
-    get_target_property(_qmake_executable Qt6::qmake IMPORTED_LOCATION)
-    get_filename_component(_qt_bin_dir "${_qmake_executable}" DIRECTORY)
-    find_program(WINDEPLOYQT_EXECUTABLE windeployqt HINTS "${_qt_bin_dir}")
+    if (NOT SILICON_USE_VCPKG)
+        # 1. Locate windeployqt.exe
+        get_target_property(_qmake_executable Qt6::qmake IMPORTED_LOCATION)
+        get_filename_component(_qt_bin_dir "${_qmake_executable}" DIRECTORY)
+        find_program(WINDEPLOYQT_EXECUTABLE windeployqt HINTS "${_qt_bin_dir}")
 
-    if (WINDEPLOYQT_EXECUTABLE)
-        message(STATUS "Found windeployqt: ${WINDEPLOYQT_EXECUTABLE}")
-    else ()
-        message(FATAL_ERROR "windeployqt not found!")
+        if (WINDEPLOYQT_EXECUTABLE)
+            message(STATUS "Found windeployqt: ${WINDEPLOYQT_EXECUTABLE}")
+        else ()
+            message(FATAL_ERROR "windeployqt not found!")
+        endif ()
     endif ()
 
     # 2. Copy other dependencies DLLs
@@ -40,8 +42,14 @@ if (WIN32)
     if (SILICON_USE_VCPKG)
         if (VCPKG_BUILD_TYPE STREQUAL "debug")
             set(VCPKG_BIN_DIR "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/debug/bin")
+            set(_qt_plugin_dir_candidates
+                    "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/debug/Qt6/plugins"
+                    "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/debug/plugins")
         else ()
             set(VCPKG_BIN_DIR "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/bin")
+            set(_qt_plugin_dir_candidates
+                    "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/Qt6/plugins"
+                    "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/plugins")
         endif ()
 
         set(OUTPUT_BIN_DIR "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
@@ -57,22 +65,61 @@ if (WIN32)
         message(STATUS "Copying DLLs from vcpkg: ${VCPKG_BIN_DIR} -> ${OUTPUT_BIN_DIR}")
         file(GLOB VCPKG_DLLS "${VCPKG_BIN_DIR}/*.dll")
         file(COPY ${VCPKG_DLLS} DESTINATION "${OUTPUT_BIN_DIR}")
+
+        if (MINGW)
+            get_filename_component(_mingw_bin_dir "${CMAKE_CXX_COMPILER}" DIRECTORY)
+            file(GLOB MINGW_RUNTIME_DLLS
+                    "${_mingw_bin_dir}/libgcc*.dll"
+                    "${_mingw_bin_dir}/libstdc++*.dll"
+                    "${_mingw_bin_dir}/libwinpthread*.dll")
+
+            if (MINGW_RUNTIME_DLLS)
+                message(STATUS "Copying MinGW runtime DLLs from: ${_mingw_bin_dir}")
+                file(COPY ${MINGW_RUNTIME_DLLS} DESTINATION "${OUTPUT_BIN_DIR}")
+            endif ()
+        endif ()
+
+        foreach (_qt_plugin_dir IN LISTS _qt_plugin_dir_candidates)
+            if (EXISTS "${_qt_plugin_dir}/platforms")
+                set(VCPKG_QT_PLUGIN_DIR "${_qt_plugin_dir}")
+                break()
+            endif ()
+        endforeach ()
+
+        if (NOT VCPKG_QT_PLUGIN_DIR)
+            message(FATAL_ERROR "Could not find Qt platform plugins in vcpkg installation: ${_qt_plugin_dir_candidates}")
+        endif ()
+
+        message(STATUS "Copying Qt plugins from vcpkg: ${VCPKG_QT_PLUGIN_DIR} -> ${OUTPUT_BIN_DIR}")
     endif ()
 endif ()
 
 function(win_deploy_qt target)
     if (WIN32)
-        # Add post-build step to run windeployqt
-        # See https://doc.qt.io/qt-6/windows-deployment.html
-
-        add_custom_command(TARGET ${target} POST_BUILD
-                COMMAND "${WINDEPLOYQT_EXECUTABLE}"
-                --verbose 1
-                --compiler-runtime
-                --dir "$<TARGET_FILE_DIR:${target}>"
-                "$<TARGET_FILE:${target}>"
+        if (SILICON_USE_VCPKG AND VCPKG_QT_PLUGIN_DIR)
+            add_custom_command(TARGET ${target} POST_BUILD
+                COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                    ${VCPKG_DLLS}
+                    ${MINGW_RUNTIME_DLLS}
+                    "$<TARGET_FILE_DIR:${target}>"
+                COMMAND "${CMAKE_COMMAND}" -E copy_directory
+                    "${VCPKG_QT_PLUGIN_DIR}"
+                    "$<TARGET_FILE_DIR:${target}>"
                 COMMENT "Deploying Qt dependencies for ${target}..."
                 COMMAND_EXPAND_LISTS
-        )
+            )
+        else ()
+            add_custom_command(TARGET ${target} POST_BUILD
+                COMMAND "${WINDEPLOYQT_EXECUTABLE}"
+                    $<$<CONFIG:Debug>:--debug>
+                    $<$<NOT:$<CONFIG:Debug>>:--release>
+                    --verbose 1
+                    --compiler-runtime
+                    --dir "$<TARGET_FILE_DIR:${target}>"
+                    "$<TARGET_FILE:${target}>"
+                COMMENT "Deploying Qt dependencies for ${target}..."
+                COMMAND_EXPAND_LISTS
+            )
+        endif ()
     endif ()
-endfunction ()
+endfunction()
