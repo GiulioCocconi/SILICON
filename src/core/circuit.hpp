@@ -348,13 +348,36 @@ public:
   [[nodiscard]] std::vector<SimulationBlock> splitCyclic() const;
 
   /**
-   * @brief Serializes the circuit to a JSON string
-   * @return JSON string representation of the circuit
+   * @brief Serializes the core circuit model to a JSON string.
+   *
+   * @anchor core_serialization_format
+   * This is the canonical serialization for the logical circuit only. It stores the
+   * component graph, not the editor layout.
+   *
+   * The payload contains:
+   * - `version` and `name`
+   * - `components[]`
+   * - for each component: its serialized graph `id`, registered `type`,
+   *   `properties`, and `inputs` / `outputs` bus wiring
+   *
+   * Wire connectivity is represented by shared wire IDs inside the serialized bus
+   * lists. During deserialization, components are reinserted in serialized `id` order
+   * so their Boost vertex descriptors match the saved graph IDs again.
+   *
+   * This format intentionally does not store any UI state such as graphical positions,
+   * rotations, wire segment geometry, or runtime scene item IDs. Those belong to the
+   * DiagramScene serialization format documented in @ref diagramscene_serialization_format.
+   *
+   * @return JSON string representation of the logical circuit model
    */
   [[nodiscard]] std::string serialize() const;
 
   /**
-   * @brief Deserializes a circuit from a JSON string
+   * @brief Deserializes the core circuit model from a JSON string.
+   *
+   * Expects the payload documented in @ref core_serialization_format. The registry is
+   * used to recreate component instances by serialized type name.
+   *
    * @param jsonStr The JSON string to deserialize
    * @param reg The component registry to create components
    * @return The deserialized circuit

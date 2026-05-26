@@ -160,8 +160,28 @@ public:
   [[nodiscard]] LogSideView* getLogSideView() const;
 
   /**
-   * @brief Serializes the scene to JSON.
-   * @return JSON string representation
+   * @brief Serializes the full editor scene to JSON.
+   *
+   * @anchor diagramscene_serialization_format
+   * This format wraps the core logical circuit serialization from
+   * @ref core_serialization_format and adds the visual data needed to rebuild the
+   * editor scene exactly as drawn.
+   *
+   * The payload contains:
+   * - `circuit`: the logical circuit model serialized by Circuit::serialize()
+   * - `visual.components[]`: graphical component state such as `type`, `position`,
+   *   `rotation`, and `vertexId`
+   * - `visual.wires[]`: graphical wire routing data such as `points` and `wireId`
+   *
+   * `vertexId` links each graphical logic item back to the corresponding core
+   * component vertex inside `circuit`. `wireId` keeps multiple wire segments attached
+   * to the same logical wire/bus after deserialization.
+   *
+   * Unlike clipboard payloads, the persisted scene format does not retain runtime
+   * `uiId` values because they are editor-local identifiers rather than stable file
+   * data.
+   *
+   * @return JSON string representation of the scene
    */
   [[nodiscard]] std::string serialize() const;
 
@@ -170,6 +190,12 @@ public:
    *
    * The returned JSON is an intermediate representation: callers choose the transport
    * encoding, such as BSON for clipboard operations.
+   *
+   * This payload is derived from @ref diagramscene_serialization_format rather than
+   * being a separate file format. It keeps the same `circuit` plus `visual` split, but
+   * limits the payload to the selected fragment, adds an `origin` used for paste
+   * placement, and retains `uiId` values because clipboard, undo, and delete flows
+   * match runtime scene items by those identifiers.
    *
    * @note Uses serializeItems internally
    *
@@ -180,6 +206,10 @@ public:
 
   /**
    * @brief Serializes arbitrary scene items using the internal selection payload format.
+   *
+   * The returned object follows the clipboard payload described in
+   * serializeSelection(), which in turn is a scene-fragment variant of
+   * @ref diagramscene_serialization_format.
    *
    * @param sceneItems Items to serialize
    * @return JSON payload containing the provided items and related core component state
@@ -192,7 +222,10 @@ public:
   void                         unregisterGraphicalItem(GraphicalItem* item);
 
   /**
-   * @brief Deserializes the scene from JSON.
+   * @brief Deserializes a full scene from JSON.
+   *
+   * Expects the payload documented in @ref diagramscene_serialization_format.
+   *
    * @param jsonStr JSON string
    * @param guiFactory Factory for creating graphical components
    * @param coreRegistry Registry for creating core components
@@ -205,6 +238,9 @@ public:
    *
    * The payload's top-left origin is mapped to @p targetOrigin. Inserted items are
    * selected and reconnected through the scene's wire topology.
+   *
+   * The payload format is the scene-fragment clipboard form documented in
+   * serializeSelection(), derived from @ref diagramscene_serialization_format.
    *
    * @param payload Decoded clipboard payload
    * @param guiFactory Factory for creating graphical components
