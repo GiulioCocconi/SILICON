@@ -1,314 +1,700 @@
-@import url('https://fonts.googleapis.com/css2?family=Chango&family=Nova+Mono&family=Quicksand:wght@400;500;600;700&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=Chango&family=Nova+Mono&family=Quicksand:wght@400;500;600;700&display=swap");
 
-/* =========================================
-   OVERRIDE DOXYGEN AWESOME VARIABLES
-   ========================================= */
+/* ------------------------------------------------------------------------- */
+/* Silicon design tokens                                                     */
+/* ------------------------------------------------------------------------- */
 html {
-    /* Set core backgrounds to transparent so our dot-matrix body shows */
-    --page-background-color: transparent !important;
-    --side-nav-background: transparent !important;
+    --silicon-green: #89f17f;
+    --silicon-orange: #ff9845;
+    --silicon-blue: #46a6ef;
+    --silicon-magenta: #ce35a8;
+    --silicon-ink: #1c1b22;
+    --silicon-paper: #fcfcfc;
+    --silicon-card: #ffffff;
+    --silicon-muted: #f1f0ec;
+    --silicon-border: rgba(28, 27, 34, 0.14);
+    --silicon-text-soft: rgba(28, 27, 34, 0.72);
+    --silicon-shadow-lg: 6px 6px 0 0 var(--silicon-ink);
+    --silicon-shadow-md: 4px 4px 0 0 var(--silicon-ink);
+    --silicon-shadow-sm: 2px 2px 0 0 var(--silicon-ink);
+    --silicon-radius-lg: 20px;
+    --silicon-radius-md: 16px;
+    --silicon-radius-sm: 10px;
 
-    --code-background: #f4f4f5 !important;
-    --fragment-background: #f4f4f5 !important;
-
-    /* Force the requested fonts into Doxygen's variable system */
     --font-family: "Quicksand", ui-sans-serif, system-ui, sans-serif !important;
     --font-family-monospace: "Nova Mono", ui-monospace, monospace !important;
-    --toc-font-family: "Quicksand", sans-serif !important;
+    --toc-font-family: "Quicksand", ui-sans-serif, system-ui, sans-serif !important;
 
-    /* Silicon Brand Colors */
-    --primary-color: #ff9845 !important;       /* silicon-orange */
-    --primary-dark-color: #1c1b22 !important;  /* silicon-ink */
-    --primary-light-color: #89f17f !important; /* silicon-green */
+    --page-background-color: transparent !important;
+    --page-foreground-color: var(--silicon-ink) !important;
+    --page-secondary-foreground-color: var(--silicon-text-soft) !important;
+    --side-nav-background: transparent !important;
+    --toc-background: transparent !important;
+    --toc-foreground: var(--silicon-ink) !important;
+    --separator-color: var(--silicon-border) !important;
 
-    --toc-active-color: #89f17f !important;
-    --toc-active-text-color: #1c1b22 !important;
+    --primary-color: var(--silicon-blue) !important;
+    --primary-dark-color: var(--silicon-ink) !important;
+    --primary-light-color: var(--silicon-green) !important;
+    --link-color: var(--silicon-blue) !important;
+    --menu-focus-background: var(--silicon-green) !important;
+    --menu-focus-foreground: var(--silicon-ink) !important;
+    --menu-selected-background: transparent !important;
+    --toc-active-color: transparent !important;
+    --toc-active-text-color: var(--silicon-orange) !important;
+
+    --header-background: var(--silicon-paper) !important;
+    --header-foreground: var(--silicon-ink) !important;
+    --searchbar-background: var(--silicon-card) !important;
+    --searchbar-foreground: var(--silicon-ink) !important;
+    --code-background: var(--silicon-muted) !important;
+    --code-foreground: var(--silicon-ink) !important;
+    --fragment-background: var(--silicon-muted) !important;
+    --fragment-foreground: var(--silicon-ink) !important;
+    --fragment-linenumber-background: rgba(28, 27, 34, 0.04) !important;
+    --fragment-linenumber-border: var(--silicon-border) !important;
+    --tablehead-background: var(--silicon-orange) !important;
+    --tablehead-foreground: var(--silicon-ink) !important;
+
+    --border-radius-large: var(--silicon-radius-md) !important;
+    --border-radius-medium: 12px !important;
+    --border-radius-small: 8px !important;
+    --box-shadow: var(--silicon-shadow-md) !important;
+    --title-font-size: 24px !important;
+    --content-line-height: 1.7 !important;
 }
 
-/* =========================================
-   GLOBAL BACKGROUND & TYPOGRAPHY
-   ========================================= */
+/* ------------------------------------------------------------------------- */
+/* Global page treatment                                                     */
+/* ------------------------------------------------------------------------- */
 body {
-    background-color: #fcfcfc !important;
-    /* Neo-brutalist Dot Matrix Background */
-    background-image: radial-gradient(rgba(28, 27, 34, 0.08) 2px, transparent 2px) !important;
+    background-color: var(--silicon-paper) !important;
+    background-image: radial-gradient(rgba(28, 27, 34, 0.08) 1px, transparent 1px) !important;
     background-size: 22px 22px !important;
-    color: #1c1b22 !important;
+    color: var(--silicon-ink) !important;
     font-family: var(--font-family) !important;
 }
 
-/* Expose the background through the main wrappers */
-.contents, #doc-content, #side-nav {
+body,
+table,
+div,
+p,
+dl,
+dt,
+dd,
+#nav-tree .label,
+#nav-tree a,
+.title,
+.sm-dox a,
+.sm-dox a:hover,
+.sm-dox a:focus,
+#projectname,
+.SelectItem,
+#MSearchField,
+.navpath li.navelem a,
+.navpath li.navelem a:hover,
+p.reference,
+p.definition,
+div.toc li,
+div.toc h3,
+#page-nav ul.page-outline li a {
+    font-family: var(--font-family) !important;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+.title,
+.groupheader,
+.toc-title,
+caption {
+    color: var(--silicon-ink) !important;
+    font-family: "Chango", system-ui, sans-serif !important;
+    font-weight: 400 !important;
+    letter-spacing: 0.01em !important;
+}
+
+code,
+pre,
+.fragment,
+.line,
+.memproto,
+.paramname,
+.fragment .line {
+    font-family: var(--font-family-monospace) !important;
+}
+
+p.reference,
+p.definition,
+.small,
+dt,
+dd,
+td.memItemLeft,
+td.memTemplItemLeft {
+    color: var(--silicon-text-soft) !important;
+}
+
+a,
+a:visited,
+a:focus,
+a:active {
+    color: var(--silicon-blue) !important;
+    font-weight: 700 !important;
+    text-decoration: none !important;
+    transition: color 0.12s ease, background-color 0.12s ease, box-shadow 0.12s ease !important;
+}
+
+a:hover {
+    color: var(--silicon-magenta) !important;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Shared card surfaces                                                      */
+/* ------------------------------------------------------------------------- */
+#nav-tree,
+div.toc,
+#page-nav,
+table.doxtable,
+.fragment {
+    border: 2px solid var(--silicon-ink) !important;
+    border-radius: var(--silicon-radius-md) !important;
+    background: var(--silicon-card) !important;
+    box-shadow: var(--silicon-shadow-lg) !important;
+}
+
+div.toc {
+    margin: 0 0 24px 32px !important;
+    padding: 16px !important;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Top chrome                                                                */
+/* ------------------------------------------------------------------------- */
+#top {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 1000 !important;
+    margin: 0 0 28px !important;
+    padding: 12px 16px !important;
+    border-bottom: 2px solid var(--silicon-ink) !important;
+    background: var(--silicon-paper) !important;
+    box-shadow: none !important;
+}
+
+#titlearea,
+.sm-dox,
+#main-nav {
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+#titlearea {
+    max-width: 72rem !important;
+    margin: 0 auto 12px !important;
+}
+
+#titlearea table {
+    width: 100% !important;
+    border-collapse: separate !important;
+    border-spacing: 0 !important;
+}
+
+#projectrow,
+#projectalign {
+    display: block !important;
+}
+
+#projectalign {
+    padding: 0 !important;
+}
+
+#projectname {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 0.9rem !important;
+    padding: 0.9rem 1.2rem !important;
+    border: 2px solid var(--silicon-ink) !important;
+    border-radius: 18px !important;
+    background: var(--silicon-card) !important;
+    box-shadow: var(--silicon-shadow-lg) !important;
+    color: var(--silicon-ink) !important;
+    font-family: "Chango", system-ui, sans-serif !important;
+    font-size: 1.7rem !important;
+    letter-spacing: 0.04em !important;
+}
+
+/* Dropdown menus (Navigation) */
+.sm-dox ul {
+    padding: 6px !important;
+    border: 2px solid var(--silicon-ink) !important;
+    border-radius: 12px !important;
+    background: var(--silicon-card) !important;
+    box-shadow: var(--silicon-shadow-lg) !important;
+}
+
+.sm-dox ul li {
+    border: none !important;
+}
+
+.sm-dox ul a,
+.sm-dox ul a:hover,
+.sm-dox ul a:focus,
+.sm-dox ul a:active {
+    margin: 2px !important;
+    padding: 5px 12px !important;
+    border-radius: 8px !important;
+    color: var(--silicon-ink) !important;
+    font-weight: 700 !important;
+    background: transparent !important;
+    text-shadow: none !important;
+}
+
+.sm-dox ul a:hover,
+.sm-dox ul a:focus,
+.sm-dox ul a.highlighted {
+    background: var(--silicon-green) !important;
+    color: var(--silicon-ink) !important;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Main content layout                                                       */
+/* ------------------------------------------------------------------------- */
+#container,
+#doc-content,
+.contents,
+#side-nav {
     background: transparent !important;
 }
 
-/* Apply display font to headers */
-h1, h2, h3, h4, h5, .title, .groupheader, .toc-title, caption {
-    font-family: "Chango", system-ui, sans-serif !important;
-    color: #1c1b22 !important;
-    font-weight: normal !important;
-    letter-spacing: 0.02em;
+#doc-content {
+    padding-bottom: 3rem !important;
 }
 
-a:link, a:visited, a:focus, a:active {
-    font-weight: 700 !important;
-    color: #46a6ef !important; /* silicon-blue */
-    text-decoration: none !important;
-    transition: all 0.1s ease !important;
-}
-a:hover {
-    color: #ce35a8 !important; /* silicon-magenta */
-}
-
-/* =========================================
-   TOP NAVBAR (Floating Card)
-   ========================================= */
-#top {
-    position: relative !important;
-    background-color: #ffffff !important;
-    border: 2px solid #1c1b22 !important;
-    border-radius: 16px !important;
-    box-shadow: 6px 6px 0 0 #1c1b22 !important;
-
-    margin: 16px !important;
-    width: calc(100% - 32px) !important;
-    box-sizing: border-box !important;
-    padding: 8px !important;
-    border-bottom: 2px solid #1c1b22 !important;
+.header {
+    max-width: 72rem !important;
+    margin: 0 auto 20px !important;
+    padding: 20px 32px 0 !important;
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    overflow: visible !important;
 }
 
-/* =========================================
-   SIDEBARS (Left Tree & Right TOC)
-   ========================================= */
+.contents {
+    max-width: 72rem !important;
+    margin: 0 auto 24px !important;
+    padding: 0 32px 32px !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+div.ingroups,
+table.doxtable,
+.fragment,
+dl.section,
+.inherit_header {
+    margin-bottom: 24px !important;
+}
+
+.headertitle,
+.headertitle .title {
+    position: static !important;
+}
+
+.headertitle .title {
+    margin: 0 !important;
+    padding: 0 !important;
+    font-size: var(--title-font-size) !important;
+    line-height: 1.2 !important;
+}
+
+.contents > .textblock,
+.contents .dyncontent,
+.contents .summary,
+div.summary,
+.directory,
+.levels {
+    margin: 0 0 20px !important;
+    padding: 0 !important;
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Navigation panes                                                          */
+/* ------------------------------------------------------------------------- */
 #side-nav {
-    padding: 0 8px 16px 16px !important; /* Breathing room for the shadow */
+    padding: 0 10px 24px 16px !important;
 }
 
 #nav-tree {
-    background-color: #ffffff !important;
-    border: 2px solid #1c1b22 !important;
-    border-radius: 16px !important;
-    box-shadow: 6px 6px 0 0 #1c1b22 !important;
     padding: 12px !important;
 }
 
 #splitbar {
-    background: transparent !important;
     border: none !important;
+    background: transparent !important;
 }
 
-.item.selected {
-    background-color: #89f17f !important;
-    color: #1c1b22 !important;
-    font-weight: 700 !important;
-    border: 2px solid #1c1b22 !important;
+.summary a,
+.sm-dox a,
+#nav-tree a,
+#page-nav a {
     border-radius: 8px !important;
-    box-shadow: 2px 2px 0 0 #1c1b22 !important;
-    margin-right: 4px !important;
 }
 
-div.toc, #page-nav {
-    background-color: #ffffff !important;
-    border: 2px solid #1c1b22 !important;
-    border-radius: 16px !important;
-    box-shadow: 6px 6px 0 0 #1c1b22 !important;
-    margin: 16px 16px 16px 8px !important;
-    padding: 16px !important;
+#nav-tree a,
+#page-nav a,
+.sm-dox > ul > li > a {
+    padding-inline: 0.35rem !important;
 }
 
-/* =========================================
-   SUMMARY TABLES (Flexbox Upgrade - Gap Fix)
-   ========================================= */
-/* Unbind standard table rules */
-table.memberdecls,
-table.memberdecls tbody {
-    display: block !important;
-    width: 100% !important;
+.item.selected > a,
+#nav-tree .item.selected > a,
+#nav-tree .item.selected > .label,
+#nav-tree a.selected,
+#page-nav .tabactive a,
+#page-nav a.active {
+    border: none !important;
+    background: transparent !important;
+    color: var(--silicon-orange) !important;
+    box-shadow: none !important;
 }
 
-/* Make the row itself the single, solid Silicon Card */
-table.memberdecls tr[class^="memitem"] {
-    display: flex !important;
-    flex-direction: row !important;
-    flex-wrap: wrap !important;
-    align-items: baseline !important;
+.item:hover > a,
+#nav-tree a:hover,
+#page-nav a:hover,
+.sm-dox > ul > li > a:hover {
+    background: rgba(137, 241, 127, 0.16) !important;
+}
 
-    background-color: #ffffff !important;
-    border: 2px solid #1c1b22 !important;
+/* ------------------------------------------------------------------------- */
+/* Search                                                                    */
+/* ------------------------------------------------------------------------- */
+#MSearchBox {
+    min-height: 2rem !important;
+    border: 2px solid var(--silicon-ink) !important;
     border-radius: 12px !important;
-    box-shadow: 4px 4px 0 0 #1c1b22 !important;
-
-    margin-bottom: 12px !important;
-    padding: 8px 12px !important;
+    background: var(--silicon-card) !important;
+    box-shadow: var(--silicon-shadow-md) !important;
+    transition: transform 0.12s ease, box-shadow 0.12s ease !important;
 }
 
-/* Strip borders from individual cells, let them flow naturally inside the row */
-table.memberdecls tr[class^="memitem"] td {
-    display: block !important;
-    border: none !important;
-    background: transparent !important;
-    box-shadow: none !important;
-    border-radius: 0 !important;
-    padding: 4px 8px !important;
+#MSearchBox.MSearchBoxActive,
+#MSearchBox:hover {
+    transform: translate(-1px, -1px) !important;
+    box-shadow: 5px 5px 0 0 var(--silicon-ink) !important;
 }
 
-/* Clean up description text blocks right below the cards */
-table.memberdecls tr[class^="memdesc"] {
-    display: block !important;
-    margin-top: -4px !important;
-    margin-bottom: 24px !important;
-}
-table.memberdecls tr[class^="memdesc"] td {
-    display: block !important;
-    border: none !important;
-    background: transparent !important;
-    box-shadow: none !important;
-    padding: 0 16px !important;
-    color: #4a4a55 !important;
+#MSearchField {
+    height: 1.8rem !important;
+    color: var(--silicon-ink) !important;
+    font-family: var(--font-family) !important;
+    font-weight: 700 !important;
 }
 
-/* Hide legacy separator lines that Doxygen injects */
-table.memberdecls tr.separator {
-    display: none !important;
+#MSearchField::placeholder {
+    color: var(--silicon-text-soft) !important;
 }
 
-/* =========================================
-   MEMBER DOC BLOCKS (Folder Tabs)
-   ========================================= */
-/* 1. The Title Tab (e.g. "◆ Simulator()") */
-.memtitle {
-    background-color: #f4f4f5 !important;
-    border: 2px solid #1c1b22 !important;
-    border-bottom: none !important; /* Open the bottom to merge with card */
-    border-radius: 12px 12px 0 0 !important; /* Top rounded, bottom square */
-    padding: 8px 16px !important;
-    font-family: "Chango", system-ui, sans-serif !important;
-    color: #1c1b22 !important;
-
-    display: inline-block !important; /* Make it tab-sized, not full width */
-    margin: 0 0 -2px 0 !important;    /* Pull the box below UP to overlap its border */
-    position: relative !important;
-    z-index: 2 !important;            /* Keep the tab above the box's top border */
+.search-icon::before {
+    border-color: var(--silicon-ink) !important;
+    background: var(--silicon-card) !important;
 }
 
-/* 2. The Main Box Container */
-.memitem {
-    background-color: #ffffff !important;
-    border: 2px solid #1c1b22 !important;
-    /* Flat top-left corner because the tab sits perfectly there */
-    border-radius: 0 12px 12px 12px !important;
-    box-shadow: 6px 6px 0 0 #1c1b22 !important;
+.search-icon::after {
+    border-color: var(--silicon-ink) !important;
+}
 
-    margin-bottom: 48px !important;
-    margin-top: 0 !important;
+.search-icon-dropdown {
+    border-top-color: var(--silicon-ink) !important;
+}
+
+.close-icon {
+    background: var(--silicon-orange) !important;
+    border: 1px solid var(--silicon-ink) !important;
+}
+
+.close-icon::before,
+.close-icon::after {
+    background: var(--silicon-ink) !important;
+}
+
+#MSearchSelectWindow,
+#MSearchResultsWindow {
+    border: 2px solid var(--silicon-ink) !important;
+    border-radius: 12px !important;
+    background: var(--silicon-card) !important;
+    box-shadow: var(--silicon-shadow-lg) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+#MSearchSelectWindow {
+    padding: 6px !important;
+}
+
+a.SelectItem {
+    margin: 2px !important;
+    padding: 5px 12px !important;
+    border-radius: 8px !important;
+    color: var(--silicon-ink) !important;
+    font-weight: 700 !important;
+}
+
+a.SelectItem:hover,
+a.SelectItem:focus {
+    background: var(--silicon-green) !important;
+    color: var(--silicon-ink) !important;
+}
+
+#MSearchResultsWindow {
+    right: 12px !important;
     overflow: hidden !important;
-    padding: 0 !important;
-    position: relative !important;
-    z-index: 1 !important;
 }
 
-/* 3. The Function Signature (matches the tab color) */
-/* ===== */
+.SRPage,
+.SRPage * {
+    color: var(--silicon-ink) !important;
+    font-family: var(--font-family) !important;
+}
 
-/* Target the Doxygen split-columns anywhere they appear */
-td.memItemLeft,
-td.memItemRight,
-.memItemLeft,
-.memItemRight {
-    display: inline-block !important; /* Force them to sit inline like normal text */
-    width: auto !important;           /* Strip any 100% width rules */
-    max-width: none !important;
-    text-align: left !important;      /* Kill Doxygen's right-alignment on the left column */
-    padding: 0 !important;            /* Strip structural padding */
-    margin: 0 !important;
-    vertical-align: baseline !important; /* Keep the text perfectly aligned */
-    border: none !important;
+.SRStatus {
+    color: var(--silicon-text-soft) !important;
+    font-weight: 700 !important;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Tables, member listings and API blocks                                    */
+/* ------------------------------------------------------------------------- */
+table.memberdecls,
+table.fieldtable,
+table.doxtable {
+    overflow: hidden !important;
+}
+
+table.memberdecls td,
+table.fieldtable td,
+table.doxtable td,
+table.doxtable th {
+    border-color: var(--silicon-border) !important;
+}
+
+table.memberdecls tr,
+table.fieldtable tr,
+table.doxtable tr {
     background: transparent !important;
 }
 
-/* Add a clean, consistent space between the Type and the Name */
-td.memItemLeft,
-.memItemLeft {
-    margin-right: 8px !important;
+table.doxtable th,
+table.fieldtable th {
+    background: var(--silicon-orange) !important;
+    color: var(--silicon-ink) !important;
+    font-weight: 700 !important;
 }
 
-/* Ensure their parent row doesn't force them apart */
-tr[class^="memitem"],
+table.memberdecls .memItemLeft,
+table.memberdecls .memItemRight,
+table.memberdecls .memTemplItemLeft,
+table.memberdecls .memTemplItemRight {
+    background: transparent !important;
+}
+
+.memtitle {
+    display: inline-block !important;
+    margin: 0 0 -2px 0 !important;
+    padding: 10px 16px !important;
+    border: 2px solid var(--silicon-ink) !important;
+    border-bottom: none !important;
+    border-radius: 12px 12px 0 0 !important;
+    background: var(--silicon-orange) !important;
+    color: var(--silicon-ink) !important;
+    box-shadow: 4px 0 0 0 var(--silicon-ink) !important;
+    font-weight: 700 !important;
+}
+
 .memitem {
-    display: flex !important;
-    flex-direction: row !important;
-    flex-wrap: wrap !important;
-    align-items: baseline !important;
-    justify-content: flex-start !important; /* Pack them tightly to the left */
-}
-
-/* Hide any invisible spacers Doxygen injects */
-.memseparator {
-    display: none !important;
+    margin: 0 0 32px !important;
+    border: 2px solid var(--silicon-ink) !important;
+    border-radius: 0 18px 18px 18px !important;
+    background: var(--silicon-card) !important;
+    box-shadow: var(--silicon-shadow-lg) !important;
+    overflow: hidden !important;
 }
 
 .memproto {
-    background-color: #f4f4f5 !important;
-    border-bottom: 2px dashed #1c1b22 !important;
-    padding: 16px !important;
     margin: 0 !important;
-    font-family: var(--font-family-monospace) !important;
-}
-
-/* 4. The Description Body */
-.memdoc {
-    background-color: #ffffff !important;
-    padding: 24px 16px !important;
-    margin: 0 !important;
+    padding: 16px 20px !important;
     border: none !important;
+    border-bottom: 2px dashed var(--silicon-ink) !important;
+    background: var(--silicon-muted) !important;
 }
 
-/* Header separating generic blocks */
+.memdoc {
+    padding: 20px !important;
+    border: none !important;
+    background: var(--silicon-card) !important;
+}
+
 h2.groupheader {
-    border-bottom: 4px solid #1c1b22 !important;
+    margin-top: 40px !important;
     padding-bottom: 8px !important;
-    margin-top: 48px !important;
+    border-bottom: 4px solid var(--silicon-ink) !important;
+    color: var(--silicon-ink) !important;
     box-shadow: none !important;
 }
 
-/* =========================================
-   UI ELEMENTS (Badges, Inputs, Breadcrumbs)
-   ========================================= */
-/* Tags/Badges (like 'virtual', 'explicit', etc) */
+.fragment {
+    padding: 12px !important;
+}
+
 span.mlabel {
-    font-size: 10pt !important;
-    background-color: #ff9845 !important;
-    border: 2px solid #1c1b22 !important;
-    color: #1c1b22 !important;
-    box-shadow: 2px 2px 0 0 #1c1b22 !important;
-    border-radius: 6px !important;
     padding: 2px 8px !important;
-    font-weight: bold !important;
-}
-
-/* Search Box */
-#MSearchBox {
-    background: #ffffff !important;
-    border: 2px solid #1c1b22 !important;
+    border: 2px solid var(--silicon-ink) !important;
     border-radius: 8px !important;
-    box-shadow: 3px 3px 0 0 #1c1b22 !important;
+    background: var(--silicon-orange) !important;
+    color: var(--silicon-ink) !important;
+    box-shadow: var(--silicon-shadow-sm) !important;
+    font-weight: 700 !important;
 }
 
-/* Breadcrumb nav floating pill */
-#nav-path {
-    position: fixed !important;
-    bottom: 24px !important;
-    right: 24px !important;
-    width: auto !important;
-    background: #ffffff !important;
-    border: 2px solid #1c1b22 !important;
-    border-radius: 32px !important;
-    box-shadow: 4px 4px 0 0 #1c1b22 !important;
-    padding: 8px 24px !important;
-    z-index: 100 !important;
+/* ------------------------------------------------------------------------- */
+/* Notes, warnings and other callouts                                        */
+/* ------------------------------------------------------------------------- */
+
+/* Default card style per tutti i blocchi (Note, Warning, ecc.) */
+dl.section {
+    position: relative !important;
+    display: block !important;
+    padding: 0 !important;
+    border: 2px solid var(--silicon-ink) !important;
+    border-radius: var(--silicon-radius-md) !important;
+    background: var(--silicon-card) !important;
+    box-shadow: var(--silicon-shadow-lg) !important;
+    overflow: hidden !important;
 }
+
+dl.section dt {
+    margin: 0 !important;
+    padding: 0.75rem 1rem !important;
+    border-bottom: 2px solid var(--silicon-ink) !important;
+    background: var(--silicon-green) !important; /* Colore di fallback */
+    color: var(--silicon-ink) !important;
+    font-weight: 700 !important;
+}
+
+dl.section dd {
+    margin: 0 !important;
+    padding: 1rem 1.25rem !important;
+    color: var(--silicon-ink) !important;
+}
+
+/* Colori specifici per l'header in base al tipo di card */
+dl.section.note dt { background: var(--silicon-blue) !important; }
+dl.section.warning dt, dl.section.attention dt, dl.section.pre dt, dl.section.post dt, dl.section.invariant dt { background: var(--silicon-orange) !important; }
+dl.section.todo dt, dl.section.deprecated dt, dl.section.bug dt { background: var(--silicon-magenta) !important; color: var(--silicon-card) !important; }
+
+/* OVERRIDE: Rimuove lo stile card unicamente per i "Returns" */
+dl.section.return {
+    padding: 12px 16px !important;
+    border: none !important;
+    border-radius: 0 8px 8px 0 !important;
+    border-left: 6px solid var(--silicon-green) !important;
+    background: var(--silicon-muted) !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+}
+
+dl.section.return dt {
+    margin: 0 0 8px 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    background: transparent !important;
+    color: var(--silicon-ink) !important;
+}
+
+dl.section.return dd {
+    padding: 0 !important;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Footer                                                                    */
+/* ------------------------------------------------------------------------- */
+#nav-path {
+    position: static !important;
+    width: auto !important;
+    max-width: 72rem !important;
+    margin: 32px auto 20px !important;
+    padding: 8px 14px !important;
+    border: 2px solid var(--silicon-ink) !important;
+    border-radius: 14px !important;
+    background: var(--silicon-card) !important;
+    box-shadow: var(--silicon-shadow-sm) !important;
+}
+
 #nav-path ul {
     border: none !important;
     background: transparent !important;
     box-shadow: none !important;
+}
+
+#nav-path li.footer {
+    color: var(--silicon-text-soft) !important;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Responsive adjustments                                                    */
+/* ------------------------------------------------------------------------- */
+@media screen and (max-width: 767px) {
+    #top {
+        padding: 10px 12px !important;
+    }
+
+    #projectname {
+        padding: 0.8rem 1rem !important;
+        font-size: 1.25rem !important;
+    }
+
+    .header {
+        margin: 0 auto 20px !important;
+        padding: 16px 16px 0 !important;
+    }
+
+    .contents {
+        margin: 0 auto 24px !important;
+        padding: 0 16px 24px !important;
+    }
+
+    div.toc {
+        margin: 0 0 24px 0 !important;
+    }
+
+    #side-nav {
+        padding: 0 12px 16px !important;
+    }
+
+    #nav-tree,
+    div.toc,
+    #page-nav,
+    table.doxtable,
+    .fragment,
+    dl.section:not(.return), /* Mantiene la shadow su mobile tranne per returns */
+    .memitem {
+        box-shadow: var(--silicon-shadow-md) !important;
+    }
+
+    #MSearchResultsWindow {
+        right: 12px !important;
+        max-width: calc(100vw - 24px) !important;
+    }
+
+    #nav-path {
+        margin: 24px 12px 16px !important;
+        max-width: none !important;
+    }
 }
