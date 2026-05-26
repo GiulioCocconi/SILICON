@@ -366,7 +366,8 @@ public:
    *
    * This format intentionally does not store any UI state such as graphical positions,
    * rotations, wire segment geometry, or runtime scene item IDs. Those belong to the
-   * DiagramScene serialization format documented in @ref diagramscene_serialization_format.
+   * DiagramScene serialization format documented in @ref
+   * diagramscene_serialization_format.
    *
    * @return JSON string representation of the logical circuit model
    */

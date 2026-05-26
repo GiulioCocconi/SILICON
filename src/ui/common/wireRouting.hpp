@@ -26,7 +26,6 @@
 namespace silicon {
 
 [[nodiscard]] std::vector<QPointF>
-routeOrthogonalWire(QPointF start, QPointF end,
-                    const std::vector<QRectF>& obstacleRects);
+routeOrthogonalWire(QPointF start, QPointF end, const std::vector<QRectF>& obstacleRects);
 
 }

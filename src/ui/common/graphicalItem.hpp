@@ -93,7 +93,7 @@ public:
    */
   [[nodiscard]] QPointF getInitialPosition() const { return initialPosition; }
 
-  [[nodiscard]] qreal getInitialRotation() const { return initialRotation; }
+  [[nodiscard]] qreal    getInitialRotation() const { return initialRotation; }
   [[nodiscard]] uint64_t getUiId() const { return uiId; }
 
   /**

@@ -322,7 +322,7 @@ QRectF Port::boundingRect() const
                          (portLine.p1().y() + portLine.p2().y()) / 2.0);
 
   const QFontMetricsF metrics(QFont("NovaMono"));
-  const QRectF labelRect =
+  const QRectF        labelRect =
       metrics.boundingRect(QString::number(size)).adjusted(-4.0, -2.0, 4.0, 2.0);
   rect = rect.united(portSizeLabelRect(midpoint, labelRect, direction));
 
@@ -359,7 +359,7 @@ void Port::paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
   constexpr qreal slashLength = 12.0;
   constexpr qreal slashAngle  = 60.0;
 
-  const QLineF portLine = line->line();
+  const QLineF  portLine = line->line();
   const QPointF midpoint((portLine.p1().x() + portLine.p2().x()) / 2.0,
                          (portLine.p1().y() + portLine.p2().y()) / 2.0);
   const qreal   lineAngle = portLine.angle();
@@ -376,8 +376,7 @@ void Port::paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
   painter->restore();
 
   const QFontMetricsF metrics(markerFont);
-  const QRectF textRect =
-      metrics.boundingRect(sizeText).adjusted(-4.0, -2.0, 4.0, 2.0);
+  const QRectF textRect  = metrics.boundingRect(sizeText).adjusted(-4.0, -2.0, 4.0, 2.0);
   const QRectF labelRect = portSizeLabelRect(midpoint, textRect, direction);
 
   painter->save();
