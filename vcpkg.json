@@ -40,6 +40,9 @@
       "name": "boost-process"
     },
     {
+      "name": "ogdf"
+    },
+    {
       "name": "nlohmann-json"
     },
     {

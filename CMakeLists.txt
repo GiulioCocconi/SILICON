@@ -202,6 +202,7 @@ find_package(Boost REQUIRED COMPONENTS ${SILICON_BOOST_COMPONENTS})
 find_package(nlohmann_json REQUIRED)
 find_package(tomlplusplus REQUIRED)
 find_package(libzip CONFIG REQUIRED)
+find_package(ogdf CONFIG REQUIRED)
 
 if (TARGET libzip::zip)
     set(SILICON_LIBZIP_TARGET libzip::zip)
@@ -331,6 +332,7 @@ target_compile_options(SILICON PRIVATE -Werror)
 target_link_libraries(SILICON PRIVATE
         Qt6::Widgets
         Qt6::SvgWidgets
+        OGDF
         avoid
         silicon_core)
 

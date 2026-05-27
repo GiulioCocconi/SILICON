@@ -66,7 +66,7 @@ jobs:
           path: |
             build/vcpkg_installed
             build/_deps
-          key: wasm-vcpkg-${{ hashFiles('**/vcpkg.json') }}
+          key: wasm-vcpkg-${{ hashFiles('**/vcpkg.json', 'vcpkg-configuration.json', 'vcpkg-ports/**') }}
           restore-keys: |
             wasm-vcpkg-
 

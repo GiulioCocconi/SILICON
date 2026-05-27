@@ -52,7 +52,7 @@ jobs:
           path: |
             build/vcpkg_installed
             build/_deps
-          key: windows-vcpkg-${{ hashFiles('**/vcpkg.json') }}
+          key: windows-vcpkg-${{ hashFiles('**/vcpkg.json', 'vcpkg-configuration.json', 'vcpkg-ports/**') }}
           restore-keys: |
             windows-vcpkg-
 
