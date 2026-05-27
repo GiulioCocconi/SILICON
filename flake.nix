@@ -50,6 +50,7 @@ outputs = { self, nixpkgs, flake-utils }:
           pegtl
           nlohmann_json
           tomlplusplus
+	  ogdf
         ];
 
         nativeInputs = with pkgs; [
