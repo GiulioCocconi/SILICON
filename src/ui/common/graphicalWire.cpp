@@ -540,15 +540,20 @@ void GraphicalWireSegment::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
   if (!ds)
     return;
 
-  if (dragPointIndex >= 0) {
-    const QPointF newPos = points[dragPointIndex];
+  auto draggedPointIndex = dragPointIndex;
+  dragPointIndex         = -1;
+
+  if (draggedPointIndex >= static_cast<int>(points.size()))
+    return;
+
+  if (draggedPointIndex >= 0) {
+    const QPointF newPos = points[draggedPointIndex];
     if (newPos != dragStartPos) {
       const auto undoStack = ds->getUndoStack();
       const auto moveCmd =
-          new MoveWirePointCommand(this, dragPointIndex, dragStartPos, newPos);
+          new MoveWirePointCommand(this, draggedPointIndex, dragStartPos, newPos);
       undoStack->push(moveCmd);
     }
-    dragPointIndex = -1;
   }
 
   if (graphicalWire && graphicalWire->getManager()) {
