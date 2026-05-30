@@ -621,29 +621,3 @@ an absolute waiver of all civil liability in connection with the
 Program, unless a warranty or assumption of liability accompanies a
 copy of the Program in return for a fee.
 ```
-
-## Third Party Licenses
-This project also uses some licensed resources from third parties. These are listed below, the full license text
-for each of them is available inside the `resources/app/licenses` directory of the source code and inside the about dialog of the
-SILICON applications.
-
-### Icons
-Lucide, under ISC, _Copyright (c) 2026 Lucide Icons and Contributors_
-
-### Font Resources
-Each font is licensed under `OFL`
-- Chango _Copyright (c) 2011 Fontstage (info@fontstage.com)_
-- NovaMono _Copyright (c) 2011, wmk69 (wmk69@o2.pl)_
-- Quicksand _Copyright 2011 The Quicksand Project Authors (https://github.com/andrew-paglinawan/QuicksandFamily)_
-
-### Libraries
-- FastLZ, under MIT, _Copyright (C) 2007 Ariya Hidayat (ariya@kde.org)_
-- LibFST, under MIT, _Copyright (c) 2009-2025 Tony Bybell_
-- LZ4, under BSD, _Copyright (C) 2011-2023, Yann Collet_
-- Qt, under GPL, _Copyright (C) 2018 The Qt Company Ltd. and other contributors_
-- Boost Graph, under BSL, _Copyright 2002 Indiana University_
-- avoidlib, under LGPL, _Copyright (C) 2004-2013  Monash University_ (with some minor modifications)
-- OGDF, under GPL, _Copyright (C) 1999–2025_
-- Boost Log, under BSL, _Copyright 2007-2015 Andrey Semashev_
-- Json for Modern C++, under MIT, _Copyright (c) 2013-2026 Niels Lohmann_
-- TOML++, under MIT, _Copyright (c) Mark Gillard <mark.gillard@outlook.com.au>_
