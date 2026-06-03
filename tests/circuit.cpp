@@ -302,6 +302,95 @@ TEST(CircuitTest, MultiWireBus)
   EXPECT_EQ(outputs[0].size(), 2);
 }
 
+TEST(CircuitTest, ConnectionsExpandFanOut)
+{
+  struct TestComponent : public Component {
+    TestComponent(std::vector<Bus> inputs, std::vector<Bus> outputs)
+      : Component(std::move(inputs), std::move(outputs))
+    {
+    }
+    std::string_view typeName() const override { return "TestComponent"; }
+    void             simulate(Simulator& sim) override {}
+  };
+
+  auto fanout   = std::make_shared<Wire>();
+  auto inverted = std::make_shared<Wire>();
+
+  auto source       = std::make_shared<TestComponent>(std::vector<Bus>{},
+                                                      std::vector<Bus>{Bus({fanout})});
+  auto directSink   = std::make_shared<TestComponent>(std::vector<Bus>{Bus({fanout})},
+                                                      std::vector<Bus>{});
+  auto notGate      = std::make_shared<NotGate>(fanout, inverted);
+  auto invertedSink = std::make_shared<TestComponent>(std::vector<Bus>{Bus({inverted})},
+                                                      std::vector<Bus>{});
+
+  Component_set comps;
+  comps.insert(source);
+  comps.insert(directSink);
+  comps.insert(notGate);
+  comps.insert(invertedSink);
+
+  Circuit c(comps, false);
+
+  unsigned int fanoutConnectionCount = 0;
+  bool         hasDirectSinkRoute    = false;
+  bool         hasNotGateRoute       = false;
+
+  for (const CircuitConnection& connection : c.getConnections()) {
+    if (connection.source != source || connection.bus != Bus({fanout}))
+      continue;
+
+    ++fanoutConnectionCount;
+    hasDirectSinkRoute = hasDirectSinkRoute || connection.target == directSink;
+    hasNotGateRoute    = hasNotGateRoute || connection.target == notGate;
+    EXPECT_EQ(connection.sourceBusIndex, 0);
+    EXPECT_EQ(connection.targetBusIndex, 0);
+  }
+
+  EXPECT_EQ(fanoutConnectionCount, 2);
+  EXPECT_TRUE(hasDirectSinkRoute);
+  EXPECT_TRUE(hasNotGateRoute);
+}
+
+TEST(CircuitTest, ConnectionsPreserveSharedBusPortIndices)
+{
+  struct TestComponent : public Component {
+    TestComponent(std::vector<Bus> inputs, std::vector<Bus> outputs)
+      : Component(std::move(inputs), std::move(outputs))
+    {
+    }
+    std::string_view typeName() const override { return "TestComponent"; }
+    void             simulate(Simulator& sim) override {}
+  };
+
+  auto firstWire  = std::make_shared<Wire>();
+  auto secondWire = std::make_shared<Wire>();
+  Bus  sourceBus({firstWire, secondWire});
+
+  auto source = std::make_shared<TestComponent>(std::vector<Bus>{},
+                                                std::vector<Bus>{sourceBus, sourceBus});
+  auto target = std::make_shared<TestComponent>(
+      std::vector<Bus>{sourceBus, Bus({firstWire})}, std::vector<Bus>{});
+  Circuit circuit(Component_set{source, target}, false);
+
+  std::array<std::array<bool, 2>, 2> seenIndices{};
+  unsigned int                       connectionCount = 0;
+  for (const CircuitConnection& connection : circuit.getConnections()) {
+    if (connection.source != source || connection.target != target)
+      continue;
+
+    ASSERT_LT(connection.sourceBusIndex, seenIndices.size());
+    ASSERT_LT(connection.targetBusIndex, seenIndices.front().size());
+    seenIndices[connection.sourceBusIndex][connection.targetBusIndex] = true;
+    ++connectionCount;
+  }
+
+  EXPECT_EQ(connectionCount, 4);
+  for (const auto& sourceIndices : seenIndices)
+    for (const bool seen : sourceIndices)
+      EXPECT_TRUE(seen);
+}
+
 TEST(CircuitTest, GetSubgraphFanIn)
 {
   // a,b → AND(mid) → NOT(o)

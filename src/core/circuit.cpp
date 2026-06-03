@@ -19,8 +19,10 @@
 #include "circuit.hpp"
 
 #include <algorithm>
+#include <cstdint>
 #include <format>
 #include <ranges>
+#include <unordered_set>
 
 #include <core/component.hpp>
 #include <core/serialization/component_registry.hpp>
@@ -94,6 +96,7 @@ namespace {
     }
     return expectedBuses;
   }
+
 }  // namespace
 
 // --- Topology Observers & Live Editing -------------------------------------------------
@@ -217,18 +220,11 @@ void Circuit::rebuildEdges(VertexDescriptor v)
     if (!neighbor)
       continue;
 
-    // 2. Flatten all neighbor input buses into a single view of wires
-    auto neighbor_wires = neighbor->inputBuses() | std::views::join;
-
     for (const Bus& outBus : outputs) {
-      // 3. Filter out null/falsy wires lazily
-      auto valid_out_wires =
-          outBus | std::views::filter([](const auto& w) { return static_cast<bool>(w); });
-
-      // 4. Check if any valid out-wire exists in the flattened neighbor inputs
-      const bool sharesWire = std::ranges::any_of(valid_out_wires, [&](const auto& wire) {
-        return std::ranges::contains(neighbor_wires, wire);  // C++23
-      });
+      const bool sharesWire =
+          std::ranges::any_of(neighbor->inputBuses(), [&](const Bus& inBus) {
+            return outBus.sharesWireWith(inBus);
+          });
 
       if (sharesWire) {
         auto out_edges = boost::make_iterator_range(boost::out_edges(v, graph));
@@ -463,11 +459,11 @@ Component_set Circuit::getComponentsForBus(Bus b) const
 {
   Component_set connectedComponents;
 
-  auto valid_wires =
-      b | std::views::filter([](const auto& w) { return static_cast<bool>(w); });
-
   // Gather components that are listening to these wires
-  for (const auto& wire : valid_wires) {
+  for (const auto& wire : b) {
+    if (!wire)
+      continue;
+
     for (const auto& weakComp : getListenersForWire(wire->getId())) {
       if (auto comp = weakComp.lock()) {
         connectedComponents.insert(comp);
@@ -481,13 +477,8 @@ Component_set Circuit::getComponentsForBus(Bus b) const
     if (!cPtr)
       continue;
 
-    // Flatten all of this component's output buses into a single stream of wires
-    auto out_wires = cPtr->outputBuses() | std::views::join;
-
-    // Check if ANY valid wire from `b` exists in this component's outputs
-    const bool matches = std::ranges::any_of(valid_wires, [&](const auto& wire) {
-      return std::ranges::contains(out_wires, wire);  // C++23
-    });
+    const bool matches = std::ranges::any_of(
+        cPtr->outputBuses(), [&](const Bus& outBus) { return b.sharesWireWith(outBus); });
 
     if (matches) {
       connectedComponents.insert(cPtr);  // Re-use cPtr, no double lookup!
@@ -495,6 +486,45 @@ Component_set Circuit::getComponentsForBus(Bus b) const
   }
 
   return connectedComponents;
+}
+
+std::vector<CircuitConnection> Circuit::getConnections() const
+{
+  std::vector<CircuitConnection> connections;
+  connections.reserve(boost::num_edges(graph));
+
+  for (const auto edge : boost::make_iterator_range(boost::edges(graph))) {
+    const auto sourceVertex    = boost::source(edge, graph);
+    const auto targetVertex    = boost::target(edge, graph);
+    const auto sourceComponent = graph[sourceVertex].component;
+    const auto targetComponent = graph[targetVertex].component;
+    if (!sourceComponent || !targetComponent)
+      continue;
+
+    const Bus&  bus     = graph[edge].bus;
+    const auto& outputs = sourceComponent->outputBuses();
+    for (std::size_t sourceBusIndex = 0; sourceBusIndex < outputs.size();
+         ++sourceBusIndex) {
+      if (outputs[sourceBusIndex] != bus)
+        continue;
+
+      const auto& inputs = targetComponent->inputBuses();
+      for (std::size_t targetBusIndex = 0; targetBusIndex < inputs.size();
+           ++targetBusIndex) {
+        if (!bus.sharesWireWith(inputs[targetBusIndex]))
+          continue;
+
+        connections.push_back(
+            CircuitConnection{.source         = sourceComponent,
+                              .target         = targetComponent,
+                              .sourceBusIndex = static_cast<unsigned int>(sourceBusIndex),
+                              .targetBusIndex = static_cast<unsigned int>(targetBusIndex),
+                              .bus            = bus});
+      }
+    }
+  }
+
+  return connections;
 }
 
 // --- Wire Reactivity & Cone Subgraphs --------------------------------------------------
@@ -916,5 +946,4 @@ Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry
   result.buildTopologyMap();
   return result;
 }
-
 }  // namespace SILICON::core

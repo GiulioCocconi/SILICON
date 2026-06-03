@@ -349,6 +349,20 @@ bool Bus::hasUnknowns() const
       busData, [](const auto& el) { return el->getCurrentState() == State::UNKNOWN; });
 }
 
+bool Bus::sharesWireWith(const Bus& other) const
+{
+  for (const auto& localWire : busData) {
+    if (!localWire)
+      continue;
+
+    for (const auto& otherWire : other.busData) {
+      if (otherWire && localWire.get() == otherWire.get())
+        return true;
+    }
+  }
+  return false;
+}
+
 std::strong_ordering Bus::operator<=>(const Bus& other) const
 {
   return std::lexicographical_compare_three_way(
