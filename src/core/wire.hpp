@@ -19,6 +19,7 @@
 #pragma once
 #include <atomic>
 #include <compare>
+#include <cstdint>
 #include <format>
 #include <memory>
 #include <set>
@@ -143,6 +144,7 @@ public:
   [[nodiscard]] std::string  getCurrentValueString() const;
   [[nodiscard]] bool         isInErrorState() const;
   [[nodiscard]] bool         hasUnknowns() const;
+  [[nodiscard]] bool         sharesWireWith(const Bus& other) const;
 
   const Wire_ptr& operator[](unsigned short index) const
   {

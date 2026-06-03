@@ -18,6 +18,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -46,6 +47,30 @@ struct VertexProperty {
 /** @brief Property stored in each edge of the circuit graph */
 struct EdgeProperty {
   /** @brief The bus of wires this edge represents */
+  Bus bus;
+};
+
+/**
+ * @brief Directed logical connection between one component output bus and one input bus.
+ *
+ * This is more concrete than a graph edge for visual consumers: a single output bus
+ * may fan out to several input buses, and each target input needs its own routed
+ * connection even when all routes share the same logical bus.
+ */
+struct CircuitConnection {
+  /** @brief Component that owns the output bus. */
+  Component_ptr source;
+
+  /** @brief Component that owns the input bus. */
+  Component_ptr target;
+
+  /** @brief Output bus index on source. */
+  unsigned int sourceBusIndex = 0;
+
+  /** @brief Input bus index on target. */
+  unsigned int targetBusIndex = 0;
+
+  /** @brief Logical bus carried by this connection. */
   Bus bus;
 };
 
@@ -334,6 +359,17 @@ public:
    * @return Set of components connected to the bus
    */
   [[nodiscard]] Component_set getComponentsForBus(Bus b) const;
+
+  /**
+   * @brief Gets concrete output-to-input logical connections for routing.
+   *
+   * Each returned item represents one source output bus connected to one target input
+   * bus. Fan-out is expanded into multiple connections, while multi-wire buses are
+   * deduplicated so each source/target/bus-index tuple appears once.
+   *
+   * @return Vector of directed logical connections
+   */
+  [[nodiscard]] std::vector<CircuitConnection> getConnections() const;
 
   /**
    * @brief Gets all components listening to changes on a specific wire.
