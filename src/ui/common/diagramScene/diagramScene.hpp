@@ -18,7 +18,7 @@
 
 #pragma once
 
-#include "logSideView.hpp"
+#include "../logSideView.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -40,11 +40,12 @@
 #include <nlohmann/json.hpp>
 
 #include <core/circuit.hpp>
-#include <core/simulator.hpp>
 
 #include <ui/common/componentSearchBox.hpp>
 #include <ui/common/wireManager.hpp>
 
+class DiagramSceneSerializer;
+class DiagramSceneSimulationController;
 class GraphicalComponent;
 class GraphicalItem;
 class GraphicalWireSegment;
@@ -156,8 +157,15 @@ public:
   /** @brief Grid cell size in scene units */
   static constexpr int GRID_SIZE = 10;
 
-  [[nodiscard]] QUndoStack*  getUndoStack() const;
-  [[nodiscard]] LogSideView* getLogSideView() const;
+  [[nodiscard]] QUndoStack*              getUndoStack() const;
+  [[nodiscard]] LogSideView*             getLogSideView() const;
+  [[nodiscard]] WireManager&             getWireManager() { return wireManager; }
+  [[nodiscard]] const WireManager&       getWireManager() const { return wireManager; }
+  [[nodiscard]] std::shared_ptr<Circuit> getCircuit() const { return circuit; }
+  void                                   setCircuit(std::shared_ptr<Circuit> newCircuit)
+  {
+    circuit = std::move(newCircuit);
+  }
 
   /**
    * @brief Serializes the full editor scene to JSON.
@@ -272,6 +280,7 @@ public:
   bool removeSelection(const nlohmann::json& payload);
 
   void clear();
+  void updateSceneAfterEdit();
 
   /**
    * @brief Enables or disables simulation FST tracing.
@@ -282,7 +291,7 @@ public:
    */
   void setFstTraceFile(std::optional<std::string> fileName);
 
-  [[nodiscard]] bool isFstTracingEnabled() const { return fstTraceFile.has_value(); }
+  [[nodiscard]] bool isFstTracingEnabled() const;
 
   ~DiagramScene() override;
 
@@ -352,12 +361,6 @@ private:
   void exitComponentPlacingMode();
   void enterSimulationMode();
   void exitSimulationMode();
-  void applyFstTraceWriter();
-  void resetWaveformTrace();
-  void configureSimulatorTrace();
-
-  [[nodiscard]] std::vector<SiliconFstWriter::NamedBus> collectTraceBuses() const;
-  [[nodiscard]] int                                     collectTraceInputCount() const;
 
   /**
    * @brief Handles mouse movement for wire/component dragging.
@@ -398,11 +401,11 @@ private:
   /** @brief O(1) lookup table for runtime graphical items by stable UI id */
   std::unordered_map<uint64_t, GraphicalItem*> itemsByUiId;
 
-  /** @brief Logic simulation engine */
-  std::unique_ptr<Simulator> simulator;
+  /** @brief Simulation lifecycle and trace management */
+  std::unique_ptr<DiagramSceneSimulationController> simulationController;
 
-  /** @brief Optional output file for interactive simulation traces */
-  std::optional<std::string> fstTraceFile;
+  /** @brief Persistence and clipboard payload handling */
+  std::unique_ptr<DiagramSceneSerializer> serializer;
 };
 
 /**

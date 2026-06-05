@@ -23,7 +23,7 @@ Copyright (c) 2026. Giulio Cocconi
 #include <QGraphicsView>
 #include <QWheelEvent>
 
-#include <ui/common/diagramScene.hpp>  // Needed for the grid size
+#include <ui/common/diagramScene/diagramScene.hpp>
 
 class DiagramView : public QGraphicsView {
   Q_OBJECT

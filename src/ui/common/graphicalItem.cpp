@@ -24,7 +24,7 @@
 
 #include <QVariant>
 
-#include <ui/common/diagramScene.hpp>
+#include <ui/common/diagramScene/diagramScene.hpp>
 #include <ui/common/graphicalComponent.hpp>
 #include <ui/common/graphicalWire.hpp>
 #include <ui/common/undoCommands.hpp>
