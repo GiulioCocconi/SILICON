@@ -326,7 +326,7 @@ QRectF Port::boundingRect() const
       metrics.boundingRect(QString::number(size)).adjusted(-4.0, -2.0, 4.0, 2.0);
   rect = rect.united(portSizeLabelRect(midpoint, labelRect, direction));
 
-  return rect.adjusted(-6.0, -6.0, 6.0, 6.0);
+  return rect;
 }
 
 void Port::setLine(QGraphicsLineItem* line)
