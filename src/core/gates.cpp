@@ -17,11 +17,80 @@
 
 #include "gates.hpp"
 
+#include <functional>
 #include <stdexcept>
 
 #include <core/simulator.hpp>
 
-Gate::Gate()
+namespace {
+uint64_t gateDelay(const Gate& gate)
+{
+  return gate.getPropertyValue<int>("delay").value_or(0);
+}
+
+bool gateBitwiseEnabled(const Gate& gate)
+{
+  return gate.getPropertyValue<bool>("bitwise").value_or(false);
+}
+
+int gateWidth(const Gate& gate)
+{
+  return gate.getPropertyValue<int>("size").value_or(1);
+}
+
+template <typename Reducer, typename Finalizer = std::identity>
+void simulateBitwiseGate(Gate& gate, Simulator& sim, State initialState,
+                         Reducer&& reducer, Finalizer&& finalizer = {})
+{
+  const auto delay   = gateDelay(gate);
+  const auto inputs  = gate.getInputs();
+  const auto outputs = gate.getOutputs();
+
+  if (!gateBitwiseEnabled(gate)) {
+    State result = initialState;
+    for (const auto& input : inputs)
+      result = reducer(result, Wire::safeGetCurrentState(input[0]));
+
+    sim.updateWire(outputs[0][0], finalizer(result), delay, gate.weak_from_this());
+    return;
+  }
+
+  const int width = gateWidth(gate);
+  for (int bit = 0; bit < width; ++bit) {
+    State result = initialState;
+    for (const auto& input : inputs)
+      result = reducer(result, Wire::safeGetCurrentState(input[bit]));
+
+    sim.updateWire(outputs[0][bit], finalizer(result), delay, gate.weak_from_this());
+  }
+}
+}  // namespace
+
+Gate::Gate() : Gate(true) {}
+
+Gate::Gate(const bool enableBitwiseProperties)
+{
+  initializeProperties(enableBitwiseProperties);
+}
+
+Gate::Gate(const std::vector<Wire_ptr>& inputs, Wire_ptr output)
+  : Gate(inputs, std::move(output), true)
+{
+}
+
+Gate::Gate(const std::vector<Wire_ptr>& inputs, Wire_ptr output,
+           const bool enableBitwiseProperties)
+  : Gate(enableBitwiseProperties)
+{
+  if (inputs.empty())
+    throw std::invalid_argument("Gate requires at least one input");
+
+  for (const auto& input : inputs)
+    this->inputs.push_back({input});
+  this->outputs = {{output}};
+}
+
+void Gate::initializeProperties(const bool enableBitwiseProperties)
 {
   defineProperty("delay", 5);
   setPropertyCallback("delay", [](const PropertyValue& value) {
@@ -30,16 +99,52 @@ Gate::Gate()
 
     throw std::invalid_argument("Delays must be non-negative!");
   });
+
+  if (!enableBitwiseProperties)
+    return;
+
+  defineProperty("bitwise", false);
+  defineProperty("size", 1);
+
+  setPropertyCallback("bitwise", [this](const PropertyValue& value) {
+    const bool bitwise = std::get<bool>(value);
+    if (!inputs.empty() && !outputs.empty()) {
+      const int size = getPropertyValue<int>("size").value_or(1);
+      setSize(bitwise ? size : 1);
+    }
+    return value;
+  });
+
+  setPropertyCallback("size", [this](const PropertyValue& value) {
+    const int size = std::get<int>(value);
+    if (size < 1)
+      throw std::invalid_argument("Gate size must be at least 1");
+
+    if (getPropertyValue<bool>("bitwise").value_or(false) && !inputs.empty()
+        && !outputs.empty()) {
+      setSize(size);
+    }
+
+    return value;
+  });
 }
 
-Gate::Gate(const std::vector<Wire_ptr>& inputs, Wire_ptr output) : Gate()
+int Gate::setSize(const int width)
 {
-  if (inputs.empty())
-    throw std::invalid_argument("Gate requires at least one input");
+  if (width < 1)
+    return static_cast<int>(outputs.empty() ? 0 : outputs[0].size());
 
-  for (const auto& input : inputs)
-    this->inputs.push_back({input});
-  this->outputs = {{output}};
+  auto newInputs = getInputs();
+  for (auto& input : newInputs)
+    input.setSize(static_cast<unsigned short>(width));
+  setInputs(newInputs);
+
+  auto newOutputs = getOutputs();
+  for (auto& output : newOutputs)
+    output.setSize(static_cast<unsigned short>(width));
+  setOutputs(newOutputs);
+
+  return width;
 }
 
 AndGate::AndGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output)
@@ -51,12 +156,8 @@ AndGate::AndGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output)
 
 void AndGate::simulate(Simulator& sim)
 {
-  State s = State::HIGH;
-  for (const auto& input : this->inputs)
-    s = s && Wire::safeGetCurrentState(input[0]);
-
-  sim.updateWire(this->outputs[0][0], s, getPropertyValue<int>("delay").value_or(0),
-                 weak_from_this());
+  simulateBitwiseGate(*this, sim, State::HIGH,
+                      [](const State lhs, const State rhs) { return lhs && rhs; });
 }
 
 OrGate::OrGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output)
@@ -68,15 +169,11 @@ OrGate::OrGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output)
 
 void OrGate::simulate(Simulator& sim)
 {
-  State s = State::LOW;
-  for (const auto& input : this->inputs)
-    s = s || Wire::safeGetCurrentState(input[0]);
-
-  sim.updateWire(this->outputs[0][0], s, getPropertyValue<int>("delay").value_or(0),
-                 weak_from_this());
+  simulateBitwiseGate(*this, sim, State::LOW,
+                      [](const State lhs, const State rhs) { return lhs || rhs; });
 }
 
-NotGate::NotGate(Wire_ptr input, Wire_ptr output) : Gate({input}, output)
+NotGate::NotGate(Wire_ptr input, Wire_ptr output) : Gate({input}, output, false)
 {
   setProperty("delay", 2);
 }
@@ -98,12 +195,10 @@ NandGate::NandGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output)
 
 void NandGate::simulate(Simulator& sim)
 {
-  State s = State::HIGH;
-  for (const auto& input : this->inputs)
-    s = s && Wire::safeGetCurrentState(input[0]);
-
-  sim.updateWire(this->outputs[0][0], !s, getPropertyValue<int>("delay").value_or(0),
-                 weak_from_this());
+  simulateBitwiseGate(
+      *this, sim, State::HIGH,
+      [](const State lhs, const State rhs) { return lhs && rhs; },
+      [](const State state) { return !state; });
 }
 
 NorGate::NorGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output)
@@ -116,12 +211,9 @@ NorGate::NorGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output)
 
 void NorGate::simulate(Simulator& sim)
 {
-  State s = State::LOW;
-  for (const auto& input : this->inputs)
-    s = s || Wire::safeGetCurrentState(input[0]);
-
-  sim.updateWire(this->outputs[0][0], !s, getPropertyValue<int>("delay").value_or(0),
-                 weak_from_this());
+  simulateBitwiseGate(
+      *this, sim, State::LOW, [](const State lhs, const State rhs) { return lhs || rhs; },
+      [](const State state) { return !state; });
 }
 
 XorGate::XorGate(const std::array<Wire_ptr, 2>& inputs, Wire_ptr output)
@@ -132,8 +224,17 @@ XorGate::XorGate(const std::array<Wire_ptr, 2>& inputs, Wire_ptr output)
 
 void XorGate::simulate(Simulator& sim)
 {
-  State s = Wire::safeGetCurrentState(this->inputs[0][0])
-            ^ Wire::safeGetCurrentState(this->inputs[1][0]);
-  sim.updateWire(this->outputs[0][0], s, getPropertyValue<int>("delay").value_or(0),
-                 weak_from_this());
+  const auto delay = gateDelay(*this);
+  if (!gateBitwiseEnabled(*this)) {
+    State s = Wire::safeGetCurrentState(this->inputs[0][0])
+              ^ Wire::safeGetCurrentState(this->inputs[1][0]);
+    sim.updateWire(this->outputs[0][0], s, delay, weak_from_this());
+    return;
+  }
+
+  for (int bit = 0; bit < gateWidth(*this); ++bit) {
+    State s = Wire::safeGetCurrentState(this->inputs[0][bit])
+              ^ Wire::safeGetCurrentState(this->inputs[1][bit]);
+    sim.updateWire(this->outputs[0][bit], s, delay, weak_from_this());
+  }
 }
