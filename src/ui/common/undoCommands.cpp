@@ -7,7 +7,7 @@
 #include <utility>
 
 #include <core/serialization/component_registry.hpp>
-#include <ui/common/diagramScene.hpp>
+#include <ui/common/diagramScene/diagramScene.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
 
 namespace {

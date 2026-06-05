@@ -30,7 +30,7 @@
 #include <core/component.hpp>
 #include <core/wire.hpp>
 
-#include <ui/common/diagramScene.hpp>
+#include <ui/common/diagramScene/diagramScene.hpp>
 #include <ui/common/graphicalComponent.hpp>
 
 /**

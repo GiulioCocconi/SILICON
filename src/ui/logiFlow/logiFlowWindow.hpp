@@ -30,7 +30,7 @@ struct ShortcutSetting;
 class WaveformViewer;
 
 #include <ui/common/aboutDialog.hpp>
-#include <ui/common/diagramScene.hpp>
+#include <ui/common/diagramScene/diagramScene.hpp>
 #include <ui/common/diagramView.hpp>
 
 #ifndef QT_NO_CONTEXTMENU

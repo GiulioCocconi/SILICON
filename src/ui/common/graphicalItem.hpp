@@ -28,7 +28,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include <ui/common/diagramScene.hpp>
+#include <ui/common/diagramScene/diagramScene.hpp>
 #include <ui/common/enums.hpp>
 
 class DiagramScene;

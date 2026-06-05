@@ -81,7 +81,9 @@ set(UI_SOURCE_FILES
         ${src_dir}/ui/common/theme.cpp
         ${src_dir}/ui/common/componentSearchBox.cpp
         ${src_dir}/ui/common/diagramView.cpp
-        ${src_dir}/ui/common/diagramScene.cpp
+        ${src_dir}/ui/common/diagramScene/diagramScene.cpp
+        ${src_dir}/ui/common/diagramScene/diagramSceneSerializer.cpp
+        ${src_dir}/ui/common/diagramScene/diagramSceneSimulationController.cpp
         ${src_dir}/ui/common/graphicalWire.cpp
         ${src_dir}/ui/common/wireManager.cpp
         ${src_dir}/ui/common/wireRouting.cpp
