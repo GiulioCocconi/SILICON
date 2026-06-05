@@ -23,10 +23,52 @@
 #include <core/component.hpp>
 #include <core/wire.hpp>
 
+/**
+ * @brief Base class for combinational logic gates.
+ *
+ * All gates expose a `delay` property. Gates other than `NotGate` also support
+ * optional bitwise operation through the `bitwise` and `size` properties:
+ * when `bitwise` is enabled, every input and the single output are resized to
+ * `size` bits and the gate logic is applied independently on each bit.
+ */
 class Gate : public Component {
+private:
+  void initializeProperties(bool enableBitwiseProperties);
+
 public:
+  /**
+   * @brief Constructs a gate with scalar I/O and bitwise properties enabled.
+   * @param inputs Input wires, one per input port
+   * @param output Output wire
+   */
   Gate(const std::vector<Wire_ptr>& inputs, Wire_ptr output);
+
+  /**
+   * @brief Constructs an empty gate instance for factory/serialization usage.
+   */
   Gate();
+
+protected:
+  /**
+   * @brief Constructs an empty gate and optionally enables bitwise properties.
+   * @param enableBitwiseProperties False for scalar-only gates such as `NotGate`
+   */
+  explicit Gate(bool enableBitwiseProperties);
+
+  /**
+   * @brief Constructs a gate with I/O and optional bitwise property support.
+   * @param inputs Input wires, one per input port
+   * @param output Output wire
+   * @param enableBitwiseProperties False for scalar-only gates such as `NotGate`
+   */
+  Gate(const std::vector<Wire_ptr>& inputs, Wire_ptr output,
+       bool enableBitwiseProperties);
+
+  /**
+   * @brief Resizes every input bus and the output bus to the same width.
+   * @param width New bus width to apply consistently across the gate I/O
+   */
+  int setSize(int width);
 };
 
 class AndGate : public Gate {

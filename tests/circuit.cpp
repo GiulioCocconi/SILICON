@@ -953,6 +953,36 @@ TEST(CircuitTest, SerializeIncludesProperties)
   EXPECT_EQ(json["components"][0]["properties"]["delay"], 2);
 }
 
+TEST(CircuitTest, DeserializeRestoresBitwiseGatePropertiesAndBusWidths)
+{
+  ComponentRegistry registry;
+  registerAllComponents(registry);
+
+  auto gate = std::make_shared<XorGate>(
+      std::array<Wire_ptr, 2>{std::make_shared<Wire>(), std::make_shared<Wire>()},
+      std::make_shared<Wire>());
+  gate->setProperty("size", 4);
+  gate->setProperty("bitwise", true);
+
+  Circuit original(gate, false);
+  auto    serialized = original.serialize();
+  auto    restored   = Circuit::deserialize(serialized, registry);
+
+  const auto components = restored.topologicalOrder();
+  ASSERT_EQ(components.size(), 1);
+
+  const auto component = components.front().lock();
+  ASSERT_TRUE(component);
+  EXPECT_EQ(component->typeName(), "XorGate");
+  EXPECT_EQ(component->getPropertyValue<bool>("bitwise"), true);
+  EXPECT_EQ(component->getPropertyValue<int>("size"), 4);
+  ASSERT_EQ(component->getInputs().size(), 2);
+  ASSERT_EQ(component->getOutputs().size(), 1);
+  EXPECT_EQ(component->getInputs()[0].size(), 4);
+  EXPECT_EQ(component->getInputs()[1].size(), 4);
+  EXPECT_EQ(component->getOutputs()[0].size(), 4);
+}
+
 TEST(CircuitTest, RemoveComponent)
 {
   auto a = std::make_shared<Wire>();

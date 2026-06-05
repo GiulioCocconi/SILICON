@@ -20,6 +20,19 @@
 #include <core/circuit.hpp>
 #include <core/simulator.hpp>
 
+namespace {
+void expectBusStates(const Bus& bus, std::initializer_list<State> expected)
+{
+  ASSERT_EQ(bus.size(), expected.size());
+
+  size_t index = 0;
+  for (const State state : expected) {
+    EXPECT_EQ(bus[index]->getCurrentState(), state) << "Bit " << index;
+    ++index;
+  }
+}
+}  // namespace
+
 TEST(LogicTest, And)
 {
   auto a = std::make_shared<Wire>(State::ERROR);
@@ -65,6 +78,24 @@ TEST(LogicTest, And)
       << "AND(HIGH, HIGH) = " << to_str(o->getCurrentState());
 }
 
+TEST(LogicTest, Nand)
+{
+  auto a = std::make_shared<Wire>(State::HIGH);
+  auto b = std::make_shared<Wire>(State::HIGH);
+  auto o = std::make_shared<Wire>();
+
+  auto      g    = std::make_shared<NandGate>(std::vector<Wire_ptr>{a, b}, o);
+  auto      circ = std::make_shared<Circuit>(Component_set{g});
+  Simulator sim(circ);
+  sim.run(20);
+
+  EXPECT_EQ(o->getCurrentState(), State::LOW);
+
+  sim.setBus(Bus{b}, 0);
+  sim.run(20);
+  EXPECT_EQ(o->getCurrentState(), State::HIGH);
+}
+
 TEST(LogicTest, Or)
 {
   auto a = std::make_shared<Wire>(State::ERROR);
@@ -106,6 +137,24 @@ TEST(LogicTest, Or)
   sim.run(20);
   EXPECT_EQ(o->getCurrentState(), State::HIGH)
       << "OR(HIGH, HIGH) = " << to_str(o->getCurrentState());
+}
+
+TEST(LogicTest, Nor)
+{
+  auto a = std::make_shared<Wire>(State::LOW);
+  auto b = std::make_shared<Wire>(State::LOW);
+  auto o = std::make_shared<Wire>();
+
+  auto      g    = std::make_shared<NorGate>(std::vector<Wire_ptr>{a, b}, o);
+  auto      circ = std::make_shared<Circuit>(Component_set{g});
+  Simulator sim(circ);
+  sim.run(20);
+
+  EXPECT_EQ(o->getCurrentState(), State::HIGH);
+
+  sim.setBus(Bus{a}, 1);
+  sim.run(20);
+  EXPECT_EQ(o->getCurrentState(), State::LOW);
 }
 
 TEST(LogicTest, Xor)
@@ -220,6 +269,157 @@ TEST(LogicTest, BusSettingReading)
     a.forceSetCurrentValue(i);
     EXPECT_EQ(a.getCurrentValue(), i);
   }
+}
+
+TEST(LogicTest, GateBitwiseDefaultsAndValidation)
+{
+  auto a = std::make_shared<Wire>();
+  auto b = std::make_shared<Wire>();
+  auto o = std::make_shared<Wire>();
+
+  auto gate = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, o);
+
+  EXPECT_EQ(gate->getPropertyValue<bool>("bitwise"), false);
+  EXPECT_EQ(gate->getPropertyValue<int>("size"), 1);
+  EXPECT_EQ(gate->getInputs()[0].size(), 1);
+  EXPECT_EQ(gate->getInputs()[1].size(), 1);
+  EXPECT_EQ(gate->getOutputs()[0].size(), 1);
+
+  EXPECT_THROW(gate->setProperty("size", 0), std::invalid_argument);
+  EXPECT_THROW(gate->setProperty("size", -2), std::invalid_argument);
+
+  auto notGate = std::make_shared<NotGate>(a, o);
+  EXPECT_FALSE(notGate->getProperty("bitwise").has_value());
+  EXPECT_FALSE(notGate->getProperty("size").has_value());
+}
+
+TEST(LogicTest, GateBitwiseReshapesIO)
+{
+  auto a = std::make_shared<Wire>();
+  auto b = std::make_shared<Wire>();
+  auto o = std::make_shared<Wire>();
+
+  auto gate = std::make_shared<OrGate>(std::vector<Wire_ptr>{a, b}, o);
+
+  gate->setProperty("size", 4);
+  EXPECT_EQ(gate->getPropertyValue<int>("size"), 4);
+  EXPECT_EQ(gate->getInputs()[0].size(), 1);
+  EXPECT_EQ(gate->getInputs()[1].size(), 1);
+  EXPECT_EQ(gate->getOutputs()[0].size(), 1);
+
+  gate->setProperty("bitwise", true);
+  EXPECT_EQ(gate->getInputs()[0].size(), 4);
+  EXPECT_EQ(gate->getInputs()[1].size(), 4);
+  EXPECT_EQ(gate->getOutputs()[0].size(), 4);
+
+  gate->setProperty("size", 2);
+  EXPECT_EQ(gate->getInputs()[0].size(), 2);
+  EXPECT_EQ(gate->getInputs()[1].size(), 2);
+  EXPECT_EQ(gate->getOutputs()[0].size(), 2);
+
+  gate->setProperty("bitwise", false);
+  EXPECT_EQ(gate->getPropertyValue<int>("size"), 2);
+  EXPECT_EQ(gate->getInputs()[0].size(), 1);
+  EXPECT_EQ(gate->getInputs()[1].size(), 1);
+  EXPECT_EQ(gate->getOutputs()[0].size(), 1);
+}
+
+TEST(LogicTest, AndBitwiseSimulation)
+{
+  auto gate = std::make_shared<AndGate>(
+      std::vector<Wire_ptr>{std::make_shared<Wire>(), std::make_shared<Wire>()},
+      std::make_shared<Wire>());
+  gate->setProperty("size", 4);
+  gate->setProperty("bitwise", true);
+
+  auto      circ = std::make_shared<Circuit>(Component_set{gate});
+  Simulator sim(circ);
+  sim.setBus(gate->getInputs()[0], 0b1101);
+  sim.setBus(gate->getInputs()[1], 0b1011);
+  sim.run(20);
+
+  expectBusStates(gate->getOutputs()[0],
+                  {State::HIGH, State::LOW, State::LOW, State::HIGH});
+}
+
+TEST(LogicTest, OrBitwiseSimulation)
+{
+  auto gate = std::make_shared<OrGate>(
+      std::vector<Wire_ptr>{std::make_shared<Wire>(), std::make_shared<Wire>()},
+      std::make_shared<Wire>());
+  gate->setProperty("size", 4);
+  gate->setProperty("bitwise", true);
+
+  auto      circ = std::make_shared<Circuit>(Component_set{gate});
+  Simulator sim(circ);
+  sim.setBus(gate->getInputs()[0], 0b0101);
+  sim.setBus(gate->getInputs()[1], 0b1010);
+  sim.run(20);
+
+  expectBusStates(gate->getOutputs()[0],
+                  {State::HIGH, State::HIGH, State::HIGH, State::HIGH});
+}
+
+TEST(LogicTest, NandBitwiseSimulation)
+{
+  auto gate = std::make_shared<NandGate>(
+      std::vector<Wire_ptr>{std::make_shared<Wire>(), std::make_shared<Wire>()},
+      std::make_shared<Wire>());
+  gate->setProperty("size", 4);
+  gate->setProperty("bitwise", true);
+
+  auto      circ = std::make_shared<Circuit>(Component_set{gate});
+  Simulator sim(circ);
+  sim.setBus(gate->getInputs()[0], 0b1101);
+  sim.setBus(gate->getInputs()[1], 0b1011);
+  sim.run(20);
+
+  expectBusStates(gate->getOutputs()[0],
+                  {State::LOW, State::HIGH, State::HIGH, State::LOW});
+}
+
+TEST(LogicTest, NorBitwiseSimulation)
+{
+  auto gate = std::make_shared<NorGate>(
+      std::vector<Wire_ptr>{std::make_shared<Wire>(), std::make_shared<Wire>()},
+      std::make_shared<Wire>());
+  gate->setProperty("size", 4);
+  gate->setProperty("bitwise", true);
+
+  auto      circ = std::make_shared<Circuit>(Component_set{gate});
+  Simulator sim(circ);
+  sim.setBus(gate->getInputs()[0], 0b0101);
+  sim.setBus(gate->getInputs()[1], 0b1000);
+  sim.run(20);
+
+  expectBusStates(gate->getOutputs()[0],
+                  {State::LOW, State::HIGH, State::LOW, State::LOW});
+}
+
+TEST(LogicTest, XorBitwiseSimulationPreservesUnknownAndErrorPerBit)
+{
+  auto gate = std::make_shared<XorGate>(
+      std::array<Wire_ptr, 2>{std::make_shared<Wire>(), std::make_shared<Wire>()},
+      std::make_shared<Wire>());
+  gate->setProperty("size", 4);
+  gate->setProperty("bitwise", true);
+
+  auto inputs = gate->getInputs();
+  inputs[0][0]->forceSetCurrentState(State::LOW);
+  inputs[1][0]->forceSetCurrentState(State::HIGH);
+  inputs[0][1]->forceSetCurrentState(State::HIGH);
+  inputs[1][1]->forceSetCurrentState(State::HIGH);
+  inputs[0][2]->forceSetCurrentState(State::UNKNOWN);
+  inputs[1][2]->forceSetCurrentState(State::LOW);
+  inputs[0][3]->forceSetCurrentState(State::ERROR);
+  inputs[1][3]->forceSetCurrentState(State::HIGH);
+
+  auto      circ = std::make_shared<Circuit>(Component_set{gate});
+  Simulator sim(circ);
+  sim.run(20);
+
+  expectBusStates(gate->getOutputs()[0],
+                  {State::HIGH, State::LOW, State::UNKNOWN, State::ERROR});
 }
 
 // --- Component Property Tests --------------------------------------------------------
