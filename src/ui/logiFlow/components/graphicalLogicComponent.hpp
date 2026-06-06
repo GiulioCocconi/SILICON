@@ -102,6 +102,14 @@ public:
   [[nodiscard]] Component_ptr getComponent() const { return associatedComponent; }
 
   /**
+   * @brief Applies a component property while notifying Qt about possible geometry
+   * changes.
+   * @param key The property name
+   * @param value The new property value
+   */
+  void applyProperty(const std::string& key, const PropertyValue& value);
+
+  /**
    * @brief Sets the associated logical component.
    * @param component The component to associate
    */

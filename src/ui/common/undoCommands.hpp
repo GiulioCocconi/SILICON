@@ -7,10 +7,12 @@
 
 #include <nlohmann/json.hpp>
 
+#include <core/component.hpp>
 #include <ui/common/graphicalWire.hpp>
 
 class GraphicalItem;
 class GraphicalComponent;
+class GraphicalLogicComponent;
 class DiagramScene;
 
 class MoveItemCommand : public QUndoCommand {
@@ -68,6 +70,31 @@ private:
   qreal         oldRotation;
   qreal         newRotation;
   bool          skipInitialRedo = true;
+};
+
+class ModifyPropertyCommand : public QUndoCommand {
+public:
+  explicit ModifyPropertyCommand(std::string key, QUndoCommand* parent = nullptr);
+
+  void               addPropertyChange(GraphicalLogicComponent* component,
+                                       const PropertyValue& oldValue, const PropertyValue& newValue);
+  [[nodiscard]] bool isEmpty() const { return changes.empty(); }
+
+  void undo() override;
+  void redo() override;
+
+private:
+  struct PropertyChange {
+    DiagramScene* scene;
+    uint64_t      uiId;
+    PropertyValue oldValue;
+    PropertyValue newValue;
+  };
+
+  void apply(bool useNewValue);
+
+  std::string                 key;
+  std::vector<PropertyChange> changes;
 };
 
 class SceneSelectionCommand : public QUndoCommand {

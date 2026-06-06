@@ -8,6 +8,7 @@
 
 #include <core/serialization/component_registry.hpp>
 #include <ui/common/diagramScene/diagramScene.hpp>
+#include <ui/logiFlow/components/graphicalLogicComponent.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
 
 namespace {
@@ -34,7 +35,14 @@ GraphicalWireSegment* findWireSegment(DiagramScene* scene, const uint64_t uiId)
 
 GraphicalComponent* findComponent(DiagramScene* scene, const uint64_t uiId)
 {
-  return dynamic_cast<GraphicalComponent*>(findItem(scene, uiId));
+  return category_cast<GraphicalComponent>(findItem(scene, uiId),
+                                           ItemCategory::Component);
+}
+
+GraphicalLogicComponent* findLogicComponent(DiagramScene* scene, const uint64_t uiId)
+{
+  return category_cast<GraphicalLogicComponent>(findItem(scene, uiId),
+                                                ItemCategory::LogicComponent);
 }
 
 }  // namespace
@@ -162,6 +170,43 @@ void RotateItemCommand::redo()
     component->setInitialRotation();
     component->update();
   }
+}
+
+// --- ModifyPropertyCommand ---
+
+ModifyPropertyCommand::ModifyPropertyCommand(std::string key, QUndoCommand* parent)
+  : QUndoCommand(parent), key(std::move(key))
+{
+  setText("Modify Property");
+}
+
+void ModifyPropertyCommand::addPropertyChange(GraphicalLogicComponent* component,
+                                              const PropertyValue&     oldValue,
+                                              const PropertyValue&     newValue)
+{
+  if (!component || oldValue == newValue)
+    return;
+
+  changes.push_back({itemScene(component), component->getUiId(), oldValue, newValue});
+}
+
+void ModifyPropertyCommand::apply(const bool useNewValue)
+{
+  for (const auto& change : changes) {
+    if (auto* component = findLogicComponent(change.scene, change.uiId)) {
+      component->applyProperty(key, useNewValue ? change.newValue : change.oldValue);
+    }
+  }
+}
+
+void ModifyPropertyCommand::undo()
+{
+  apply(false);
+}
+
+void ModifyPropertyCommand::redo()
+{
+  apply(true);
 }
 
 // --- SceneSelectionCommand ---
