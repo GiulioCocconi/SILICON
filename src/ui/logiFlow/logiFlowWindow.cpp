@@ -783,9 +783,18 @@ void LogiFlowWindow::updatePropertyDock()
   auto applyProperty = [this, selectedNodes](const std::string&   key,
                                              const PropertyValue& newVal) {
     try {
+      auto* command = new ModifyPropertyCommand(key);
+
       for (GraphicalLogicComponent* node : selectedNodes) {
-        node->getComponent()->setProperty(key, newVal);
-        node->update();
+        const auto oldValue = node->getComponent()->getProperty(key);
+        if (oldValue)
+          command->addPropertyChange(node, *oldValue, newVal);
+      }
+
+      if (command->isEmpty()) {
+        delete command;
+      } else {
+        undoStack->push(command);
       }
     } catch (const std::exception& e) {
       QMessageBox::warning(this, tr("Invalid Property"), e.what());

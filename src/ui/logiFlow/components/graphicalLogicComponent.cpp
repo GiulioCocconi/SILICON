@@ -73,6 +73,17 @@ void GraphicalLogicComponent::updatePortSizes()
   update();
 }
 
+void GraphicalLogicComponent::applyProperty(const std::string&   key,
+                                            const PropertyValue& value)
+{
+  if (!associatedComponent)
+    return;
+
+  prepareGeometryChange();
+  associatedComponent->setProperty(key, value);
+  update();
+}
+
 void GraphicalLogicComponent::setComponent(const Component_ptr& component)
 {
   if (associatedComponent && componentIOListenerId != 0)
