@@ -522,19 +522,20 @@ void LogiFlowWindow::paste()
 
 void LogiFlowWindow::rotate()
 {
-  auto selectedComponents = diagramScene->selectedItems()
-                            | std::views::filter([](auto el) {
-                                return hasCategory(el, ItemCategory::Component);
-                              })
-                            | std::ranges::to<std::vector>();
+  std::vector<GraphicalComponent*> selectedComponents;
+  for (auto* item : diagramScene->selectedItems()) {
+    if (auto* component =
+            category_cast<GraphicalComponent>(item, ItemCategory::Component)) {
+      selectedComponents.push_back(component);
+    }
+  }
 
   switch (diagramScene->getInteractionMode()) {
     case InteractionMode::NORMAL_MODE: {
       if (selectedComponents.size() != 1)
         return;
 
-      auto component   = category_cast<GraphicalComponent>(selectedComponents[0],
-                                                           ItemCategory::Component);
+      auto* component   = selectedComponents.front();
       auto oldRotation = component->rotation();
       component->rotate();
       auto newRotation = component->rotation();
@@ -747,10 +748,9 @@ void LogiFlowWindow::updatePropertyDock()
   std::vector<GraphicalLogicComponent*> selectedNodes;
   for (QGraphicsItem* item : diagramScene->selectedItems()) {
     if (auto* logicComp =
-            category_cast<GraphicalLogicComponent>(item, ItemCategory::LogicComponent)) {
-      if (logicComp->getComponent() != nullptr) {
-        selectedNodes.push_back(logicComp);
-      }
+            category_cast<GraphicalLogicComponent>(item, ItemCategory::LogicComponent);
+        logicComp && logicComp->getComponent()) {
+      selectedNodes.push_back(logicComp);
     }
   }
 

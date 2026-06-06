@@ -57,10 +57,14 @@ inline bool hasCategory(const QGraphicsItem* item, ItemCategory cat)
 template <typename TargetType>
 TargetType* category_cast(QGraphicsItem* item, ItemCategory expectedCategory)
 {
-  if (hasCategory(item, expectedCategory)) {
-    return static_cast<TargetType*>(item);
-  }
-  return nullptr;
+  return hasCategory(item, expectedCategory) ? static_cast<TargetType*>(item) : nullptr;
+}
+
+template <typename TargetType>
+const TargetType* category_cast(const QGraphicsItem* item, ItemCategory expectedCategory)
+{
+  return hasCategory(item, expectedCategory) ? static_cast<const TargetType*>(item)
+                                             : nullptr;
 }
 
 enum SiliconTypes {
