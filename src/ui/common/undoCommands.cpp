@@ -28,7 +28,8 @@ GraphicalItem* findItem(DiagramScene* scene, const uint64_t uiId)
 
 GraphicalWireSegment* findWireSegment(DiagramScene* scene, const uint64_t uiId)
 {
-  return dynamic_cast<GraphicalWireSegment*>(findItem(scene, uiId));
+  return category_cast<GraphicalWireSegment>(findItem(scene, uiId),
+                                             ItemCategory::WireSegment);
 }
 
 GraphicalComponent* findComponent(DiagramScene* scene, const uint64_t uiId)
