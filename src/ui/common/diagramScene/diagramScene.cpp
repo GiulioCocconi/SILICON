@@ -281,8 +281,8 @@ void DiagramScene::mousePressEvent(QGraphicsSceneMouseEvent* mouseEvent)
       const auto itemsAtPos = items(cursorPos);
 
       for (const auto item : itemsAtPos) {
-        if (auto* input = category_cast<GraphicalInput>(item, ItemCategory::Input))
-          input->toggle();
+        if (auto* io = category_cast<GraphicalIO>(item, ItemCategory::IO))
+          io->handleSimulationClick();
       }
 
       break;

@@ -67,6 +67,16 @@ ComponentRegistry registryWithIoComponents(const ComponentRegistry& coreRegistry
       return std::make_shared<DummyOutputComponent>(Bus(1), "out");
     });
   }
+  if (!mergedRegistry.hasType("DummyBusInputComponent")) {
+    mergedRegistry.registerType("DummyBusInputComponent", [] {
+      return std::make_shared<DummyBusInputComponent>(Bus(8), "bus_in");
+    });
+  }
+  if (!mergedRegistry.hasType("DummyBusOutputComponent")) {
+    mergedRegistry.registerType("DummyBusOutputComponent", [] {
+      return std::make_shared<DummyBusOutputComponent>(Bus(8), "bus_out");
+    });
+  }
 
   return mergedRegistry;
 }
@@ -100,11 +110,15 @@ void attachCoreComponent(GraphicalComponent* component, const nlohmann::json& co
 
   logicComp->setComponent(coreComp);
 
-  if (auto* gOut =
-          category_cast<GraphicalOutputSingle>(logicComp, ItemCategory::Output)) {
+  auto* io = category_cast<GraphicalIO>(logicComp, ItemCategory::IO);
+
+  if (auto* gOut = dynamic_cast<GraphicalOutputSingle*>(io)) {
     if (auto dOut = std::dynamic_pointer_cast<DummyOutputComponent>(coreComp))
       dOut->setSkin(gOut);
-  } else if (auto* gIn = category_cast<GraphicalInput>(logicComp, ItemCategory::Input)) {
+  } else if (auto* gBusOut = dynamic_cast<GraphicalBusOutput*>(io)) {
+    if (auto dBusOut = std::dynamic_pointer_cast<DummyBusOutputComponent>(coreComp))
+      dBusOut->setSkin(gBusOut);
+  } else if (auto* gIn = dynamic_cast<GraphicalInput*>(io)) {
     QPointer<GraphicalInput> safeGIn(gIn);
     coreComp->setPropertyCallback("name", [safeGIn](const PropertyValue& value) {
       if (!safeGIn)

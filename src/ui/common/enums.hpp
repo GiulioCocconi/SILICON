@@ -30,8 +30,9 @@ enum class ItemCategory : uint32_t {
   WireSegment    = 1 << 1,
   Component      = 1 << 2,
   LogicComponent = 1 << 3,
-  Input          = 1 << 4,
-  Output         = 1 << 5
+  IO             = 1 << 4,
+  Input          = 1 << 5,
+  Output         = 1 << 6
 };
 
 constexpr ItemCategory operator|(ItemCategory a, ItemCategory b)
@@ -77,6 +78,8 @@ enum SiliconTypes {
   GENERIC_IO,
   SINGLE_INPUT, /* Logiflow start */
   SINGLE_OUTPUT,
+  BUS_INPUT,
+  BUS_OUTPUT,
 
   /* Components */
   WIRE_SPLITTER,

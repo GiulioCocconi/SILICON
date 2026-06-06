@@ -36,6 +36,9 @@
 
 namespace {
 
+constexpr ItemCategory InputCategory  = ItemCategory::IO | ItemCategory::Input;
+constexpr ItemCategory OutputCategory = ItemCategory::IO | ItemCategory::Output;
+
 std::string componentNameOr(const Component_ptr& component, const std::string& fallback)
 {
   if (!component)
@@ -68,41 +71,42 @@ void DiagramSceneSimulationController::enterSimulationMode()
   for (const auto& wire : scene.getWireManager().wires())
     wire->clearBusState();
 
-  // Restore inputs to neutral state & inject LOW into the logic bus
-  // Do this BEFORE creating the Simulator to avoid double-evaluations
+  std::vector<GraphicalIO*> inputs;
+  std::vector<GraphicalIO*> outputs;
+  Component_set             coreComps;
+
   for (auto* item : scene.items()) {
-    if (auto* input = category_cast<GraphicalInput>(item, ItemCategory::Input)) {
-      // Updates visual shape
-      input->setState(State::LOW);
+    if (auto* input = category_cast<GraphicalIO>(item, InputCategory))
+      inputs.push_back(input);
+    else if (auto* output = category_cast<GraphicalIO>(item, OutputCategory))
+      outputs.push_back(output);
 
-      // Manually push the LOW state directly to the logic bus
-      auto bus = input->getComponent()->getOutputs()[0];
-      bus.forceSetCurrentValue(0, input->getComponent()->weak_from_this());
-
-      // Now connect the signal for user clicks during runtime
-      QObject::connect(input, &GraphicalInput::inputToggled, &scene,
-                       &DiagramScene::handleInputToggled, Qt::UniqueConnection);
+    if (const auto* component =
+            category_cast<GraphicalLogicComponent>(item, ItemCategory::LogicComponent);
+        component && component->getComponent()) {
+      coreComps.insert(component->getComponent());
     }
   }
 
-  // 2. Gather core components
-  Component_set coreComps;
-  for (auto* item : scene.items()) {
-    const auto* comp =
-        category_cast<GraphicalLogicComponent>(item, ItemCategory::LogicComponent);
-    if (comp && comp->getComponent())
-      coreComps.insert(comp->getComponent());
+  // Reset visible outputs first, then inject input start values. Doing this in two
+  // phases prevents output reset from overwriting a shared bus after an input starts it.
+  for (auto* output : outputs)
+    output->resetSimulationState();
+
+  // Do this BEFORE creating the Simulator to avoid double-evaluations.
+  for (auto* input : inputs) {
+    input->applyStartValue();
+    QObject::connect(input, &GraphicalIO::inputToggled, &scene,
+                     &DiagramScene::handleInputToggled, Qt::UniqueConnection);
   }
 
-  // 3. Initialize Circuit & Simulator frameworks
+  // Initialize Circuit & Simulator frameworks
   scene.setCircuit(std::make_shared<Circuit>(coreComps, false));
 
   // The simulator constructor evaluates the circuit once at time zero. Attach tracing
   // before advancing time so waveform exports include the initial 0ns snapshot.
   simulator = std::make_unique<Simulator>(scene.getCircuit(), 0, true);
-  resetWaveformTrace();
-  configureSimulatorTrace();
-  applyFstTraceWriter();
+  refreshTraceConfiguration();
   simulator->run(1);
 
   refreshGraphicalOutputs();
@@ -111,21 +115,16 @@ void DiagramSceneSimulationController::enterSimulationMode()
 
 void DiagramSceneSimulationController::exitSimulationMode()
 {
-  // Disconnect signals from inputs
   for (auto* item : scene.items()) {
-    if (auto* input = category_cast<GraphicalInput>(item, ItemCategory::Input)) {
-      QObject::disconnect(input, &GraphicalInput::inputToggled, &scene,
+    if (auto* io = category_cast<GraphicalIO>(item, ItemCategory::IO)) {
+      QObject::disconnect(io, &GraphicalIO::inputToggled, &scene,
                           &DiagramScene::handleInputToggled);
+      io->resetSimulationState();
     }
   }
 
   simulator.reset();
   scene.setCircuit(nullptr);
-
-  for (auto* item : scene.items()) {
-    if (auto* out = category_cast<GraphicalOutputSingle>(item, ItemCategory::Output))
-      out->setState(State::UNKNOWN);
-  }
 
   // Clear bus states to reset visual wire colors
   for (const auto& wire : scene.getWireManager().wires())
@@ -156,15 +155,17 @@ void DiagramSceneSimulationController::setFstTraceFile(
   if (!simulator)
     return;
 
-  resetWaveformTrace();
-  configureSimulatorTrace();
-  applyFstTraceWriter();
+  refreshTraceConfiguration();
 }
 
 void DiagramSceneSimulationController::refreshGraphicalOutputs()
 {
   for (auto* item : scene.items()) {
-    if (auto* out = category_cast<GraphicalOutputSingle>(item, ItemCategory::Output)) {
+    auto* output = category_cast<GraphicalIO>(item, OutputCategory);
+    if (!output)
+      continue;
+
+    if (auto* out = dynamic_cast<GraphicalOutputSingle*>(output)) {
       if (!out->getComponent())
         continue;
 
@@ -177,6 +178,11 @@ void DiagramSceneSimulationController::refreshGraphicalOutputs()
         s = (bus.getCurrentValue() > 0) ? State::HIGH : State::LOW;
 
       out->setState(s);
+    } else if (auto* busOut = dynamic_cast<GraphicalBusOutput*>(output)) {
+      if (!busOut->getComponent() || busOut->getComponent()->getInputs().empty())
+        continue;
+
+      busOut->setBusState(busOut->getComponent()->getInputs()[0]);
     }
   }
 }
@@ -188,9 +194,7 @@ void DiagramSceneSimulationController::handleTopologyChanged()
 
   scene.calculateWiresForComponents();
   refreshGraphicalOutputs();
-  resetWaveformTrace();
-  configureSimulatorTrace();
-  applyFstTraceWriter();
+  refreshTraceConfiguration();
   scene.update();
 }
 
@@ -199,26 +203,22 @@ void DiagramSceneSimulationController::clearWaveformTrace()
   scene.waveformTraceReset({}, 0);
 }
 
-void DiagramSceneSimulationController::applyFstTraceWriter()
+void DiagramSceneSimulationController::refreshTraceConfiguration()
 {
   if (!simulator)
     return;
 
-  if (!fstTraceFile) {
-    simulator->setFstWriter(nullptr);
-    return;
+  auto trace = collectTraceConfiguration();
+
+  QStringList names;
+  names.reserve(static_cast<qsizetype>(trace.buses.size()));
+  for (const auto& [name, bus] : trace.buses) {
+    Q_UNUSED(bus);
+    names.push_back(QString::fromStdString(name));
   }
+  scene.waveformTraceReset(names, trace.inputCount);
 
-  simulator->setFstWriter(std::make_unique<SiliconFstWriter>(
-      *fstTraceFile, collectTraceBuses(), SiliconFstWriter::Options{}));
-}
-
-void DiagramSceneSimulationController::configureSimulatorTrace()
-{
-  if (!simulator)
-    return;
-
-  simulator->setTraceBuses(collectTraceBuses());
+  simulator->setTraceBuses(trace.buses);
   simulator->setTraceSink([this](uint64_t time, const std::vector<std::string>& values) {
     QStringList qtValues;
     qtValues.reserve(values.size());
@@ -227,44 +227,26 @@ void DiagramSceneSimulationController::configureSimulatorTrace()
 
     scene.waveformTraceSnapshot(time, qtValues);
   });
-}
 
-void DiagramSceneSimulationController::resetWaveformTrace()
-{
-  QStringList names;
-  for (const auto& [name, bus] : collectTraceBuses()) {
-    Q_UNUSED(bus);
-    names.push_back(QString::fromStdString(name));
+  if (!fstTraceFile) {
+    simulator->setFstWriter(nullptr);
+    return;
   }
 
-  scene.waveformTraceReset(names, collectTraceInputCount());
+  simulator->setFstWriter(std::make_unique<SiliconFstWriter>(
+      *fstTraceFile, trace.buses, SiliconFstWriter::Options{}));
 }
 
-int DiagramSceneSimulationController::collectTraceInputCount() const
+DiagramSceneSimulationController::TraceConfiguration
+DiagramSceneSimulationController::collectTraceConfiguration() const
 {
-  int count = 0;
-  for (auto* item : scene.items()) {
-    if (auto* input = category_cast<GraphicalInput>(item, ItemCategory::Input)) {
-      const auto component = input->getComponent();
-      if (component && !component->getOutputs().empty())
-        ++count;
-    }
-  }
-
-  return count;
-}
-
-std::vector<SiliconFstWriter::NamedBus>
-DiagramSceneSimulationController::collectTraceBuses() const
-{
-  std::vector<GraphicalInput*>        inputs;
-  std::vector<GraphicalOutputSingle*> outputs;
+  std::vector<GraphicalIO*> inputs;
+  std::vector<GraphicalIO*> outputs;
 
   for (auto* item : scene.items()) {
-    if (auto* input = category_cast<GraphicalInput>(item, ItemCategory::Input))
+    if (auto* input = category_cast<GraphicalIO>(item, InputCategory)) {
       inputs.push_back(input);
-    else if (auto* output =
-                 category_cast<GraphicalOutputSingle>(item, ItemCategory::Output)) {
+    } else if (auto* output = category_cast<GraphicalIO>(item, OutputCategory)) {
       outputs.push_back(output);
     }
   }
@@ -278,26 +260,27 @@ DiagramSceneSimulationController::collectTraceBuses() const
   std::ranges::sort(inputs, byPosition);
   std::ranges::sort(outputs, byPosition);
 
-  std::vector<SiliconFstWriter::NamedBus> buses;
-  buses.reserve(inputs.size() + outputs.size());
+  TraceConfiguration trace;
+  trace.buses.reserve(inputs.size() + outputs.size());
 
   for (const auto& [index, input] : inputs | silicon::views::enumerate) {
     const auto component = input->getComponent();
     if (component && !component->getOutputs().empty()) {
-      buses.emplace_back(
+      trace.buses.emplace_back(
           componentNameOr(component, QString("input_%1").arg(index).toStdString()),
           component->getOutputs()[0]);
+      ++trace.inputCount;
     }
   }
 
   for (const auto& [index, output] : outputs | silicon::views::enumerate) {
     const auto component = output->getComponent();
     if (component && !component->getInputs().empty()) {
-      buses.emplace_back(
+      trace.buses.emplace_back(
           componentNameOr(component, QString("output_%1").arg(index).toStdString()),
           component->getInputs()[0]);
     }
   }
 
-  return buses;
+  return trace;
 }
