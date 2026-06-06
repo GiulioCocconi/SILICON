@@ -17,24 +17,280 @@
  */
 
 #include "graphicalIO.hpp"
+
 #include <core/simulator.hpp>
+#include <ui/common/diagramScene/diagramScene.hpp>
+#include <ui/common/theme.hpp>
+
+#include <QInputDialog>
+#include <QLineEdit>
+#include <QPointer>
+
+#include <algorithm>
+#include <limits>
 #include <stdexcept>
+#include <utility>
+
+namespace {
+
+constexpr int BusIoMinWidth     = 8 * DiagramScene::GRID_SIZE;
+constexpr int BusIoHeight       = 4 * DiagramScene::GRID_SIZE;
+constexpr int BusIoPortX        = 0;
+constexpr int BusIoPortY        = 6 * DiagramScene::GRID_SIZE;
+constexpr int BusIoPaddingX     = DiagramScene::GRID_SIZE;
+constexpr int BusIoValueTextGap = 8;
+constexpr int MaxEditableBus    = std::numeric_limits<unsigned int>::digits - 1;
+
+// Re-use static fonts to prevent allocations
+const QFont& getWidthFont()
+{
+  static const QFont font("NovaMono", 8);
+  return font;
+}
+
+QRectF busIoNameRect(const QRectF& shapeRect, const QString& name)
+{
+  const QFontMetrics metrics(GraphicalIO::UI_FONT);
+  const qreal width = std::max<qreal>(shapeRect.width(), metrics.horizontalAdvance(name));
+  const qreal height = metrics.height();
+  return {shapeRect.right() - width, shapeRect.top() - height, width, height};
+}
+
+int snapBusIoWidthToGrid(const int width)
+{
+  return std::max(BusIoMinWidth, ((width + 2 * DiagramScene::GRID_SIZE - 1)
+                                  / (2 * DiagramScene::GRID_SIZE))
+                                     * (2 * DiagramScene::GRID_SIZE));
+}
+
+int normalizedBusSize(const int size)
+{
+  return std::clamp(size, 1, MaxEditableBus);
+}
+
+unsigned int maxValueForBusSize(const size_t size)
+{
+  // Shifting an unsigned int by its bit width or more is undefined behavior.
+  if (size >= std::numeric_limits<unsigned int>::digits)
+    return std::numeric_limits<unsigned int>::max();
+  return (1U << size) - 1U;
+}
+
+bool isInteractiveSimulation(const GraphicalItem* item)
+{
+  const auto* diagramScene =
+      dynamic_cast<const DiagramScene*>(item ? item->scene() : nullptr);
+  return diagramScene
+         && diagramScene->getInteractionMode()
+                == DiagramScene::InteractionMode::SIMULATION_MODE;
+}
+
+QString formatKnownBusValue(const unsigned int value, const size_t width)
+{
+  const int hexDigits = std::max(1, static_cast<int>((width + 3) / 4));
+  return QString("0x%1").arg(value, hexDigits, 16, QLatin1Char('0')).toUpper();
+}
+
+bool parseBusValue(const QString& text, unsigned int& value)
+{
+  const QString trimmed = text.trimmed();
+  if (trimmed.isEmpty())
+    return false;
+
+  bool ok = false;
+  // Modern parsing avoiding string copies/slices as much as possible
+  if (trimmed.startsWith("0x", Qt::CaseInsensitive)) {
+    value = trimmed.sliced(2).toUInt(&ok, 16);
+  } else if (trimmed.startsWith("0b", Qt::CaseInsensitive)) {
+    value = trimmed.sliced(2).toUInt(&ok, 2);
+  } else {
+    value = trimmed.toUInt(&ok, 10);
+  }
+
+  return ok;
+}
+
+enum class BusIoKind { Input, Output };
+
+class BusIoShape : public QGraphicsItem {
+public:
+  BusIoShape(BusIoKind kind, unsigned int busWidth, QGraphicsItem* parent = nullptr)
+    : QGraphicsItem(parent), kind(kind), busWidth(busWidth)
+  {
+    updateLayoutCache();  // Initial cache generation
+  }
+
+  QRectF boundingRect() const override
+  {
+    // Zero-cost geometric return - no text allocation!
+    return {-cachedWidth / 2.0, 0, cachedWidth, BusIoHeight};
+  }
+
+  void setBusWidth(const unsigned int width)
+  {
+    if (busWidth == width)
+      return;
+    prepareGeometryChange();
+    busWidth = width;
+    updateLayoutCache();  // Calculate width ONLY when width actually changes
+    update();
+  }
+
+  void setValueText(QString text)
+  {
+    if (valueText == text)
+      return;
+    valueText = std::move(text);
+    update();
+  }
+
+  void setDisplayState(const State state)
+  {
+    displayState = state;
+    update();
+  }
+
+  void paint(QPainter* painter, const QStyleOptionGraphicsItem* /*option*/,
+             QWidget* /*widget*/) override
+  {
+    const QColor ink = ThemeEngine::getColor("SILICON_INK");
+
+    painter->setRenderHint(QPainter::Antialiasing, false);
+    painter->setPen(QPen(ink, 3));
+    painter->setBrush(backgroundColor());
+    const QRectF body = boundingRect().adjusted(1.5, 1.5, -1.5, -1.5);
+    painter->drawRect(body);
+
+    painter->setPen(ink);
+    painter->setFont(GraphicalIO::UI_FONT);
+    painter->drawText(QRectF(body.left() + BusIoPaddingX, 3,
+                             body.width() - 2 * BusIoPaddingX - cachedWidthTextWidth
+                                 - BusIoValueTextGap,
+                             34),
+                      Qt::AlignCenter, valueText);
+
+    painter->setFont(getWidthFont());
+    painter->drawText(QRectF(body.right() - BusIoPaddingX - cachedWidthTextWidth, 3,
+                             cachedWidthTextWidth, 16),
+                      Qt::AlignCenter, cachedWidthText);
+  }
+
+private:
+  void updateLayoutCache()
+  {
+    const QFontMetrics valueMetrics(GraphicalIO::UI_FONT);
+    const QFontMetrics widthMetrics(getWidthFont());
+
+    cachedWidthText      = QString("[%1]").arg(busWidth);
+    cachedWidthTextWidth = widthMetrics.horizontalAdvance(cachedWidthText);
+
+    const QString largestKnown =
+        formatKnownBusValue(maxValueForBusSize(busWidth), busWidth);
+    const QString unknownBits(static_cast<int>(std::min<unsigned int>(busWidth, 8)),
+                              QLatin1Char('X'));
+
+    int maxAdvance = valueMetrics.horizontalAdvance(largestKnown);
+    for (const QString& candidate :
+         {unknownBits, QStringLiteral("ERR"), QStringLiteral("BUS")}) {
+      maxAdvance = std::max(maxAdvance, valueMetrics.horizontalAdvance(candidate));
+    }
+
+    const int contentWidth =
+        2 * BusIoPaddingX + maxAdvance + BusIoValueTextGap + cachedWidthTextWidth;
+    cachedWidth = snapBusIoWidthToGrid(contentWidth);
+  }
+
+  QColor backgroundColor() const
+  {
+    if (kind == BusIoKind::Input)
+      return ThemeEngine::getColor("SILICON_INTERNAL");
+
+    switch (displayState) {
+      case State::HIGH: return ThemeEngine::getColor("SILICON_BLUE");
+      case State::LOW: return QColor("#ececec");
+      case State::UNKNOWN: return ThemeEngine::getColor("SILICON_VIOLET");
+      case State::ERROR: return Qt::red;
+    }
+    return Qt::magenta;
+  }
+
+  BusIoKind    kind;
+  unsigned int busWidth     = 1;
+  QString      valueText    = "0x0";
+  State        displayState = State::UNKNOWN;
+
+  // Cached dimension metrics
+  qreal   cachedWidth = BusIoMinWidth;
+  QString cachedWidthText;
+  int     cachedWidthTextWidth = 0;
+};
+
+BusIoShape* getBusIoShape(QGraphicsItem* itemShape, const char* context)
+{
+  auto* shape = dynamic_cast<BusIoShape*>(itemShape);
+  Q_ASSERT_X(shape != nullptr, context, "Bus IO item is missing its BusIoShape");
+  return shape;
+}
+
+QRectF busIoNamedBounds(QGraphicsItem* itemShape, const QString& name,
+                        const QRectF& fallbackRect)
+{
+  if (name.isEmpty())
+    return fallbackRect;
+
+  const auto* shape = getBusIoShape(itemShape, "busIoNamedBounds");
+  if (!shape)
+    return fallbackRect;
+
+  return fallbackRect.united(busIoNameRect(shape->boundingRect(), name));
+}
+
+}  // namespace
+
+GraphicalIO::GraphicalIO(ItemCategory category, const Component_ptr& component,
+                         QGraphicsItem* shape, QGraphicsItem* parent, bool scanShape)
+  : GraphicalLogicComponent(category | ItemCategory::IO, component, shape, parent,
+                            scanShape)
+{
+}
+
+QString GraphicalIO::getComponentName() const
+{
+  const auto nameProperty = getComponent()->getProperty("name");
+  if (nameProperty.has_value()) {
+    if (const auto* name = std::get_if<std::string>(&*nameProperty)) {
+      return QString::fromStdString(*name);
+    }
+  }
+  return {};
+}
+
+// --- Graphical Input Single
+// -------------------------------------------------------------
+
+DummyInputComponent::DummyInputComponent(Bus bus, std::string name)
+  : Component({}, {std::move(bus)})
+{
+  defineProperty("name", std::move(name));
+  defineProperty("startValue", 0, [](const PropertyValue& value) {
+    return std::clamp(std::get<int>(value), 0, 1);
+  });
+}
 
 GraphicalInput::GraphicalInput(QGraphicsItem* parent)
-  : GraphicalLogicComponent(
-        ItemCategory::Input, std::make_shared<DummyInputComponent>(Bus(1), "in"),
-        new QGraphicsSvgItem(":/other_components/input_off.svg"), parent)
+  : GraphicalIO(ItemCategory::Input, std::make_shared<DummyInputComponent>(Bus(1), "in"),
+                new QGraphicsSvgItem(":/other_components/input_off.svg"), parent)
 {
   isEditable = false;
+  GraphicalLogicComponent::setPorts(
+      {}, {std::pair<std::string, QPoint>{"o", QPoint(20, 60)}});
 
-  setPorts({}, {std::pair<std::string, QPoint>{"o", QPoint(20, 60)}});
-  setState(State::LOW);
+  associatedComponent->setPropertyCallback("name", [this](const PropertyValue& value) {
+    prepareGeometryChange();
+    return value;
+  });
 
-  this->associatedComponent->setPropertyCallback("name",
-                                                 [this](const PropertyValue& value) {
-                                                   prepareGeometryChange();
-                                                   return value;
-                                                 });
+  GraphicalInput::applyStartValue();
 }
 
 void GraphicalInput::toggle()
@@ -44,64 +300,264 @@ void GraphicalInput::toggle()
 
 void GraphicalInput::setState(State state)
 {
-  this->skinState = state;
+  skinState = state;
+  setItemShape(new QGraphicsSvgItem((skinState == State::HIGH) ? getOnShapePath()
+                                                               : getOffShapePath()));
 
-  const QString shapePath =
-      (skinState == State::HIGH) ? getOnShapePath() : getOffShapePath();
-  setItemShape(new QGraphicsSvgItem(shapePath));
-
-  const auto targetBus = this->getComponent()->getOutputs()[0];
+  const auto targetBus = getComponent()->getOutputs()[0];
   const auto value     = (state == State::HIGH) ? 1 : 0;
-  emit       inputToggled(targetBus, value, getComponent()->weak_from_this());
+  if (!isInteractiveSimulation(this)) {
+    if (auto* input = dynamic_cast<DummyInputComponent*>(getComponent().get()))
+      input->setState(value);
+  }
+
+  emit inputToggled(targetBus, value, getComponent()->weak_from_this());
+}
+
+void GraphicalInput::handleSimulationClick()
+{
+  toggle();
+}
+
+void GraphicalInput::applyStartValue()
+{
+  const int startValue = getComponent()->getPropertyValue<int>("startValue").value_or(0);
+  setState(startValue == 0 ? State::LOW : State::HIGH);
+}
+
+void GraphicalInput::resetSimulationState()
+{
+  applyStartValue();
 }
 
 void GraphicalInput::paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
                            QWidget* widget)
 {
-  painter->setFont(font);
-  painter->drawText(QPointF(0, -1), QString::fromStdString(std::get<std::string>(
-                                        *this->getComponent()->getProperty("name"))));
-
+  painter->setFont(UI_FONT);
+  const QString name = getComponentName();
+  if (!name.isEmpty()) {
+    painter->drawText(QPointF(0, -1), name);
+  }
   GraphicalLogicComponent::paint(painter, option, widget);
 }
 
 QRectF GraphicalInput::boundingRect() const
 {
-  const auto fontHeight = QFontMetrics(font).height();
-  auto       rect       = GraphicalLogicComponent::boundingRect();
-  // Add some extra space for the name
-  return rect.adjusted(0, -fontHeight, 0, 0);
+  auto rect = GraphicalLogicComponent::boundingRect();
+  return rect.adjusted(0, -QFontMetrics(UI_FONT).height(), 0, 0);
 }
 
-State GraphicalInput::getState()
+State GraphicalInput::getState() const
 {
-  const int value = this->getComponent()->getOutputs()[0].getCurrentValue();
-  return (value == 1) ? State::HIGH : State::LOW;
+  return (getComponent()->getOutputs()[0].getCurrentValue() == 1) ? State::HIGH
+                                                                  : State::LOW;
+}
+
+// --- Graphical Bus Input ---------------------------------------------------------------
+
+DummyBusInputComponent::DummyBusInputComponent(Bus bus, std::string name)
+  : Component({}, {std::move(bus)})
+{
+  defineProperty("name", std::move(name));
+  defineProperty(
+      "size", static_cast<int>(outputs[0].size()),
+      [this](const PropertyValue& value) { return setSize(std::get<int>(value)); });
+  defineProperty("startValue", 0, [this](const PropertyValue& value) {
+    const auto maxValue =
+        static_cast<int>(maxValueForBusSize(outputs.empty() ? 1 : outputs[0].size()));
+    return std::clamp(std::get<int>(value), 0, maxValue);
+  });
+}
+
+int DummyBusInputComponent::setSize(const int newSize)
+{
+  const int normalizedSize = normalizedBusSize(newSize);
+  Bus       resizedBus     = outputs.empty() ? Bus(normalizedSize) : outputs[0];
+
+  resizedBus.setSize(static_cast<unsigned short>(normalizedSize));
+  setOutput(0, resizedBus);
+  return normalizedSize;
+}
+
+GraphicalBusInput::GraphicalBusInput(QGraphicsItem* parent)
+  : GraphicalIO(ItemCategory::Input, std::make_shared<DummyBusInputComponent>(),
+                new BusIoShape(BusIoKind::Input, 8), parent)
+{
+  isEditable = false;
+  GraphicalLogicComponent::setPorts(
+      {}, {std::pair<std::string, QPoint>{"bus", QPoint(BusIoPortX, BusIoPortY)}});
+  installPropertyCallbacks();
+  GraphicalBusInput::applyStartValue();
+  refreshFromComponent();
+}
+
+void GraphicalBusInput::installPropertyCallbacks()
+{
+  if (!associatedComponent)
+    return;
+
+  QPointer<GraphicalBusInput> safeThis(this);
+  std::weak_ptr<Component>    boundComponent = associatedComponent;
+
+  associatedComponent->setPropertyCallback("name",
+                                           [safeThis](const PropertyValue& value) {
+                                             if (safeThis)
+                                               safeThis->prepareGeometryChange();
+                                             return value;
+                                           });
+
+  associatedComponent->setPropertyCallback(
+      "size", [safeThis, boundComponent](const PropertyValue& value) {
+        const int normalizedSize = normalizedBusSize(std::get<int>(value));
+        auto      component      = boundComponent.lock();
+        if (auto* busInput = dynamic_cast<DummyBusInputComponent*>(component.get()))
+          busInput->setSize(normalizedSize);
+        if (safeThis && safeThis->getComponent() == component)
+          safeThis->setValue(safeThis->currentValue);
+        return normalizedSize;
+      });
+
+  associatedComponent->setPropertyCallback(
+      "startValue", [safeThis, boundComponent](const PropertyValue& value) {
+        auto       component = boundComponent.lock();
+        const auto outputs   = component ? component->getOutputs() : std::vector<Bus>{};
+        const auto maxValue =
+            static_cast<int>(maxValueForBusSize(outputs.empty() ? 1 : outputs[0].size()));
+        const int clampedValue = std::clamp(std::get<int>(value), 0, maxValue);
+        if (safeThis && safeThis->getComponent() == component)
+          safeThis->setValue(static_cast<unsigned int>(clampedValue));
+        return clampedValue;
+      });
+}
+
+void GraphicalBusInput::setComponent(const Component_ptr& component)
+{
+  GraphicalLogicComponent::setComponent(component);
+  installPropertyCallbacks();
+  refreshFromComponent();
+}
+
+void GraphicalBusInput::setValue(const unsigned int value)
+{
+  const auto outputs = getComponent()->getOutputs();
+  if (outputs.empty())
+    return;
+
+  const auto width = outputs[0].size();
+  currentValue     = value & maxValueForBusSize(width);
+
+  if (auto* shape = getBusIoShape(getItemShape(), "GraphicalBusInput::setValue")) {
+    shape->setBusWidth(static_cast<unsigned int>(width));
+    shape->setValueText(formatKnownBusValue(currentValue, width));
+  }
+
+  if (!isInteractiveSimulation(this))
+    propagateCurrentValue();
+  emit inputToggled(getComponent()->getOutputs()[0], currentValue,
+                    getComponent()->weak_from_this());
+}
+
+void GraphicalBusInput::propagateCurrentValue()
+{
+  if (auto* busInput = dynamic_cast<DummyBusInputComponent*>(getComponent().get()))
+    busInput->setState(currentValue);
+}
+
+void GraphicalBusInput::editValue()
+{
+  const auto outputs = getComponent()->getOutputs();
+  if (outputs.empty())
+    return;
+
+  const size_t  width = outputs[0].size();
+  const QString prompt =
+      QString("Set %1-bit bus value (decimal, 0x..., or 0b...)").arg(width);
+
+  bool          ok = false;
+  const QString text =
+      QInputDialog::getText(nullptr, "Bus Input", prompt, QLineEdit::Normal,
+                            formatKnownBusValue(currentValue, width), &ok);
+  if (!ok)
+    return;
+
+  unsigned int value = 0;
+  if (parseBusValue(text, value)) {
+    setValue(std::min(value, maxValueForBusSize(width)));
+  }
+}
+
+void GraphicalBusInput::handleSimulationClick()
+{
+  editValue();
+}
+
+void GraphicalBusInput::applyStartValue()
+{
+  const auto startValue = static_cast<unsigned int>(
+      std::max(0, getComponent()->getPropertyValue<int>("startValue").value_or(0)));
+  setValue(startValue);
+}
+
+void GraphicalBusInput::resetSimulationState()
+{
+  applyStartValue();
+}
+
+void GraphicalBusInput::refreshFromComponent()
+{
+  if (!getComponent() || getComponent()->getOutputs().empty())
+    return;
+
+  const auto width = getComponent()->getOutputs()[0].size();
+  if (auto* shape =
+          getBusIoShape(getItemShape(), "GraphicalBusInput::refreshFromComponent")) {
+    shape->setBusWidth(static_cast<unsigned int>(width));
+    shape->setValueText(formatKnownBusValue(currentValue, width));
+  }
+}
+
+void GraphicalBusInput::paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
+                              QWidget* widget)
+{
+  painter->setFont(UI_FONT);
+  const QString name = getComponentName();
+  if (!name.isEmpty()) {
+    if (const auto* shape = getBusIoShape(getItemShape(), "GraphicalBusInput::paint")) {
+      painter->drawText(busIoNameRect(shape->boundingRect(), name),
+                        Qt::AlignRight | Qt::AlignVCenter, name);
+    }
+  }
+  GraphicalLogicComponent::paint(painter, option, widget);
+}
+
+QRectF GraphicalBusInput::boundingRect() const
+{
+  return busIoNamedBounds(getItemShape(), getComponentName(),
+                          GraphicalLogicComponent::boundingRect());
 }
 
 // --- Graphical Output ------------------------------------------------------------------
 
 GraphicalOutputSingle::GraphicalOutputSingle(QGraphicsItem* parent)
-  : GraphicalLogicComponent(
-        ItemCategory::Output, std::make_shared<DummyOutputComponent>(Bus(1), "out"),
-        new QGraphicsSvgItem(":/other_components/output_unknown.svg"), parent)
+  : GraphicalIO(ItemCategory::Output,
+                std::make_shared<DummyOutputComponent>(Bus(1), "out"),
+                new QGraphicsSvgItem(":/other_components/output_unknown.svg"), parent)
 {
   isEditable = false;
-  setPorts({std::pair<std::string, QPoint>{"in", QPoint(20, 60)}}, {});
+  GraphicalLogicComponent::setPorts(
+      {std::pair<std::string, QPoint>{"in", QPoint(20, 60)}}, {});
 
-  this->associatedComponent->setPropertyCallback("name",
-                                                 [this](const PropertyValue& value) {
-                                                   prepareGeometryChange();
-                                                   return value;
-                                                 });
+  associatedComponent->setPropertyCallback("name", [this](const PropertyValue& value) {
+    prepareGeometryChange();
+    return value;
+  });
 
-  (std::static_pointer_cast<DummyOutputComponent>(associatedComponent))->setSkin(this);
+  std::static_pointer_cast<DummyOutputComponent>(associatedComponent)->setSkin(this);
 }
 
 void GraphicalOutputSingle::setState(State state)
 {
   QString shapePath = getOffShapePath();
-
   if (state == State::HIGH)
     shapePath = getOnShapePath();
   else if (state == State::UNKNOWN)
@@ -110,24 +566,31 @@ void GraphicalOutputSingle::setState(State state)
   setItemShape(new QGraphicsSvgItem(shapePath));
 }
 
+void GraphicalOutputSingle::applyStartValue()
+{
+  resetSimulationState();
+}
+
+void GraphicalOutputSingle::resetSimulationState()
+{
+  setState(State::UNKNOWN);
+}
+
 void GraphicalOutputSingle::paint(QPainter*                       painter,
                                   const QStyleOptionGraphicsItem* option, QWidget* widget)
 {
-  painter->setFont(font);
-  const auto nameProperty = this->getComponent()->getProperty("name");
-  if (nameProperty.has_value()) {
-    if (const auto* name = std::get_if<std::string>(&*nameProperty))
-      painter->drawText(QPointF(0, -1), QString::fromStdString(*name));
+  painter->setFont(UI_FONT);
+  const QString name = getComponentName();
+  if (!name.isEmpty()) {
+    painter->drawText(QPointF(0, -1), name);
   }
-
   GraphicalLogicComponent::paint(painter, option, widget);
 }
 
 QRectF GraphicalOutputSingle::boundingRect() const
 {
-  const auto fontHeight = QFontMetrics(font).height();
-  auto       rect       = GraphicalLogicComponent::boundingRect();
-  return rect.adjusted(0, -fontHeight, 0, 0);
+  auto rect = GraphicalLogicComponent::boundingRect();
+  return rect.adjusted(0, -QFontMetrics(UI_FONT).height(), 0, 0);
 }
 
 // --- Dummy Output Component ------------------------------------------------------------
@@ -140,15 +603,169 @@ DummyOutputComponent::DummyOutputComponent(Bus bus, std::string name)
 
 void DummyOutputComponent::simulate(Simulator& /*sim*/)
 {
-  if (this->skin) {
-    State s = Wire::safeGetCurrentState(this->inputs[0][0]);
-    this->skin->setState(s);
+  if (skin)
+    skin->setState(Wire::safeGetCurrentState(this->inputs[0][0]));
+}
+
+void DummyOutputComponent::setSkin(GraphicalOutputSingle* skinPtr)
+{
+  if (!skinPtr)
+    throw std::invalid_argument("setSkin: skin must not be null");
+  skin = skinPtr;
+}
+
+// --- Graphical Bus Output --------------------------------------------------------------
+
+DummyBusOutputComponent::DummyBusOutputComponent(Bus bus, std::string name)
+  : Component({std::move(bus)}, {})
+{
+  defineProperty("name", std::move(name));
+  defineProperty(
+      "size", static_cast<int>(inputs[0].size()),
+      [this](const PropertyValue& value) { return setSize(std::get<int>(value)); });
+}
+
+int DummyBusOutputComponent::setSize(const int newSize)
+{
+  const int normalizedSize = normalizedBusSize(newSize);
+  Bus       resizedBus     = inputs.empty() ? Bus(normalizedSize) : inputs[0];
+
+  resizedBus.setSize(static_cast<unsigned short>(normalizedSize));
+  setInput(0, resizedBus);
+  return normalizedSize;
+}
+
+void DummyBusOutputComponent::simulate(Simulator& /*sim*/)
+{
+  if (skin && !inputs.empty())
+    skin->setBusState(inputs[0]);
+}
+
+void DummyBusOutputComponent::setSkin(GraphicalBusOutput* skinPtr)
+{
+  if (!skinPtr)
+    throw std::invalid_argument("setSkin: skin must not be null");
+  skin = skinPtr;
+}
+
+GraphicalBusOutput::GraphicalBusOutput(QGraphicsItem* parent)
+  : GraphicalIO(ItemCategory::Output, std::make_shared<DummyBusOutputComponent>(),
+                new BusIoShape(BusIoKind::Output, 8), parent)
+{
+  isEditable = false;
+  GraphicalLogicComponent::setPorts(
+      {std::pair<std::string, QPoint>{"bus", QPoint(BusIoPortX, BusIoPortY)}}, {});
+  installPropertyCallbacks();
+  std::static_pointer_cast<DummyBusOutputComponent>(associatedComponent)->setSkin(this);
+  refreshFromComponent();
+}
+
+void GraphicalBusOutput::installPropertyCallbacks()
+{
+  if (!associatedComponent)
+    return;
+
+  QPointer<GraphicalBusOutput> safeThis(this);
+  std::weak_ptr<Component>     boundComponent = associatedComponent;
+
+  associatedComponent->setPropertyCallback("name",
+                                           [safeThis](const PropertyValue& value) {
+                                             if (safeThis)
+                                               safeThis->prepareGeometryChange();
+                                             return value;
+                                           });
+
+  associatedComponent->setPropertyCallback(
+      "size", [safeThis, boundComponent](const PropertyValue& value) {
+        const int normalizedSize = normalizedBusSize(std::get<int>(value));
+        auto      component      = boundComponent.lock();
+        if (auto* busOutput = dynamic_cast<DummyBusOutputComponent*>(component.get()))
+          busOutput->setSize(normalizedSize);
+        if (safeThis && safeThis->getComponent() == component)
+          safeThis->refreshFromComponent();
+        return normalizedSize;
+      });
+}
+
+void GraphicalBusOutput::setComponent(const Component_ptr& component)
+{
+  GraphicalLogicComponent::setComponent(component);
+  installPropertyCallbacks();
+  if (auto busOutput = std::dynamic_pointer_cast<DummyBusOutputComponent>(component))
+    busOutput->setSkin(this);
+  refreshFromComponent();
+}
+
+void GraphicalBusOutput::setBusState(const Bus& bus)
+{
+  if (auto* shape = getBusIoShape(getItemShape(), "GraphicalBusOutput::setBusState")) {
+    shape->setBusWidth(static_cast<unsigned int>(bus.size()));
+
+    if (bus.isInErrorState()) {
+      shape->setDisplayState(State::ERROR);
+      shape->setValueText("ERR");
+    } else if (bus.hasUnknowns()) {
+      shape->setDisplayState(State::UNKNOWN);
+      shape->setValueText(QString::fromStdString(bus.getCurrentValueString()));
+    } else {
+      if (bus.size() > MaxEditableBus) {
+        const bool anyHigh = std::ranges::any_of(bus, [](const auto& wire) {
+          return Wire::safeGetCurrentState(wire) == State::HIGH;
+        });
+        shape->setDisplayState(anyHigh ? State::HIGH : State::LOW);
+        shape->setValueText(anyHigh ? "BUS" : "0x0");
+        return;
+      }
+      const unsigned int value = bus.getCurrentValue();
+      shape->setDisplayState(value == 0 ? State::LOW : State::HIGH);
+      shape->setValueText(formatKnownBusValue(value, bus.size()));
+    }
   }
 }
 
-void DummyOutputComponent::setSkin(GraphicalOutputSingle* skin)
+void GraphicalBusOutput::refreshFromComponent()
 {
-  if (!skin)
-    throw std::invalid_argument("setSkin: skin must not be null");
-  this->skin = skin;
+  if (!getComponent() || getComponent()->getInputs().empty())
+    return;
+  setBusState(getComponent()->getInputs()[0]);
+}
+
+void GraphicalBusOutput::applyStartValue()
+{
+  resetSimulationState();
+}
+
+void GraphicalBusOutput::resetSimulationState()
+{
+  if (auto* shape =
+          getBusIoShape(getItemShape(), "GraphicalBusOutput::resetSimulationState")) {
+    const auto width =
+        (!getComponent() || getComponent()->getInputs().empty())
+            ? 1U
+            : static_cast<unsigned int>(getComponent()->getInputs()[0].size());
+    shape->setBusWidth(width);
+    shape->setDisplayState(State::UNKNOWN);
+    shape->setValueText(width > 8 ? QStringLiteral("BUS")
+                                  : QString::fromStdString(std::string(width, 'X')));
+  }
+}
+
+void GraphicalBusOutput::paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
+                               QWidget* widget)
+{
+  painter->setFont(UI_FONT);
+  const QString name = getComponentName();
+  if (!name.isEmpty()) {
+    if (const auto* shape = getBusIoShape(getItemShape(), "GraphicalBusOutput::paint")) {
+      painter->drawText(busIoNameRect(shape->boundingRect(), name),
+                        Qt::AlignRight | Qt::AlignVCenter, name);
+    }
+  }
+  GraphicalLogicComponent::paint(painter, option, widget);
+}
+
+QRectF GraphicalBusOutput::boundingRect() const
+{
+  return busIoNamedBounds(getItemShape(), getComponentName(),
+                          GraphicalLogicComponent::boundingRect());
 }

@@ -99,30 +99,20 @@ public:
   [[nodiscard]] bool isFstTracingEnabled() const { return fstTraceFile.has_value(); }
 
 private:
-  /**
-   * @brief Rebuilds the simulator-side FST writer from current trace settings.
-   */
-  void applyFstTraceWriter();
+  struct TraceConfiguration {
+    std::vector<SiliconFstWriter::NamedBus> buses;
+    int                                     inputCount = 0;
+  };
 
   /**
-   * @brief Emits a waveform reset event with the current traced signals.
+   * @brief Refreshes waveform, simulator, and FST tracing from one scene snapshot.
    */
-  void resetWaveformTrace();
+  void refreshTraceConfiguration();
 
   /**
-   * @brief Configures the simulator trace buses and snapshot sink.
+   * @brief Collects ordered trace buses and their input count.
    */
-  void configureSimulatorTrace();
-
-  /**
-   * @brief Collects the ordered list of named buses shown in the waveform view.
-   */
-  [[nodiscard]] std::vector<SiliconFstWriter::NamedBus> collectTraceBuses() const;
-
-  /**
-   * @brief Counts traced input widgets for waveform layout purposes.
-   */
-  [[nodiscard]] int collectTraceInputCount() const;
+  [[nodiscard]] TraceConfiguration collectTraceConfiguration() const;
 
   /** @brief Host scene that owns the graphical items and Qt signals */
   DiagramScene& scene;

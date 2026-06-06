@@ -48,6 +48,10 @@ void registerAllGUIComponents(GUIComponentFactory& factory)
       [](QGraphicsItem* p) { return std::make_unique<GraphicalInput>(p); });
   reg(std::string(GraphicalOutputSingle::ComponentType),
       [](QGraphicsItem* p) { return std::make_unique<GraphicalOutputSingle>(p); });
+  reg(std::string(GraphicalBusInput::ComponentType),
+      [](QGraphicsItem* p) { return std::make_unique<GraphicalBusInput>(p); });
+  reg(std::string(GraphicalBusOutput::ComponentType),
+      [](QGraphicsItem* p) { return std::make_unique<GraphicalBusOutput>(p); });
 
   reg(std::string(WireSplitter::Type),
       [](QGraphicsItem* p) { return std::make_unique<GraphicalWireSplitter>(p); });
