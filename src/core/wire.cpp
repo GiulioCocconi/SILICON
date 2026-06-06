@@ -18,7 +18,9 @@
 #include "wire.hpp"
 
 #include <algorithm>
+#include <ranges>
 #include <stdexcept>
+#include <utility>
 
 #include <logging/logger.hpp>
 
@@ -214,8 +216,8 @@ int Bus::setCurrentValue(const unsigned int value, const Component_weakPtr& requ
 unsigned int Bus::getCurrentValue() const
 {
   if (isInErrorState() || hasUnknowns())
-    throw std::logic_error(
-        "Bus::getCurrentValue() called on a bus in UNKNOWN / ERROR state");
+    throw std::logic_error("int Bus::getCurrentValue() called on a bus in UNKNOWN / "
+                           "ERROR state, use the string version instead");
 
   unsigned int res = 0;
   for (unsigned int i = 0; i < this->size(); i++) {
@@ -226,6 +228,21 @@ unsigned int Bus::getCurrentValue() const
       res |= (1 << i);
   }
   return res;
+}
+
+std::string Bus::getCurrentValueString() const
+{
+  return busData | std::views::reverse | std::views::transform([](const auto& wire) {
+           switch (Wire::safeGetCurrentState(wire)) {
+             case State::HIGH: return '1';
+             case State::LOW: return '0';
+             case State::UNKNOWN: return 'X';
+             case State::ERROR: return 'E';
+             default: throw std::runtime_error("Unknown state");
+           }
+           std::unreachable();
+         })
+         | std::ranges::to<std::string>();
 }
 
 bool Bus::isInErrorState() const

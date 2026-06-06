@@ -107,6 +107,7 @@ public:
   int setCurrentValue(unsigned int value, const Component_weakPtr& requestedBy);
 
   [[nodiscard]] unsigned int getCurrentValue() const;
+  [[nodiscard]] std::string  getCurrentValueString() const;
   [[nodiscard]] bool         isInErrorState() const;
   [[nodiscard]] bool         hasUnknowns() const;
 
