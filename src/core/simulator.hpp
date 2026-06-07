@@ -23,6 +23,7 @@
 #include <queue>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <vector>
 
 /**
@@ -100,7 +101,7 @@ public:
    * The writer is initialized from the simulator's circuit and immediately receives a
    * snapshot for the current simulation time.
    */
-  void enableFstTracing(const std::string&        fileName,
+  void enableFstTracing(std::string_view          fileName,
                         SiliconFstWriter::Options options = {});
 
   /**

@@ -633,7 +633,7 @@ void WaveformViewer::saveTrace()
   }
 }
 
-void WaveformViewer::writeFstTrace(const std::string& fileName) const
+void WaveformViewer::writeFstTrace(std::string_view fileName) const
 {
   if (names.empty())
     throw std::runtime_error("no waveform signals are available");

@@ -22,6 +22,7 @@
 #include <QSplitter>
 #include <QStringList>
 #include <QWidget>
+#include <string_view>
 #include <vector>
 
 class QAction;
@@ -126,5 +127,5 @@ private:
   void                      refreshCanvas();
   [[nodiscard]] QStringList displayedValues() const;
   void                      saveTrace();
-  void                      writeFstTrace(const std::string& fileName) const;
+  void                      writeFstTrace(std::string_view fileName) const;
 };

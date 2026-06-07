@@ -48,10 +48,10 @@ public:
    */
   using Options = FstTraceWriter::Options;
 
-  SiliconFstWriter(const std::string& fileName, const Circuit& circuit);
-  SiliconFstWriter(const std::string& fileName, const Circuit& circuit, Options options);
-  SiliconFstWriter(const std::string& fileName, const std::vector<NamedBus>& buses);
-  SiliconFstWriter(const std::string& fileName, const std::vector<NamedBus>& buses,
+  SiliconFstWriter(std::string_view fileName, const Circuit& circuit);
+  SiliconFstWriter(std::string_view fileName, const Circuit& circuit, Options options);
+  SiliconFstWriter(std::string_view fileName, const std::vector<NamedBus>& buses);
+  SiliconFstWriter(std::string_view fileName, const std::vector<NamedBus>& buses,
                    Options options);
 
   SiliconFstWriter(const SiliconFstWriter&)            = delete;

@@ -24,6 +24,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -145,7 +146,7 @@ public:
    * @brief Begins placing a component of the given type.
    * @param typeName The component type name
    */
-  void placeComponent(std::string typeName);
+  void placeComponent(std::string_view typeName);
 
   /**
    * @brief Snaps a point to the grid.

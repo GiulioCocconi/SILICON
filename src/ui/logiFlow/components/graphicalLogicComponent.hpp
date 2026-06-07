@@ -19,6 +19,7 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -107,7 +108,7 @@ public:
    * @param key The property name
    * @param value The new property value
    */
-  void applyProperty(const std::string& key, const PropertyValue& value);
+  void applyProperty(std::string_view key, const PropertyValue& value);
 
   /**
    * @brief Sets the associated logical component.

@@ -30,6 +30,7 @@
 #include <variant>
 
 #include <core/wire.hpp>
+#include <utils/transparent_string.hpp>
 
 class Simulator;
 
@@ -53,13 +54,17 @@ concept HasType = requires {
 using PropertyValue = std::variant<int, bool, std::string>;
 
 /** @brief Map from property names to their values */
-using PropertyMap = std::unordered_map<std::string, PropertyValue>;
+using PropertyMap =
+    std::unordered_map<std::string, PropertyValue, TransparentStringHash,
+                       TransparentStringEqual>;
 
 /** @brief Callback function for property validation/transformation */
 using PropertyCallback = std::function<PropertyValue(const PropertyValue&)>;
 
 /** @brief Map from property names to their callback functions */
-using PropertyCallbackMap = std::unordered_map<std::string, PropertyCallback>;
+using PropertyCallbackMap =
+    std::unordered_map<std::string, PropertyCallback, TransparentStringHash,
+                       TransparentStringEqual>;
 
 /**
  * @class Component
@@ -185,14 +190,14 @@ public:
    * @param key The property name
    * @param value The property value
    */
-  void setProperty(const std::string& key, const PropertyValue& value);
+  void setProperty(std::string_view key, const PropertyValue& value);
 
   /**
    * @brief Gets a property value.
    * @param key The property name
    * @return The property value if present
    */
-  [[nodiscard]] std::optional<PropertyValue> getProperty(const std::string& key) const;
+  [[nodiscard]] std::optional<PropertyValue> getProperty(std::string_view key) const;
 
   /** @brief Gets all properties.
    * @return Reference to the property map
@@ -205,7 +210,7 @@ public:
    * @param key The property name
    * @param value The property value
    */
-  template <typename T> void setPropertyValue(const std::string& key, T&& value)
+  template <typename T> void setPropertyValue(std::string_view key, T&& value)
   {
     setProperty(key, PropertyValue(std::forward<T>(value)));
   }
@@ -216,7 +221,7 @@ public:
    * @param key The property name
    * @return The property value if present and of correct type
    */
-  template <typename T> std::optional<T> getPropertyValue(const std::string& key) const
+  template <typename T> std::optional<T> getPropertyValue(std::string_view key) const
   {
     auto it = properties.find(key);
     if (it != properties.end()) {
@@ -232,7 +237,7 @@ public:
    * @param key The property name
    * @param callback The callback function
    */
-  void setPropertyCallback(const std::string& key, PropertyCallback callback);
+  void setPropertyCallback(std::string_view key, PropertyCallback callback);
 
   /**
    * @brief Sets an input bus at a specific index.
