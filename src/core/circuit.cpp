@@ -33,8 +33,7 @@
 
 namespace {
 
-Logger circuitLog("circuit");
-
+const Logger circuitLog("circuit");
 }
 
 // --- Topology Observers & Live Editing -------------------------------------------------

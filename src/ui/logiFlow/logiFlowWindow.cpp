@@ -101,7 +101,7 @@ bool hasClipboardItems(const nlohmann::json& payload)
   return hasComponents || hasWires;
 }
 
-Logger uiLog("ui");
+const Logger uiLog("ui");
 
 }  // namespace
 

@@ -45,7 +45,7 @@
 
 namespace {
 
-Logger uiLogger("ui scene");
+const Logger uiLogger("ui scene");
 
 struct PendingWireSegment {
   uint64_t             wireId;
