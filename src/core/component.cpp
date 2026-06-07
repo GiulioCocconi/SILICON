@@ -60,7 +60,7 @@ void Component::replaceBus(std::vector<Bus>& busCollection, const unsigned int i
 
 // --- Properties Management -------------------------------------------------------------
 
-void Component::setProperty(const std::string& key, const PropertyValue& value)
+void Component::setProperty(std::string_view key, const PropertyValue& value)
 {
   auto it = properties.find(key);
 
@@ -85,7 +85,7 @@ void Component::setProperty(const std::string& key, const PropertyValue& value)
   it->second = finalValue;
 }
 
-std::optional<PropertyValue> Component::getProperty(const std::string& key) const
+std::optional<PropertyValue> Component::getProperty(std::string_view key) const
 {
   if (const auto it = properties.find(key); it != properties.end()) {
     return it->second;
@@ -93,7 +93,7 @@ std::optional<PropertyValue> Component::getProperty(const std::string& key) cons
   return std::nullopt;
 }
 
-void Component::setPropertyCallback(const std::string& key, PropertyCallback callback)
+void Component::setPropertyCallback(std::string_view key, PropertyCallback callback)
 {
   const auto property = properties.find(key);
   if (property == properties.end()) {
@@ -101,8 +101,8 @@ void Component::setPropertyCallback(const std::string& key, PropertyCallback cal
         std::format("Property '{}' does not exist on component '{}'", key, typeName()));
   }
 
-  propertyCallbacks[key] = std::move(callback);
-  property->second       = propertyCallbacks[key](property->second);
+  propertyCallbacks.insert_or_assign(std::string(key), std::move(callback));
+  property->second = propertyCallbacks.find(key)->second(property->second);
 }
 
 void Component::setInput(const unsigned int index, const Bus& bus)

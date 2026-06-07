@@ -18,6 +18,7 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 
 #include <QApplication>
 #include <QFontMetrics>
@@ -28,14 +29,14 @@
 
 class TextItem : public QGraphicsItem {
 public:
-  explicit TextItem(const std::string& text, QGraphicsItem* parent = nullptr);
+  explicit TextItem(std::string_view text, QGraphicsItem* parent = nullptr);
 
   void paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
              QWidget* widget) override;
 
   QRectF boundingRect() const override { return this->rect; }
 
-  void setText(const std::string text);
+  void setText(std::string_view text);
   void setCenterPos(const QPointF pos) { this->setPos(pos - this->rect.center()); }
 
 private:

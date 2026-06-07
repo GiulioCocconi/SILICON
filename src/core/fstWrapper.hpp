@@ -162,7 +162,7 @@ public:
    * This constructor establishes the class invariant that a successfully
    * constructed object always owns a valid reader context.
    */
-  explicit FstReader(const std::string& fileName);
+  explicit FstReader(std::string_view fileName);
 
   ~FstReader() = default;
 
@@ -373,7 +373,7 @@ public:
    * libfst internally allocates the intermediate structure. This wrapper copies the data
    * into STL-owned memory before releasing the libfst allocation.
    */
-  static EnumTable parseEnumTable(const std::string& enumString);
+  static EnumTable parseEnumTable(std::string_view enumString);
 
 private:
   /**
@@ -518,7 +518,7 @@ private:
  */
 class FstHierarchyBuilder final {
 public:
-  explicit FstHierarchyBuilder(const std::string& fileName, int use_compressed_hier = 1);
+  explicit FstHierarchyBuilder(std::string_view fileName, int use_compressed_hier = 1);
 
   ~FstHierarchyBuilder() = default;
 
@@ -554,16 +554,18 @@ public:
     fstWriterSetFileType(context.get(), typ);
   }
 
-  void setDate(const std::string& date)
+  void setDate(std::string_view date)
   {
     assert(context);
-    fstWriterSetDate(context.get(), date.c_str());
+    const std::string dateStorage(date);
+    fstWriterSetDate(context.get(), dateStorage.c_str());
   }
 
-  void setVersion(const std::string& version)
+  void setVersion(std::string_view version)
   {
     assert(context);
-    fstWriterSetVersion(context.get(), version.c_str());
+    const std::string versionStorage(version);
+    fstWriterSetVersion(context.get(), versionStorage.c_str());
   }
 
   // --- Hierarchy Construction ----------------------------------------------------------
@@ -571,8 +573,8 @@ public:
   /**
    * @brief Pushes a new scope onto the writer hierarchy stack.
    */
-  void setScope(fstScopeType scope_type, const std::string& scope_name,
-                const std::string& scope_comp = "");
+  void setScope(fstScopeType scope_type, std::string_view scope_name,
+                std::string_view scope_comp = "");
 
   /**
    * @brief Pops one hierarchy level.
@@ -591,7 +593,7 @@ public:
    * same underlying waveform storage.
    */
   fstHandle createVar(fstVarType var_type, fstVarDir var_dir, uint32_t len,
-                      const std::string& name, fstHandle aliasHandle = 0);
+                      std::string_view name, fstHandle aliasHandle = 0);
 
   // --- Enum Support --------------------------------------------------------------------
 
@@ -604,7 +606,7 @@ public:
    *   "RUN"  -> "01"
    */
   fstEnumHandle createEnumTable(
-      const std::string& name, unsigned int min_valbits,
+      std::string_view name, unsigned int min_valbits,
       const std::vector<std::pair<const std::string, const std::string>>& values);
 
   /**

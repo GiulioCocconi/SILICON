@@ -101,25 +101,25 @@ std::string encodeBusValue(const Bus& bus)
 
 }  // namespace
 
-SiliconFstWriter::SiliconFstWriter(const std::string& fileName, const Circuit& circuit)
+SiliconFstWriter::SiliconFstWriter(std::string_view fileName, const Circuit& circuit)
   : SiliconFstWriter(fileName, circuit, Options{})
 {
 }
 
-SiliconFstWriter::SiliconFstWriter(const std::string& fileName, const Circuit& circuit,
+SiliconFstWriter::SiliconFstWriter(std::string_view fileName, const Circuit& circuit,
                                    Options options)
   : SiliconFstWriter(fileName, collectCircuitIoBuses(circuit),
                      optionsForCircuit(circuit, std::move(options)))
 {
 }
 
-SiliconFstWriter::SiliconFstWriter(const std::string&           fileName,
+SiliconFstWriter::SiliconFstWriter(std::string_view             fileName,
                                    const std::vector<NamedBus>& buses)
   : SiliconFstWriter(fileName, buses, Options{})
 {
 }
 
-SiliconFstWriter::SiliconFstWriter(const std::string&           fileName,
+SiliconFstWriter::SiliconFstWriter(std::string_view             fileName,
                                    const std::vector<NamedBus>& namedBuses,
                                    Options                      options)
   : buses(registeredBusesFor(namedBuses)),

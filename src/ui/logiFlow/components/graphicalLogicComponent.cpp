@@ -73,7 +73,7 @@ void GraphicalLogicComponent::updatePortSizes()
   update();
 }
 
-void GraphicalLogicComponent::applyProperty(const std::string&   key,
+void GraphicalLogicComponent::applyProperty(std::string_view key,
                                             const PropertyValue& value)
 {
   if (!associatedComponent)

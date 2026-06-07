@@ -70,7 +70,7 @@ void Simulator::recompile()
   executionBlocks = circuit->splitCyclic();
 }
 
-void Simulator::enableFstTracing(const std::string&        fileName,
+void Simulator::enableFstTracing(std::string_view          fileName,
                                  SiliconFstWriter::Options options)
 {
   if (!traceBuses.empty()) {

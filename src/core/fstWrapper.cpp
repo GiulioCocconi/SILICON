@@ -23,10 +23,11 @@
 
 // --- FstReader -------------------------------------------------------------------------
 
-FstReader::FstReader(const std::string& fileName) : fn(fileName)
+FstReader::FstReader(std::string_view fileName) : fn(fileName)
 {
   // Acquire raw libfst reader context.
-  auto* raw_ctx = fstReaderOpen(fileName.c_str());
+  const std::string fileNameStorage(fileName);
+  auto*             raw_ctx = fstReaderOpen(fileNameStorage.c_str());
 
   if (!raw_ctx)
     throw std::runtime_error(std::format("Failed to open FST file for reading: {}", fn));
@@ -93,9 +94,11 @@ FstReader::FstScopeNode FstReader::buildHierarchyTree()
   return std::move(stack.front());
 }
 
-FstReader::EnumTable FstReader::parseEnumTable(const std::string& enumString)
+FstReader::EnumTable FstReader::parseEnumTable(std::string_view enumString)
 {
-  fstETab* etab = fstUtilityExtractEnumTableFromString(enumString.c_str());
+  const std::string enumStringStorage(enumString);
+  fstETab*          etab =
+      fstUtilityExtractEnumTableFromString(enumStringStorage.c_str());
   if (!etab)
     return {};
 
@@ -116,11 +119,13 @@ FstReader::EnumTable FstReader::parseEnumTable(const std::string& enumString)
 
 // --- FstHierarchyBuilder ---------------------------------------------------------------
 
-FstHierarchyBuilder::FstHierarchyBuilder(const std::string& fileName,
-                                         int                use_compressed_hier)
+FstHierarchyBuilder::FstHierarchyBuilder(std::string_view fileName,
+                                         int              use_compressed_hier)
   : fn(fileName)
 {
-  auto* raw_ctx = fstWriterCreate(fileName.c_str(), use_compressed_hier);
+  const std::string fileNameStorage(fileName);
+  auto*             raw_ctx =
+      fstWriterCreate(fileNameStorage.c_str(), use_compressed_hier);
 
   if (!raw_ctx)
     throw std::runtime_error(
@@ -129,25 +134,28 @@ FstHierarchyBuilder::FstHierarchyBuilder(const std::string& fileName,
   context.reset(raw_ctx);
 }
 
-void FstHierarchyBuilder::setScope(fstScopeType scope_type, const std::string& scope_name,
-                                   const std::string& scope_comp)
+void FstHierarchyBuilder::setScope(fstScopeType scope_type, std::string_view scope_name,
+                                   std::string_view scope_comp)
 {
   assert(context);
-  fstWriterSetScope(context.get(), scope_type, scope_name.c_str(), scope_comp.c_str());
+  const std::string scopeName(scope_name);
+  const std::string scopeComp(scope_comp);
+  fstWriterSetScope(context.get(), scope_type, scopeName.c_str(), scopeComp.c_str());
 }
 
 fstHandle FstHierarchyBuilder::createVar(fstVarType var_type, fstVarDir var_dir,
-                                         uint32_t len, const std::string& name,
+                                         uint32_t len, std::string_view name,
                                          fstHandle aliasHandle)
 {
   assert(context);
 
-  return fstWriterCreateVar(context.get(), var_type, var_dir, len, name.c_str(),
-                            aliasHandle);
+  const std::string nameStorage(name);
+  return fstWriterCreateVar(context.get(), var_type, var_dir, len,
+                            nameStorage.c_str(), aliasHandle);
 }
 
 fstEnumHandle FstHierarchyBuilder::createEnumTable(
-    const std::string& name, unsigned int min_valbits,
+    std::string_view name, unsigned int min_valbits,
     const std::vector<std::pair<const std::string, const std::string>>& values)
 {
   assert(context);
@@ -166,8 +174,9 @@ fstEnumHandle FstHierarchyBuilder::createEnumTable(
     vals.push_back(val.c_str());
   }
 
-  return fstWriterCreateEnumTable(context.get(), name.c_str(), values.size(), min_valbits,
-                                  literals.data(), vals.data());
+  const std::string nameStorage(name);
+  return fstWriterCreateEnumTable(context.get(), nameStorage.c_str(), values.size(),
+                                  min_valbits, literals.data(), vals.data());
 }
 
 FstDataWriter FstHierarchyBuilder::finish() &&

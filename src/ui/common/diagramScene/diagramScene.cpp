@@ -429,13 +429,13 @@ void DiagramScene::addComponent(GraphicalComponent* component, QPointF pos)
   addItem(component);
 }
 
-void DiagramScene::placeComponent(std::string typeName)
+void DiagramScene::placeComponent(std::string_view typeName)
 {
   if (componentToBeDrawn)
     throw std::logic_error("placeComponent: previous component not yet placed");
 
   componentToBeDrawn      = GUIComponentFactory::instance().create(typeName).release();
-  lastPlacedComponentType = std::move(typeName);
+  lastPlacedComponentType = typeName;
 
   // TODO: IMPLEMENT COMPONENT SHADOW TO BE SHOWN WHILE DRAGGING
   setInteractionMode(InteractionMode::COMPONENT_PLACING_MODE);

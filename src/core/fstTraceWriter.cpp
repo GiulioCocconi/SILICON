@@ -37,13 +37,13 @@ uint32_t checkedFstWidth(const std::size_t width)
 
 }  // namespace
 
-FstTraceWriter::FstTraceWriter(const std::string&              fileName,
+FstTraceWriter::FstTraceWriter(std::string_view                fileName,
                                const std::vector<TraceSignal>& signals)
   : FstTraceWriter(fileName, signals, Options{})
 {
 }
 
-FstTraceWriter::FstTraceWriter(const std::string&              fileName,
+FstTraceWriter::FstTraceWriter(std::string_view                fileName,
                                const std::vector<TraceSignal>& traceSignals,
                                Options                         options)
   : writer([&] {
@@ -94,7 +94,7 @@ void FstTraceWriter::flush()
 
 std::optional<fstHandle> FstTraceWriter::handleForSignal(std::string_view name) const
 {
-  const auto it = handlesBySignalName.find(std::string(name));
+  const auto it = handlesBySignalName.find(name);
   if (it == handlesBySignalName.end())
     return std::nullopt;
 
