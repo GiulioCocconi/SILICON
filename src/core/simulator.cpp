@@ -26,7 +26,7 @@
 #include <logging/logger.hpp>
 
 namespace {
-Logger simulationLog("simulation");
+const Logger simulationLog("simulation");
 }
 
 uint64_t Simulator::maxSimulationSteps          = 100000;
