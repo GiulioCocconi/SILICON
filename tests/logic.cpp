@@ -20,6 +20,8 @@
 #include <core/circuit.hpp>
 #include <core/simulator.hpp>
 
+#include <limits>
+
 namespace {
 void expectBusStates(const Bus& bus, std::initializer_list<State> expected)
 {
@@ -269,6 +271,17 @@ TEST(LogicTest, BusSettingReading)
     a.forceSetCurrentValue(i);
     EXPECT_EQ(a.getCurrentValue(), i);
   }
+}
+
+TEST(LogicTest, BusSettingReadingAtUnsignedIntWidth)
+{
+  Bus bus(std::numeric_limits<unsigned int>::digits);
+
+  EXPECT_EQ(bus.forceSetCurrentValue(std::numeric_limits<unsigned int>::max()), 0);
+  EXPECT_EQ(bus.getCurrentValue(), std::numeric_limits<unsigned int>::max());
+
+  EXPECT_EQ(bus.setCurrentValue(0, {}), 0);
+  EXPECT_EQ(bus.getCurrentValue(), 0U);
 }
 
 TEST(LogicTest, GateBitwiseDefaultsAndValidation)

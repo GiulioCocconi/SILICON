@@ -18,11 +18,23 @@
 #include "wire.hpp"
 
 #include <algorithm>
+#include <limits>
 #include <ranges>
 #include <stdexcept>
 #include <utility>
 
 #include <logging/logger.hpp>
+
+namespace {
+
+bool busValueOverflowsWidth(const unsigned int value, const size_t width)
+{
+  if (width >= std::numeric_limits<unsigned int>::digits)
+    return false;
+  return value >= (1u << width);
+}  // namespace
+
+}
 
 State operator&&(const State& a, const State& b)
 {
@@ -187,7 +199,7 @@ int Bus::forceSetCurrentValue(const unsigned int value)
       this->busData[i]->forceSetCurrentState(s);
     }
   }
-  return (value >= (1u << this->size()));
+  return busValueOverflowsWidth(value, this->size());
 }
 
 int Bus::forceSetCurrentValue(const unsigned int       value,
@@ -199,7 +211,7 @@ int Bus::forceSetCurrentValue(const unsigned int       value,
       this->busData[i]->forceSetCurrentState(s, authorizedBy);
     }
   }
-  return (value >= (1u << this->size()));
+  return busValueOverflowsWidth(value, this->size());
 }
 
 int Bus::setCurrentValue(const unsigned int value, const Component_weakPtr& requestedBy)
@@ -210,7 +222,7 @@ int Bus::setCurrentValue(const unsigned int value, const Component_weakPtr& requ
       Wire::safeSetCurrentState(this->busData[i], s, requestedBy);
     }
   }
-  return (value >= (1u << this->size()));
+  return busValueOverflowsWidth(value, this->size());
 }
 
 unsigned int Bus::getCurrentValue() const
