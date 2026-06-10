@@ -60,7 +60,21 @@ struct TimedEvent {
  */
 class Simulator {
 public:
+  /** @brief Receives encoded waveform values for a simulation timestamp. */
   using TraceSink = std::function<void(uint64_t, const std::vector<std::string>&)>;
+
+  /**
+   * @brief Framework-independent cooperative cancellation callback.
+   * @return True when the active operation should stop at its next checkpoint
+   */
+  using CancellationCheck = std::function<bool()>;
+
+  /** @brief Outcome of a cancellable simulator operation. */
+  enum class RunResult {
+    Completed,       /**< The requested operation completed normally */
+    Cancelled,       /**< The caller requested cancellation */
+    StepLimitReached /**< The configured simulation step limit was reached */
+  };
 
   /**
    * @brief Constructs a Simulator for the given circuit.
@@ -69,11 +83,13 @@ public:
    * initialSimulationTime as duration
    * @param isInteractive If true make the circuit interactive
    * @param fstWriter Optional waveform writer used to trace simulation snapshots
+   * @param isCancelled Optional cancellation callback used during initial evaluation
    * @throws std::invalid_argument If c is null
    */
   explicit Simulator(std::shared_ptr<Circuit> c, uint64_t initialSimulationTime = 0,
                      bool                              isInteractive = false,
-                     std::unique_ptr<SiliconFstWriter> fstWriter     = nullptr);
+                     std::unique_ptr<SiliconFstWriter> fstWriter     = nullptr,
+                     CancellationCheck                 isCancelled   = {});
   /**
    * @brief Destructor - removes topology listener
    */
@@ -87,8 +103,10 @@ public:
    * change.
    *
    * @param duration The simulation duration in time units
+   * @param isCancelled Optional cooperative cancellation callback
+   * @return Completion, cancellation, or step-limit outcome
    */
-  void run(uint64_t duration);
+  RunResult run(uint64_t duration, CancellationCheck isCancelled = {});
 
   /**
    * @brief Recompiles the execution blocks from the circuit topology.
@@ -129,6 +147,8 @@ public:
    *
    * @param bus The bus to set
    * @param value The value to set
+   * @param isCancelled Optional cooperative cancellation callback
+   * @return Completion or cancellation outcome
    */
   /**
    * @brief Forces a bus to a specific value and propagates the change through the
@@ -139,8 +159,10 @@ public:
    *
    * @param bus The bus to set
    * @param value The value to set
+   * @param isCancelled Optional cooperative cancellation callback
+   * @return Completion or cancellation outcome
    */
-  void setBus(Bus bus, unsigned int value);
+  RunResult setBus(Bus bus, unsigned int value, CancellationCheck isCancelled = {});
 
   /**
    * @brief Forces a bus to a specific value with a source component and propagates
@@ -152,8 +174,11 @@ public:
    * @param bus The bus to set
    * @param value The value to set
    * @param source The component that authorized this change
+   * @param isCancelled Optional cooperative cancellation callback
+   * @return Completion or cancellation outcome
    */
-  void setBus(Bus bus, unsigned int value, const Component_weakPtr& source);
+  RunResult setBus(Bus bus, unsigned int value, const Component_weakPtr& source,
+                   CancellationCheck isCancelled = {});
 
   /**
    * @brief Propagates changes from a bus through the circuit in reverse direction.
@@ -162,8 +187,10 @@ public:
    * components. Extracts backwards subgraph and evaluates each block.
    *
    * @param bus The bus that changed
+   * @param isCancelled Optional cooperative cancellation callback
+   * @return Completion or cancellation outcome
    */
-  void simulateBus(const Bus& bus);
+  RunResult simulateBus(const Bus& bus, CancellationCheck isCancelled = {});
 
   /**
    * @brief Updates a wire with a new state and optional delay.
@@ -228,6 +255,9 @@ private:
   /**
    * @brief Executes all components in a simulation block.
    * @param block The simulation block to evaluate
+   * @param isCancelled Optional cooperative cancellation callback
+   * @return True when the block completed, false when cancellation was requested
    */
-  void evaluateBlock(const Circuit::SimulationBlock& block);
+  [[nodiscard]] bool evaluateBlock(const Circuit::SimulationBlock& block,
+                                   const CancellationCheck&        isCancelled = {});
 };

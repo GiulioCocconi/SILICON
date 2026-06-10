@@ -41,7 +41,7 @@ TEST(LogicTest, And)
   auto b = std::make_shared<Wire>(State::ERROR);
   auto o = std::make_shared<Wire>();
 
-  auto g = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, o);
+  auto      g    = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, o);
   auto      circ = std::make_shared<Circuit>(Component_set{g});
   Simulator sim(circ);
   sim.run(20);  // Process initial zero-delay and gate evaluations
@@ -80,6 +80,39 @@ TEST(LogicTest, And)
       << "AND(HIGH, HIGH) = " << to_str(o->getCurrentState());
 }
 
+TEST(SimulatorTest, CancelledRunCanResumePendingEvents)
+{
+  auto a = std::make_shared<Wire>(State::HIGH);
+  auto b = std::make_shared<Wire>(State::HIGH);
+  auto o = std::make_shared<Wire>();
+
+  auto       gate    = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, o);
+  auto       circuit = std::make_shared<Circuit>(Component_set{gate});
+  Simulator  simulator(circuit);
+  const auto stateBeforeCancellation = o->getCurrentState();
+
+  EXPECT_EQ(simulator.run(20, []() { return true; }), Simulator::RunResult::Cancelled);
+  EXPECT_EQ(o->getCurrentState(), stateBeforeCancellation);
+
+  EXPECT_EQ(simulator.run(20), Simulator::RunResult::Completed);
+  EXPECT_EQ(o->getCurrentState(), State::HIGH);
+}
+
+TEST(SimulatorTest, CancellationStopsBusPropagation)
+{
+  auto a = std::make_shared<Wire>(State::LOW);
+  auto b = std::make_shared<Wire>(State::HIGH);
+  auto o = std::make_shared<Wire>();
+
+  auto      gate    = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, o);
+  auto      circuit = std::make_shared<Circuit>(Component_set{gate});
+  Simulator simulator(circuit);
+
+  EXPECT_EQ(simulator.setBus(Bus{a}, 1, []() { return true; }),
+            Simulator::RunResult::Cancelled);
+  EXPECT_EQ(a->getCurrentState(), State::LOW);
+}
+
 TEST(LogicTest, Nand)
 {
   auto a = std::make_shared<Wire>(State::HIGH);
@@ -104,7 +137,7 @@ TEST(LogicTest, Or)
   auto b = std::make_shared<Wire>(State::ERROR);
   auto o = std::make_shared<Wire>();
 
-  auto g = std::make_shared<OrGate>(std::vector<Wire_ptr>{a, b}, o);
+  auto      g    = std::make_shared<OrGate>(std::vector<Wire_ptr>{a, b}, o);
   auto      circ = std::make_shared<Circuit>(Component_set{g});
   Simulator sim(circ);
   sim.run(20);
@@ -165,7 +198,7 @@ TEST(LogicTest, Xor)
   auto b = std::make_shared<Wire>(State::ERROR);
   auto o = std::make_shared<Wire>();
 
-  auto g = std::make_shared<XorGate>(std::array<Wire_ptr, 2>{a, b}, o);
+  auto      g    = std::make_shared<XorGate>(std::array<Wire_ptr, 2>{a, b}, o);
   auto      circ = std::make_shared<Circuit>(Component_set{g});
   Simulator sim(circ);
   sim.run(20);
@@ -209,7 +242,7 @@ TEST(LogicTest, CircuitEditing1)
   auto o = std::make_shared<Wire>();
 
   {
-    auto g = std::make_shared<XorGate>(std::array<Wire_ptr, 2>{a, b}, o);
+    auto      g = std::make_shared<XorGate>(std::array<Wire_ptr, 2>{a, b}, o);
     auto      c = std::make_shared<Circuit>(Component_set{g});
     Simulator sim(c);
     sim.run(20);
@@ -217,7 +250,7 @@ TEST(LogicTest, CircuitEditing1)
   }
 
   {
-    auto g = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, o);
+    auto      g = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, o);
     auto      c = std::make_shared<Circuit>(Component_set{g});
     Simulator sim(c);
     sim.run(20);
@@ -226,7 +259,7 @@ TEST(LogicTest, CircuitEditing1)
 
   {
     b->forceSetCurrentState(State::HIGH);
-    auto g = std::make_shared<OrGate>(std::vector<Wire_ptr>{a, b}, o);
+    auto      g = std::make_shared<OrGate>(std::vector<Wire_ptr>{a, b}, o);
     auto      c = std::make_shared<Circuit>(Component_set{g});
     Simulator sim(c);
     sim.run(20);
@@ -242,7 +275,7 @@ TEST(LogicTest, CircuitEditing2)
 
   auto o = std::make_shared<Wire>();
 
-  auto ag = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, o);
+  auto      ag   = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, o);
   auto      circ = std::make_shared<Circuit>(Component_set{ag});
   Simulator sim(circ);
   sim.run(20);

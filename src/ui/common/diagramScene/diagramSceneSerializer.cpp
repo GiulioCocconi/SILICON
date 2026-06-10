@@ -112,13 +112,9 @@ void attachCoreComponent(GraphicalComponent* component, const nlohmann::json& co
 
   auto* io = category_cast<GraphicalIO>(logicComp, ItemCategory::IO);
 
-  if (auto* gOut = dynamic_cast<GraphicalOutputSingle*>(io)) {
-    if (auto dOut = std::dynamic_pointer_cast<DummyOutputComponent>(coreComp))
-      dOut->setSkin(gOut);
-  } else if (auto* gBusOut = dynamic_cast<GraphicalBusOutput*>(io)) {
-    if (auto dBusOut = std::dynamic_pointer_cast<DummyBusOutputComponent>(coreComp))
-      dBusOut->setSkin(gBusOut);
-  } else if (auto* gIn = dynamic_cast<GraphicalInput*>(io)) {
+  // Output backends remain UI-independent; their graphical state is refreshed by the
+  // simulation controller on the GUI thread after each worker job.
+  if (auto* gIn = dynamic_cast<GraphicalInput*>(io)) {
     QPointer<GraphicalInput> safeGIn(gIn);
     coreComp->setPropertyCallback("name", [safeGIn](const PropertyValue& value) {
       if (!safeGIn)

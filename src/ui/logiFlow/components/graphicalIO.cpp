@@ -551,8 +551,6 @@ GraphicalOutputSingle::GraphicalOutputSingle(QGraphicsItem* parent)
     prepareGeometryChange();
     return value;
   });
-
-  std::static_pointer_cast<DummyOutputComponent>(associatedComponent)->setSkin(this);
 }
 
 void GraphicalOutputSingle::setState(State state)
@@ -601,19 +599,6 @@ DummyOutputComponent::DummyOutputComponent(Bus bus, std::string name)
   defineProperty("name", std::move(name));
 }
 
-void DummyOutputComponent::simulate(Simulator& /*sim*/)
-{
-  if (skin)
-    skin->setState(Wire::safeGetCurrentState(this->inputs[0][0]));
-}
-
-void DummyOutputComponent::setSkin(GraphicalOutputSingle* skinPtr)
-{
-  if (!skinPtr)
-    throw std::invalid_argument("setSkin: skin must not be null");
-  skin = skinPtr;
-}
-
 // --- Graphical Bus Output --------------------------------------------------------------
 
 DummyBusOutputComponent::DummyBusOutputComponent(Bus bus, std::string name)
@@ -635,19 +620,6 @@ int DummyBusOutputComponent::setSize(const int newSize)
   return normalizedSize;
 }
 
-void DummyBusOutputComponent::simulate(Simulator& /*sim*/)
-{
-  if (skin && !inputs.empty())
-    skin->setBusState(inputs[0]);
-}
-
-void DummyBusOutputComponent::setSkin(GraphicalBusOutput* skinPtr)
-{
-  if (!skinPtr)
-    throw std::invalid_argument("setSkin: skin must not be null");
-  skin = skinPtr;
-}
-
 GraphicalBusOutput::GraphicalBusOutput(QGraphicsItem* parent)
   : GraphicalIO(ItemCategory::Output, std::make_shared<DummyBusOutputComponent>(),
                 new BusIoShape(BusIoKind::Output, 8), parent)
@@ -656,7 +628,6 @@ GraphicalBusOutput::GraphicalBusOutput(QGraphicsItem* parent)
   GraphicalLogicComponent::setPorts(
       {std::pair<std::string, QPoint>{"bus", QPoint(BusIoPortX, BusIoPortY)}}, {});
   installPropertyCallbacks();
-  std::static_pointer_cast<DummyBusOutputComponent>(associatedComponent)->setSkin(this);
   refreshFromComponent();
 }
 
@@ -691,8 +662,6 @@ void GraphicalBusOutput::setComponent(const Component_ptr& component)
 {
   GraphicalLogicComponent::setComponent(component);
   installPropertyCallbacks();
-  if (auto busOutput = std::dynamic_pointer_cast<DummyBusOutputComponent>(component))
-    busOutput->setSkin(this);
   refreshFromComponent();
 }
 

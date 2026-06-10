@@ -54,14 +54,34 @@ class Wire {
 private:
   static inline std::atomic<uint64_t> nextId{0};
 
-  State             currentState;
-  Component_weakPtr authorizedComponent;
-  uint64_t          id;
+  /** @brief State shared between the simulation worker and UI readers. */
+  std::atomic<State> currentState;
+  Component_weakPtr  authorizedComponent;
+  uint64_t           id;
 
 public:
   Wire();
   explicit Wire(State s);
 
+  /**
+   * @brief Copies a wire while preserving its existing identifier and authorization.
+   *
+   * Explicitly defined because std::atomic is not implicitly copyable.
+   * @param other Wire to copy
+   */
+  Wire(const Wire& other);
+
+  /**
+   * @brief Assigns state, authorization, and identifier from another wire.
+   * @param other Wire to assign
+   * @return This wire
+   */
+  Wire& operator=(const Wire& other);
+
+  /**
+   * @brief Reads the current state safely while simulation may update it.
+   * @return Current logic state
+   */
   [[nodiscard]] State    getCurrentState() const;
   [[nodiscard]] uint64_t getId() const { return id; }
 

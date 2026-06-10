@@ -19,15 +19,23 @@
 #include "diagramSceneSimulationController.hpp"
 
 #include <algorithm>
+#include <format>
 #include <string>
 
+#include <QApplication>
 #include <QGraphicsItem>
+#include <QGraphicsView>
+#include <QMetaObject>
 #include <QObject>
+#include <QProgressDialog>
+#include <QTimer>
+#include <QWidget>
 
 #include <utils/ranges_wrapper.hpp>
 
 #include <core/circuit.hpp>
 #include <core/simulator.hpp>
+#include <logging/logger.hpp>
 #include <ui/common/diagramScene/diagramScene.hpp>
 #include <ui/common/enums.hpp>
 #include <ui/common/graphicalWire.hpp>
@@ -38,6 +46,7 @@ namespace {
 
 constexpr ItemCategory InputCategory  = ItemCategory::IO | ItemCategory::Input;
 constexpr ItemCategory OutputCategory = ItemCategory::IO | ItemCategory::Output;
+const Logger           simulationUiLog("simulation-ui");
 
 std::string componentNameOr(const Component_ptr& component, const std::string& fallback)
 {
@@ -61,7 +70,10 @@ DiagramSceneSimulationController::DiagramSceneSimulationController(DiagramScene&
 {
 }
 
-DiagramSceneSimulationController::~DiagramSceneSimulationController() = default;
+DiagramSceneSimulationController::~DiagramSceneSimulationController()
+{
+  cancelAndWait();
+}
 
 void DiagramSceneSimulationController::enterSimulationMode()
 {
@@ -100,21 +112,34 @@ void DiagramSceneSimulationController::enterSimulationMode()
                      &DiagramScene::handleInputToggled, Qt::UniqueConnection);
   }
 
-  // Initialize Circuit & Simulator frameworks
+  // Initialize Circuit & Simulator frameworks.
   scene.setCircuit(std::make_shared<Circuit>(coreComps, false));
 
-  // The simulator constructor evaluates the circuit once at time zero. Attach tracing
-  // before advancing time so waveform exports include the initial 0ns snapshot.
-  simulator = std::make_unique<Simulator>(scene.getCircuit(), 0, true);
-  refreshTraceConfiguration();
-  simulator->run(1);
+  auto trace = collectTraceConfiguration();
+  resetWaveformTrace(trace);
+  const auto circuit   = scene.getCircuit();
+  const auto traceFile = fstTraceFile;
 
-  refreshGraphicalOutputs();
-  scene.update();
+  startJob([this, circuit, trace = std::move(trace), traceFile]() mutable {
+    const auto isCancelled = [this]() {
+#ifdef __EMSCRIPTEN__
+      // The web build has no worker thread, so periodically service the dialog and
+      // cancellation button while simulation runs cooperatively on the GUI thread.
+      QApplication::processEvents();
+#endif
+      return isJobCancellationRequested();
+    };
+
+    simulator = std::make_unique<Simulator>(circuit, 0, true, nullptr, isCancelled);
+    configureSimulatorTrace(trace, traceFile);
+    return simulator->run(1, isCancelled);
+  });
 }
 
 void DiagramSceneSimulationController::exitSimulationMode()
 {
+  cancelAndWait();
+
   for (auto* item : scene.items()) {
     if (auto* io = category_cast<GraphicalIO>(item, ItemCategory::IO)) {
       QObject::disconnect(io, &GraphicalIO::inputToggled, &scene,
@@ -137,22 +162,35 @@ void DiagramSceneSimulationController::handleInputToggled(Bus               targ
                                                           unsigned int      value,
                                                           Component_weakPtr source)
 {
-  if (!simulator)
+  if (!simulator || !isJobFinished())
     return;
 
-  simulator->setBus(targetBus, value, source);
-  simulator->run(20);
+  startJob([this, targetBus = std::move(targetBus), value,
+            source = std::move(source)]() mutable {
+    const auto isCancelled = [this]() {
+#ifdef __EMSCRIPTEN__
+      // Keep the synchronous WebAssembly fallback responsive at cancellation points.
+      QApplication::processEvents();
+#endif
+      return isJobCancellationRequested();
+    };
 
-  refreshGraphicalOutputs();
-  scene.update();
+    auto result = simulator->setBus(std::move(targetBus), value, source, isCancelled);
+    if (result != Simulator::RunResult::Completed)
+      return result;
+    return simulator->run(20, isCancelled);
+  });
 }
 
 void DiagramSceneSimulationController::setFstTraceFile(
     std::optional<std::string> fileName)
 {
+  if (!isJobFinished())
+    return;
+
   fstTraceFile = std::move(fileName);
 
-  if (!simulator)
+  if (!simulator || !isJobFinished())
     return;
 
   refreshTraceConfiguration();
@@ -191,6 +229,8 @@ void DiagramSceneSimulationController::handleTopologyChanged()
 {
   if (scene.getInteractionMode() != InteractionMode::SIMULATION_MODE)
     return;
+  if (!isJobFinished())
+    return;
 
   scene.calculateWiresForComponents();
   refreshGraphicalOutputs();
@@ -209,7 +249,12 @@ void DiagramSceneSimulationController::refreshTraceConfiguration()
     return;
 
   auto trace = collectTraceConfiguration();
+  resetWaveformTrace(trace);
+  configureSimulatorTrace(trace, fstTraceFile);
+}
 
+void DiagramSceneSimulationController::resetWaveformTrace(const TraceConfiguration& trace)
+{
   QStringList names;
   names.reserve(static_cast<qsizetype>(trace.buses.size()));
   for (const auto& [name, bus] : trace.buses) {
@@ -217,24 +262,189 @@ void DiagramSceneSimulationController::refreshTraceConfiguration()
     names.push_back(QString::fromStdString(name));
   }
   scene.waveformTraceReset(names, trace.inputCount);
+}
 
+void DiagramSceneSimulationController::configureSimulatorTrace(
+    const TraceConfiguration& trace, const std::optional<std::string>& traceFile)
+{
   simulator->setTraceBuses(trace.buses);
-  simulator->setTraceSink([this](uint64_t time, const std::vector<std::string>& values) {
-    QStringList qtValues;
-    qtValues.reserve(values.size());
-    for (const auto& value : values)
-      qtValues.push_back(QString::fromStdString(value));
+  simulator->setTraceSink(
+      [scene = &scene](uint64_t time, const std::vector<std::string>& values) {
+        QStringList qtValues;
+        qtValues.reserve(values.size());
+        for (const auto& value : values)
+          qtValues.push_back(QString::fromStdString(value));
 
-    scene.waveformTraceSnapshot(time, qtValues);
-  });
+        QMetaObject::invokeMethod(
+            scene,
+            [scene, time, qtValues = std::move(qtValues)]() {
+              scene->waveformTraceSnapshot(time, qtValues);
+            },
+            Qt::QueuedConnection);
+      });
 
-  if (!fstTraceFile) {
+  if (!traceFile) {
     simulator->setFstWriter(nullptr);
     return;
   }
 
   simulator->setFstWriter(std::make_unique<SiliconFstWriter>(
-      *fstTraceFile, trace.buses, SiliconFstWriter::Options{}));
+      *traceFile, trace.buses, SiliconFstWriter::Options{}));
+}
+
+void DiagramSceneSimulationController::startJob(std::function<Simulator::RunResult()> job)
+{
+  if (!isJobFinished())
+    return;
+
+  // 1. Reset job state
+  setJobFinished(false);
+  resetJobCancellation();
+  jobException = nullptr;
+
+  // 2. Prepare progress dialog, polling timers, and lock the view
+  setupJobUI();
+
+  // 3. Wrap the job to handle exceptions and state completion safely
+  auto executeAndCatch = [this, job = std::move(job)]() {
+    try {
+      jobResult = job();
+    } catch (...) {
+      jobException = std::current_exception();
+    }
+    setJobFinished(true);
+  };
+
+  // 4. Dispatch the job
+#ifdef __EMSCRIPTEN__
+  // Emscripten keeps the existing non-threaded build; cancellation remains cooperative.
+  progressDialog->open();
+  executeAndCatch();
+  finishJob();
+#else
+  // Desktop simulation mutates only core objects asynchronously.
+  worker = std::jthread(std::move(executeAndCatch));
+#endif
+}
+
+void DiagramSceneSimulationController::setupJobUI()
+{
+  for (auto* view : scene.views())
+    view->setEnabled(false);
+
+  // Create and operate all Qt objects on the GUI thread.
+  auto* parent   = scene.views().isEmpty() ? nullptr : scene.views().first()->window();
+  progressDialog = new QProgressDialog(QObject::tr("Simulation is running..."),
+                                       QObject::tr("Cancel"), 0, 0, parent);
+  progressDialog->setWindowTitle(QObject::tr("Simulation"));
+  progressDialog->setWindowModality(Qt::WindowModal);
+  progressDialog->setAutoClose(false);
+  progressDialog->setAutoReset(false);
+
+  QObject::connect(progressDialog, &QProgressDialog::canceled, &scene,
+                   [this]() { requestJobCancellation(); });
+
+  completionTimer = new QTimer(&scene);
+  completionTimer->setInterval(25);
+  QObject::connect(completionTimer, &QTimer::timeout, &scene, [this]() {
+    if (isJobFinished())
+      finishJob();
+  });
+  completionTimer->start();
+
+  dialogTimer = new QTimer(&scene);
+  dialogTimer->setSingleShot(true);
+  dialogTimer->setInterval(300);
+  QObject::connect(dialogTimer, &QTimer::timeout, &scene, [this]() {
+    if (!isJobFinished() && progressDialog)
+      progressDialog->open();
+  });
+  dialogTimer->start();
+}
+
+void DiagramSceneSimulationController::finishJob()
+{
+  if (!isJobFinished())
+    return;
+
+  // Reassigning to an empty jthread implicitly joins to guarantee the worker is cleanly stopped
+#ifndef __EMSCRIPTEN__
+  worker = std::jthread{};
+#endif
+
+  // Use deferred deletion to prevent access violations if events are still pending in the queue
+  if (completionTimer) {
+    completionTimer->stop();
+    completionTimer->deleteLater();
+    completionTimer = nullptr;
+  }
+  if (dialogTimer) {
+    dialogTimer->stop();
+    dialogTimer->deleteLater();
+    dialogTimer = nullptr;
+  }
+  if (progressDialog) {
+    progressDialog->close();
+    progressDialog->deleteLater();
+    progressDialog = nullptr;
+  }
+
+  for (auto* view : scene.views())
+    view->setEnabled(true);
+  refreshGraphicalOutputs();
+  scene.update();
+
+  if (!jobException)
+    return;
+
+  try {
+    std::rethrow_exception(jobException);
+  } catch (const std::exception& error) {
+    simulationUiLog.error(std::format("Simulation failed: {}", error.what()));
+  } catch (...) {
+    simulationUiLog.error("Simulation failed with an unknown error");
+  }
+  jobException = nullptr;
+}
+
+void DiagramSceneSimulationController::cancelAndWait()
+{
+  // Teardown must outlive the worker because its callbacks capture controller state.
+  if (!isJobFinished())
+    requestJobCancellation();
+
+#ifndef __EMSCRIPTEN__
+  // Assigning an empty std::jthread forces a block and automatically joins the active worker 
+  worker = std::jthread{};
+#endif
+
+  setJobFinished(true);
+  finishJob();
+}
+
+bool DiagramSceneSimulationController::isJobFinished() const
+{
+  return jobFinished.load(std::memory_order_acquire);
+}
+
+void DiagramSceneSimulationController::setJobFinished(const bool finished)
+{
+  jobFinished.store(finished, std::memory_order_release);
+}
+
+bool DiagramSceneSimulationController::isJobCancellationRequested() const
+{
+  return jobCancellationRequested.load(std::memory_order_acquire);
+}
+
+void DiagramSceneSimulationController::requestJobCancellation()
+{
+  jobCancellationRequested.store(true, std::memory_order_release);
+}
+
+void DiagramSceneSimulationController::resetJobCancellation()
+{
+  jobCancellationRequested.store(false, std::memory_order_release);
 }
 
 DiagramSceneSimulationController::TraceConfiguration

@@ -34,7 +34,7 @@ bool busValueOverflowsWidth(const unsigned int value, const size_t width)
   return value >= (1u << width);
 }  // namespace
 
-}
+}  // namespace
 
 State operator&&(const State& a, const State& b)
 {
@@ -103,21 +103,43 @@ Wire::Wire(State s)
   this->currentState = s;
 }
 
+Wire::Wire(const Wire& other)
+  : currentState(other.getCurrentState()),
+    authorizedComponent(other.authorizedComponent),
+    id(other.id)
+{
+  // Wire copies intentionally retain identity to preserve existing Bus initializer-list
+  // semantics. Only the state transfer needs special handling because it is atomic.
+}
+
+Wire& Wire::operator=(const Wire& other)
+{
+  if (this == &other)
+    return *this;
+
+  currentState.store(other.getCurrentState(), std::memory_order_relaxed);
+  authorizedComponent = other.authorizedComponent;
+  id                  = other.id;
+  return *this;
+}
+
 State Wire::getCurrentState() const
 {
-  return this->currentState;
+  // State synchronization does not order other wire fields; simulation topology and
+  // authorization are immutable while the UI concurrently reads state for painting.
+  return this->currentState.load(std::memory_order_relaxed);
 }
 
 void Wire::forceSetCurrentState(const State newState)
 {
-  this->currentState = newState;
+  this->currentState.store(newState, std::memory_order_relaxed);
 }
 
 void Wire::forceSetCurrentState(const State              newState,
                                 const Component_weakPtr& authorizedBy)
 {
   this->authorizedComponent = authorizedBy;
-  this->currentState        = newState;
+  this->currentState.store(newState, std::memory_order_relaxed);
 }
 
 void Wire::setCurrentState(const State newState, const Component_weakPtr& requestedBy)

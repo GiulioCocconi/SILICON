@@ -27,13 +27,20 @@
 
 namespace {
 const Logger simulationLog("simulation");
+
+bool cancellationRequested(const Simulator::CancellationCheck& isCancelled)
+{
+  // An empty callback keeps existing synchronous callers on the zero-overhead path.
+  return isCancelled && isCancelled();
 }
+}  // namespace
 
 uint64_t Simulator::maxSimulationSteps          = 100000;
 int      Simulator::maxTransitionsPerDeltaCycle = 1000;
 
 Simulator::Simulator(std::shared_ptr<Circuit> c, uint64_t initialSimulationTime,
-                     bool isInteractive, std::unique_ptr<SiliconFstWriter> fstWriter)
+                     bool isInteractive, std::unique_ptr<SiliconFstWriter> fstWriter,
+                     CancellationCheck isCancelled)
   : circuit(std::move(c)), fstWriter(std::move(fstWriter))
 {
   if (!circuit) {
@@ -50,12 +57,15 @@ Simulator::Simulator(std::shared_ptr<Circuit> c, uint64_t initialSimulationTime,
   // 2. Initial compile & evaluation
   recompile();
   for (const auto& block : executionBlocks) {
-    evaluateBlock(block);
+    // Construction can be expensive for large circuits, so it participates in the same
+    // cooperative cancellation contract as later runs.
+    if (!evaluateBlock(block, isCancelled))
+      return;
   }
   emitTraceSnapshot();
 
   if (initialSimulationTime != 0)
-    run(initialSimulationTime);
+    static_cast<void>(run(initialSimulationTime, std::move(isCancelled)));
 }
 
 Simulator::~Simulator()
@@ -151,15 +161,23 @@ void Simulator::updateWire(const Wire_ptr& target, State newState, uint64_t dela
   }
 }
 
-void Simulator::evaluateBlock(const Circuit::SimulationBlock& block)
+bool Simulator::evaluateBlock(const Circuit::SimulationBlock& block,
+                              const CancellationCheck&        isCancelled)
 {
+  if (cancellationRequested(isCancelled))
+    return false;
+
   if (!block.isCyclic) {
     auto validComps =
         block.executionOrder
         | std::views::transform([](const auto& weakComp) { return weakComp.lock(); })
         | std::views::filter([](const auto& comp) { return comp != nullptr; });
 
-    std::ranges::for_each(validComps, [&](const auto& comp) { comp->simulate(*this); });
+    for (const auto& comp : validComps) {
+      if (cancellationRequested(isCancelled))
+        return false;
+      comp->simulate(*this);
+    }
   } else {
     auto [vi_begin, vi_end] = boost::vertices(block.circuit.getGraph());
     auto cyclicComps =
@@ -171,11 +189,22 @@ void Simulator::evaluateBlock(const Circuit::SimulationBlock& block)
 
     const bool isStable =
         std::ranges::any_of(std::views::iota(0, maxTransitionsPerDeltaCycle), [&](int) {
+          // Returning true exits any_of immediately; the check below distinguishes
+          // cancellation from actual convergence.
+          if (cancellationRequested(isCancelled))
+            return true;
+
           cyclicStateChanged = false;
-          std::ranges::for_each(cyclicComps,
-                                [&](const auto& comp) { comp->simulate(*this); });
+          for (const auto& comp : cyclicComps) {
+            if (cancellationRequested(isCancelled))
+              return true;
+            comp->simulate(*this);
+          }
           return !cyclicStateChanged;
         });
+
+    if (cancellationRequested(isCancelled))
+      return false;
 
     if (!isStable) {
       const std::string errorMsg =
@@ -184,19 +213,25 @@ void Simulator::evaluateBlock(const Circuit::SimulationBlock& block)
       throw std::runtime_error(errorMsg);
     }
   }
+
+  return true;
 }
 
-void Simulator::run(uint64_t duration)
+Simulator::RunResult Simulator::run(uint64_t duration, CancellationCheck isCancelled)
 {
   simulationLog.info(std::format("Running simulation with a duration of {}", duration));
   const uint64_t minimumEndTime = currentTime + duration;
 
   uint64_t processedSteps = 0;
   while (!eventQueue.empty()) {
+    // Stop only between event batches so a timestamp is never left half-applied.
+    if (cancellationRequested(isCancelled))
+      return RunResult::Cancelled;
+
     if (processedSteps >= maxSimulationSteps) {
       simulationLog.warning("Simulation step limit exceeded before the event queue "
                             "stabilized. This might be an unstable circuit.");
-      return;
+      return RunResult::StepLimitReached;
     }
     ++processedSteps;
 
@@ -215,7 +250,8 @@ void Simulator::run(uint64_t duration)
 
     if (inputsChanged) {
       for (const auto& block : executionBlocks) {
-        evaluateBlock(block);
+        if (!evaluateBlock(block, isCancelled))
+          return RunResult::Cancelled;
       }
       emitTraceSnapshot();
     }
@@ -227,6 +263,7 @@ void Simulator::run(uint64_t duration)
   }
 
   simulationLog.info("Circuit state stabilized (simulation complete)");
+  return RunResult::Completed;
 }
 
 void Simulator::setMaxSimulationSteps(uint64_t value)
@@ -249,18 +286,24 @@ int Simulator::getMaxTransitionsPerDeltaCycle()
   return maxTransitionsPerDeltaCycle;
 }
 
-void Simulator::setBus(Bus bus, unsigned int value)
+Simulator::RunResult Simulator::setBus(Bus bus, unsigned int value,
+                                       CancellationCheck isCancelled)
 {
-  setBus(std::move(bus), value, {});
+  return setBus(std::move(bus), value, {}, std::move(isCancelled));
 }
 
-void Simulator::setBus(Bus bus, const unsigned int value, const Component_weakPtr& source)
+Simulator::RunResult Simulator::setBus(Bus bus, const unsigned int value,
+                                       const Component_weakPtr& source,
+                                       CancellationCheck        isCancelled)
 {
+  if (cancellationRequested(isCancelled))
+    return RunResult::Cancelled;
+
   // Early return if bus current value == new value (only if the prev value is valid)
   if (!bus.isInErrorState() && !bus.hasUnknowns()) {
     unsigned int currentVal = bus.getCurrentValue();
     if (currentVal == value)
-      return;
+      return RunResult::Completed;
   }
 
   bus.forceSetCurrentValue(value, source);
@@ -269,18 +312,22 @@ void Simulator::setBus(Bus bus, const unsigned int value, const Component_weakPt
   auto    blocks     = subCircuit.splitCyclic();
 
   for (const auto& block : blocks) {
-    evaluateBlock(block);
+    if (!evaluateBlock(block, isCancelled))
+      return RunResult::Cancelled;
   }
   emitTraceSnapshot();
+  return RunResult::Completed;
 }
 
-void Simulator::simulateBus(const Bus& bus)
+Simulator::RunResult Simulator::simulateBus(const Bus& bus, CancellationCheck isCancelled)
 {
   Circuit subCircuit = circuit->getBackwardsSubgraph(bus);
   auto    blocks     = subCircuit.splitCyclic();
 
   for (const auto& block : blocks) {
-    evaluateBlock(block);
+    if (!evaluateBlock(block, isCancelled))
+      return RunResult::Cancelled;
   }
   emitTraceSnapshot();
+  return RunResult::Completed;
 }
