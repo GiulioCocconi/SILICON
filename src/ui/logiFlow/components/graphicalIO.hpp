@@ -175,7 +175,7 @@ public:
   }
 
   std::string_view typeName() const override { return Type; }
-  void simulate(Simulator& sim) override {}
+  void             simulate(Simulator& sim) override {}
 };
 
 /**
@@ -257,7 +257,7 @@ public:
   }
 
   std::string_view typeName() const override { return Type; }
-  void simulate(Simulator& sim) override {}
+  void             simulate(Simulator& sim) override {}
 };
 
 /**
@@ -314,8 +314,9 @@ private:
  * @class DummyOutputComponent
  * @brief The core logic backend for a single-bit output.
  *
- * When simulated, it reads the input wire and pushes the visual state back
- * up to the connected GraphicalOutputSingle UI skin.
+ * The graphical output reads this component's input after simulation completes.
+ * @note simulate() intentionally performs no UI work so this component remains safe to
+ * execute on a background simulation worker.
  */
 class DummyOutputComponent : public Component {
 public:
@@ -323,17 +324,8 @@ public:
 
   DummyOutputComponent(Bus bus, std::string name);
 
-  /**
-   * @brief Links this backend component to its frontend visual shape.
-   * @param skin A pointer to the UI element to update.
-   */
-  void setSkin(GraphicalOutputSingle* skin);
-
   std::string_view typeName() const override { return Type; }
-  void simulate(Simulator& sim) override;
-
-private:
-  GraphicalOutputSingle* skin = nullptr;
+  void             simulate(Simulator& sim) override {}
 };
 
 /**
@@ -379,6 +371,9 @@ private:
 /**
  * @class DummyBusOutputComponent
  * @brief The core logic backend for a multi-bit bus output display.
+ *
+ * @note simulate() intentionally performs no UI work; GraphicalBusOutput refreshes from
+ * the input bus on the GUI thread after simulation completes.
  */
 class DummyBusOutputComponent : public Component {
 public:
@@ -393,16 +388,7 @@ public:
    */
   int setSize(int newSize);
 
-  /**
-   * @brief Links this backend component to its frontend visual shape.
-   * @param skin A pointer to the UI element to update.
-   */
-  void setSkin(GraphicalBusOutput* skin);
-
   std::string_view typeName() const override { return Type; }
 
-  void simulate(Simulator& sim) override;
-
-private:
-  GraphicalBusOutput* skin = nullptr;
+  void simulate(Simulator& sim) override {}
 };

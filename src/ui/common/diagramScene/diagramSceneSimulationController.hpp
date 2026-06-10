@@ -18,6 +18,13 @@
 
 #pragma once
 
+#ifndef __EMSCRIPTEN__
+#  include <thread>
+#endif
+
+#include <atomic>
+#include <exception>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -27,10 +34,12 @@
 
 #include <core/component.hpp>
 #include <core/siliconFst.hpp>
+#include <core/simulator.hpp>
 
 class Bus;
 class DiagramScene;
-class Simulator;
+class QProgressDialog;
+class QTimer;
 
 /**
  * @class DiagramSceneSimulationController
@@ -114,6 +123,49 @@ private:
    */
   [[nodiscard]] TraceConfiguration collectTraceConfiguration() const;
 
+  /**
+   * @brief Starts one cancellable simulation operation and its progress UI.
+   * @param job Operation that checks jobCancellationRequested cooperatively
+   */
+  void startJob(std::function<Simulator::RunResult()> job);
+
+  /**
+   * @brief Configures progress dialog, timers, and locks the views before a job.
+   */
+  void setupJobUI();
+
+  /** @brief Finalizes a completed job on the GUI thread. */
+  void finishJob();
+
+  /** @brief Requests cancellation and waits for the active job before teardown. */
+  void cancelAndWait();
+
+  /** @brief Returns whether the active job has completed. */
+  [[nodiscard]] bool isJobFinished() const;
+
+  /** @brief Publishes whether the active job has completed. */
+  void setJobFinished(bool finished);
+
+  /** @brief Returns whether cancellation has been requested for the active job. */
+  [[nodiscard]] bool isJobCancellationRequested() const;
+
+  /** @brief Publishes a cancellation request for the active job. */
+  void requestJobCancellation();
+
+  /** @brief Clears cancellation state before starting a job. */
+  void resetJobCancellation();
+
+  /** @brief Rebuilds the waveform viewer's signal-name configuration. */
+  void resetWaveformTrace(const TraceConfiguration& trace);
+
+  /**
+   * @brief Applies trace buses, snapshot collection, and optional FST output.
+   * @param trace Trace buses collected from the scene
+   * @param traceFile Optional destination for FST output
+   */
+  void configureSimulatorTrace(const TraceConfiguration&         trace,
+                               const std::optional<std::string>& traceFile);
+
   /** @brief Host scene that owns the graphical items and Qt signals */
   DiagramScene& scene;
 
@@ -122,4 +174,28 @@ private:
 
   /** @brief Optional output file used for live FST tracing */
   std::optional<std::string> fstTraceFile;
+
+#ifndef __EMSCRIPTEN__
+  /** @brief Native worker synchronization */
+  std::jthread worker;
+#endif
+
+  /** @brief Platform-agnostic thread-safe job state */
+  std::atomic_bool jobCancellationRequested = false;
+  std::atomic_bool jobFinished              = true;
+
+  /** @brief Result produced by the latest simulation operation */
+  Simulator::RunResult jobResult = Simulator::RunResult::Completed;
+
+  /** @brief Exception captured during a job and reported on the GUI thread */
+  std::exception_ptr jobException;
+
+  /** @brief Delayed cancellation dialog for long-running jobs */
+  QProgressDialog* progressDialog = nullptr;
+
+  /** @brief GUI timer that detects job completion without blocking the event loop */
+  QTimer* completionTimer = nullptr;
+
+  /** @brief GUI timer that prevents the progress dialog flashing for short jobs */
+  QTimer* dialogTimer = nullptr;
 };
