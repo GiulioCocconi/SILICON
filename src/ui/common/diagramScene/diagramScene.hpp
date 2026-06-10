@@ -33,7 +33,9 @@
 #include <QGraphicsSceneMouseEvent>
 #include <QGraphicsView>
 #include <QKeyEvent>
+#include <QList>
 #include <QPainter>
+#include <QPair>
 #include <QRect>
 #include <QStringList>
 #include <QUndoStack>
@@ -342,6 +344,12 @@ signals:
    * @brief Emitted when the simulator reaches a new visible waveform state.
    */
   void waveformTraceSnapshot(qulonglong time, QStringList values);
+
+  /**
+   * @brief Emitted when a completed simulation job produced multiple waveform states.
+   * @param snapshots Ordered timestamp and signal-value snapshots
+   */
+  void waveformTraceSnapshots(QList<QPair<qulonglong, QStringList>> snapshots);
 
 private:
   /**

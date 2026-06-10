@@ -190,12 +190,22 @@ void WaveformCanvas::setTrace(const QStringList&         names,
 void WaveformCanvas::setTrace(const QStringList&         names,
                               const std::vector<Sample>& samples, const int inputCount)
 {
-  signalNames      = names;
-  traceSamples     = samples;
+  if (signalNames != names)
+    signalNames = names;
+
+  // The owning WaveformViewer outlives the canvas and keeps the vector stable between
+  // GUI-thread refreshes, avoiding an O(history) copy for every new snapshot.
+  traceSamples     = &samples;
   inputSignalCount = std::clamp<qsizetype>(inputCount, 0, signalNames.size());
-  if (selectedSampleIndex >= static_cast<int>(traceSamples.size()))
+  if (selectedSampleIndex >= static_cast<int>(traceSamples->size()))
     selectedSampleIndex = -1;
 
+  updateCanvasSize();
+  update();
+}
+
+void WaveformCanvas::updateCanvasSize()
+{
   const int       width         = std::max(480, xForTime(endTime()) + 160);
   const qsizetype minimumHeight = rulerHeight() + rowHeight();
   const qsizetype contentHeight = rulerHeight() + groupHeaderCount() * groupHeaderHeight()
@@ -203,21 +213,25 @@ void WaveformCanvas::setTrace(const QStringList&         names,
   const qsizetype height = std::max(minimumHeight, contentHeight);
   setMinimumSize(width, height);
   resize(width, height);
-  update();
 }
 
 void WaveformCanvas::setPixelsPerTick(const double value)
 {
-  pixelsPerTick = std::clamp(value, 2.0, 80.0);
-  setTrace(signalNames, traceSamples);
+  const double nextPixelsPerTick = std::clamp(value, 2.0, 80.0);
+  if (pixelsPerTick == nextPixelsPerTick)
+    return;
+
+  pixelsPerTick = nextPixelsPerTick;
+  updateCanvasSize();
+  update();
 }
 
 void WaveformCanvas::setSelectedSampleIndex(const int sampleIndex)
 {
-  const int nextIndex =
-      sampleIndex >= 0 && sampleIndex < static_cast<int>(traceSamples.size())
-          ? sampleIndex
-          : -1;
+  const int nextIndex = traceSamples && sampleIndex >= 0
+                                && sampleIndex < static_cast<int>(traceSamples->size())
+                            ? sampleIndex
+                            : -1;
   if (selectedSampleIndex == nextIndex)
     return;
 
@@ -227,9 +241,9 @@ void WaveformCanvas::setSelectedSampleIndex(const int sampleIndex)
 
 quint64 WaveformCanvas::endTime() const
 {
-  if (traceSamples.empty())
+  if (!traceSamples || traceSamples->empty())
     return 0;
-  return traceSamples.back().time;
+  return traceSamples->back().time;
 }
 
 int WaveformCanvas::xForTime(const quint64 time) const
@@ -271,22 +285,26 @@ void WaveformCanvas::paintEvent(QPaintEvent* event)
   const auto visibleTimeForX = [this](int x) -> quint64 {
     return std::max(0.0, (x - waveformLeftInset) / pixelsPerTick);
   };
-  const auto visibleSamples = [&, traceEnd = traceSamples.cend()] {
+  if (!traceSamples)
+    return;
+
+  const auto& samples        = *traceSamples;
+  const auto  visibleSamples = [&, traceEnd = samples.cend()] {
     using VisibleSampleRange = std::ranges::subrange<std::vector<Sample>::const_iterator>;
 
-    if (traceSamples.empty())
+    if (samples.empty())
       return VisibleSampleRange{traceEnd, traceEnd};
 
     // Keep one sample to the left so the segment entering the viewport is preserved.
     auto firstVisible = std::ranges::lower_bound(
-        traceSamples, visibleTimeForX(visibleRect.left()), {}, &Sample::time);
-    if (firstVisible != traceSamples.cbegin())
+        samples, visibleTimeForX(visibleRect.left()), {}, &Sample::time);
+    if (firstVisible != samples.cbegin())
       firstVisible = std::prev(firstVisible);
 
     // Keep one sample to the right so the last visible segment can be completed.
     auto lastVisible =
         std::ranges::upper_bound(std::ranges::subrange(firstVisible, traceEnd),
-                                 visibleTimeForX(visibleRect.right()), {}, &Sample::time);
+                                  visibleTimeForX(visibleRect.right()), {}, &Sample::time);
     if (lastVisible != traceEnd)
       lastVisible = std::next(lastVisible);
 
@@ -325,23 +343,21 @@ void WaveformCanvas::paintEvent(QPaintEvent* event)
     painter.drawLine(0, y + rowHeight() - 1, width(), y + rowHeight() - 1);
   }
 
-  if (traceSamples.empty())
+  if (samples.empty())
     return;
 
   // Iterate only the visible time slice instead of the full simulation history.
-  const auto firstVisibleIndex = visibleSamples.begin() - traceSamples.cbegin();
-  const auto lastVisibleIndex  = visibleSamples.end() - traceSamples.cbegin();
+  const auto firstVisibleIndex = visibleSamples.begin() - samples.cbegin();
+  const auto lastVisibleIndex  = visibleSamples.end() - samples.cbegin();
   for (int i = firstVisibleIndex; i + 1 < lastVisibleIndex; ++i) {
-    const int x0 = xForTime(traceSamples[i].time);
-    const int x1 = xForTime(traceSamples[i + 1].time);
+    const int x0 = xForTime(samples[i].time);
+    const int x1 = xForTime(samples[i + 1].time);
 
     for (int row = 0; row < signalNames.size(); ++row) {
-      const QString value     = row < traceSamples[i].values.size()
-                                    ? traceSamples[i].values[row]
-                                    : QString("x");
-      const QString nextValue = row < traceSamples[i + 1].values.size()
-                                    ? traceSamples[i + 1].values[row]
-                                    : QString("x");
+      const QString value =
+          row < samples[i].values.size() ? samples[i].values[row] : QString("x");
+      const QString nextValue =
+          row < samples[i + 1].values.size() ? samples[i + 1].values[row] : QString("x");
       if (value.size() == 1) {
         drawScalar(painter, row, x0, x1, value);
         if (nextValue.size() == 1)
@@ -353,9 +369,9 @@ void WaveformCanvas::paintEvent(QPaintEvent* event)
   }
 
   if (selectedSampleIndex >= 0
-      && selectedSampleIndex < static_cast<int>(traceSamples.size())) {
-    const int     x     = xForTime(traceSamples[selectedSampleIndex].time);
-    const QString label = QString::number(traceSamples[selectedSampleIndex].time);
+      && selectedSampleIndex < static_cast<int>(samples.size())) {
+    const int     x     = xForTime(samples[selectedSampleIndex].time);
+    const QString label = QString::number(samples[selectedSampleIndex].time);
     const int     labelWidth =
         std::max(40, painter.fontMetrics().horizontalAdvance(label) + 8);
     const int labelX = std::max(0, x - labelWidth / 2);
@@ -371,28 +387,29 @@ void WaveformCanvas::mouseMoveEvent(QMouseEvent* event)
 {
   QWidget::mouseMoveEvent(event);
 
-  if (traceSamples.empty())
+  if (!traceSamples || traceSamples->empty())
     return;
 
-  const int  mouseX = event->position().toPoint().x();
-  const auto it     = std::lower_bound(
-      traceSamples.begin(), traceSamples.end(), mouseX,
+  const auto& samples = *traceSamples;
+  const int   mouseX  = event->position().toPoint().x();
+  const auto  it      = std::lower_bound(
+      samples.begin(), samples.end(), mouseX,
       [this](const Sample& sample, const int x) { return xForTime(sample.time) < x; });
 
   auto       closestIndex    = 0;
-  int        closestDistance = std::abs(mouseX - xForTime(traceSamples.front().time));
-  const auto considerSample  = [this, mouseX, &closestIndex,
+  int        closestDistance = std::abs(mouseX - xForTime(samples.front().time));
+  const auto considerSample  = [this, mouseX, &samples, &closestIndex,
                                &closestDistance](auto sampleIt) {
     const int distance = std::abs(mouseX - xForTime(sampleIt->time));
     if (distance < closestDistance) {
       closestDistance = distance;
-      closestIndex    = sampleIt - traceSamples.begin();
+      closestIndex    = sampleIt - samples.begin();
     }
   };
 
-  if (it != traceSamples.begin())
+  if (it != samples.begin())
     considerSample(it - 1);
-  if (it != traceSamples.end())
+  if (it != samples.end())
     considerSample(it);
 
   emit timestampHovered(closestIndex);
@@ -518,6 +535,19 @@ WaveformViewer::WaveformViewer(QWidget* parent) : QWidget(parent)
   zoomToolBar->addAction(zoomInAct);
   root->addWidget(zoomToolBar);
 
+  refreshTimer = new QTimer(this);
+  refreshTimer->setSingleShot(true);
+  // Limit relayout and repaint work to roughly one frame when snapshots arrive rapidly.
+  refreshTimer->setInterval(16);
+  connect(refreshTimer, &QTimer::timeout, this, [this]() {
+    refreshSignalList();
+    refreshCanvas();
+    if (keepScrolledToEnd)
+      scrollArea->horizontalScrollBar()->setValue(
+          scrollArea->horizontalScrollBar()->maximum());
+    keepScrolledToEnd = false;
+  });
+
   connect(saveAct, &QAction::triggered, this, &WaveformViewer::saveTrace);
   connect(zoomInAct, &QAction::triggered, this, [this]() {
     pixelsPerTick *= 1.25;
@@ -558,32 +588,41 @@ void WaveformViewer::resetTrace(const QStringList& signalNames, int inputCount)
   inputSignalCount    = std::clamp<qsizetype>(inputCount, 0, names.size());
   selectedSampleIndex = -1;
   samples.clear();
+  signalList->setTrace(names, inputSignalCount);
   refreshSignalList();
   refreshCanvas();
 }
 
 void WaveformViewer::appendSnapshot(quint64 time, const QStringList& values)
 {
+  appendSnapshots({{time, values}});
+}
+
+void WaveformViewer::appendSnapshots(
+    const QList<QPair<qulonglong, QStringList>>& snapshots)
+{
   if (names.empty())
     return;
 
-  const bool wasScrolledToEnd = scrollArea->horizontalScrollBar()->value()
-                                == scrollArea->horizontalScrollBar()->maximum();
+  keepScrolledToEnd = keepScrolledToEnd
+                      || scrollArea->horizontalScrollBar()->value()
+                             == scrollArea->horizontalScrollBar()->maximum();
 
-  if (!samples.empty() && samples.back().time == time) {
-    samples.back().values = values;
-  } else {
-    samples.push_back({time, values});
+  samples.reserve(samples.size() + static_cast<std::size_t>(snapshots.size()));
+  for (const auto& [time, values] : snapshots) {
+    // Trace setup and propagation may report the same timestamp more than once; the
+    // latest complete value set is authoritative.
+    if (!samples.empty() && samples.back().time == time) {
+      samples.back().values = values;
+    } else {
+      samples.push_back({time, values});
+    }
   }
 
   if (selectedSampleIndex >= static_cast<int>(samples.size()))
     selectedSampleIndex = -1;
 
-  refreshSignalList();
-  refreshCanvas();
-  if (wasScrolledToEnd)
-    scrollArea->horizontalScrollBar()->setValue(
-        scrollArea->horizontalScrollBar()->maximum());
+  scheduleRefresh();
 }
 
 void WaveformViewer::clearTrace()
@@ -597,7 +636,6 @@ void WaveformViewer::clearTrace()
 void WaveformViewer::refreshSignalList()
 {
   const int scrollValue = labelScrollArea->verticalScrollBar()->value();
-  signalList->setTrace(names, inputSignalCount);
   signalList->setValues(displayedValues());
   labelScrollArea->verticalScrollBar()->setValue(scrollValue);
 }
@@ -607,6 +645,14 @@ void WaveformViewer::refreshCanvas()
   canvas->setPixelsPerTick(pixelsPerTick);
   canvas->setTrace(names, samples, inputSignalCount);
   canvas->setSelectedSampleIndex(selectedSampleIndex);
+}
+
+void WaveformViewer::scheduleRefresh()
+{
+  // A running single-shot timer represents an already-scheduled frame and absorbs any
+  // additional snapshots received before it fires.
+  if (!refreshTimer->isActive())
+    refreshTimer->start();
 }
 
 QStringList WaveformViewer::displayedValues() const

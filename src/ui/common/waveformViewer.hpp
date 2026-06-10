@@ -21,6 +21,7 @@
 #include <QScrollArea>
 #include <QSplitter>
 #include <QStringList>
+#include <QTimer>
 #include <QWidget>
 #include <string_view>
 #include <vector>
@@ -52,20 +53,47 @@ private:
 class WaveformCanvas : public QWidget {
   Q_OBJECT
 public:
+  /** @brief One complete set of signal values at a simulation timestamp. */
   struct Sample {
-    quint64     time;
-    QStringList values;
+    quint64     time;   /**< Simulation timestamp */
+    QStringList values; /**< Encoded values ordered like the signal-name list */
   };
 
   explicit WaveformCanvas(QWidget* parent = nullptr);
 
+  /**
+   * @brief Displays a trace using the existing input-group count.
+   * @param names Ordered signal labels
+   * @param samples Viewer-owned sample storage observed without copying
+   */
   void setTrace(const QStringList& names, const std::vector<Sample>& samples);
+
+  /**
+   * @brief Displays a trace and updates signal grouping.
+   * @param names Ordered signal labels
+   * @param samples Viewer-owned sample storage observed without copying
+   * @param inputCount Number of leading signals belonging to the input group
+   */
   void setTrace(const QStringList& names, const std::vector<Sample>& samples,
                 int inputCount);
+
+  /**
+   * @brief Changes horizontal waveform scale.
+   * @param value Pixels rendered per simulation tick
+   */
   void setPixelsPerTick(double value);
+
+  /**
+   * @brief Highlights one sample timestamp, or clears selection for an invalid index.
+   * @param sampleIndex Sample index to highlight
+   */
   void setSelectedSampleIndex(int sampleIndex);
 
 signals:
+  /**
+   * @brief Emitted when the pointer is nearest to a trace timestamp.
+   * @param sampleIndex Index of the nearest sample
+   */
   void timestampHovered(int sampleIndex);
 
 protected:
@@ -73,11 +101,19 @@ protected:
   void mouseMoveEvent(QMouseEvent* event) override;
 
 private:
-  QStringList         signalNames;
-  std::vector<Sample> traceSamples;
-  double              pixelsPerTick       = 12.0;
-  int                 inputSignalCount    = 0;
-  int                 selectedSampleIndex = -1;
+  /** @brief Signal labels rendered by the canvas. */
+  QStringList signalNames;
+
+  /**
+   * @brief Non-owning view of WaveformViewer's sample storage.
+   *
+   * The viewer owns the canvas and its sample vector, so this remains valid for the
+   * canvas lifetime and avoids copying the complete trace on every refresh.
+   */
+  const std::vector<Sample>* traceSamples        = nullptr;
+  double                     pixelsPerTick       = 12.0;
+  int                        inputSignalCount    = 0;
+  int                        selectedSampleIndex = -1;
 
   [[nodiscard]] int     rowHeight() const { return 28; }
   [[nodiscard]] int     rulerHeight() const { return 24; }
@@ -88,6 +124,8 @@ private:
   [[nodiscard]] int     groupHeaderCountBeforeSignal(int row) const;
   [[nodiscard]] int     yForSignalRow(int row) const;
   [[nodiscard]] int     yForScalarValue(int row, const QString& value) const;
+  /** @brief Recomputes the scrollable canvas dimensions from trace extent and zoom. */
+  void updateCanvasSize();
 
   void drawScalar(QPainter& painter, int row, int x0, int x1, const QString& value) const;
   void drawScalarTransition(QPainter& painter, int row, int x,
@@ -101,8 +139,27 @@ public:
   explicit WaveformViewer(QWidget* parent = nullptr);
 
 public slots:
+  /**
+   * @brief Replaces signal metadata and clears the current trace.
+   * @param signalNames Ordered signal labels
+   * @param inputCount Number of leading signals belonging to the input group
+   */
   void resetTrace(const QStringList& signalNames, int inputCount);
+
+  /**
+   * @brief Appends or replaces one timestamped snapshot.
+   * @param time Simulation timestamp
+   * @param values Signal values ordered like the configured names
+   */
   void appendSnapshot(quint64 time, const QStringList& values);
+
+  /**
+   * @brief Appends a batch of snapshots with a single deferred UI refresh.
+   * @param snapshots Ordered timestamp and signal-value snapshots
+   */
+  void appendSnapshots(const QList<QPair<qulonglong, QStringList>>& snapshots);
+
+  /** @brief Clears all recorded waveform samples. */
   void clearTrace();
 
 private:
@@ -122,9 +179,16 @@ private:
   int                                 selectedSampleIndex = -1;
   double                              pixelsPerTick       = 12.0;
   bool                                syncingScrollBars   = false;
+  /** @brief Preserves tail-following behavior across a deferred refresh. */
+  bool keepScrolledToEnd = false;
 
-  void                      refreshSignalList();
-  void                      refreshCanvas();
+  /** @brief Coalesces rapid snapshot arrivals into at most one refresh per frame. */
+  QTimer* refreshTimer = nullptr;
+
+  void refreshSignalList();
+  void refreshCanvas();
+  /** @brief Schedules a coalesced waveform refresh if one is not already pending. */
+  void                      scheduleRefresh();
   [[nodiscard]] QStringList displayedValues() const;
   void                      saveTrace();
   void                      writeFstTrace(std::string_view fileName) const;

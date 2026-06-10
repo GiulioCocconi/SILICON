@@ -25,7 +25,6 @@
 #include <QApplication>
 #include <QGraphicsItem>
 #include <QGraphicsView>
-#include <QMetaObject>
 #include <QObject>
 #include <QProgressDialog>
 #include <QTimer>
@@ -251,6 +250,11 @@ void DiagramSceneSimulationController::refreshTraceConfiguration()
   auto trace = collectTraceConfiguration();
   resetWaveformTrace(trace);
   configureSimulatorTrace(trace, fstTraceFile);
+  if (!pendingWaveformSnapshots.isEmpty()) {
+    // Trace configuration can emit an immediate snapshot outside a worker job.
+    scene.waveformTraceSnapshots(std::move(pendingWaveformSnapshots));
+    pendingWaveformSnapshots.clear();
+  }
 }
 
 void DiagramSceneSimulationController::resetWaveformTrace(const TraceConfiguration& trace)
@@ -268,20 +272,16 @@ void DiagramSceneSimulationController::configureSimulatorTrace(
     const TraceConfiguration& trace, const std::optional<std::string>& traceFile)
 {
   simulator->setTraceBuses(trace.buses);
-  simulator->setTraceSink(
-      [scene = &scene](uint64_t time, const std::vector<std::string>& values) {
-        QStringList qtValues;
-        qtValues.reserve(values.size());
-        for (const auto& value : values)
-          qtValues.push_back(QString::fromStdString(value));
+  simulator->setTraceSink([this](uint64_t time, const std::vector<std::string>& values) {
+    QStringList qtValues;
+    qtValues.reserve(values.size());
+    for (const auto& value : values)
+      qtValues.push_back(QString::fromStdString(value));
 
-        QMetaObject::invokeMethod(
-            scene,
-            [scene, time, qtValues = std::move(qtValues)]() {
-              scene->waveformTraceSnapshot(time, qtValues);
-            },
-            Qt::QueuedConnection);
-      });
+    // Collect snapshots on the worker instead of posting one GUI event per timestamp.
+    // finishJob() publishes the completed batch after joining the worker.
+    pendingWaveformSnapshots.emplaceBack(time, std::move(qtValues));
+  });
 
   if (!traceFile) {
     simulator->setFstWriter(nullptr);
@@ -301,6 +301,7 @@ void DiagramSceneSimulationController::startJob(std::function<Simulator::RunResu
   setJobFinished(false);
   resetJobCancellation();
   jobException = nullptr;
+  pendingWaveformSnapshots.clear();
 
   // 2. Prepare progress dialog, polling timers, and lock the view
   setupJobUI();
@@ -372,6 +373,13 @@ void DiagramSceneSimulationController::finishJob()
   worker = std::jthread{};
 #endif
 
+  if (!pendingWaveformSnapshots.isEmpty()) {
+    // Deliver one batch after the join so the viewer never observes concurrently-mutated
+    // sample data and the event loop is not flooded by individual timestamps.
+    scene.waveformTraceSnapshots(std::move(pendingWaveformSnapshots));
+    pendingWaveformSnapshots.clear();
+  }
+
   // Use deferred deletion to prevent access violations if events are still pending in the queue
   if (completionTimer) {
     completionTimer->stop();
@@ -414,7 +422,7 @@ void DiagramSceneSimulationController::cancelAndWait()
     requestJobCancellation();
 
 #ifndef __EMSCRIPTEN__
-  // Assigning an empty std::jthread forces a block and automatically joins the active worker 
+  // Assigning an empty std::jthread forces a block and automatically joins the active worker
   worker = std::jthread{};
 #endif
 

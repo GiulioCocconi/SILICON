@@ -392,6 +392,8 @@ void LogiFlowWindow::createWaveformWindow()
           &WaveformViewer::resetTrace);
   connect(diagramScene, &DiagramScene::waveformTraceSnapshot, waveformViewer,
           &WaveformViewer::appendSnapshot);
+  connect(diagramScene, &DiagramScene::waveformTraceSnapshots, waveformViewer,
+          &WaveformViewer::appendSnapshots);
 }
 
 void LogiFlowWindow::setFileName(const QString& fn)
@@ -536,7 +538,7 @@ void LogiFlowWindow::rotate()
         return;
 
       auto* component   = selectedComponents.front();
-      auto oldRotation = component->rotation();
+      auto  oldRotation = component->rotation();
       component->rotate();
       auto newRotation = component->rotation();
       component->setInitialRotation();
