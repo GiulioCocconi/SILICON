@@ -30,6 +30,8 @@
 #include <string>
 #include <vector>
 
+#include <QList>
+#include <QPair>
 #include <QStringList>
 
 #include <core/component.hpp>
@@ -108,9 +110,10 @@ public:
   [[nodiscard]] bool isFstTracingEnabled() const { return fstTraceFile.has_value(); }
 
 private:
+  /** @brief Ordered buses and group metadata used by waveform tracing. */
   struct TraceConfiguration {
-    std::vector<SiliconFstWriter::NamedBus> buses;
-    int                                     inputCount = 0;
+    std::vector<SiliconFstWriter::NamedBus> buses;          /**< Buses to sample */
+    int                                     inputCount = 0; /**< Leading input buses */
   };
 
   /**
@@ -198,4 +201,7 @@ private:
 
   /** @brief GUI timer that prevents the progress dialog flashing for short jobs */
   QTimer* dialogTimer = nullptr;
+
+  /** @brief Worker-produced snapshots delivered to the viewer as one GUI batch */
+  QList<QPair<qulonglong, QStringList>> pendingWaveformSnapshots;
 };
