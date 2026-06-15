@@ -20,17 +20,17 @@
 
 #include <algorithm>
 #include <stdexcept>
-
-#include <utils/ranges_wrapper.hpp>
-
-#include <ui/serialization/gui_component_factory.hpp>
+#include <utility>
 
 #include <QDialog>
 #include <QFontMetricsF>
 #include <QLabel>
 #include <QPainter>
 #include <QTextOption>
+
+#include <utils/ranges_wrapper.hpp>
 #include <ui/common/theme.hpp>
+#include <ui/serialization/gui_component_factory.hpp>
 
 namespace {
 
@@ -47,9 +47,9 @@ public:
 };
 
 QRectF portSizeLabelRect(const QPointF& midpoint, const QRectF& textRect,
-                         const PortDirection direction)
+                         const PortSide direction)
 {
-  if (direction == PortDirection::Vertical) {
+  if (direction == PortSide::UP || direction == PortSide::DOWN) {
     return {midpoint.x() - textRect.width(), midpoint.y() - textRect.height() / 2.0,
             textRect.width(), textRect.height()};
   }
@@ -148,18 +148,13 @@ void GraphicalComponent::rotate()
 }
 
 QRectF GraphicalComponent::getCollisionRect() const
-{
-  return boundingRectWithoutMargins();
-}
+{ return boundingRectWithoutMargins(); }
 
 void GraphicalComponent::mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event)
-{
-  GraphicalItem::mouseDoubleClickEvent(event);
-}
+{ GraphicalItem::mouseDoubleClickEvent(event); }
 
-void GraphicalComponent::setPorts(
-    const std::vector<std::pair<std::string, QPoint>>& busToPortInputs,
-    const std::vector<std::pair<std::string, QPoint>>& busToPortOutputs)
+void GraphicalComponent::setPorts(const std::vector<PortPair>& busToPortInputs,
+                                  const std::vector<PortPair>& busToPortOutputs)
 {
   clearPorts();
 
@@ -269,43 +264,50 @@ void GraphicalComponent::setPortLine(Port* port)
   const auto portY   = portPos.y();
 
   // Find the projection of the port on the shape
-  QPoint        projectionOnShape{};
-  PortDirection portDirection = PortDirection::Horizontal;
+  QPoint   projectionOnShape{};
+  PortSide portSide = PortSide::RIGHT;
 
   // Left side
   if (portX < topLeftX) {
     projectionOnShape = scanImage(image, QPoint(topLeftX, portY), true, true);
-    portDirection     = PortDirection::Horizontal;
+    portSide          = PortSide::LEFT;
   }
   // Right side
   else if (portX > bottomRightX) {
     projectionOnShape = scanImage(image, QPoint(bottomRightX, portY), true, false);
-    portDirection     = PortDirection::Horizontal;
+    portSide          = PortSide::RIGHT;
   }
   // Up side
   else if (portY < topLeftY) {
     projectionOnShape = scanImage(image, QPoint(portX, topLeftY), false, true);
-    portDirection     = PortDirection::Vertical;
+    portSide          = PortSide::UP;
   }
   // Down side
   else if (portY > bottomRightY) {
     projectionOnShape = scanImage(image, QPoint(portX, bottomRightY), false, false);
-    portDirection     = PortDirection::Vertical;
+    portSide          = PortSide::DOWN;
   } else
     throw std::logic_error("setPortLine: port position is not outside the shape");
 
   // Create the line from port position to the projection
-  port->direction = portDirection;
+  port->side = portSide;
   port->setLine(new ThemedPortLineItem(QLineF(portPos, projectionOnShape), this));
+
+  if (printPortNames) {
+    port->printName = true;
+  } else {
+    port->setToolTip(port->name);
+  }
 }
 
-Port::Port(const unsigned int index, const QPoint position, std::string name,
+Port::Port(const unsigned int index, const QPoint position, QString name, bool printName,
            QGraphicsItem* parent)
   : QGraphicsItem(parent)
 {
-  this->index    = index;
-  this->position = position;
-  this->name     = std::move(name);
+  this->index     = index;
+  this->position  = position;
+  this->printName = printName;
+  this->name      = std::move(name);
 }
 
 QRectF Port::boundingRect() const
@@ -324,7 +326,7 @@ QRectF Port::boundingRect() const
   const QFontMetricsF metrics(QFont("NovaMono"));
   const QRectF        labelRect =
       metrics.boundingRect(QString::number(size)).adjusted(-4.0, -2.0, 4.0, 2.0);
-  rect = rect.united(portSizeLabelRect(midpoint, labelRect, direction));
+  rect = rect.united(portSizeLabelRect(midpoint, labelRect, side));
 
   return rect;
 }
@@ -353,37 +355,69 @@ void Port::paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
   Q_UNUSED(option);
   Q_UNUSED(widget);
 
-  if (!line || size == 1)
+  if (!line)
     return;
 
-  constexpr qreal slashLength = 12.0;
-  constexpr qreal slashAngle  = 60.0;
-
-  const QLineF  portLine = line->line();
-  const QPointF midpoint((portLine.p1().x() + portLine.p2().x()) / 2.0,
-                         (portLine.p1().y() + portLine.p2().y()) / 2.0);
-  const qreal   lineAngle = portLine.angle();
-  const QString sizeText  = QString::number(size);
-  QFont         markerFont("NovaMono", painter->font().pointSize() * 0.6);
-
-  painter->save();
-  painter->setPen(QPen(ThemeEngine::getColor("SILICON_INK"), 2.0));
-  painter->setFont(markerFont);
-
-  painter->translate(midpoint);
-  painter->rotate(-lineAngle + slashAngle);
-  painter->drawLine(QPointF(-slashLength / 2.0, 0), QPointF(slashLength / 2.0, 0));
-  painter->restore();
-
+  const bool   isBusPort = (size != 1);
+  const QLineF portLine  = line->line();
+  const QFont  markerFont("NovaMono", painter->font().pointSize() * 0.6);
   const QFontMetricsF metrics(markerFont);
-  const QRectF textRect  = metrics.boundingRect(sizeText).adjusted(-4.0, -2.0, 4.0, 2.0);
-  const QRectF labelRect = portSizeLabelRect(midpoint, textRect, direction);
 
-  painter->save();
-  painter->setFont(markerFont);
-  painter->setPen(ThemeEngine::getColor("SILICON_INK"));
-  painter->drawText(labelRect, sizeText, QTextOption(Qt::AlignCenter));
-  painter->restore();
+  if (printName) {
+    auto getNameRect = [portLine, metrics, this]() -> QRectF {
+      constexpr qreal margin = DiagramScene::GRID_SIZE / 2.0;
+      const QPointF linePt = portLine.p2();
+
+      const qreal textWidth = metrics.horizontalAdvance(name);
+      const qreal textHeight = metrics.height();
+
+      switch (this->side) {
+        case PortSide::DOWN:
+          return {linePt.x() - textWidth / 2.0, linePt.y() - margin - textHeight, textWidth, textHeight};
+        case PortSide::UP:
+          return {linePt.x() - textWidth / 2.0, linePt.y() + margin, textWidth, textHeight};
+        case PortSide::LEFT:
+          return {linePt.x() + margin, linePt.y() - textHeight / 2.0, textWidth, textHeight};
+        case PortSide::RIGHT:
+          return {linePt.x() - margin - textWidth, linePt.y() - textHeight / 2.0, textWidth, textHeight};
+      }
+      std::unreachable();
+    };
+
+    painter->save();
+    painter->setFont(markerFont);
+    painter->setPen(QPen(ThemeEngine::getColor("SILICON_INK")));
+    painter->drawText(getNameRect(), name, QTextOption(Qt::AlignCenter));
+    painter->restore();
+  }
+
+  if (isBusPort) {
+    constexpr qreal slashLength = 12.0;
+    constexpr qreal slashAngle  = 60.0;
+
+    const QPointF midpoint((portLine.p1().x() + portLine.p2().x()) / 2.0,
+                           (portLine.p1().y() + portLine.p2().y()) / 2.0);
+    const qreal   lineAngle = portLine.angle();
+    const QString sizeText  = QString::number(size);
+
+    painter->save();
+    painter->setPen(QPen(ThemeEngine::getColor("SILICON_INK"), 2.0));
+    painter->setFont(markerFont);
+
+    painter->translate(midpoint);
+    painter->rotate(-lineAngle + slashAngle);
+    painter->drawLine(QPointF(-slashLength / 2.0, 0), QPointF(slashLength / 2.0, 0));
+    painter->restore();
+
+    const QRectF textRect = metrics.boundingRect(sizeText).adjusted(-4.0, -2.0, 4.0, 2.0);
+    const QRectF labelRect = portSizeLabelRect(midpoint, textRect, side);
+
+    painter->save();
+    painter->setFont(markerFont);
+    painter->setPen(ThemeEngine::getColor("SILICON_INK"));
+    painter->drawText(labelRect, sizeText, QTextOption(Qt::AlignCenter));
+    painter->restore();
+  }
 }
 
 QRectF Port::collisionRect() const
@@ -398,9 +432,7 @@ QRectF Port::collisionRect() const
 }
 
 std::string GraphicalComponent::getTypeName() const
-{
-  return "Unknown";
-}
+{ return "Unknown"; }
 
 nlohmann::ordered_json GraphicalComponent::serialize() const
 {

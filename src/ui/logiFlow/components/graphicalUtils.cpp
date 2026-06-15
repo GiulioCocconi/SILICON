@@ -37,21 +37,21 @@ int GraphicalWireSplitter::setSize(const int newSize)
   QPainterPath path{};
   path.moveTo(0, 0);
 
-  std::vector<std::pair<std::string, QPoint>> outputPorts;
+  std::vector<PortPair> outputPorts;
   outputPorts.reserve(newSize);
 
   for (int i = 1; i <= newSize; i++) {
     QPoint portLoc(10, -20 * i + 10);
     path.lineTo(portLoc);
 
-    outputPorts.emplace_back(std::format("b[{}]", i - 1), portLoc + QPoint(20, 0));
+    outputPorts.emplace_back(QString("b[%1]").arg(i - 1), portLoc + QPoint(20, 0));
   }
 
   auto shape = new QGraphicsPathItem(path, this);
   shape->setPen(QPen(ThemeEngine::getColor("SILICON_INK"), 3));
 
   this->setItemShape(shape);
-  this->setPorts({std::pair<std::string, QPoint>{"b", QPoint(-20, 0)}}, outputPorts);
+  this->setPorts({PortPair{"b", QPoint(-20, 0)}}, outputPorts);
 
   return newSize;
 }
@@ -90,21 +90,21 @@ int GraphicalWireMerger::setSize(const int newSize)
   QPainterPath path{};
   path.moveTo(0, 0);
 
-  std::vector<std::pair<std::string, QPoint>> inputPorts;
+  std::vector<PortPair> inputPorts;
   inputPorts.reserve(newSize);
 
   for (int i = 1; i <= newSize; i++) {
     QPoint portLoc(-10, -20 * i + 10);
     path.lineTo(portLoc);
 
-    inputPorts.emplace_back(std::format("b[{}]", i - 1), portLoc + QPoint(-20, 0));
+    inputPorts.emplace_back(QString("b[%1]").arg(i - 1), portLoc + QPoint(-20, 0));
   }
 
   auto shape = new QGraphicsPathItem(path, this);
   shape->setPen(QPen(ThemeEngine::getColor("SILICON_INK"), 3));
 
   this->setItemShape(shape);
-  this->setPorts(inputPorts, {std::pair<std::string, QPoint>{"b", QPoint(20, 0)}});
+  this->setPorts(inputPorts, {PortPair{"b", QPoint(20, 0)}});
 
   return newSize;
 }

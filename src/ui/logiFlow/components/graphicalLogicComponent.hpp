@@ -93,8 +93,8 @@ public:
    * @param busToPortOutputs Vector of (name, position) pairs for outputs
    */
   void
-  setPorts(const std::vector<std::pair<std::string, QPoint>>& busToPortInputs,
-           const std::vector<std::pair<std::string, QPoint>>& busToPortOutputs) override;
+  setPorts(const std::vector<PortPair>& busToPortInputs,
+           const std::vector<PortPair>& busToPortOutputs) override;
 
   /**
    * @brief Gets the associated logical component.

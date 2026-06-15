@@ -29,7 +29,7 @@ GraphicalGate::GraphicalGate(const std::shared_ptr<Gate> gate, QGraphicsItem* sh
 
   isEditable = false;
 
-  std::vector<std::pair<std::string, QPoint>> inputVec;
+  std::vector<PortPair> inputVec;
   inputVec.reserve(2);
 
   inputVec.emplace_back("a", QPoint(-20, 10));
@@ -38,7 +38,7 @@ GraphicalGate::GraphicalGate(const std::shared_ptr<Gate> gate, QGraphicsItem* sh
 
   constexpr auto outputPoint = QPoint(80, 20);
 
-  setPorts(inputVec, {std::pair<std::string, QPoint>{"o", outputPoint}});
+  setPorts(inputVec, {PortPair{"o", outputPoint}});
 }
 
 GraphicalNot::GraphicalNot(QGraphicsItem* parent)
@@ -47,6 +47,6 @@ GraphicalNot::GraphicalNot(QGraphicsItem* parent)
 {
   isEditable = false;
 
-  setPorts({std::pair<std::string, QPoint>{"i", QPoint(-20, 20)}},
-           {std::pair<std::string, QPoint>{"o", QPoint(80, 20)}});
+  setPorts({PortPair{"i", QPoint(-20, 20)}},
+           {PortPair{"o", QPoint(80, 20)}});
 }
