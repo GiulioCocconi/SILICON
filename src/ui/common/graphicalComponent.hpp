@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2025. Giulio Cocconi
+ Copyright (c) 2026. Giulio Cocconi
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -18,22 +18,24 @@
 
 #pragma once
 
-#include <QGraphicsItem>
-#include <QKeyEvent>
-#include <QPoint>
-#include <QRect>
-
 #include <nlohmann/json.hpp>
 
 #include <ui/common/diagramScene/diagramScene.hpp>
 #include <ui/common/enums.hpp>
 #include <ui/common/graphicalItem.hpp>
 
+#include <QPoint>
+#include <QRect>
+
+using PortPair = std::pair<QString, QPoint>;
+
 class GUIComponentFactory;
 
-enum class PortDirection {
-  Horizontal,
-  Vertical,
+enum class PortSide {
+  LEFT,
+  RIGHT,
+  UP,
+  DOWN,
 };
 
 /**
@@ -58,14 +60,17 @@ private:
   /** @brief Visual line connecting to component */
   QGraphicsLineItem* line = nullptr;
 
-  /** @brief Port name (bus name) */
-  std::string name;
+  /** @brief Port name */
+  QString name;
 
   /** @brief Number of wires represented by this port */
   unsigned int size = 1;
 
   /** @brief Direction of the connecting line from port to component */
-  PortDirection direction = PortDirection::Horizontal;
+  PortSide side = PortSide::RIGHT;
+
+  /** @brief Whether to write the port name on the component */
+  bool printName = false;
 
 public:
   /**
@@ -73,9 +78,10 @@ public:
    * @param index The port index
    * @param position Position relative to component
    * @param name The port/bus name
+   * @param printName Whether to print the port name on the component
    * @param parent Optional parent graphics item
    */
-  Port(unsigned int index, QPoint position, std::string name,
+  Port(unsigned int index, QPoint position, QString name, bool printName = false,
        QGraphicsItem* parent = nullptr);
 
   /**
@@ -94,13 +100,13 @@ public:
   QPoint getPosition() const { return this->position; }
 
   /** @brief Gets the port name */
-  std::string getName() const { return this->name; }
+  [[nodiscard]] QString getName() const { return this->name; }
 
   /** @brief Gets the port bus size */
   unsigned int getSize() const { return this->size; }
 
   /** @brief Gets the port line direction */
-  PortDirection getDirection() const { return this->direction; }
+  PortSide getDirection() const { return this->side; }
 
   /** @brief Sets the port bus size */
   void setSize(unsigned int newSize);
@@ -189,6 +195,9 @@ protected:
   /** @brief Whether to scan shape alpha for port placement */
   bool scanShape = false;
 
+  /** @brief Whether to print port names */
+  bool printPortNames = false;
+
   /** @brief Removes existing input/output ports and their line items */
   void clearPorts();
 
@@ -212,8 +221,8 @@ public:
    * @param busToPortOutputs Vector of (name, position) pairs for outputs
    */
   virtual void
-  setPorts(const std::vector<std::pair<std::string, QPoint>>& busToPortInputs,
-           const std::vector<std::pair<std::string, QPoint>>& busToPortOutputs);
+  setPorts(const std::vector<PortPair>& busToPortInputs,
+           const std::vector<PortPair>& busToPortOutputs);
 
   /** @brief Gets all input ports */
   [[nodiscard]] std::vector<Port*> getInputPorts() const { return inputPorts; };

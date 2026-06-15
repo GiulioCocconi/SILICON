@@ -96,8 +96,8 @@ void GraphicalLogicComponent::setComponent(const Component_ptr& component)
 }
 
 void GraphicalLogicComponent::setPorts(
-    const std::vector<std::pair<std::string, QPoint>>& busToPortInputs,
-    const std::vector<std::pair<std::string, QPoint>>& busToPortOutputs)
+    const std::vector<PortPair>& busToPortInputs,
+    const std::vector<PortPair>& busToPortOutputs)
 {
   if (associatedComponent) {
     const std::vector<Bus> componentInputs  = associatedComponent->getInputs();

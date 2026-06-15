@@ -283,7 +283,7 @@ GraphicalInput::GraphicalInput(QGraphicsItem* parent)
 {
   isEditable = false;
   GraphicalLogicComponent::setPorts(
-      {}, {std::pair<std::string, QPoint>{"o", QPoint(20, 60)}});
+      {}, {PortPair{"o", QPoint(20, 60)}});
 
   associatedComponent->setPropertyCallback("name", [this](const PropertyValue& value) {
     prepareGeometryChange();
@@ -385,7 +385,7 @@ GraphicalBusInput::GraphicalBusInput(QGraphicsItem* parent)
 {
   isEditable = false;
   GraphicalLogicComponent::setPorts(
-      {}, {std::pair<std::string, QPoint>{"bus", QPoint(BusIoPortX, BusIoPortY)}});
+      {}, {PortPair{"bus", QPoint(BusIoPortX, BusIoPortY)}});
   installPropertyCallbacks();
   GraphicalBusInput::applyStartValue();
   refreshFromComponent();
@@ -545,7 +545,7 @@ GraphicalOutputSingle::GraphicalOutputSingle(QGraphicsItem* parent)
 {
   isEditable = false;
   GraphicalLogicComponent::setPorts(
-      {std::pair<std::string, QPoint>{"in", QPoint(20, 60)}}, {});
+      {PortPair{"in", QPoint(20, 60)}}, {});
 
   associatedComponent->setPropertyCallback("name", [this](const PropertyValue& value) {
     prepareGeometryChange();
@@ -626,7 +626,7 @@ GraphicalBusOutput::GraphicalBusOutput(QGraphicsItem* parent)
 {
   isEditable = false;
   GraphicalLogicComponent::setPorts(
-      {std::pair<std::string, QPoint>{"bus", QPoint(BusIoPortX, BusIoPortY)}}, {});
+      {PortPair{"bus", QPoint(BusIoPortX, BusIoPortY)}}, {});
   installPropertyCallbacks();
   refreshFromComponent();
 }
