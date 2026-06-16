@@ -93,6 +93,7 @@ enum SiliconTypes {
   XOR_GATE,
   HALF_ADDER,
   FULL_ADDER,
+  ADDER_N_BITS,
 
   LOGIFLOW_END,
 };

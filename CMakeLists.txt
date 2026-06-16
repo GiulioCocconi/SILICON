@@ -98,6 +98,7 @@ set(UI_SOURCE_FILES
         ${src_dir}/ui/logiFlow/components/graphicalLogicComponent.cpp
         ${src_dir}/ui/logiFlow/components/graphicalIO.cpp
         ${src_dir}/ui/logiFlow/components/graphicalGates.cpp
+        ${src_dir}/ui/logiFlow/components/graphicalArithmetic.cpp
         ${src_dir}/ui/logiFlow/components/graphicalUtils.cpp
         ${src_dir}/ui/logiFlow/logiFlowWindow.cpp
         ${src_dir}/ui/serialization/gui_component_factory.cpp

@@ -212,7 +212,7 @@ QPoint GraphicalComponent::scanImage(const QImage& image, const QPoint& initialP
   const int leftUp    = coordinate ? topLeft.x() : topLeft.y();
   const int rightDown = coordinate ? bottomRight.x() : bottomRight.y();
 
-  for (qreal coord = initialCoord; direction ? coord < rightDown : coord > leftUp;
+  for (qreal coord = initialCoord; direction ? coord <= rightDown : coord >= leftUp;
        coord += direction ? 1 : -1) {
     auto p =
         coordinate ? QPoint(coord, initialPoint.y()) : QPoint(initialPoint.x(), coord);
@@ -394,9 +394,9 @@ void Port::paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
 
       switch (this->side) {
         case PortSide::DOWN:
-          return {linePt.x() - textWidth / 2.0, linePt.y() - margin - textHeight, textWidth, textHeight};
+          return {linePt.x() - textWidth / 2.0, linePt.y() - margin / 1.5 - textHeight, textWidth, textHeight};
         case PortSide::UP:
-          return {linePt.x() - textWidth / 2.0, linePt.y() + margin, textWidth, textHeight};
+          return {linePt.x() - textWidth / 2.0, linePt.y() + margin / 1.5, textWidth, textHeight};
         case PortSide::LEFT:
           return {linePt.x() + margin, linePt.y() - textHeight / 2.0, textWidth, textHeight};
         case PortSide::RIGHT:

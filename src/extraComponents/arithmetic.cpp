@@ -17,6 +17,7 @@
 
 #include "arithmetic.hpp"
 #include <core/simulator.hpp>
+#include <limits>
 #include <stdexcept>
 
 HalfAdder::HalfAdder()
@@ -86,6 +87,19 @@ void FullAdder::simulate(Simulator& sim)
 AdderNBits::AdderNBits()
 {
   defineProperty("delay", 5);
+  defineProperty("size", 4);
+  setPropertyCallback("size", [this](const PropertyValue& value) {
+    const int size = std::get<int>(value);
+    if (size < 1)
+      throw std::invalid_argument("AdderNBits size must be at least 1");
+    if (size > std::numeric_limits<unsigned short>::max())
+      throw std::invalid_argument("AdderNBits size is too large");
+
+    if (!inputs.empty() && !outputs.empty())
+      setSize(size);
+
+    return value;
+  });
 }
 
 AdderNBits::AdderNBits(std::array<Bus, 2> inputs, Bus sum, Wire_ptr cout) : AdderNBits()
@@ -99,9 +113,35 @@ AdderNBits::AdderNBits(std::array<Bus, 2> inputs, Bus sum, Wire_ptr cout) : Adde
   static_assert(inputs.size() == 2);
   if (inputs[0].size() != sum.size())
     throw std::invalid_argument("AdderNBits: input bus width must match sum bus width");
+  if (inputs[1].size() != sum.size())
+    throw std::invalid_argument("AdderNBits: input bus width must match sum bus width");
 
   this->inputs  = {inputs[0], inputs[1]};
   this->outputs = {sum, {cout}};
+  setProperty("size", static_cast<int>(sum.size()));
+}
+
+int AdderNBits::setSize(const int width)
+{
+  if (width < 1)
+    return getPropertyValue<int>("size").value_or(4);
+
+  auto newInputs = getInputs();
+  if (newInputs.size() < 2)
+    newInputs.resize(2);
+  newInputs[0].setSize(static_cast<unsigned short>(width));
+  newInputs[1].setSize(static_cast<unsigned short>(width));
+  setInputs(newInputs);
+
+  auto newOutputs = getOutputs();
+  if (newOutputs.size() < 2)
+    newOutputs.resize(2);
+  newOutputs[0].setSize(static_cast<unsigned short>(width));
+  if (newOutputs[1].size() != 1)
+    newOutputs[1].setSize(1);
+  setOutputs(newOutputs);
+
+  return width;
 }
 
 void AdderNBits::simulate(Simulator& sim)
@@ -124,7 +164,11 @@ void AdderNBits::simulate(Simulator& sim)
       }
     }
 
-    State overflow = (sum >= (1u << this->outputs[0].size())) ? State::HIGH : State::LOW;
+    const auto sumWidth = this->outputs[0].size();
+    State      overflow = State::LOW;
+    if (sumWidth < std::numeric_limits<unsigned int>::digits)
+      overflow = (sum >= (1u << sumWidth)) ? State::HIGH : State::LOW;
+
     sim.updateWire(this->outputs[1][0], overflow, delay, weak_from_this());
 
   } catch (const std::logic_error&) {
