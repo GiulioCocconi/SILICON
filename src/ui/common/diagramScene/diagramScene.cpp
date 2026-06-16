@@ -23,6 +23,7 @@
 #include <stdexcept>
 
 #include <QCursor>
+#include <QMessageBox>
 
 #include <utils/ranges_wrapper.hpp>
 
@@ -85,9 +86,7 @@ void DiagramScene::drawBackground(QPainter* painter, const QRectF& rect)
 }
 
 void DiagramScene::setInteractionMode(InteractionMode mode)
-{
-  setInteractionMode(mode, false);
-}
+{ setInteractionMode(mode, false); }
 
 void DiagramScene::setInteractionMode(const InteractionMode newMode, const bool force)
 {
@@ -108,8 +107,16 @@ void DiagramScene::setInteractionMode(const InteractionMode newMode, const bool 
   else if (newMode == InteractionMode::COMPONENT_PLACING_MODE)
     enterComponentPlacingMode();
 
-  if (newMode == InteractionMode::SIMULATION_MODE)
-    enterSimulationMode();
+  if (newMode == InteractionMode::SIMULATION_MODE) {
+    currentInteractionMode = newMode;
+    emit modeChanged(newMode);
+
+    if (!enterSimulationMode()) {
+      currentInteractionMode = InteractionMode::NORMAL_MODE;
+      emit modeChanged(currentInteractionMode);
+    }
+    return;
+  }
 
   if (currentMode == InteractionMode::SIMULATION_MODE)
     exitSimulationMode();
@@ -173,15 +180,11 @@ void DiagramScene::enterComponentPlacingMode()
   showCSB(view->mapToScene(posForCSB));
 }
 
-void DiagramScene::enterSimulationMode()
-{
-  simulationController->enterSimulationMode();
-}
+bool DiagramScene::enterSimulationMode()
+{ return simulationController->enterSimulationMode(); }
 
 void DiagramScene::exitSimulationMode()
-{
-  simulationController->exitSimulationMode();
-}
+{ simulationController->exitSimulationMode(); }
 
 void DiagramScene::mouseMoveEvent(QGraphicsSceneMouseEvent* mouseEvent)
 {
@@ -379,7 +382,7 @@ void DiagramScene::refreshGraphicalOutputs()
   simulationController->refreshGraphicalOutputs();
 }
 
-void DiagramScene::calculateWiresForComponents() const
+bool DiagramScene::calculateWiresForComponents()
 {
   for (const auto& wire : wireManager.wires()) {
     wire->clearBusState();
@@ -404,12 +407,6 @@ void DiagramScene::calculateWiresForComponents() const
           continue;
 
         for (const auto& [index, p] :
-             gComp->getInputPorts() | silicon::views::enumerate) {
-          if (gComp->mapToScene(p->getPosition()) == vertex)
-            gComp->getComponent()->setInput(index, wire->getBus());
-        }
-
-        for (const auto& [index, p] :
              gComp->getOutputPorts() | silicon::views::enumerate) {
           if (gComp->mapToScene(p->getPosition()) != vertex)
             continue;
@@ -418,9 +415,43 @@ void DiagramScene::calculateWiresForComponents() const
           wire->setBusSize(outputSize);
           gComp->getComponent()->setOutput(index, wire->getBus());
         }
+
+        for (const auto& [index, p] :
+             gComp->getInputPorts() | silicon::views::enumerate) {
+          if (gComp->mapToScene(p->getPosition()) == vertex) {
+            try {
+              gComp->getComponent()->setInput(index, wire->getBus(), true);
+            } catch (const std::exception& e) {
+              p->setInputAssignmentError(true);
+              QMessageBox::critical(views().first(), "Error while assigning inputs!",
+                                    QString("An input assignation for port %1 "
+                                            "failed:\n %2\n")
+                                        .arg(p->getName(), e.what()));
+              update();
+              return false;
+            }
+          }
+        }
       }
     }
   }
+
+  return true;
+}
+
+void DiagramScene::clearInputAssignmentErrors()
+{
+  for (auto* item : items()) {
+    const auto* gComp =
+        category_cast<GraphicalLogicComponent>(item, ItemCategory::LogicComponent);
+    if (!gComp)
+      continue;
+
+    for (Port* port : gComp->getInputPorts())
+      port->setInputAssignmentError(false);
+  }
+
+  update();
 }
 
 void DiagramScene::addComponent(GraphicalComponent* component, QPointF pos)
@@ -537,13 +568,11 @@ void DiagramScene::removeItems(const std::vector<QGraphicsItem*>& sceneItems)
 }
 
 bool DiagramScene::removeSelection(const nlohmann::json& payload)
-{
-  return serializer->removeSelection(payload);
-}
+{ return serializer->removeSelection(payload); }
 
 void DiagramScene::updateSceneAfterEdit()
 {
-  calculateWiresForComponents();
+  static_cast<void>(calculateWiresForComponents());
   wireManager.notifyTopologyChanged();
   circuit.reset();
   update();

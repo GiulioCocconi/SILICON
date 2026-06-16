@@ -324,9 +324,18 @@ public slots:
    * @brief Calculates wire connections for all components.
    *
    * Computes the logical bus connections between components
-   * and wires based on spatial collisions.
+   * and wires based on spatial collisions. If assigning a wire bus to a component
+   * input fails, an error message is shown and the partially calculated topology must
+   * not be used to start or refresh simulation.
+   *
+   * @return True when all component inputs and outputs were assigned successfully.
    */
-  void calculateWiresForComponents() const;
+  [[nodiscard]] bool calculateWiresForComponents();
+
+  /**
+   * @brief Clears visual input-assignment error markers from all ports.
+   */
+  void clearInputAssignmentErrors();
 
 signals:
   /**
@@ -368,7 +377,7 @@ private:
   void finalizeWireCreation();
   void enterComponentPlacingMode();
   void exitComponentPlacingMode();
-  void enterSimulationMode();
+  bool enterSimulationMode();
   void exitSimulationMode();
 
   /**

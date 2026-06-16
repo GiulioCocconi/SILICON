@@ -319,7 +319,11 @@ std::string DiagramSceneSerializer::serialize() const
   std::shared_ptr<Circuit> activeCircuit = scene.getCircuit();
 
   if (!activeCircuit) {
-    scene.calculateWiresForComponents();
+    const bool successfullWireCalculation = scene.calculateWiresForComponents();
+
+    if (!successfullWireCalculation)
+      throw std::runtime_error("Cannot serialize!\n Unable to calculate wires!");
+
     Component_set coreComps;
     for (auto* item : scene.items()) {
       auto* comp =

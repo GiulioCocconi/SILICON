@@ -67,8 +67,14 @@ public:
 
   /**
    * @brief Enters interactive simulation mode for the scene.
+   *
+   * Recalculates wire-to-component assignments before creating runtime simulation
+   * state. If that recalculation fails while assigning an input, startup is aborted
+   * and the caller should leave the scene in normal mode.
+   *
+   * @return True when simulation startup succeeds.
    */
-  void enterSimulationMode();
+  bool enterSimulationMode();
 
   /**
    * @brief Leaves interactive simulation mode and clears runtime state.
