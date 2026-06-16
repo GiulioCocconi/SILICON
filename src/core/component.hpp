@@ -28,6 +28,7 @@
 #include <unordered_map>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #include <core/wire.hpp>
 #include <utils/transparent_string.hpp>
@@ -54,9 +55,8 @@ concept HasType = requires {
 using PropertyValue = std::variant<int, bool, std::string>;
 
 /** @brief Map from property names to their values */
-using PropertyMap =
-    std::unordered_map<std::string, PropertyValue, TransparentStringHash,
-                       TransparentStringEqual>;
+using PropertyMap = std::unordered_map<std::string, PropertyValue, TransparentStringHash,
+                                       TransparentStringEqual>;
 
 /** @brief Callback function for property validation/transformation */
 using PropertyCallback = std::function<PropertyValue(const PropertyValue&)>;
@@ -64,6 +64,14 @@ using PropertyCallback = std::function<PropertyValue(const PropertyValue&)>;
 /** @brief Map from property names to their callback functions */
 using PropertyCallbackMap =
     std::unordered_map<std::string, PropertyCallback, TransparentStringHash,
+                       TransparentStringEqual>;
+
+/** @brief Allowed values for a constrained string property */
+using StringPropertyOptions = std::vector<std::string>;
+
+/** @brief Map from property names to constrained string values */
+using StringPropertyOptionsMap =
+    std::unordered_map<std::string, StringPropertyOptions, TransparentStringHash,
                        TransparentStringEqual>;
 
 /**
@@ -105,6 +113,9 @@ protected:
   /** @brief Map of callbacks for property validation/transformation */
   PropertyCallbackMap propertyCallbacks;
 
+  /** @brief Allowed values for constrained string properties */
+  StringPropertyOptionsMap stringPropertyOptions;
+
   /** @brief Counter for generating unique I/O listener IDs */
   uint64_t nextIoListenerId = 0;
 
@@ -144,6 +155,18 @@ protected:
   }
 
   /**
+   * @brief Defines a string property constrained to a fixed set of values.
+   *
+   * @param key The property name
+   * @param defaultValue The default string value
+   * @param allowedValues Non-empty list of accepted values
+   * @param callback Optional callback for validation/transformation
+   */
+  void defineStringListProperty(std::string key, std::string defaultValue,
+                                StringPropertyOptions allowedValues,
+                                PropertyCallback      callback = nullptr);
+
+  /**
    * @brief Notifies all registered I/O listeners of a change.
    *
    * Called when the component's input or output configuration changes,
@@ -151,8 +174,13 @@ protected:
    */
   void notifyIOListeners();
 
+  /** @brief Validates a property value against the declared type and metadata. */
+  void validatePropertyValue(std::string_view key, const PropertyValue& currentValue,
+                             const PropertyValue& newValue) const;
+
   /**
-   * @brief Handles input size changes. By default input size shouldn't change automatically.
+   * @brief Handles input size changes. By default input size shouldn't change
+   * automatically.
    * @param index The index of the input being changed
    * @param newSize The new size of the input
    */
@@ -210,6 +238,13 @@ public:
    * @return Reference to the property map
    */
   [[nodiscard]] const PropertyMap& getProperties() const { return properties; }
+
+  /**
+   * @brief Gets allowed values for a constrained string property.
+   * @return The allowed values if the property is constrained
+   */
+  [[nodiscard]] std::optional<std::reference_wrapper<const StringPropertyOptions>>
+  getStringPropertyOptions(std::string_view key) const;
 
   /**
    * @brief Sets a property value with type deduction.

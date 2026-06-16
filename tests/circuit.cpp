@@ -26,6 +26,23 @@
 #include <extraComponents/arithmetic.hpp>
 #include <nlohmann/json.hpp>
 
+namespace {
+
+class StringListTestComponent : public Component {
+public:
+  static constexpr std::string_view Type = "StringListTestComponent";
+
+  StringListTestComponent() : Component({}, {})
+  {
+    defineStringListProperty("orientation", "DOWN", {"UP", "DOWN", "LEFT", "RIGHT"});
+  }
+
+  std::string_view typeName() const override { return Type; }
+  void             simulate(Simulator& sim) override {}
+};
+
+}  // namespace
+
 TEST(CircuitTest, EmptyCircuit)
 {
   Circuit c;
@@ -953,6 +970,28 @@ TEST(CircuitTest, SerializeIncludesProperties)
   EXPECT_EQ(json["components"][0]["properties"]["delay"], 2);
 }
 
+TEST(CircuitTest, DeserializeRestoresStringListProperty)
+{
+  ComponentRegistry registry;
+  registry.registerType(std::string(StringListTestComponent::Type),
+                        [] { return std::make_shared<StringListTestComponent>(); });
+
+  auto component = std::make_shared<StringListTestComponent>();
+  component->setProperty("orientation", std::string("LEFT"));
+
+  Circuit original(component, false);
+  auto    serialized = original.serialize();
+  auto    restored   = Circuit::deserialize(serialized, registry);
+
+  const auto components = restored.topologicalOrder();
+  ASSERT_EQ(components.size(), 1);
+
+  const auto restoredComponent = components.front().lock();
+  ASSERT_TRUE(restoredComponent);
+  EXPECT_EQ(restoredComponent->getPropertyValue<std::string>("orientation").value(),
+            "LEFT");
+}
+
 TEST(CircuitTest, DeserializeRestoresBitwiseGatePropertiesAndBusWidths)
 {
   ComponentRegistry registry;
@@ -988,8 +1027,8 @@ TEST(CircuitTest, DeserializeRestoresAdderNBitsSizeAndBusWidths)
   ComponentRegistry registry;
   registerAllComponents(registry);
 
-  auto adder = std::make_shared<AdderNBits>(
-      std::array<Bus, 2>{Bus(4), Bus(4)}, Bus(4), std::make_shared<Wire>());
+  auto adder = std::make_shared<AdderNBits>(std::array<Bus, 2>{Bus(4), Bus(4)}, Bus(4),
+                                            std::make_shared<Wire>());
   adder->setProperty("size", 8);
 
   Circuit original(adder, false);

@@ -18,6 +18,7 @@
 
 #include "component.hpp"
 
+#include <algorithm>
 #include <format>
 #include <ranges>
 #include <stdexcept>
@@ -47,12 +48,57 @@ void Component::notifyIOListeners()
     cb(this);
   }
 }
+
+void Component::defineStringListProperty(std::string key, std::string defaultValue,
+                                         StringPropertyOptions allowedValues,
+                                         PropertyCallback      callback)
+{
+  if (allowedValues.empty()) {
+    throw std::invalid_argument(std::format(
+        "String-list property '{}' on component '{}' must define allowed values", key,
+        typeName()));
+  }
+
+  const bool defaultAllowed = std::ranges::contains(allowedValues, defaultValue);
+  if (!defaultAllowed) {
+    throw std::invalid_argument(std::format(
+        "Default value '{}' is not allowed for property '{}' on component '{}'",
+        defaultValue, key, typeName()));
+  }
+
+  const std::string propertyKey = key;
+  stringPropertyOptions[key]    = std::move(allowedValues);
+  defineProperty(std::move(key), std::move(defaultValue), std::move(callback));
+  const auto& propertyValue = properties.at(propertyKey);
+  validatePropertyValue(propertyKey, propertyValue, propertyValue);
+}
+
+void Component::validatePropertyValue(std::string_view     key,
+                                      const PropertyValue& currentValue,
+                                      const PropertyValue& newValue) const
+{
+  if (currentValue.index() != newValue.index()) {
+    throw std::invalid_argument(std::format(
+        "Type mismatch when setting property '{}' on component '{}'", key, typeName()));
+  }
+
+  const auto options = stringPropertyOptions.find(key);
+  if (options == stringPropertyOptions.end())
+    return;
+
+  const auto* stringValue = std::get_if<std::string>(&newValue);
+  if (!stringValue || !std::ranges::contains(options->second, *stringValue)) {
+    throw std::invalid_argument(std::format(
+        "Invalid value for property '{}' on component '{}'", key, typeName()));
+  }
+}
 void Component::handleInputSizeChange(const unsigned int index,
                                       const unsigned int newSize)
 {
   const auto currentSize = inputs[index].size();
   if (currentSize != newSize)
-    throw std::runtime_error(std::format("Input size mismatch, currently is {} but wants to be {}", currentSize, newSize));
+    throw std::runtime_error(std::format(
+        "Input size mismatch, currently is {} but wants to be {}", currentSize, newSize));
 }
 
 void Component::replaceBus(std::vector<Bus>& busCollection, const unsigned int index,
@@ -77,11 +123,7 @@ void Component::setProperty(std::string_view key, const PropertyValue& value)
         std::format("Property '{}' does not exist on component '{}'", key, typeName()));
   }
 
-  // Enforce static type
-  if (it->second.index() != value.index()) {
-    throw std::invalid_argument(std::format(
-        "Type mismatch when setting property '{}' on component '{}'", key, typeName()));
-  }
+  validatePropertyValue(key, it->second, value);
 
   // Call callback if it's registered. Update the value accordingly
   auto cbIt = propertyCallbacks.find(key);
@@ -89,6 +131,7 @@ void Component::setProperty(std::string_view key, const PropertyValue& value)
   const PropertyValue finalValue =
       (cbIt == propertyCallbacks.end()) ? value : cbIt->second(value);
 
+  validatePropertyValue(key, it->second, finalValue);
   it->second = finalValue;
 }
 
@@ -96,6 +139,16 @@ std::optional<PropertyValue> Component::getProperty(std::string_view key) const
 {
   if (const auto it = properties.find(key); it != properties.end()) {
     return it->second;
+  }
+  return std::nullopt;
+}
+
+std::optional<std::reference_wrapper<const StringPropertyOptions>>
+Component::getStringPropertyOptions(std::string_view key) const
+{
+  if (const auto it = stringPropertyOptions.find(key);
+      it != stringPropertyOptions.end()) {
+    return std::cref(it->second);
   }
   return std::nullopt;
 }
@@ -109,7 +162,9 @@ void Component::setPropertyCallback(std::string_view key, PropertyCallback callb
   }
 
   propertyCallbacks.insert_or_assign(std::string(key), std::move(callback));
-  property->second = propertyCallbacks.find(key)->second(property->second);
+  const PropertyValue finalValue = propertyCallbacks.find(key)->second(property->second);
+  validatePropertyValue(key, property->second, finalValue);
+  property->second = finalValue;
 }
 
 void Component::setInput(const unsigned int index, const Bus& bus, const bool checkSize)

@@ -29,6 +29,7 @@
 #include <QByteArray>
 #include <QCheckBox>
 #include <QClipboard>
+#include <QComboBox>
 #include <QCursor>
 #include <QDialog>
 #include <QDockWidget>
@@ -853,6 +854,33 @@ void LogiFlowWindow::updatePropertyDock()
 
         layout->addRow(QString::fromStdString(key), spinBox);
       } else if constexpr (std::is_same_v<T, std::string>) {
+        const auto stringOptions =
+            selectedNodes.front()->getComponent()->getStringPropertyOptions(key);
+        if (stringOptions) {
+          auto* comboBox = new QComboBox(container);
+
+          for (const std::string& option : stringOptions->get()) {
+            comboBox->addItem(QString::fromStdString(option));
+          }
+
+          if (isMixed) {
+            comboBox->setPlaceholderText(tr("Mixed values"));
+            comboBox->setCurrentIndex(-1);
+          } else {
+            comboBox->setCurrentText(QString::fromStdString(arg));
+          }
+
+          connect(comboBox, &QComboBox::currentTextChanged, this,
+                  [=](const QString& text) {
+                    if (text.isEmpty())
+                      return;
+                    applyProperty(key, text.toStdString());
+                  });
+
+          layout->addRow(QString::fromStdString(key), comboBox);
+          return;
+        }
+
         auto* lineEdit = new QLineEdit(container);
 
         if (isMixed) {
