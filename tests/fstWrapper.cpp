@@ -434,6 +434,9 @@ TEST(SiliconFstWriterTest, RegistersCircuitBusesAndEmitsSnapshots)
   auto o = std::make_shared<Wire>(State::UNKNOWN);
 
   auto gate = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, o);
+  gate->setProperty("bitwise", true);
+  gate->setProperty("size", 2);
+  gate->setOutput(0, Bus({o}));
   gate->setInput(0, Bus({a, b}));
   gate->setInput(1, Bus({c, d}));
   Circuit circuit(gate, false);

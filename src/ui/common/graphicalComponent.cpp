@@ -336,6 +336,7 @@ void Port::setLine(QGraphicsLineItem* line)
   prepareGeometryChange();
   this->line = line;
   setParentItem(line->parentItem());
+  setZValue(line->zValue() + 1.0);
 }
 
 void Port::setSize(const unsigned int newSize)
@@ -347,6 +348,17 @@ void Port::setSize(const unsigned int newSize)
   prepareGeometryChange();
   size = normalizedSize;
   update();
+}
+
+void Port::setInputAssignmentError(const bool failed)
+{
+  if (inputAssignmentError == failed)
+    return;
+
+  inputAssignmentError = failed;
+  update();
+  if (line)
+    line->update();
 }
 
 void Port::paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
@@ -362,6 +374,15 @@ void Port::paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
   const QLineF portLine  = line->line();
   const QFont  markerFont("NovaMono", painter->font().pointSize() * 0.6);
   const QFontMetricsF metrics(markerFont);
+  const QColor portColor = inputAssignmentError ? Qt::red
+                                                : ThemeEngine::getColor("SILICON_INK");
+
+  if (inputAssignmentError) {
+    painter->save();
+    painter->setPen(QPen(portColor, 4.0, Qt::SolidLine));
+    painter->drawLine(portLine);
+    painter->restore();
+  }
 
   if (printName) {
     auto getNameRect = [portLine, metrics, this]() -> QRectF {
@@ -386,7 +407,7 @@ void Port::paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
 
     painter->save();
     painter->setFont(markerFont);
-    painter->setPen(QPen(ThemeEngine::getColor("SILICON_INK")));
+    painter->setPen(QPen(portColor));
     painter->drawText(getNameRect(), name, QTextOption(Qt::AlignCenter));
     painter->restore();
   }
@@ -401,7 +422,7 @@ void Port::paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
     const QString sizeText  = QString::number(size);
 
     painter->save();
-    painter->setPen(QPen(ThemeEngine::getColor("SILICON_INK"), 2.0));
+    painter->setPen(QPen(portColor, 2.0));
     painter->setFont(markerFont);
 
     painter->translate(midpoint);
@@ -414,7 +435,7 @@ void Port::paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
 
     painter->save();
     painter->setFont(markerFont);
-    painter->setPen(ThemeEngine::getColor("SILICON_INK"));
+    painter->setPen(portColor);
     painter->drawText(labelRect, sizeText, QTextOption(Qt::AlignCenter));
     painter->restore();
   }

@@ -74,9 +74,12 @@ DiagramSceneSimulationController::~DiagramSceneSimulationController()
   cancelAndWait();
 }
 
-void DiagramSceneSimulationController::enterSimulationMode()
+bool DiagramSceneSimulationController::enterSimulationMode()
 {
-  scene.calculateWiresForComponents();
+  scene.clearInputAssignmentErrors();
+
+  if (!scene.calculateWiresForComponents())
+    return false;
 
   // Initialize all wires to UNKNOWN state (will be overridden by connected inputs)
   for (const auto& wire : scene.getWireManager().wires())
@@ -133,6 +136,8 @@ void DiagramSceneSimulationController::enterSimulationMode()
     configureSimulatorTrace(trace, traceFile);
     return simulator->run(1, isCancelled);
   });
+
+  return true;
 }
 
 void DiagramSceneSimulationController::exitSimulationMode()
@@ -231,7 +236,10 @@ void DiagramSceneSimulationController::handleTopologyChanged()
   if (!isJobFinished())
     return;
 
-  scene.calculateWiresForComponents();
+  if (!scene.calculateWiresForComponents()) {
+    scene.setInteractionMode(InteractionMode::NORMAL_MODE);
+    return;
+  }
   refreshGraphicalOutputs();
   refreshTraceConfiguration();
   scene.update();

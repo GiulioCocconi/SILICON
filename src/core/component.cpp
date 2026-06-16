@@ -47,6 +47,13 @@ void Component::notifyIOListeners()
     cb(this);
   }
 }
+void Component::handleInputSizeChange(const unsigned int index,
+                                      const unsigned int newSize)
+{
+  const auto currentSize = inputs[index].size();
+  if (currentSize != newSize)
+    throw std::runtime_error(std::format("Input size mismatch, currently is {} but wants to be {}", currentSize, newSize));
+}
 
 void Component::replaceBus(std::vector<Bus>& busCollection, const unsigned int index,
                            Bus newBus, bool isInput)
@@ -105,10 +112,13 @@ void Component::setPropertyCallback(std::string_view key, PropertyCallback callb
   property->second = propertyCallbacks.find(key)->second(property->second);
 }
 
-void Component::setInput(const unsigned int index, const Bus& bus)
+void Component::setInput(const unsigned int index, const Bus& bus, const bool checkSize)
 {
   if (this->inputs.size() > index && this->inputs[index] == bus)
     return;
+
+  if (checkSize)
+    handleInputSizeChange(index, bus.size());
   replaceBus(this->inputs, index, bus, true);
   notifyIOListeners();
 }

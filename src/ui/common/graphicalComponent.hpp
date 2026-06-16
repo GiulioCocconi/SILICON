@@ -72,6 +72,9 @@ private:
   /** @brief Whether to write the port name on the component */
   bool printName = false;
 
+  /** @brief Whether this port failed the latest simulation input assignment */
+  bool inputAssignmentError = false;
+
 public:
   /**
    * @brief Constructs a port.
@@ -110,6 +113,12 @@ public:
 
   /** @brief Sets the port bus size */
   void setSize(unsigned int newSize);
+
+  /** @brief Marks whether this port failed input assignment during simulation setup */
+  void setInputAssignmentError(bool failed);
+
+  /** @brief Returns whether this port failed input assignment during simulation setup */
+  [[nodiscard]] bool hasInputAssignmentError() const { return inputAssignmentError; }
 
   /**
    * @brief Sets the connecting line.

@@ -151,6 +151,13 @@ protected:
    */
   void notifyIOListeners();
 
+  /**
+   * @brief Handles input size changes. By default input size shouldn't change automatically.
+   * @param index The index of the input being changed
+   * @param newSize The new size of the input
+   */
+  void handleInputSizeChange(const unsigned int index, const unsigned int newSize);
+
 public:
   Component() = default;
 
@@ -243,8 +250,9 @@ public:
    * @brief Sets an input bus at a specific index.
    * @param index The input index
    * @param bus The bus to connect
+   * @param checkSize Whether to call handleInputSizeChange
    */
-  void setInput(unsigned int index, const Bus& bus);
+  void setInput(unsigned int index, const Bus& bus, bool checkSize = false);
 
   /**
    * @brief Replaces all input buses.
