@@ -19,6 +19,7 @@
 #include <core/circuit.hpp>
 #include <core/simulator.hpp>
 #include <extraComponents/arithmetic.hpp>
+#include <stdexcept>
 #include <vector>
 
 TEST(ArithmeticTest, HalfAdderCase)
@@ -144,4 +145,34 @@ TEST(ArithmeticTest, AdderNBitsAtomic)
 
   EXPECT_EQ(cout->getCurrentState(), State::HIGH);
   EXPECT_EQ(sum.getCurrentValue(), 0);
+}
+
+TEST(ArithmeticTest, AdderNBitsSizePropertyDefaultsAndValidation)
+{
+  auto adder = std::make_shared<AdderNBits>();
+
+  EXPECT_EQ(adder->getPropertyValue<int>("size"), 4);
+  EXPECT_TRUE(adder->getInputs().empty());
+  EXPECT_TRUE(adder->getOutputs().empty());
+
+  EXPECT_THROW(adder->setProperty("size", 0), std::invalid_argument);
+  EXPECT_THROW(adder->setProperty("size", -1), std::invalid_argument);
+}
+
+TEST(ArithmeticTest, AdderNBitsSizePropertyReshapesIO)
+{
+  auto adder = std::make_shared<AdderNBits>(
+      std::array<Bus, 2>{Bus(4), Bus(4)}, Bus(4), std::make_shared<Wire>());
+
+  ASSERT_EQ(adder->getInputs().size(), 2);
+  ASSERT_EQ(adder->getOutputs().size(), 2);
+  EXPECT_EQ(adder->getPropertyValue<int>("size"), 4);
+
+  adder->setProperty("size", 8);
+
+  EXPECT_EQ(adder->getPropertyValue<int>("size"), 8);
+  EXPECT_EQ(adder->getInputs()[0].size(), 8);
+  EXPECT_EQ(adder->getInputs()[1].size(), 8);
+  EXPECT_EQ(adder->getOutputs()[0].size(), 8);
+  EXPECT_EQ(adder->getOutputs()[1].size(), 1);
 }

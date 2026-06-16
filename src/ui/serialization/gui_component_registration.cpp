@@ -21,6 +21,7 @@
 #include <core/gates.hpp>
 #include <extraComponents/arithmetic.hpp>
 #include <extraComponents/utils.hpp>
+#include <ui/logiFlow/components/graphicalArithmetic.hpp>
 #include <ui/logiFlow/components/graphicalGates.hpp>
 #include <ui/logiFlow/components/graphicalIO.hpp>
 #include <ui/logiFlow/components/graphicalUtils.hpp>
@@ -58,7 +59,10 @@ void registerAllGUIComponents(GUIComponentFactory& factory)
   reg(std::string(WireMerger::Type),
       [](QGraphicsItem* p) { return std::make_unique<GraphicalWireMerger>(p); });
 
-  // TODO: HalfAdder, FullAdder, AdderNBits are registered in the core layer
-  // but have no GraphicalComponent counterpart yet. Add GUI registrations
-  // here once their graphical representations are implemented.
+  reg(std::string(HalfAdder::Type),
+      [](QGraphicsItem* p) { return std::make_unique<GraphicalHalfAdder>(p); });
+  reg(std::string(FullAdder::Type),
+      [](QGraphicsItem* p) { return std::make_unique<GraphicalFullAdder>(p); });
+  reg(std::string(AdderNBits::Type),
+      [](QGraphicsItem* p) { return std::make_unique<GraphicalAdderNBits>(p); });
 }

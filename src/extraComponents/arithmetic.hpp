@@ -56,4 +56,6 @@ public:
   AdderNBits(std::array<Bus, 2> inputs, Bus sum, Wire_ptr cout);
 
   void simulate(Simulator& sim) override;
+
+  int setSize(int width);
 };

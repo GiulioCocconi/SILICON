@@ -983,6 +983,34 @@ TEST(CircuitTest, DeserializeRestoresBitwiseGatePropertiesAndBusWidths)
   EXPECT_EQ(component->getOutputs()[0].size(), 4);
 }
 
+TEST(CircuitTest, DeserializeRestoresAdderNBitsSizeAndBusWidths)
+{
+  ComponentRegistry registry;
+  registerAllComponents(registry);
+
+  auto adder = std::make_shared<AdderNBits>(
+      std::array<Bus, 2>{Bus(4), Bus(4)}, Bus(4), std::make_shared<Wire>());
+  adder->setProperty("size", 8);
+
+  Circuit original(adder, false);
+  auto    serialized = original.serialize();
+  auto    restored   = Circuit::deserialize(serialized, registry);
+
+  const auto components = restored.topologicalOrder();
+  ASSERT_EQ(components.size(), 1);
+
+  const auto component = components.front().lock();
+  ASSERT_TRUE(component);
+  EXPECT_EQ(component->typeName(), "AdderNBits");
+  EXPECT_EQ(component->getPropertyValue<int>("size"), 8);
+  ASSERT_EQ(component->getInputs().size(), 2);
+  ASSERT_EQ(component->getOutputs().size(), 2);
+  EXPECT_EQ(component->getInputs()[0].size(), 8);
+  EXPECT_EQ(component->getInputs()[1].size(), 8);
+  EXPECT_EQ(component->getOutputs()[0].size(), 8);
+  EXPECT_EQ(component->getOutputs()[1].size(), 1);
+}
+
 TEST(CircuitTest, RemoveComponent)
 {
   auto a = std::make_shared<Wire>();
