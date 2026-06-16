@@ -27,19 +27,30 @@
 #include <QPointer>
 
 #include <algorithm>
+#include <array>
+#include <cmath>
 #include <limits>
 #include <stdexcept>
 #include <utility>
 
 namespace {
 
-constexpr int BusIoMinWidth     = 8 * DiagramScene::GRID_SIZE;
-constexpr int BusIoHeight       = 4 * DiagramScene::GRID_SIZE;
-constexpr int BusIoPortX        = 0;
-constexpr int BusIoPortY        = 6 * DiagramScene::GRID_SIZE;
-constexpr int BusIoPaddingX     = DiagramScene::GRID_SIZE;
-constexpr int BusIoValueTextGap = 8;
-constexpr int MaxEditableBus    = std::numeric_limits<unsigned int>::digits - 1;
+constexpr int              BusIoMinWidth     = 8 * DiagramScene::GRID_SIZE;
+constexpr int              BusIoHeight       = 4 * DiagramScene::GRID_SIZE;
+constexpr int              BusIoPortX        = 0;
+constexpr int              BusIoPortY        = 6 * DiagramScene::GRID_SIZE;
+constexpr int              BusIoPaddingX     = DiagramScene::GRID_SIZE;
+constexpr int              BusIoValueTextGap = 8;
+constexpr int              MaxEditableBus = std::numeric_limits<unsigned int>::digits - 1;
+constexpr int              IoPortExtension         = 2 * DiagramScene::GRID_SIZE;
+constexpr std::string_view PortOrientationProperty = "portOrientation";
+constexpr std::string_view PortOrientationUp       = "UP";
+constexpr std::string_view PortOrientationDown     = "DOWN";
+constexpr std::string_view PortOrientationLeft     = "LEFT";
+constexpr std::string_view PortOrientationRight    = "RIGHT";
+constexpr std::string_view DefaultPortOrientation  = PortOrientationDown;
+constexpr std::array<std::string_view, 4> PortOrientationValues = {
+    PortOrientationUp, PortOrientationDown, PortOrientationLeft, PortOrientationRight};
 
 // Re-use static fonts to prevent allocations
 const QFont& getWidthFont()
@@ -54,6 +65,14 @@ QRectF busIoNameRect(const QRectF& shapeRect, const QString& name)
   const qreal width = std::max<qreal>(shapeRect.width(), metrics.horizontalAdvance(name));
   const qreal height = metrics.height();
   return {shapeRect.right() - width, shapeRect.top() - height, width, height};
+}
+
+QRectF busIoNameRect(const QRectF& shapeRect, const QString& name, const bool below)
+{
+  QRectF rect = busIoNameRect(shapeRect, name);
+  if (below)
+    rect.moveTop(shapeRect.bottom());
+  return rect;
 }
 
 int snapBusIoWidthToGrid(const int width)
@@ -111,6 +130,8 @@ bool parseBusValue(const QString& text, unsigned int& value)
 }
 
 enum class BusIoKind { Input, Output };
+
+enum class IoPortOrientation { Up, Down, Left, Right };
 
 class BusIoShape : public QGraphicsItem {
 public:
@@ -233,7 +254,7 @@ BusIoShape* getBusIoShape(QGraphicsItem* itemShape, const char* context)
 }
 
 QRectF busIoNamedBounds(QGraphicsItem* itemShape, const QString& name,
-                        const QRectF& fallbackRect)
+                        const QRectF& fallbackRect, const bool nameBelow)
 {
   if (name.isEmpty())
     return fallbackRect;
@@ -242,7 +263,66 @@ QRectF busIoNamedBounds(QGraphicsItem* itemShape, const QString& name,
   if (!shape)
     return fallbackRect;
 
-  return fallbackRect.united(busIoNameRect(shape->boundingRect(), name));
+  return fallbackRect.united(busIoNameRect(shape->boundingRect(), name, nameBelow));
+}
+
+StringPropertyOptions makePortOrientationOptions()
+{
+  StringPropertyOptions options;
+  options.reserve(PortOrientationValues.size());
+  for (const std::string_view value : PortOrientationValues) {
+    options.emplace_back(value);
+  }
+  return options;
+}
+
+IoPortOrientation parsePortOrientation(const std::string_view orientation)
+{
+  if (orientation == PortOrientationUp)
+    return IoPortOrientation::Up;
+  if (orientation == PortOrientationLeft)
+    return IoPortOrientation::Left;
+  if (orientation == PortOrientationRight)
+    return IoPortOrientation::Right;
+  return IoPortOrientation::Down;
+}
+
+bool portNameBelongsBelowShape(const std::string_view orientation)
+{
+  return parsePortOrientation(orientation) == IoPortOrientation::Up;
+}
+
+std::string currentPortOrientation(const Component_ptr& component)
+{
+  if (!component)
+    return std::string(DefaultPortOrientation);
+
+  return component->getPropertyValue<std::string>(PortOrientationProperty)
+      .value_or(std::string(DefaultPortOrientation));
+}
+
+int snapToGrid(const qreal value)
+{
+  return static_cast<int>(std::lround(value / DiagramScene::GRID_SIZE)
+                          * DiagramScene::GRID_SIZE);
+}
+
+QPoint ioPortPosition(const QRectF& shapeRect, const IoPortOrientation orientation)
+{
+  const int centerX = snapToGrid(shapeRect.center().x());
+  const int centerY = snapToGrid(shapeRect.center().y());
+
+  switch (orientation) {
+    case IoPortOrientation::Up:
+      return {centerX, snapToGrid(shapeRect.top() - IoPortExtension)};
+    case IoPortOrientation::Down:
+      return {centerX, snapToGrid(shapeRect.bottom() + IoPortExtension)};
+    case IoPortOrientation::Left:
+      return {snapToGrid(shapeRect.left() - IoPortExtension), centerY};
+    case IoPortOrientation::Right:
+      return {snapToGrid(shapeRect.right() + IoPortExtension), centerY};
+  }
+  std::unreachable();
 }
 
 }  // namespace
@@ -265,6 +345,83 @@ QString GraphicalIO::getComponentName() const
   return {};
 }
 
+void GraphicalIO::installPortOrientationCallback()
+{
+  if (!associatedComponent || !associatedComponent->getProperty(PortOrientationProperty))
+    return;
+
+  QPointer<GraphicalIO>    safeThis(this);
+  std::weak_ptr<Component> boundComponent = associatedComponent;
+
+  associatedComponent->setPropertyCallback(
+      PortOrientationProperty, [safeThis, boundComponent](const PropertyValue& value) {
+        auto component = boundComponent.lock();
+        if (safeThis && safeThis->getComponent() == component) {
+          safeThis->prepareGeometryChange();
+          if (const auto* orientation = std::get_if<std::string>(&value))
+            safeThis->updatePortOrientation(*orientation);
+        }
+        return value;
+      });
+}
+
+void GraphicalIO::updatePortOrientation()
+{
+  if (!associatedComponent || !getItemShape())
+    return;
+
+  updatePortOrientation(currentPortOrientation(associatedComponent));
+}
+
+void GraphicalIO::updatePortOrientation(const std::string_view orientation)
+{
+  if (!associatedComponent || !getItemShape())
+    return;
+
+  const QPoint position =
+      ioPortPosition(getItemShape()->boundingRect(), parsePortOrientation(orientation));
+
+  if (!associatedComponent->getInputs().empty()) {
+    const QString name =
+        inputPorts.empty() ? QStringLiteral("in") : inputPorts.front()->getName();
+    GraphicalLogicComponent::setPorts({PortPair{name, position}}, {});
+  } else if (!associatedComponent->getOutputs().empty()) {
+    const QString name =
+        outputPorts.empty() ? QStringLiteral("o") : outputPorts.front()->getName();
+    GraphicalLogicComponent::setPorts({}, {PortPair{name, position}});
+  }
+  update();
+}
+
+bool GraphicalIO::isPortOrientationUp() const
+{
+  if (!associatedComponent)
+    return false;
+
+  return portNameBelongsBelowShape(currentPortOrientation(associatedComponent));
+}
+
+QRectF GraphicalIO::componentNameRect(const QString& name) const
+{
+  if (!getItemShape() || name.isEmpty())
+    return {};
+
+  const QRectF       shapeRect = getItemShape()->boundingRect();
+  const QFontMetrics metrics(UI_FONT);
+  const qreal width = std::max<qreal>(shapeRect.width(), metrics.horizontalAdvance(name));
+  const qreal height = metrics.height();
+  const qreal x      = shapeRect.left();
+  const qreal y = isPortOrientationUp() ? shapeRect.bottom() : shapeRect.top() - height;
+  return {x, y, width, height};
+}
+
+void GraphicalIO::setComponent(const Component_ptr& component)
+{
+  GraphicalLogicComponent::setComponent(component);
+  installPortOrientationCallback();
+  updatePortOrientation();
+}
+
 // --- Graphical Input Single
 // -------------------------------------------------------------
 
@@ -272,6 +429,9 @@ DummyInputComponent::DummyInputComponent(Bus bus, std::string name)
   : Component({}, {std::move(bus)})
 {
   defineProperty("name", std::move(name));
+  defineStringListProperty(std::string(PortOrientationProperty),
+                           std::string(DefaultPortOrientation),
+                           makePortOrientationOptions());
   defineProperty("startValue", 0, [](const PropertyValue& value) {
     return std::clamp(std::get<int>(value), 0, 1);
   });
@@ -282,8 +442,8 @@ GraphicalInput::GraphicalInput(QGraphicsItem* parent)
                 new QGraphicsSvgItem(":/other_components/input_off.svg"), parent)
 {
   isEditable = false;
-  GraphicalLogicComponent::setPorts(
-      {}, {PortPair{"o", QPoint(20, 60)}});
+  GraphicalLogicComponent::setPorts({}, {PortPair{"o", QPoint(20, 60)}});
+  installPortOrientationCallback();
 
   associatedComponent->setPropertyCallback("name", [this](const PropertyValue& value) {
     prepareGeometryChange();
@@ -322,7 +482,7 @@ void GraphicalInput::handleSimulationClick()
 void GraphicalInput::applyStartValue()
 {
   const int startValue = getComponent()->getPropertyValue<int>("startValue").value_or(0);
-  skinState = startValue == 0 ? State::LOW : State::HIGH;
+  skinState            = startValue == 0 ? State::LOW : State::HIGH;
   setItemShape(new QGraphicsSvgItem((skinState == State::HIGH) ? getOnShapePath()
                                                                : getOffShapePath()));
 
@@ -341,7 +501,7 @@ void GraphicalInput::paint(QPainter* painter, const QStyleOptionGraphicsItem* op
   painter->setFont(UI_FONT);
   const QString name = getComponentName();
   if (!name.isEmpty()) {
-    painter->drawText(QPointF(0, -1), name);
+    painter->drawText(componentNameRect(name), Qt::AlignLeft | Qt::AlignVCenter, name);
   }
   GraphicalLogicComponent::paint(painter, option, widget);
 }
@@ -349,7 +509,7 @@ void GraphicalInput::paint(QPainter* painter, const QStyleOptionGraphicsItem* op
 QRectF GraphicalInput::boundingRect() const
 {
   auto rect = GraphicalLogicComponent::boundingRect();
-  return rect.adjusted(0, -QFontMetrics(UI_FONT).height(), 0, 0);
+  return rect.united(componentNameRect(getComponentName()));
 }
 
 State GraphicalInput::getState() const
@@ -364,6 +524,9 @@ DummyBusInputComponent::DummyBusInputComponent(Bus bus, std::string name)
   : Component({}, {std::move(bus)})
 {
   defineProperty("name", std::move(name));
+  defineStringListProperty(std::string(PortOrientationProperty),
+                           std::string(DefaultPortOrientation),
+                           makePortOrientationOptions());
   defineProperty(
       "size", static_cast<int>(outputs[0].size()),
       [this](const PropertyValue& value) { return setSize(std::get<int>(value)); });
@@ -389,8 +552,9 @@ GraphicalBusInput::GraphicalBusInput(QGraphicsItem* parent)
                 new BusIoShape(BusIoKind::Input, 8), parent)
 {
   isEditable = false;
-  GraphicalLogicComponent::setPorts(
-      {}, {PortPair{"bus", QPoint(BusIoPortX, BusIoPortY)}});
+  GraphicalLogicComponent::setPorts({},
+                                    {PortPair{"bus", QPoint(BusIoPortX, BusIoPortY)}});
+  installPortOrientationCallback();
   installPropertyCallbacks();
   GraphicalBusInput::applyStartValue();
   refreshFromComponent();
@@ -437,7 +601,7 @@ void GraphicalBusInput::installPropertyCallbacks()
 
 void GraphicalBusInput::setComponent(const Component_ptr& component)
 {
-  GraphicalLogicComponent::setComponent(component);
+  GraphicalIO::setComponent(component);
   installPropertyCallbacks();
   refreshFromComponent();
 }
@@ -540,7 +704,7 @@ void GraphicalBusInput::paint(QPainter* painter, const QStyleOptionGraphicsItem*
   const QString name = getComponentName();
   if (!name.isEmpty()) {
     if (const auto* shape = getBusIoShape(getItemShape(), "GraphicalBusInput::paint")) {
-      painter->drawText(busIoNameRect(shape->boundingRect(), name),
+      painter->drawText(busIoNameRect(shape->boundingRect(), name, isPortOrientationUp()),
                         Qt::AlignRight | Qt::AlignVCenter, name);
     }
   }
@@ -550,7 +714,7 @@ void GraphicalBusInput::paint(QPainter* painter, const QStyleOptionGraphicsItem*
 QRectF GraphicalBusInput::boundingRect() const
 {
   return busIoNamedBounds(getItemShape(), getComponentName(),
-                          GraphicalLogicComponent::boundingRect());
+                          GraphicalLogicComponent::boundingRect(), isPortOrientationUp());
 }
 
 // --- Graphical Output ------------------------------------------------------------------
@@ -561,8 +725,8 @@ GraphicalOutputSingle::GraphicalOutputSingle(QGraphicsItem* parent)
                 new QGraphicsSvgItem(":/other_components/output_unknown.svg"), parent)
 {
   isEditable = false;
-  GraphicalLogicComponent::setPorts(
-      {PortPair{"in", QPoint(20, 60)}}, {});
+  GraphicalLogicComponent::setPorts({PortPair{"in", QPoint(20, 60)}}, {});
+  installPortOrientationCallback();
 
   associatedComponent->setPropertyCallback("name", [this](const PropertyValue& value) {
     prepareGeometryChange();
@@ -597,7 +761,7 @@ void GraphicalOutputSingle::paint(QPainter*                       painter,
   painter->setFont(UI_FONT);
   const QString name = getComponentName();
   if (!name.isEmpty()) {
-    painter->drawText(QPointF(0, -1), name);
+    painter->drawText(componentNameRect(name), Qt::AlignLeft | Qt::AlignVCenter, name);
   }
   GraphicalLogicComponent::paint(painter, option, widget);
 }
@@ -605,7 +769,7 @@ void GraphicalOutputSingle::paint(QPainter*                       painter,
 QRectF GraphicalOutputSingle::boundingRect() const
 {
   auto rect = GraphicalLogicComponent::boundingRect();
-  return rect.adjusted(0, -QFontMetrics(UI_FONT).height(), 0, 0);
+  return rect.united(componentNameRect(getComponentName()));
 }
 
 // --- Dummy Output Component ------------------------------------------------------------
@@ -614,6 +778,9 @@ DummyOutputComponent::DummyOutputComponent(Bus bus, std::string name)
   : Component({std::move(bus)}, {})
 {
   defineProperty("name", std::move(name));
+  defineStringListProperty(std::string(PortOrientationProperty),
+                           std::string(DefaultPortOrientation),
+                           makePortOrientationOptions());
 }
 
 // --- Graphical Bus Output --------------------------------------------------------------
@@ -622,6 +789,9 @@ DummyBusOutputComponent::DummyBusOutputComponent(Bus bus, std::string name)
   : Component({std::move(bus)}, {})
 {
   defineProperty("name", std::move(name));
+  defineStringListProperty(std::string(PortOrientationProperty),
+                           std::string(DefaultPortOrientation),
+                           makePortOrientationOptions());
   defineProperty(
       "size", static_cast<int>(inputs[0].size()),
       [this](const PropertyValue& value) { return setSize(std::get<int>(value)); });
@@ -642,8 +812,9 @@ GraphicalBusOutput::GraphicalBusOutput(QGraphicsItem* parent)
                 new BusIoShape(BusIoKind::Output, 8), parent)
 {
   isEditable = false;
-  GraphicalLogicComponent::setPorts(
-      {PortPair{"bus", QPoint(BusIoPortX, BusIoPortY)}}, {});
+  GraphicalLogicComponent::setPorts({PortPair{"bus", QPoint(BusIoPortX, BusIoPortY)}},
+                                    {});
+  installPortOrientationCallback();
   installPropertyCallbacks();
   refreshFromComponent();
 }
@@ -677,7 +848,7 @@ void GraphicalBusOutput::installPropertyCallbacks()
 
 void GraphicalBusOutput::setComponent(const Component_ptr& component)
 {
-  GraphicalLogicComponent::setComponent(component);
+  GraphicalIO::setComponent(component);
   installPropertyCallbacks();
   refreshFromComponent();
 }
@@ -743,7 +914,7 @@ void GraphicalBusOutput::paint(QPainter* painter, const QStyleOptionGraphicsItem
   const QString name = getComponentName();
   if (!name.isEmpty()) {
     if (const auto* shape = getBusIoShape(getItemShape(), "GraphicalBusOutput::paint")) {
-      painter->drawText(busIoNameRect(shape->boundingRect(), name),
+      painter->drawText(busIoNameRect(shape->boundingRect(), name, isPortOrientationUp()),
                         Qt::AlignRight | Qt::AlignVCenter, name);
     }
   }
@@ -753,5 +924,5 @@ void GraphicalBusOutput::paint(QPainter* painter, const QStyleOptionGraphicsItem
 QRectF GraphicalBusOutput::boundingRect() const
 {
   return busIoNamedBounds(getItemShape(), getComponentName(),
-                          GraphicalLogicComponent::boundingRect());
+                          GraphicalLogicComponent::boundingRect(), isPortOrientationUp());
 }

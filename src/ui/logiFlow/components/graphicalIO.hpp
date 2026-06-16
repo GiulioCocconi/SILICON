@@ -56,6 +56,21 @@ protected:
    */
   [[nodiscard]] QString getComponentName() const;
 
+  /** @brief Installs the callback that moves the IO port when orientation changes. */
+  void installPortOrientationCallback();
+
+  /** @brief Rebuilds the single IO port based on the current orientation property. */
+  void updatePortOrientation();
+
+  /** @brief Rebuilds the single IO port using an explicit orientation value. */
+  void updatePortOrientation(std::string_view orientation);
+
+  /** @brief Returns true when the IO port is currently placed above the shape. */
+  [[nodiscard]] bool isPortOrientationUp() const;
+
+  /** @brief Returns the label rectangle for the current orientation. */
+  [[nodiscard]] QRectF componentNameRect(const QString& name) const;
+
 public:
   /**
    * @brief Shared, highly-optimized UI font for all IO components.
@@ -77,6 +92,8 @@ public:
    * @brief Resets the visual state to its initial simulation state.
    */
   virtual void resetSimulationState() = 0;
+
+  void setComponent(const Component_ptr& component) override;
 
 signals:
   /**

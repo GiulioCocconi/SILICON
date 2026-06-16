@@ -21,6 +21,8 @@
 #include <core/simulator.hpp>
 
 #include <limits>
+#include <string>
+#include <utility>
 
 namespace {
 void expectBusStates(const Bus& bus, std::initializer_list<State> expected)
@@ -33,6 +35,19 @@ void expectBusStates(const Bus& bus, std::initializer_list<State> expected)
     ++index;
   }
 }
+
+class StringListPropertyTestComponent : public Component {
+public:
+  explicit StringListPropertyTestComponent(std::string defaultValue = "DOWN")
+    : Component({}, {})
+  {
+    defineStringListProperty("orientation", std::move(defaultValue),
+                             {"UP", "DOWN", "LEFT", "RIGHT"});
+  }
+
+  std::string_view typeName() const override { return "StringListPropertyTest"; }
+  void             simulate(Simulator& sim) override {}
+};
 }  // namespace
 
 TEST(LogicTest, And)
@@ -547,6 +562,48 @@ TEST(ComponentTest, SetAndGetStringProperty)
   c->setProperty("name", std::string("custom"));
   prop = c->getProperty("name");
   EXPECT_EQ(std::get<std::string>(*prop), "custom");
+}
+
+TEST(ComponentTest, SetAndGetStringListProperty)
+{
+  auto c = std::make_shared<StringListPropertyTestComponent>();
+
+  auto prop = c->getPropertyValue<std::string>("orientation");
+  ASSERT_TRUE(prop.has_value());
+  EXPECT_EQ(*prop, "DOWN");
+
+  const auto options = c->getStringPropertyOptions("orientation");
+  ASSERT_TRUE(options.has_value());
+  EXPECT_EQ(options->get().size(), 4);
+
+  c->setProperty("orientation", std::string("LEFT"));
+  EXPECT_EQ(c->getPropertyValue<std::string>("orientation").value(), "LEFT");
+}
+
+TEST(ComponentTest, StringListPropertyRejectsInvalidValues)
+{
+  auto c = std::make_shared<StringListPropertyTestComponent>();
+
+  EXPECT_THROW(c->setProperty("orientation", std::string("DIAGONAL")),
+               std::invalid_argument);
+  EXPECT_EQ(c->getPropertyValue<std::string>("orientation").value(), "DOWN");
+}
+
+TEST(ComponentTest, StringListPropertyRejectsInvalidDefault)
+{
+  EXPECT_THROW((void)std::make_shared<StringListPropertyTestComponent>("DIAGONAL"),
+               std::invalid_argument);
+}
+
+TEST(ComponentTest, StringListPropertyRejectsInvalidCallbackResult)
+{
+  auto c = std::make_shared<StringListPropertyTestComponent>();
+
+  EXPECT_THROW(
+      c->setPropertyCallback(
+          "orientation", [](const PropertyValue&) { return std::string("DIAGONAL"); }),
+      std::invalid_argument);
+  EXPECT_EQ(c->getPropertyValue<std::string>("orientation").value(), "DOWN");
 }
 
 TEST(ComponentTest, GetPropertyNotFound)
