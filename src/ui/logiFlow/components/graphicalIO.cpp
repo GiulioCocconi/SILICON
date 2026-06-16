@@ -322,7 +322,12 @@ void GraphicalInput::handleSimulationClick()
 void GraphicalInput::applyStartValue()
 {
   const int startValue = getComponent()->getPropertyValue<int>("startValue").value_or(0);
-  setState(startValue == 0 ? State::LOW : State::HIGH);
+  skinState = startValue == 0 ? State::LOW : State::HIGH;
+  setItemShape(new QGraphicsSvgItem((skinState == State::HIGH) ? getOnShapePath()
+                                                               : getOffShapePath()));
+
+  if (auto* input = dynamic_cast<DummyInputComponent*>(getComponent().get()))
+    input->setState(startValue == 0 ? 0 : 1);
 }
 
 void GraphicalInput::resetSimulationState()
@@ -495,7 +500,19 @@ void GraphicalBusInput::applyStartValue()
 {
   const auto startValue = static_cast<unsigned int>(
       std::max(0, getComponent()->getPropertyValue<int>("startValue").value_or(0)));
-  setValue(startValue);
+  const auto outputs = getComponent()->getOutputs();
+  if (outputs.empty())
+    return;
+
+  const auto width = outputs[0].size();
+  currentValue     = startValue & maxValueForBusSize(width);
+
+  if (auto* shape = getBusIoShape(getItemShape(), "GraphicalBusInput::applyStartValue")) {
+    shape->setBusWidth(static_cast<unsigned int>(width));
+    shape->setValueText(formatKnownBusValue(currentValue, width));
+  }
+
+  propagateCurrentValue();
 }
 
 void GraphicalBusInput::resetSimulationState()
