@@ -69,6 +69,7 @@ set(COMMON_SOURCE_FILES
         ${src_dir}/core/serialization/component_registry.cpp
         ${src_dir}/core/serialization/component_registration.cpp
         ${src_dir}/core/fstTraceWriter.cpp
+        ${src_dir}/core/siliconWaveform.cpp
         ${src_dir}/core/siliconFst.cpp
         ${src_dir}/core/fstWrapper.cpp)
 

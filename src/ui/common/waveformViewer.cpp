@@ -24,6 +24,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <iterator>
+#include <limits>
 #include <ranges>
 #include <stdexcept>
 #include <string>
@@ -31,8 +32,14 @@
 
 #include <QAbstractItemView>
 #include <QAction>
+#include <QEvent>
 #include <QFileDialog>
 #include <QFrame>
+#include <QHBoxLayout>
+#include <QInputDialog>
+#include <QIntValidator>
+#include <QLabel>
+#include <QLineEdit>
 #include <QMenu>
 #include <QMessageBox>
 #include <QMouseEvent>
@@ -40,10 +47,10 @@
 #include <QPainter>
 #include <QPen>
 #include <QScrollBar>
+#include <QSignalBlocker>
 #include <QToolBar>
 #include <QVBoxLayout>
 
-#include <core/fstTraceWriter.hpp>
 #include <ui/common/icons.hpp>
 #include <ui/common/theme.hpp>
 
@@ -90,6 +97,15 @@ int groupHeaderCountBeforeSignal(int row, int signalCount, int inputCount)
   return count;
 }
 
+std::vector<std::string> valuesFromQt(const QStringList& values)
+{
+  std::vector<std::string> result;
+  result.reserve(static_cast<std::size_t>(values.size()));
+  for (const auto& value : values)
+    result.push_back(value.toStdString());
+  return result;
+}
+
 }  // namespace
 
 SignalListWidget::SignalListWidget(QWidget* parent) : QWidget(parent)
@@ -114,8 +130,7 @@ void SignalListWidget::setValues(const QStringList& signalValues)
 
 void SignalListWidget::setSelectedSignalIndex(const int signalIndex)
 {
-  const int nextIndex =
-      signalIndex >= 0 && signalIndex < names.size() ? signalIndex : -1;
+  const int nextIndex = signalIndex >= 0 && signalIndex < names.size() ? signalIndex : -1;
   if (selectedSignalIndex == nextIndex)
     return;
 
@@ -162,11 +177,10 @@ void SignalListWidget::paintEvent(QPaintEvent* event)
   painter.fillRect(rect(), palette().base());
 
   const QColor gridColor(220, 220, 220);
-  const QColor groupColor = palette().alternateBase().color();
-  const QColor textColor  = palette().text().color();
-  const QColor selectedRowColor =
-      ThemeEngine::getColor("SILICON_BLUE").lighter(175);
-  const int    valueX     = valueColumnX();
+  const QColor groupColor       = palette().alternateBase().color();
+  const QColor textColor        = palette().text().color();
+  const QColor selectedRowColor = ThemeEngine::getColor("SILICON_BLUE").lighter(175);
+  const int    valueX           = valueColumnX();
 
   painter.setPen(gridColor);
   painter.drawLine(valueX - 8, 0, valueX - 8, height());
@@ -301,8 +315,60 @@ void WaveformCanvas::setSelectedSignalIndex(const int signalIndex)
   update();
 }
 
+void WaveformCanvas::setEditMode(const bool enabled)
+{
+  if (editMode == enabled)
+    return;
+
+  editMode            = enabled;
+  editDragSignalIndex = -1;
+  updateCanvasSize();
+  update();
+}
+
+void WaveformCanvas::setEditDuration(const quint64 duration)
+{
+  editDuration           = std::max<quint64>(1, duration);
+  editSelectionStartTime = std::min(editSelectionStartTime, editDuration);
+  editSelectionEndTime   = std::min(editSelectionEndTime, editDuration);
+  updateCanvasSize();
+  update();
+}
+
+void WaveformCanvas::setEditSelection(const int signalIndex, quint64 startTime,
+                                      quint64 endTime)
+{
+  const int nextSignalIndex =
+      signalIndex >= 0 && signalIndex < signalNames.size() ? signalIndex : -1;
+  startTime = std::min(startTime, editDuration);
+  endTime   = std::min(endTime, editDuration);
+  if (endTime < startTime)
+    std::swap(startTime, endTime);
+
+  if (editSelectionSignalIndex == nextSignalIndex && editSelectionStartTime == startTime
+      && editSelectionEndTime == endTime) {
+    return;
+  }
+
+  editSelectionSignalIndex = nextSignalIndex;
+  editSelectionStartTime   = startTime;
+  editSelectionEndTime     = endTime;
+  update();
+}
+
+void WaveformCanvas::setEditSelectionVisible(const bool visible)
+{
+  if (editSelectionVisible == visible)
+    return;
+
+  editSelectionVisible = visible;
+  update();
+}
+
 quint64 WaveformCanvas::endTime() const
 {
+  if (editMode)
+    return editDuration;
   if (!traceSamples || traceSamples->empty())
     return 0;
   return traceSamples->back().time;
@@ -311,6 +377,13 @@ quint64 WaveformCanvas::endTime() const
 int WaveformCanvas::xForTime(const quint64 time) const
 {
   return waveformLeftInset + std::lround(time * pixelsPerTick);
+}
+
+quint64 WaveformCanvas::timeForX(const int x) const
+{
+  const double rawTime = std::max(0.0, (x - waveformLeftInset) / pixelsPerTick);
+  const auto   rounded = static_cast<quint64>(std::llround(rawTime));
+  return std::min(rounded, endTime());
 }
 
 int WaveformCanvas::groupHeaderCount() const
@@ -351,10 +424,9 @@ void WaveformCanvas::paintEvent(QPaintEvent* event)
   painter.fillRect(rect(), palette().base());
 
   const QColor gridColor(220, 220, 220);
-  const QColor textColor   = palette().text().color();
-  const QColor selectedRowColor =
-      ThemeEngine::getColor("SILICON_BLUE").lighter(185);
-  const QRect  visibleRect = event ? event->rect() : rect();
+  const QColor textColor        = palette().text().color();
+  const QColor selectedRowColor = ThemeEngine::getColor("SILICON_BLUE").lighter(185);
+  const QRect  visibleRect      = event ? event->rect() : rect();
 
   painter.setPen(gridColor);
   painter.drawLine(0, rulerHeight() - 1, width(), rulerHeight() - 1);
@@ -393,8 +465,9 @@ void WaveformCanvas::paintEvent(QPaintEvent* event)
   const bool hasSelectedSignal =
       selectedSignalIndex >= 0 && selectedSignalIndex < signalNames.size();
   auto sampleValueAt = [&samples](int sampleIndex, int row) {
-    return row < samples[sampleIndex].values.size()
-               ? samples[sampleIndex].values[row]
+    return row < static_cast<int>(samples[sampleIndex].values.size())
+               ? QString::fromStdString(
+                     samples[sampleIndex].values[static_cast<std::size_t>(row)])
                : QString("x");
   };
 
@@ -455,6 +528,43 @@ void WaveformCanvas::paintEvent(QPaintEvent* event)
     painter.drawLine(0, y + rowHeight() - 1, width(), y + rowHeight() - 1);
   }
 
+  const int editSignalIndex =
+      editDragSignalIndex >= 0 ? editDragSignalIndex : editSelectionSignalIndex;
+  const bool drawEditSelection = editDragSignalIndex >= 0 || editSelectionVisible;
+  if (editMode && drawEditSelection && editSignalIndex >= 0
+      && editSignalIndex < signalNames.size()) {
+    const quint64 startTime      = editDragSignalIndex >= 0
+                                       ? std::min(editDragStartTime, editDragEndTime)
+                                       : editSelectionStartTime;
+    const quint64 endTime        = editDragSignalIndex >= 0
+                                       ? std::max(editDragStartTime, editDragEndTime)
+                                       : editSelectionEndTime;
+    const int     x0             = xForTime(startTime);
+    const int     x1             = xForTime(endTime);
+    const int     y              = yForSignalRow(editSignalIndex);
+    const QColor  selectionColor = ThemeEngine::getColor("SILICON_BLUE");
+    painter.fillRect(
+        QRect(std::min(x0, x1), y, std::max(2, std::abs(x1 - x0)), rowHeight()),
+        selectionColor.lighter(170));
+
+    auto drawSelectionTick = [&](const quint64 time, const int x) {
+      const QString label = QString::number(time);
+      const int     labelWidth =
+          std::max(40, painter.fontMetrics().horizontalAdvance(label) + 8);
+      const int labelX =
+          std::clamp(x - labelWidth / 2, 0, std::max(0, width() - labelWidth));
+
+      painter.setPen(QPen(selectionColor, 2));
+      painter.drawLine(x, painter.fontMetrics().height() + 2, x, height());
+      painter.drawText(QRect(labelX, 1, labelWidth, rulerHeight() - 4),
+                       Qt::AlignHCenter | Qt::AlignTop, label);
+    };
+
+    drawSelectionTick(startTime, x0);
+    if (endTime != startTime)
+      drawSelectionTick(endTime, x1);
+  }
+
   if (samples.empty())
     return;
 
@@ -483,8 +593,7 @@ void WaveformCanvas::paintEvent(QPaintEvent* event)
     }
   }
 
-  if (selectedSampleIndex >= 0
-      && selectedSampleIndex < static_cast<int>(samples.size())
+  if (selectedSampleIndex >= 0 && selectedSampleIndex < static_cast<int>(samples.size())
       && isSelectedSignalTick(selectedSampleIndex)) {
     const int     x     = xForTime(samples[selectedSampleIndex].time);
     const QString label = QString::number(samples[selectedSampleIndex].time);
@@ -502,6 +611,17 @@ void WaveformCanvas::paintEvent(QPaintEvent* event)
 void WaveformCanvas::mouseMoveEvent(QMouseEvent* event)
 {
   QWidget::mouseMoveEvent(event);
+
+  if (editMode) {
+    if (editDragSignalIndex >= 0 && (event->buttons() & Qt::LeftButton)) {
+      editDragEndTime = timeForX(event->position().toPoint().x());
+      emit editIntervalChanged(editDragSignalIndex,
+                               std::min(editDragStartTime, editDragEndTime),
+                               std::max(editDragStartTime, editDragEndTime));
+      update();
+    }
+    return;
+  }
 
   if (!traceSamples || traceSamples->empty())
     return;
@@ -541,9 +661,38 @@ void WaveformCanvas::mousePressEvent(QMouseEvent* event)
 
   if (event->button() == Qt::LeftButton) {
     emit signalSelected(row);
+    if (editMode) {
+      editDragSignalIndex = row;
+      editDragStartTime   = timeForX(event->position().toPoint().x());
+      editDragEndTime     = editDragStartTime;
+      emit editIntervalChanged(row, editDragStartTime, editDragEndTime);
+      update();
+    }
   } else if (event->button() == Qt::RightButton) {
     emit signalContextMenuRequested(row, event->globalPosition().toPoint());
   }
+}
+
+void WaveformCanvas::mouseReleaseEvent(QMouseEvent* event)
+{
+  QWidget::mouseReleaseEvent(event);
+
+  if (!editMode || event->button() != Qt::LeftButton || editDragSignalIndex < 0)
+    return;
+
+  editDragEndTime       = timeForX(event->position().toPoint().x());
+  const int signalIndex = editDragSignalIndex;
+  editDragSignalIndex   = -1;
+
+  const quint64 startTime = std::min(editDragStartTime, editDragEndTime);
+  quint64       endTime   = std::max(editDragStartTime, editDragEndTime);
+  if (endTime == startTime)
+    endTime = std::min(endTime + 1, this->endTime());
+
+  update();
+  emit editIntervalChanged(signalIndex, startTime, endTime);
+  if (endTime > startTime)
+    emit editIntervalSelected(signalIndex, startTime, endTime);
 }
 
 int WaveformCanvas::yForScalarValue(int row, const QString& value) const
@@ -603,9 +752,8 @@ void WaveformCanvas::drawBus(QPainter& painter, int row, int x0, int x1,
 
   if (x1 - x0 > 28) {
     painter.setPen(palette().text().color());
-    const QString displayValue =
-        QString::fromStdString(silicon::formatRawBits(value.toStdString(),
-                                                      formatForSignal(row)));
+    const QString displayValue = QString::fromStdString(
+        silicon::formatRawBits(value.toStdString(), formatForSignal(row)));
     painter.drawText(QRect(x0 + 7, top, x1 - x0 - 14, bottom - top), Qt::AlignCenter,
                      displayValue);
   }
@@ -624,10 +772,14 @@ WaveformViewer::WaveformViewer(QWidget* parent) : QWidget(parent)
   newAct  = new QAction(Icon("file"), tr("&New"), this);
   openAct = new QAction(Icon("open"), tr("&Open..."), this);
   saveAct = new QAction(Icon("save"), tr("&Save"), this);
+  editAct = new QAction(Icon("pencil"), tr("Edit Inputs"), this);
+  editAct->setCheckable(true);
 
   fileToolBar->addAction(newAct);
   fileToolBar->addAction(openAct);
   fileToolBar->addAction(saveAct);
+  fileToolBar->addSeparator();
+  fileToolBar->addAction(editAct);
   root->addWidget(fileToolBar);
 
   const auto splitter = new QSplitter(this);
@@ -675,7 +827,36 @@ WaveformViewer::WaveformViewer(QWidget* parent) : QWidget(parent)
 
   zoomToolBar->addAction(zoomOutAct);
   zoomToolBar->addAction(zoomInAct);
-  root->addWidget(zoomToolBar);
+
+  durationEdit = new QLineEdit(this);
+  durationEdit->setValidator(
+      new QIntValidator(1, std::numeric_limits<int>::max(), durationEdit));
+  durationEdit->setMaximumWidth(96);
+  durationEdit->setAlignment(Qt::AlignRight);
+  startEdit = new QLineEdit(this);
+  startEdit->setValidator(
+      new QIntValidator(0, std::numeric_limits<int>::max(), startEdit));
+  startEdit->setMaximumWidth(96);
+  startEdit->setAlignment(Qt::AlignRight);
+  endEdit = new QLineEdit(this);
+  endEdit->setValidator(new QIntValidator(0, std::numeric_limits<int>::max(), endEdit));
+  endEdit->setMaximumWidth(96);
+  endEdit->setAlignment(Qt::AlignRight);
+  startEdit->installEventFilter(this);
+  endEdit->installEventFilter(this);
+
+  const auto bottomBar    = new QWidget(this);
+  const auto bottomLayout = new QHBoxLayout(bottomBar);
+  bottomLayout->setContentsMargins(0, 0, 0, 0);
+  bottomLayout->addWidget(zoomToolBar);
+  bottomLayout->addStretch();
+  bottomLayout->addWidget(new QLabel(tr("Duration"), bottomBar));
+  bottomLayout->addWidget(durationEdit);
+  bottomLayout->addWidget(new QLabel(tr("Start"), bottomBar));
+  bottomLayout->addWidget(startEdit);
+  bottomLayout->addWidget(new QLabel(tr("End"), bottomBar));
+  bottomLayout->addWidget(endEdit);
+  root->addWidget(bottomBar);
 
   refreshTimer = new QTimer(this);
   refreshTimer->setSingleShot(true);
@@ -691,6 +872,7 @@ WaveformViewer::WaveformViewer(QWidget* parent) : QWidget(parent)
   });
 
   connect(saveAct, &QAction::triggered, this, &WaveformViewer::saveTrace);
+  connect(editAct, &QAction::toggled, this, &WaveformViewer::setEditMode);
   connect(zoomInAct, &QAction::triggered, this, [this]() {
     pixelsPerTick *= 1.25;
     refreshCanvas();
@@ -730,21 +912,77 @@ WaveformViewer::WaveformViewer(QWidget* parent) : QWidget(parent)
           &WaveformViewer::showSignalFormatMenu);
   connect(canvas, &WaveformCanvas::signalContextMenuRequested, this,
           &WaveformViewer::showSignalFormatMenu);
+  connect(canvas, &WaveformCanvas::editIntervalChanged, this,
+          [this](const int signalIndex, const quint64 startTime, const quint64 endTime) {
+            setSelectedSignalIndex(signalIndex);
+            setEditIntervalFields(startTime, endTime);
+          });
+  connect(canvas, &WaveformCanvas::editIntervalSelected, this,
+          &WaveformViewer::promptEditIntervalValue);
+  connect(durationEdit, &QLineEdit::editingFinished, this, [this]() {
+    if (!editMode) {
+      updateDurationField();
+      return;
+    }
+
+    bool       ok       = false;
+    const auto duration = durationEdit->text().toULongLong(&ok);
+    const auto next     = ok ? std::max<quint64>(1, duration) : editDuration;
+    editDuration        = next;
+    updateDurationField();
+    setEditIntervalFields(selectedEditStart, selectedEditEnd);
+    rebuildEditTrace();
+    refreshSignalList();
+    refreshCanvas();
+  });
+  connect(startEdit, &QLineEdit::returnPressed, this,
+          &WaveformViewer::promptSelectedEditIntervalValue);
+  connect(endEdit, &QLineEdit::returnPressed, this,
+          &WaveformViewer::promptSelectedEditIntervalValue);
+  updateEditControls();
 }
 
-void WaveformViewer::resetTrace(const QStringList& signalNames, int inputCount)
+void WaveformViewer::resetTrace(const QStringList& signalNames, int inputCount,
+                                const QList<int>& widths)
 {
-  names               = signalNames;
-  inputSignalCount    = std::clamp<qsizetype>(inputCount, 0, names.size());
+  std::vector<SiliconWaveformSignal> signalDefinitions;
+  signalDefinitions.reserve(static_cast<std::size_t>(signalNames.size()));
+  for (int i = 0; i < signalNames.size(); ++i) {
+    const int width = i < widths.size() ? widths[i] : 1;
+    signalDefinitions.push_back(
+        {signalNames[i].toStdString(), static_cast<std::size_t>(std::max(1, width))});
+  }
+  resetWaveformTrace(trace, std::move(signalDefinitions), inputCount);
+
   selectedSampleIndex = -1;
-  selectedSignalIndex = names.empty() ? -1 : 0;
-  signalFormats.assign(static_cast<std::size_t>(names.size()),
-                       silicon::NumberFormat::Hex);
-  samples.clear();
-  signalList->setTrace(names, inputSignalCount);
+  selectedSignalIndex = editMode ? (trace.inputCount > 0 ? 0 : -1)
+                                 : (trace.signalDefinitions.empty() ? -1 : 0);
+  signalFormats.assign(trace.signalDefinitions.size(), silicon::NumberFormat::Hex);
+  if (editMode)
+    rebuildEditTrace();
+
+  signalList->setTrace(visibleNames(), trace.inputCount);
   signalList->setSelectedSignalIndex(selectedSignalIndex);
+  updateDurationField();
   refreshSignalList();
   refreshCanvas();
+}
+
+bool WaveformViewer::eventFilter(QObject* watched, QEvent* event)
+{
+  if (watched == startEdit || watched == endEdit) {
+    if (event->type() == QEvent::FocusIn) {
+      preciseIntervalEditing = true;
+      refreshCanvas();
+    } else if (event->type() == QEvent::FocusOut) {
+      QTimer::singleShot(0, this, [this]() {
+        preciseIntervalEditing = startEdit->hasFocus() || endEdit->hasFocus();
+        refreshCanvas();
+      });
+    }
+  }
+
+  return QWidget::eventFilter(watched, event);
 }
 
 void WaveformViewer::appendSnapshot(quint64 time, const QStringList& values)
@@ -755,37 +993,71 @@ void WaveformViewer::appendSnapshot(quint64 time, const QStringList& values)
 void WaveformViewer::appendSnapshots(
     const QList<QPair<qulonglong, QStringList>>& snapshots)
 {
-  if (names.empty())
+  if (trace.signalDefinitions.empty() || editMode)
     return;
 
   keepScrolledToEnd = keepScrolledToEnd
                       || scrollArea->horizontalScrollBar()->value()
                              == scrollArea->horizontalScrollBar()->maximum();
 
-  samples.reserve(samples.size() + static_cast<std::size_t>(snapshots.size()));
+  std::vector<SiliconWaveformSample> coreSnapshots;
+  coreSnapshots.reserve(static_cast<std::size_t>(snapshots.size()));
   for (const auto& [time, values] : snapshots) {
-    // Trace setup and propagation may report the same timestamp more than once; the
-    // latest complete value set is authoritative.
-    if (!samples.empty() && samples.back().time == time) {
-      samples.back().values = values;
-    } else {
-      samples.push_back({time, values});
-    }
+    coreSnapshots.push_back({static_cast<uint64_t>(time), valuesFromQt(values)});
   }
+  appendWaveformSnapshots(trace, coreSnapshots);
 
-  if (selectedSampleIndex >= static_cast<int>(samples.size()))
+  if (selectedSampleIndex >= static_cast<int>(trace.samples.size()))
     selectedSampleIndex = -1;
 
+  updateDurationField();
   scheduleRefresh();
 }
 
 void WaveformViewer::clearTrace()
 {
-  samples.clear();
+  clearWaveformSamples(trace);
   selectedSampleIndex = -1;
-  selectedSignalIndex = names.empty() ? -1 : 0;
+  selectedSignalIndex = trace.signalDefinitions.empty() ? -1 : 0;
+  updateDurationField();
   refreshSignalList();
   refreshCanvas();
+}
+
+void WaveformViewer::setEditMode(const bool enabled)
+{
+  if (editMode == enabled) {
+    updateEditControls();
+    return;
+  }
+
+  bool       durationOk    = false;
+  const auto typedDuration = durationEdit->text().toULongLong(&durationOk);
+  if (durationOk)
+    editDuration = std::max<quint64>(1, typedDuration);
+
+  editMode            = enabled;
+  selectedSampleIndex = -1;
+  selectedSignalIndex = trace.inputCount > 0 ? 0 : -1;
+  if (editMode) {
+    setEditIntervalFields(0, std::min<quint64>(1, editDuration));
+    rebuildEditTrace();
+  } else {
+    preciseIntervalEditing        = false;
+    const auto committedSnapshots = editedInputSnapshots();
+    const auto committedDuration  = editDuration;
+    emit       editModeChanged(false);
+    emit       editTraceCommitted(committedDuration, committedSnapshots);
+    updateEditControls();
+    return;
+  }
+
+  signalList->setTrace(visibleNames(), trace.inputCount);
+  signalList->setSelectedSignalIndex(selectedSignalIndex);
+  updateEditControls();
+  refreshSignalList();
+  refreshCanvas();
+  emit editModeChanged(true);
 }
 
 void WaveformViewer::refreshSignalList()
@@ -799,10 +1071,135 @@ void WaveformViewer::refreshSignalList()
 void WaveformViewer::refreshCanvas()
 {
   canvas->setPixelsPerTick(pixelsPerTick);
-  canvas->setTrace(names, samples, inputSignalCount);
+  canvas->setEditMode(editMode);
+  canvas->setEditDuration(editDuration);
+  canvas->setTrace(visibleNames(), trace.samples, trace.inputCount);
   canvas->setSignalFormats(signalFormats);
   canvas->setSelectedSampleIndex(selectedSampleIndex);
   canvas->setSelectedSignalIndex(selectedSignalIndex);
+  canvas->setEditSelection(selectedSignalIndex, selectedEditStart, selectedEditEnd);
+  canvas->setEditSelectionVisible(preciseIntervalEditing);
+}
+
+void WaveformViewer::rebuildEditTrace()
+{
+  rebuildEditableWaveformTrace(trace, editDuration);
+}
+
+void WaveformViewer::applyEditInterval(int signalIndex, quint64 startTime,
+                                       quint64 endTime, const QString& rawValue)
+{
+  if (!editMode || signalIndex < 0 || signalIndex >= trace.inputCount
+      || endTime <= startTime)
+    return;
+
+  applyWaveformEditInterval(trace, editDuration, signalIndex, startTime, endTime,
+                            rawValue.toStdString());
+  refreshSignalList();
+  refreshCanvas();
+}
+
+void WaveformViewer::promptEditIntervalValue(int signalIndex, quint64 startTime,
+                                             quint64 endTime)
+{
+  if (!editMode || signalIndex < 0 || signalIndex >= trace.inputCount)
+    return;
+
+  setEditIntervalFields(startTime, endTime);
+
+  const std::size_t width = signalWidth(signalIndex);
+  bool              ok    = false;
+  QString           text;
+  if (width <= 1) {
+    text =
+        QInputDialog::getItem(this, tr("Input Value"),
+                              tr("Set value from %1 to %2").arg(startTime).arg(endTime),
+                              QStringList{tr("0"), tr("1")}, 0, false, &ok);
+    if (!ok)
+      return;
+    applyEditInterval(signalIndex, startTime, endTime, text);
+    return;
+  }
+
+  text = QInputDialog::getText(this, tr("Bus Input"),
+                               tr("Set %1-bit value from %2 to %3 "
+                                  "(decimal, 0x..., or 0b...)")
+                                   .arg(width)
+                                   .arg(startTime)
+                                   .arg(endTime),
+                               QLineEdit::Normal, QString("0"), &ok);
+  if (!ok)
+    return;
+
+  unsigned int value = 0;
+  if (!silicon::parseBusValue(text.toStdString(), value)
+      || value > silicon::maxValueForBusWidth(width)) {
+    QMessageBox::warning(this, tr("Bus Input"),
+                         tr("The value does not fit in the selected signal width."));
+    return;
+  }
+
+  applyEditInterval(signalIndex, startTime, endTime,
+                    QString::fromStdString(rawBitsForValue(value, width)));
+}
+
+void WaveformViewer::promptSelectedEditIntervalValue()
+{
+  commitEditIntervalFields();
+  promptEditIntervalValue(selectedSignalIndex, selectedEditStart, selectedEditEnd);
+}
+
+void WaveformViewer::setEditIntervalFields(quint64 startTime, quint64 endTime)
+{
+  startTime = std::min(startTime, editDuration);
+  endTime   = std::min(endTime, editDuration);
+  if (endTime < startTime)
+    std::swap(startTime, endTime);
+
+  selectedEditStart = startTime;
+  selectedEditEnd   = endTime;
+
+  const QSignalBlocker startBlocker(startEdit);
+  const QSignalBlocker endBlocker(endEdit);
+  startEdit->setText(QString::number(selectedEditStart));
+  endEdit->setText(QString::number(selectedEditEnd));
+  refreshCanvas();
+}
+
+void WaveformViewer::commitEditIntervalFields()
+{
+  bool       startOk = false;
+  bool       endOk   = false;
+  const auto start   = startEdit->text().toULongLong(&startOk);
+  const auto end     = endEdit->text().toULongLong(&endOk);
+
+  setEditIntervalFields(startOk ? start : selectedEditStart,
+                        endOk ? end : selectedEditEnd);
+}
+
+void WaveformViewer::updateDurationField()
+{
+  const QSignalBlocker blocker(durationEdit);
+  const auto           displayedDuration =
+      editMode ? editDuration : (trace.samples.empty() ? 0 : trace.samples.back().time);
+  durationEdit->setText(QString::number(displayedDuration));
+}
+
+std::vector<SiliconWaveformSample> WaveformViewer::editedInputSnapshots() const
+{
+  return editedInputWaveformSamples(trace);
+}
+
+void WaveformViewer::updateEditControls()
+{
+  const QSignalBlocker blocker(editAct);
+  editAct->setChecked(editMode);
+  durationEdit->setEnabled(editMode);
+  startEdit->setEnabled(editMode);
+  endEdit->setEnabled(editMode);
+  updateDurationField();
+  startEdit->setText(QString::number(selectedEditStart));
+  endEdit->setText(QString::number(selectedEditEnd));
 }
 
 void WaveformViewer::scheduleRefresh()
@@ -813,32 +1210,43 @@ void WaveformViewer::scheduleRefresh()
     refreshTimer->start();
 }
 
+QStringList WaveformViewer::visibleNames() const
+{
+  const auto visibleCount =
+      editMode ? std::min<int>(trace.inputCount,
+                               static_cast<int>(trace.signalDefinitions.size()))
+               : static_cast<int>(trace.signalDefinitions.size());
+
+  QStringList result;
+  result.reserve(visibleCount);
+  for (int i = 0; i < visibleCount; ++i)
+    result.push_back(QString::fromStdString(
+        trace.signalDefinitions[static_cast<std::size_t>(i)].name));
+  return result;
+}
+
 QStringList WaveformViewer::displayedValues() const
 {
-  QStringList rawValues;
-  if (selectedSampleIndex >= 0 && selectedSampleIndex < static_cast<int>(samples.size()))
-    rawValues = samples[selectedSampleIndex].values;
-  else if (!samples.empty())
-    rawValues = samples.back().values;
+  std::vector<std::string> rawValues;
+  if (selectedSampleIndex >= 0
+      && selectedSampleIndex < static_cast<int>(trace.samples.size()))
+    rawValues = trace.samples[static_cast<std::size_t>(selectedSampleIndex)].values;
+  else if (!trace.samples.empty())
+    rawValues = trace.samples.back().values;
   else
     return {};
 
-  for (int i = 0; i < rawValues.size(); ++i)
-    rawValues[i] = displayValue(i, rawValues[i]);
-  return rawValues;
+  QStringList values;
+  values.reserve(static_cast<qsizetype>(rawValues.size()));
+  for (int i = 0; i < static_cast<int>(rawValues.size()); ++i)
+    values.push_back(
+        displayValue(i, QString::fromStdString(rawValues[static_cast<std::size_t>(i)])));
+  return values;
 }
 
 std::size_t WaveformViewer::signalWidth(const int signalIndex) const
 {
-  if (signalIndex < 0 || signalIndex >= names.size())
-    return 0;
-
-  std::size_t width = 1;
-  for (const auto& sample : samples) {
-    if (signalIndex < sample.values.size())
-      width = std::max(width, std::size_t(sample.values[signalIndex].size()));
-  }
-  return width;
+  return waveformSignalWidth(trace, signalIndex);
 }
 
 QString WaveformViewer::displayValue(const int signalIndex, const QString& value) const
@@ -855,7 +1263,11 @@ QString WaveformViewer::displayValue(const int signalIndex, const QString& value
 
 void WaveformViewer::setSelectedSignalIndex(const int signalIndex)
 {
-  const int nextIndex = signalIndex >= 0 && signalIndex < names.size() ? signalIndex : -1;
+  const int visibleCount =
+      editMode ? std::min<int>(trace.inputCount,
+                               static_cast<int>(trace.signalDefinitions.size()))
+               : static_cast<int>(trace.signalDefinitions.size());
+  const int nextIndex = signalIndex >= 0 && signalIndex < visibleCount ? signalIndex : -1;
   if (selectedSignalIndex == nextIndex)
     return;
 
@@ -872,12 +1284,12 @@ void WaveformViewer::showSignalFormatMenu(const int signalIndex, QPoint globalPo
   setSelectedSignalIndex(signalIndex);
 
   QMenu menu(this);
-  auto addFormatAction = [&](const QString& label, silicon::NumberFormat format) {
+  auto  addFormatAction = [&](const QString& label, silicon::NumberFormat format) {
     QAction* action = menu.addAction(label);
     action->setCheckable(true);
     action->setChecked(signalIndex >= 0
-                       && signalIndex < static_cast<int>(signalFormats.size())
-                       && signalFormats[static_cast<std::size_t>(signalIndex)] == format);
+                        && signalIndex < static_cast<int>(signalFormats.size())
+                        && signalFormats[static_cast<std::size_t>(signalIndex)] == format);
     connect(action, &QAction::triggered, this, [this, signalIndex, format]() {
       if (signalIndex < 0 || signalIndex >= static_cast<int>(signalFormats.size()))
         return;
@@ -903,43 +1315,9 @@ void WaveformViewer::saveTrace()
     return;
 
   try {
-    writeFstTrace(fileName.toStdString());
+    ::writeFstTrace(fileName.toStdString(), trace);
   } catch (const std::exception& e) {
     QMessageBox::warning(this, tr("Save Waveform"),
                          tr("Cannot write FST trace:\n%1").arg(e.what()));
   }
-}
-
-void WaveformViewer::writeFstTrace(std::string_view fileName) const
-{
-  if (names.empty())
-    throw std::runtime_error("no waveform signals are available");
-
-  std::vector<std::size_t>                 widths;
-  std::vector<FstTraceWriter::TraceSignal> traceSignals;
-  widths.reserve(names.size());
-  traceSignals.reserve(names.size());
-
-  for (const auto& [i, name] : names | silicon::views::enumerate) {
-    std::size_t width = 1;
-    for (const auto& sample : samples) {
-      if (i < sample.values.size())
-        width = std::max(width, std::size_t(sample.values[i].size()));
-    }
-    widths.push_back(width);
-    traceSignals.push_back({name.toStdString(), width});
-  }
-
-  FstTraceWriter writer(fileName, traceSignals, {.topScopeName = "Waveform"});
-
-  for (const auto& sample : samples) {
-    std::vector<std::string> values;
-    values.reserve(sample.values.size());
-    for (const auto& value : sample.values)
-      values.push_back(value.toStdString());
-
-    writer.emitSnapshot(sample.time, values);
-  }
-
-  writer.flush();
 }

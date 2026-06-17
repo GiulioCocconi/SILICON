@@ -36,6 +36,7 @@
 
 #include <core/component.hpp>
 #include <core/siliconFst.hpp>
+#include <core/siliconWaveform.hpp>
 #include <core/simulator.hpp>
 
 class Bus;
@@ -111,6 +112,14 @@ public:
   void clearWaveformTrace();
 
   /**
+   * @brief Runs the circuit from an edited input waveform and publishes output trace.
+   * @param duration Total waveform duration to simulate
+   * @param inputSnapshots Input-only timestamped values ordered like waveform inputs
+   */
+  void simulateEditedWaveform(qulonglong                         duration,
+                              std::vector<SiliconWaveformSample> inputSnapshots);
+
+  /**
    * @brief Returns whether FST tracing is currently enabled.
    */
   [[nodiscard]] bool isFstTracingEnabled() const { return fstTraceFile.has_value(); }
@@ -119,6 +128,7 @@ private:
   /** @brief Ordered buses and group metadata used by waveform tracing. */
   struct TraceConfiguration {
     std::vector<SiliconFstWriter::NamedBus> buses;          /**< Buses to sample */
+    QList<int>                              widths;         /**< Bus widths */
     int                                     inputCount = 0; /**< Leading input buses */
   };
 

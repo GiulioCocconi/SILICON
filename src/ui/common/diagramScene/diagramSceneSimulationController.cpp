@@ -247,7 +247,82 @@ void DiagramSceneSimulationController::handleTopologyChanged()
 
 void DiagramSceneSimulationController::clearWaveformTrace()
 {
-  scene.waveformTraceReset({}, 0);
+  scene.waveformTraceReset({}, 0, {});
+}
+
+void DiagramSceneSimulationController::simulateEditedWaveform(
+    const qulonglong duration, std::vector<SiliconWaveformSample> inputSnapshots)
+{
+  if (!isJobFinished())
+    return;
+
+  scene.clearInputAssignmentErrors();
+  if (!scene.calculateWiresForComponents())
+    return;
+
+  for (const auto& wire : scene.getWireManager().wires())
+    wire->clearBusState();
+
+  std::vector<GraphicalIO*> inputs;
+  std::vector<GraphicalIO*> outputs;
+  Component_set             coreComps;
+
+  for (auto* item : scene.items()) {
+    if (auto* input = category_cast<GraphicalIO>(item, InputCategory))
+      inputs.push_back(input);
+    else if (auto* output = category_cast<GraphicalIO>(item, OutputCategory))
+      outputs.push_back(output);
+
+    if (const auto* component =
+            category_cast<GraphicalLogicComponent>(item, ItemCategory::LogicComponent);
+        component && component->getComponent()) {
+      coreComps.insert(component->getComponent());
+    }
+  }
+
+  const auto byPosition = [](const auto* a, const auto* b) {
+    if (a->scenePos().y() != b->scenePos().y())
+      return a->scenePos().y() < b->scenePos().y();
+    return a->scenePos().x() < b->scenePos().x();
+  };
+
+  std::ranges::sort(inputs, byPosition);
+  std::ranges::sort(outputs, byPosition);
+
+  for (auto* output : outputs)
+    output->resetSimulationState();
+
+  std::vector<Simulator::WaveformInputDriver> inputDrivers;
+  inputDrivers.reserve(inputs.size());
+  for (auto* input : inputs) {
+    const auto component = input->getComponent();
+    if (!component || component->getOutputs().empty())
+      continue;
+    inputDrivers.push_back({component->getOutputs()[0], component->weak_from_this()});
+  }
+
+  scene.setCircuit(std::make_shared<Circuit>(coreComps, false));
+  auto trace = collectTraceConfiguration();
+  resetWaveformTrace(trace);
+  const auto circuit   = scene.getCircuit();
+  const auto traceFile = fstTraceFile;
+
+  startJob([this, circuit, trace = std::move(trace), traceFile,
+            inputDrivers   = std::move(inputDrivers), duration,
+            inputSnapshots = std::move(inputSnapshots)]() mutable {
+    const auto isCancelled = [this]() {
+#ifdef __EMSCRIPTEN__
+      QApplication::processEvents();
+#endif
+      return isJobCancellationRequested();
+    };
+
+    simulator = std::make_unique<Simulator>(circuit, 0, true, nullptr, isCancelled);
+    configureSimulatorTrace(trace, traceFile);
+
+    return simulator->simulateWaveform(duration, inputSnapshots, inputDrivers,
+                                       isCancelled);
+  });
 }
 
 void DiagramSceneSimulationController::refreshTraceConfiguration()
@@ -273,7 +348,7 @@ void DiagramSceneSimulationController::resetWaveformTrace(const TraceConfigurati
     Q_UNUSED(bus);
     names.push_back(QString::fromStdString(name));
   }
-  scene.waveformTraceReset(names, trace.inputCount);
+  scene.waveformTraceReset(names, trace.inputCount, trace.widths);
 }
 
 void DiagramSceneSimulationController::configureSimulatorTrace(
@@ -376,7 +451,8 @@ void DiagramSceneSimulationController::finishJob()
   if (!isJobFinished())
     return;
 
-  // Reassigning to an empty jthread implicitly joins to guarantee the worker is cleanly stopped
+  // Reassigning to an empty jthread implicitly joins to guarantee the worker is cleanly
+  // stopped
 #ifndef __EMSCRIPTEN__
   worker = std::jthread{};
 #endif
@@ -388,7 +464,8 @@ void DiagramSceneSimulationController::finishJob()
     pendingWaveformSnapshots.clear();
   }
 
-  // Use deferred deletion to prevent access violations if events are still pending in the queue
+  // Use deferred deletion to prevent access violations if events are still pending in the
+  // queue
   if (completionTimer) {
     completionTimer->stop();
     completionTimer->deleteLater();
@@ -430,7 +507,8 @@ void DiagramSceneSimulationController::cancelAndWait()
     requestJobCancellation();
 
 #ifndef __EMSCRIPTEN__
-  // Assigning an empty std::jthread forces a block and automatically joins the active worker
+  // Assigning an empty std::jthread forces a block and automatically joins the active
+  // worker
   worker = std::jthread{};
 #endif
 
@@ -495,6 +573,7 @@ DiagramSceneSimulationController::collectTraceConfiguration() const
       trace.buses.emplace_back(
           componentNameOr(component, QString("input_%1").arg(index).toStdString()),
           component->getOutputs()[0]);
+      trace.widths.push_back(static_cast<int>(component->getOutputs()[0].size()));
       ++trace.inputCount;
     }
   }
@@ -505,6 +584,7 @@ DiagramSceneSimulationController::collectTraceConfiguration() const
       trace.buses.emplace_back(
           componentNameOr(component, QString("output_%1").arg(index).toStdString()),
           component->getInputs()[0]);
+      trace.widths.push_back(static_cast<int>(component->getInputs()[0].size()));
     }
   }
 

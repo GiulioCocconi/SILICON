@@ -1,0 +1,76 @@
+/*
+ Copyright (c) 2026. Giulio Cocconi
+
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+ */
+
+#pragma once
+
+#include <cstdint>
+#include <span>
+#include <string>
+#include <string_view>
+#include <vector>
+
+#include <core/fstTraceWriter.hpp>
+
+struct SiliconWaveformSignal {
+  std::string name;
+  std::size_t width = 1;
+};
+
+struct SiliconWaveformSample {
+  uint64_t                 time = 0;
+  std::vector<std::string> values;
+};
+
+struct SiliconWaveformTrace {
+  std::vector<SiliconWaveformSignal> signalDefinitions;
+  std::vector<SiliconWaveformSample> samples;
+  int                                inputCount = 0;
+};
+
+void resetWaveformTrace(SiliconWaveformTrace&              trace,
+                        std::vector<SiliconWaveformSignal> signalDefinitions,
+                        int                                inputCount);
+
+void appendWaveformSnapshot(SiliconWaveformTrace& trace, uint64_t time,
+                            std::vector<std::string> values);
+
+void appendWaveformSnapshots(SiliconWaveformTrace&                  trace,
+                             std::span<const SiliconWaveformSample> samples);
+
+void clearWaveformSamples(SiliconWaveformTrace& trace);
+
+[[nodiscard]] std::size_t waveformSignalWidth(const SiliconWaveformTrace& trace,
+                                              int                         signalIndex);
+
+[[nodiscard]] std::string rawBitsForValue(unsigned int value, std::size_t width);
+
+[[nodiscard]] unsigned int rawBitsToUnsignedValue(std::string_view rawBits);
+
+void rebuildEditableWaveformTrace(SiliconWaveformTrace& trace, uint64_t duration);
+
+void applyWaveformEditInterval(SiliconWaveformTrace& trace, uint64_t duration,
+                               int signalIndex, uint64_t startTime, uint64_t endTime,
+                               std::string rawValue);
+
+[[nodiscard]] std::vector<SiliconWaveformSample>
+editedInputWaveformSamples(const SiliconWaveformTrace& trace);
+
+void writeFstTrace(std::string_view fileName, const SiliconWaveformTrace& trace);
+
+void writeFstTrace(std::string_view fileName, const SiliconWaveformTrace& trace,
+                   FstTraceWriter::Options options);

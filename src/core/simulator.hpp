@@ -18,9 +18,11 @@
 #pragma once
 #include <core/circuit.hpp>
 #include <core/siliconFst.hpp>
+#include <core/siliconWaveform.hpp>
 #include <functional>
 #include <memory>
 #include <queue>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -62,6 +64,12 @@ class Simulator {
 public:
   /** @brief Receives encoded waveform values for a simulation timestamp. */
   using TraceSink = std::function<void(uint64_t, const std::vector<std::string>&)>;
+
+  /** @brief Bus driven by one column of an input waveform. */
+  struct WaveformInputDriver {
+    Bus               bus;
+    Component_weakPtr source;
+  };
 
   /**
    * @brief Framework-independent cooperative cancellation callback.
@@ -107,6 +115,23 @@ public:
    * @return Completion, cancellation, or step-limit outcome
    */
   RunResult run(uint64_t duration, CancellationCheck isCancelled = {});
+
+  /**
+   * @brief Drives input buses from a sampled internal waveform and runs to duration.
+   *
+   * Snapshot values are matched to input drivers by index. Missing values and extra
+   * values are ignored, mirroring the viewer's input-only waveform behavior.
+   *
+   * @param duration Total simulation duration in time units
+   * @param inputSnapshots Timestamped input values ordered like inputDrivers
+   * @param inputDrivers Ordered buses to drive from each snapshot
+   * @param isCancelled Optional cooperative cancellation callback
+   * @return Completion, cancellation, or step-limit outcome
+   */
+  RunResult simulateWaveform(uint64_t                               duration,
+                             std::span<const SiliconWaveformSample> inputSnapshots,
+                             std::span<const WaveformInputDriver>   inputDrivers,
+                             CancellationCheck                      isCancelled = {});
 
   /**
    * @brief Recompiles the execution blocks from the circuit topology.

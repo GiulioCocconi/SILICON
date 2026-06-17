@@ -23,11 +23,12 @@
 #include <QStringList>
 #include <QTimer>
 #include <QWidget>
+#include <core/siliconWaveform.hpp>
 #include <utils/num_formatting.hpp>
-#include <string_view>
 #include <vector>
 
 class QAction;
+class QLineEdit;
 class QMouseEvent;
 
 class SignalListWidget : public QWidget {
@@ -50,7 +51,7 @@ protected:
 private:
   QStringList names;
   QStringList values;
-  int         inputSignalCount = 0;
+  int         inputSignalCount    = 0;
   int         selectedSignalIndex = -1;
 
   [[nodiscard]] int signalAreaHeight() const;
@@ -63,10 +64,7 @@ class WaveformCanvas : public QWidget {
   Q_OBJECT
 public:
   /** @brief One complete set of signal values at a simulation timestamp. */
-  struct Sample {
-    quint64     time;   /**< Simulation timestamp */
-    QStringList values; /**< Encoded values ordered like the signal-name list */
-  };
+  using Sample = SiliconWaveformSample;
 
   explicit WaveformCanvas(QWidget* parent = nullptr);
 
@@ -86,6 +84,7 @@ public:
   void setTrace(const QStringList& names, const std::vector<Sample>& samples,
                 int inputCount);
 
+  /** @brief Sets per-signal display formats used for bus labels. */
   void setSignalFormats(const std::vector<silicon::NumberFormat>& formats);
 
   /**
@@ -99,7 +98,38 @@ public:
    * @param sampleIndex Sample index to highlight
    */
   void setSelectedSampleIndex(int sampleIndex);
+
+  /**
+   * @brief Highlights one signal row, or clears selection for an invalid index.
+   * @param signalIndex Signal row to highlight
+   */
   void setSelectedSignalIndex(int signalIndex);
+
+  /**
+   * @brief Enables or disables waveform interval editing gestures.
+   * @param enabled True to let left-button drags choose an input interval
+   */
+  void setEditMode(bool enabled);
+
+  /**
+   * @brief Sets the editable waveform time span.
+   * @param duration Inclusive upper bound for edit gestures and rendering
+   */
+  void setEditDuration(quint64 duration);
+
+  /**
+   * @brief Sets the edit interval highlighted on the canvas.
+   * @param signalIndex Signal row whose interval is selected
+   * @param startTime Inclusive interval start
+   * @param endTime Exclusive interval end
+   */
+  void setEditSelection(int signalIndex, quint64 startTime, quint64 endTime);
+
+  /**
+   * @brief Controls whether the precise edit interval highlight is visible.
+   * @param visible True while precise interval fields are being edited
+   */
+  void setEditSelectionVisible(bool visible);
 
 signals:
   /**
@@ -107,13 +137,41 @@ signals:
    * @param sampleIndex Index of the nearest sample
    */
   void timestampHovered(int sampleIndex);
+
+  /**
+   * @brief Emitted when a signal row is selected.
+   * @param signalIndex Selected signal row
+   */
   void signalSelected(int signalIndex);
+
+  /**
+   * @brief Requests the display-format context menu for a signal row.
+   * @param signalIndex Signal row under the pointer
+   * @param globalPosition Screen position where the menu should open
+   */
   void signalContextMenuRequested(int signalIndex, QPoint globalPosition);
+
+  /**
+   * @brief Emitted while an edit-mode interval is being adjusted.
+   * @param signalIndex Selected signal row
+   * @param startTime Inclusive interval start
+   * @param endTime Exclusive interval end
+   */
+  void editIntervalChanged(int signalIndex, quint64 startTime, quint64 endTime);
+
+  /**
+   * @brief Emitted after an edit-mode drag chooses a signal/time interval.
+   * @param signalIndex Selected signal row
+   * @param startTime Inclusive interval start
+   * @param endTime Exclusive interval end
+   */
+  void editIntervalSelected(int signalIndex, quint64 startTime, quint64 endTime);
 
 protected:
   void paintEvent(QPaintEvent* event) override;
   void mouseMoveEvent(QMouseEvent* event) override;
   void mousePressEvent(QMouseEvent* event) override;
+  void mouseReleaseEvent(QMouseEvent* event) override;
 
 private:
   /** @brief Signal labels rendered by the canvas. */
@@ -125,11 +183,20 @@ private:
    * The viewer owns the canvas and its sample vector, so this remains valid for the
    * canvas lifetime and avoids copying the complete trace on every refresh.
    */
-  const std::vector<Sample>* traceSamples        = nullptr;
-  double                     pixelsPerTick       = 12.0;
-  int                        inputSignalCount    = 0;
-  int                        selectedSampleIndex = -1;
-  int                        selectedSignalIndex = -1;
+  const std::vector<Sample>*         traceSamples             = nullptr;
+  double                             pixelsPerTick            = 12.0;
+  int                                inputSignalCount         = 0;
+  int                                selectedSampleIndex      = -1;
+  int                                selectedSignalIndex      = -1;
+  bool                               editMode                 = false;
+  quint64                            editDuration             = 20;
+  int                                editSelectionSignalIndex = -1;
+  quint64                            editSelectionStartTime   = 0;
+  quint64                            editSelectionEndTime     = 1;
+  bool                               editSelectionVisible     = false;
+  int                                editDragSignalIndex      = -1;
+  quint64                            editDragStartTime        = 0;
+  quint64                            editDragEndTime          = 0;
   std::vector<silicon::NumberFormat> signalFormats;
 
   [[nodiscard]] int     rowHeight() const { return 28; }
@@ -137,6 +204,8 @@ private:
   [[nodiscard]] int     groupHeaderHeight() const { return 22; }
   [[nodiscard]] quint64 endTime() const;
   [[nodiscard]] int     xForTime(quint64 time) const;
+  /** @brief Converts an x-coordinate into a clamped simulation timestamp. */
+  [[nodiscard]] quint64 timeForX(int x) const;
   [[nodiscard]] int     groupHeaderCount() const;
   [[nodiscard]] int     groupHeaderCountBeforeSignal(int row) const;
   [[nodiscard]] int     yForSignalRow(int row) const;
@@ -157,13 +226,19 @@ class WaveformViewer : public QWidget {
 public:
   explicit WaveformViewer(QWidget* parent = nullptr);
 
+protected:
+  /** @brief Tracks focus changes for precise interval edit fields. */
+  bool eventFilter(QObject* watched, QEvent* event) override;
+
 public slots:
   /**
    * @brief Replaces signal metadata and clears the current trace.
    * @param signalNames Ordered signal labels
    * @param inputCount Number of leading signals belonging to the input group
+   * @param signalWidths Width of each signal in bits
    */
-  void resetTrace(const QStringList& signalNames, int inputCount);
+  void resetTrace(const QStringList& signalNames, int inputCount,
+                  const QList<int>& signalWidths);
 
   /**
    * @brief Appends or replaces one timestamped snapshot.
@@ -181,6 +256,29 @@ public slots:
   /** @brief Clears all recorded waveform samples. */
   void clearTrace();
 
+  /**
+   * @brief Enables input-waveform editing mode.
+   *
+   * Edit mode drops output signals from the visible trace, clears transition history,
+   * and keeps one editable input waveform spanning the configured duration.
+   */
+  void setEditMode(bool enabled);
+
+signals:
+  /**
+   * @brief Emitted when waveform edit mode changes.
+   * @param enabled True while input waveform editing is active
+   */
+  void editModeChanged(bool enabled);
+
+  /**
+   * @brief Emitted when edit mode is left and the edited input waveform should run.
+   * @param duration Total edited waveform duration
+   * @param inputSnapshots Edited input-only snapshots
+   */
+  void editTraceCommitted(qulonglong                         duration,
+                          std::vector<SiliconWaveformSample> inputSnapshots);
+
 private:
   SignalListWidget* signalList;
   WaveformCanvas*   canvas;
@@ -189,32 +287,86 @@ private:
   QAction*          newAct;
   QAction*          openAct;
   QAction*          saveAct;
+  QAction*          editAct;
   QAction*          zoomInAct;
   QAction*          zoomOutAct;
+  QLineEdit*        durationEdit;
+  QLineEdit*        startEdit;
+  QLineEdit*        endEdit;
 
-  QStringList                         names;
-  std::vector<WaveformCanvas::Sample> samples;
-  int                                 inputSignalCount    = 0;
-  int                                 selectedSampleIndex = -1;
-  int                                 selectedSignalIndex = -1;
-  double                              pixelsPerTick       = 12.0;
-  std::vector<silicon::NumberFormat>  signalFormats;
-  bool                                syncingScrollBars   = false;
+  SiliconWaveformTrace               trace;
+  int                                selectedSampleIndex = -1;
+  int                                selectedSignalIndex = -1;
+  double                             pixelsPerTick       = 12.0;
+  std::vector<silicon::NumberFormat> signalFormats;
+  bool                               syncingScrollBars      = false;
+  bool                               editMode               = false;
+  quint64                            editDuration           = 20;
+  quint64                            selectedEditStart      = 0;
+  quint64                            selectedEditEnd        = 1;
+  bool                               preciseIntervalEditing = false;
   /** @brief Preserves tail-following behavior across a deferred refresh. */
   bool keepScrolledToEnd = false;
 
   /** @brief Coalesces rapid snapshot arrivals into at most one refresh per frame. */
   QTimer* refreshTimer = nullptr;
 
+  /** @brief Repaints the signal list while preserving scroll position. */
   void refreshSignalList();
+
+  /** @brief Pushes current trace state into the waveform canvas. */
   void refreshCanvas();
+
+  /** @brief Replaces trace samples with an input-only editable default waveform. */
+  void rebuildEditTrace();
+
+  /**
+   * @brief Applies a raw bit value to one input signal over a time interval.
+   * @param signalIndex Input signal index
+   * @param startTime Inclusive interval start
+   * @param endTime Exclusive interval end
+   * @param rawValue Raw bit-string value to assign
+   */
+  void applyEditInterval(int signalIndex, quint64 startTime, quint64 endTime,
+                         const QString& rawValue);
+
+  /**
+   * @brief Prompts for and validates a value for an edit-mode interval.
+   * @param signalIndex Input signal index
+   * @param startTime Inclusive interval start
+   * @param endTime Exclusive interval end
+   */
+  void promptEditIntervalValue(int signalIndex, quint64 startTime, quint64 endTime);
+
+  /** @brief Prompts for a value using the current selected signal and text interval. */
+  void promptSelectedEditIntervalValue();
+
+  /**
+   * @brief Updates the precise interval fields from an edit gesture.
+   * @param startTime Inclusive interval start
+   * @param endTime Exclusive interval end
+   */
+  void setEditIntervalFields(quint64 startTime, quint64 endTime);
+
+  /** @brief Parses and clamps the precise interval text fields. */
+  void commitEditIntervalFields();
+
+  /** @brief Synchronizes the duration field with edit mode or the latest trace time. */
+  void updateDurationField();
+
+  /** @brief Converts the current editable samples into signal payload form. */
+  [[nodiscard]] std::vector<SiliconWaveformSample> editedInputSnapshots() const;
+
+  /** @brief Synchronizes edit controls with the current mode and duration. */
+  void updateEditControls();
   /** @brief Schedules a coalesced waveform refresh if one is not already pending. */
-  void                      scheduleRefresh();
+  void scheduleRefresh();
+  /** @brief Returns the signal names currently visible in the viewer. */
+  [[nodiscard]] QStringList visibleNames() const;
   [[nodiscard]] QStringList displayedValues() const;
   [[nodiscard]] std::size_t signalWidth(int signalIndex) const;
   [[nodiscard]] QString     displayValue(int signalIndex, const QString& value) const;
   void                      setSelectedSignalIndex(int signalIndex);
   void                      showSignalFormatMenu(int signalIndex, QPoint globalPosition);
   void                      saveTrace();
-  void                      writeFstTrace(std::string_view fileName) const;
 };

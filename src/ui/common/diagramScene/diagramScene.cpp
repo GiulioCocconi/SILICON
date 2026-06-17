@@ -86,7 +86,9 @@ void DiagramScene::drawBackground(QPainter* painter, const QRectF& rect)
 }
 
 void DiagramScene::setInteractionMode(InteractionMode mode)
-{ setInteractionMode(mode, false); }
+{
+  setInteractionMode(mode, false);
+}
 
 void DiagramScene::setInteractionMode(const InteractionMode newMode, const bool force)
 {
@@ -181,10 +183,14 @@ void DiagramScene::enterComponentPlacingMode()
 }
 
 bool DiagramScene::enterSimulationMode()
-{ return simulationController->enterSimulationMode(); }
+{
+  return simulationController->enterSimulationMode();
+}
 
 void DiagramScene::exitSimulationMode()
-{ simulationController->exitSimulationMode(); }
+{
+  simulationController->exitSimulationMode();
+}
 
 void DiagramScene::mouseMoveEvent(QGraphicsSceneMouseEvent* mouseEvent)
 {
@@ -281,6 +287,9 @@ void DiagramScene::mousePressEvent(QGraphicsSceneMouseEvent* mouseEvent)
       break;
     }
     case InteractionMode::SIMULATION_MODE: {
+      if (!ioInteractionsEnabled)
+        break;
+
       const auto itemsAtPos = items(cursorPos);
 
       for (const auto item : itemsAtPos) {
@@ -375,6 +384,12 @@ void DiagramScene::setFstTraceFile(std::optional<std::string> fileName)
 bool DiagramScene::isFstTracingEnabled() const
 {
   return simulationController->isFstTracingEnabled();
+}
+
+void DiagramScene::simulateEditedWaveform(
+    const qulonglong duration, std::vector<SiliconWaveformSample> inputSnapshots)
+{
+  simulationController->simulateEditedWaveform(duration, std::move(inputSnapshots));
 }
 
 void DiagramScene::refreshGraphicalOutputs()
@@ -568,7 +583,9 @@ void DiagramScene::removeItems(const std::vector<QGraphicsItem*>& sceneItems)
 }
 
 bool DiagramScene::removeSelection(const nlohmann::json& payload)
-{ return serializer->removeSelection(payload); }
+{
+  return serializer->removeSelection(payload);
+}
 
 void DiagramScene::updateSceneAfterEdit()
 {

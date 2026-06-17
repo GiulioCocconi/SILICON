@@ -128,6 +128,31 @@ TEST(SimulatorTest, CancellationStopsBusPropagation)
   EXPECT_EQ(a->getCurrentState(), State::LOW);
 }
 
+TEST(SimulatorTest, SimulatesInternalInputWaveform)
+{
+  auto a = std::make_shared<Wire>(State::LOW);
+  auto b = std::make_shared<Wire>(State::LOW);
+  auto o = std::make_shared<Wire>();
+
+  auto      gate    = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, o);
+  auto      circuit = std::make_shared<Circuit>(Component_set{gate});
+  Simulator simulator(circuit);
+
+  const std::vector<SiliconWaveformSample> inputSnapshots{
+      {0, {"0", "0"}},
+      {3, {"1", "1"}},
+  };
+  const std::vector<Simulator::WaveformInputDriver> inputDrivers{
+      {Bus{a}, {}},
+      {Bus{b}, {}},
+  };
+
+  EXPECT_EQ(simulator.simulateWaveform(10, inputSnapshots, inputDrivers),
+            Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.getCurrentTime(), 10);
+  EXPECT_EQ(o->getCurrentState(), State::HIGH);
+}
+
 TEST(LogicTest, Nand)
 {
   auto a = std::make_shared<Wire>(State::HIGH);

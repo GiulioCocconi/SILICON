@@ -223,7 +223,7 @@ Simulator::RunResult Simulator::run(uint64_t duration, CancellationCheck isCance
   const uint64_t minimumEndTime = currentTime + duration;
 
   uint64_t processedSteps = 0;
-  while (!eventQueue.empty()) {
+  while (!eventQueue.empty() && eventQueue.top().time <= minimumEndTime) {
     // Stop only between event batches so a timestamp is never left half-applied.
     if (cancellationRequested(isCancelled))
       return RunResult::Cancelled;
@@ -263,6 +263,32 @@ Simulator::RunResult Simulator::run(uint64_t duration, CancellationCheck isCance
   }
 
   simulationLog.info("Circuit state stabilized (simulation complete)");
+  return RunResult::Completed;
+}
+
+Simulator::RunResult Simulator::simulateWaveform(
+    const uint64_t duration, std::span<const SiliconWaveformSample> inputSnapshots,
+    std::span<const WaveformInputDriver> inputDrivers, CancellationCheck isCancelled)
+{
+  for (const auto& sample : inputSnapshots) {
+    if (sample.time > currentTime) {
+      const auto result = run(sample.time - currentTime, isCancelled);
+      if (result != RunResult::Completed)
+        return result;
+    }
+
+    const auto inputCount = std::min(sample.values.size(), inputDrivers.size());
+    for (std::size_t i = 0; i < inputCount; ++i) {
+      const auto& driver = inputDrivers[i];
+      const auto  result = setBus(driver.bus, rawBitsToUnsignedValue(sample.values[i]),
+                                  driver.source, isCancelled);
+      if (result != RunResult::Completed)
+        return result;
+    }
+  }
+
+  if (duration > currentTime)
+    return run(duration - currentTime, isCancelled);
   return RunResult::Completed;
 }
 
