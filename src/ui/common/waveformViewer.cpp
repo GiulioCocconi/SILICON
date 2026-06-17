@@ -33,6 +33,7 @@
 #include <QAction>
 #include <QFileDialog>
 #include <QFrame>
+#include <QMenu>
 #include <QMessageBox>
 #include <QMouseEvent>
 #include <QPaintEvent>
@@ -111,6 +112,17 @@ void SignalListWidget::setValues(const QStringList& signalValues)
   update();
 }
 
+void SignalListWidget::setSelectedSignalIndex(const int signalIndex)
+{
+  const int nextIndex =
+      signalIndex >= 0 && signalIndex < names.size() ? signalIndex : -1;
+  if (selectedSignalIndex == nextIndex)
+    return;
+
+  selectedSignalIndex = nextIndex;
+  update();
+}
+
 int SignalListWidget::signalAreaHeight() const
 {
   return groupHeaderCount(names.size(), inputSignalCount) * groupHeaderHeightPx
@@ -129,6 +141,19 @@ int SignalListWidget::yForSignalRow(int row) const
          + row * traceRowHeightPx;
 }
 
+int SignalListWidget::signalRowAt(const QPoint position) const
+{
+  if (position.x() < 0 || position.x() >= width())
+    return -1;
+
+  for (int row = 0; row < names.size(); ++row) {
+    const int y = yForSignalRow(row);
+    if (position.y() >= y && position.y() < y + traceRowHeightPx)
+      return row;
+  }
+  return -1;
+}
+
 void SignalListWidget::paintEvent(QPaintEvent* event)
 {
   QWidget::paintEvent(event);
@@ -139,6 +164,8 @@ void SignalListWidget::paintEvent(QPaintEvent* event)
   const QColor gridColor(220, 220, 220);
   const QColor groupColor = palette().alternateBase().color();
   const QColor textColor  = palette().text().color();
+  const QColor selectedRowColor =
+      ThemeEngine::getColor("SILICON_BLUE").lighter(175);
   const int    valueX     = valueColumnX();
 
   painter.setPen(gridColor);
@@ -163,6 +190,9 @@ void SignalListWidget::paintEvent(QPaintEvent* event)
     const int     y     = yForSignalRow(static_cast<int>(row));
     const QString value = row < values.size() ? values[row] : QString("x");
 
+    if (static_cast<int>(row) == selectedSignalIndex)
+      painter.fillRect(QRect(0, y, width(), traceRowHeightPx), selectedRowColor);
+
     painter.setPen(textColor);
     painter.drawText(QRect(6, y, valueX - 18, traceRowHeightPx),
                      Qt::AlignVCenter | Qt::AlignLeft, name);
@@ -171,6 +201,21 @@ void SignalListWidget::paintEvent(QPaintEvent* event)
 
     painter.setPen(gridColor);
     painter.drawLine(0, y + traceRowHeightPx - 1, width(), y + traceRowHeightPx - 1);
+  }
+}
+
+void SignalListWidget::mousePressEvent(QMouseEvent* event)
+{
+  QWidget::mousePressEvent(event);
+
+  const int row = signalRowAt(event->position().toPoint());
+  if (row < 0)
+    return;
+
+  if (event->button() == Qt::LeftButton) {
+    emit signalSelected(row);
+  } else if (event->button() == Qt::RightButton) {
+    emit signalContextMenuRequested(row, event->globalPosition().toPoint());
   }
 }
 
@@ -201,6 +246,12 @@ void WaveformCanvas::setTrace(const QStringList&         names,
     selectedSampleIndex = -1;
 
   updateCanvasSize();
+  update();
+}
+
+void WaveformCanvas::setSignalFormats(const std::vector<silicon::NumberFormat>& formats)
+{
+  signalFormats = formats;
   update();
 }
 
@@ -239,6 +290,17 @@ void WaveformCanvas::setSelectedSampleIndex(const int sampleIndex)
   update();
 }
 
+void WaveformCanvas::setSelectedSignalIndex(const int signalIndex)
+{
+  const int nextIndex =
+      signalIndex >= 0 && signalIndex < signalNames.size() ? signalIndex : -1;
+  if (selectedSignalIndex == nextIndex)
+    return;
+
+  selectedSignalIndex = nextIndex;
+  update();
+}
+
 quint64 WaveformCanvas::endTime() const
 {
   if (!traceSamples || traceSamples->empty())
@@ -267,6 +329,19 @@ int WaveformCanvas::yForSignalRow(const int row) const
          + row * rowHeight();
 }
 
+int WaveformCanvas::signalRowAt(const QPoint position) const
+{
+  if (position.y() < rulerHeight())
+    return -1;
+
+  for (int row = 0; row < signalNames.size(); ++row) {
+    const int y = yForSignalRow(row);
+    if (position.y() >= y && position.y() < y + rowHeight())
+      return row;
+  }
+  return -1;
+}
+
 void WaveformCanvas::paintEvent(QPaintEvent* event)
 {
   QWidget::paintEvent(event);
@@ -277,6 +352,8 @@ void WaveformCanvas::paintEvent(QPaintEvent* event)
 
   const QColor gridColor(220, 220, 220);
   const QColor textColor   = palette().text().color();
+  const QColor selectedRowColor =
+      ThemeEngine::getColor("SILICON_BLUE").lighter(185);
   const QRect  visibleRect = event ? event->rect() : rect();
 
   painter.setPen(gridColor);
@@ -310,8 +387,18 @@ void WaveformCanvas::paintEvent(QPaintEvent* event)
 
     return VisibleSampleRange{firstVisible, lastVisible};
   }();
+  const auto firstVisibleIndex = visibleSamples.begin() - samples.cbegin();
+  const auto lastVisibleIndex  = visibleSamples.end() - samples.cbegin();
 
-  for (const Sample& sample : visibleSamples) {
+  const bool hasSelectedSignal =
+      selectedSignalIndex >= 0 && selectedSignalIndex < signalNames.size();
+  auto sampleValueAt = [&samples](int sampleIndex, int row) {
+    return row < samples[sampleIndex].values.size()
+               ? samples[sampleIndex].values[row]
+               : QString("x");
+  };
+
+  auto drawRulerTick = [&](const Sample& sample) {
     const int     x     = xForTime(sample.time);
     const QString label = QString::number(sample.time);
     const int     labelWidth =
@@ -323,6 +410,29 @@ void WaveformCanvas::paintEvent(QPaintEvent* event)
     painter.setPen(textColor);
     painter.drawText(QRect(labelX, 1, labelWidth, rulerHeight() - 4),
                      Qt::AlignHCenter | Qt::AlignTop, label);
+  };
+
+  const auto isSelectedSignalTick = [&](const int sampleIndex) {
+    if (!hasSelectedSignal)
+      return true;
+    if (sampleIndex < 0 || sampleIndex >= static_cast<int>(samples.size()))
+      return false;
+    if (sampleIndex == firstVisibleIndex || sampleIndex == 0)
+      return true;
+    return sampleValueAt(sampleIndex, selectedSignalIndex)
+           != sampleValueAt(sampleIndex - 1, selectedSignalIndex);
+  };
+
+  if (hasSelectedSignal && !samples.empty()) {
+    for (auto sampleIt = visibleSamples.begin(); sampleIt != visibleSamples.end();
+         ++sampleIt) {
+      const int sampleIndex = static_cast<int>(sampleIt - samples.cbegin());
+      if (isSelectedSignalTick(sampleIndex))
+        drawRulerTick(*sampleIt);
+    }
+  } else {
+    for (const Sample& sample : visibleSamples)
+      drawRulerTick(sample);
   }
 
   auto drawGroupSpacer = [&](int y) {
@@ -339,6 +449,8 @@ void WaveformCanvas::paintEvent(QPaintEvent* event)
 
   for (int row = 0; row < signalNames.size(); ++row) {
     const int y = yForSignalRow(row);
+    if (row == selectedSignalIndex)
+      painter.fillRect(QRect(0, y, width(), rowHeight()), selectedRowColor);
     painter.setPen(gridColor);
     painter.drawLine(0, y + rowHeight() - 1, width(), y + rowHeight() - 1);
   }
@@ -347,19 +459,11 @@ void WaveformCanvas::paintEvent(QPaintEvent* event)
     return;
 
   // Iterate only the visible time slice instead of the full simulation history.
-  const auto firstVisibleIndex = visibleSamples.begin() - samples.cbegin();
-  const auto lastVisibleIndex  = visibleSamples.end() - samples.cbegin();
-  const auto valueAt = [&samples](int sampleIndex, int row) {
-    return row < samples[sampleIndex].values.size()
-               ? samples[sampleIndex].values[row]
-               : QString("x");
-  };
-
   for (int row = 0; row < signalNames.size(); ++row) {
     for (int i = firstVisibleIndex; i + 1 < lastVisibleIndex;) {
-      const QString value = valueAt(i, row);
+      const QString value = sampleValueAt(i, row);
       int           end   = i + 1;
-      while (end < lastVisibleIndex - 1 && valueAt(end, row) == value)
+      while (end < lastVisibleIndex - 1 && sampleValueAt(end, row) == value)
         ++end;
 
       const int x0 = xForTime(samples[i].time);
@@ -367,7 +471,7 @@ void WaveformCanvas::paintEvent(QPaintEvent* event)
       if (value.size() == 1) {
         drawScalar(painter, row, x0, x1, value);
         if (end < lastVisibleIndex - 1) {
-          const QString nextValue = valueAt(end, row);
+          const QString nextValue = sampleValueAt(end, row);
           if (nextValue.size() == 1)
             drawScalarTransition(painter, row, x1, value, nextValue);
         }
@@ -380,7 +484,8 @@ void WaveformCanvas::paintEvent(QPaintEvent* event)
   }
 
   if (selectedSampleIndex >= 0
-      && selectedSampleIndex < static_cast<int>(samples.size())) {
+      && selectedSampleIndex < static_cast<int>(samples.size())
+      && isSelectedSignalTick(selectedSampleIndex)) {
     const int     x     = xForTime(samples[selectedSampleIndex].time);
     const QString label = QString::number(samples[selectedSampleIndex].time);
     const int     labelWidth =
@@ -426,6 +531,21 @@ void WaveformCanvas::mouseMoveEvent(QMouseEvent* event)
   emit timestampHovered(closestIndex);
 }
 
+void WaveformCanvas::mousePressEvent(QMouseEvent* event)
+{
+  QWidget::mousePressEvent(event);
+
+  const int row = signalRowAt(event->position().toPoint());
+  if (row < 0)
+    return;
+
+  if (event->button() == Qt::LeftButton) {
+    emit signalSelected(row);
+  } else if (event->button() == Qt::RightButton) {
+    emit signalContextMenuRequested(row, event->globalPosition().toPoint());
+  }
+}
+
 int WaveformCanvas::yForScalarValue(int row, const QString& value) const
 {
   const int top    = yForSignalRow(row) + 5;
@@ -437,6 +557,13 @@ int WaveformCanvas::yForScalarValue(int row, const QString& value) const
   if (value == "0")
     return bottom;
   return mid;
+}
+
+silicon::NumberFormat WaveformCanvas::formatForSignal(const int row) const
+{
+  if (row >= 0 && row < static_cast<int>(signalFormats.size()))
+    return signalFormats[static_cast<std::size_t>(row)];
+  return silicon::NumberFormat::Hex;
 }
 
 void WaveformCanvas::drawScalar(QPainter& painter, int row, int x0, int x1,
@@ -476,8 +603,11 @@ void WaveformCanvas::drawBus(QPainter& painter, int row, int x0, int x1,
 
   if (x1 - x0 > 28) {
     painter.setPen(palette().text().color());
+    const QString displayValue =
+        QString::fromStdString(silicon::formatRawBits(value.toStdString(),
+                                                      formatForSignal(row)));
     painter.drawText(QRect(x0 + 7, top, x1 - x0 - 14, bottom - top), Qt::AlignCenter,
-                     value);
+                     displayValue);
   }
 }
 
@@ -592,6 +722,14 @@ WaveformViewer::WaveformViewer(QWidget* parent) : QWidget(parent)
     refreshSignalList();
     refreshCanvas();
   });
+  connect(signalList, &SignalListWidget::signalSelected, this,
+          &WaveformViewer::setSelectedSignalIndex);
+  connect(canvas, &WaveformCanvas::signalSelected, this,
+          &WaveformViewer::setSelectedSignalIndex);
+  connect(signalList, &SignalListWidget::signalContextMenuRequested, this,
+          &WaveformViewer::showSignalFormatMenu);
+  connect(canvas, &WaveformCanvas::signalContextMenuRequested, this,
+          &WaveformViewer::showSignalFormatMenu);
 }
 
 void WaveformViewer::resetTrace(const QStringList& signalNames, int inputCount)
@@ -599,8 +737,12 @@ void WaveformViewer::resetTrace(const QStringList& signalNames, int inputCount)
   names               = signalNames;
   inputSignalCount    = std::clamp<qsizetype>(inputCount, 0, names.size());
   selectedSampleIndex = -1;
+  selectedSignalIndex = names.empty() ? -1 : 0;
+  signalFormats.assign(static_cast<std::size_t>(names.size()),
+                       silicon::NumberFormat::Hex);
   samples.clear();
   signalList->setTrace(names, inputSignalCount);
+  signalList->setSelectedSignalIndex(selectedSignalIndex);
   refreshSignalList();
   refreshCanvas();
 }
@@ -641,6 +783,7 @@ void WaveformViewer::clearTrace()
 {
   samples.clear();
   selectedSampleIndex = -1;
+  selectedSignalIndex = names.empty() ? -1 : 0;
   refreshSignalList();
   refreshCanvas();
 }
@@ -649,6 +792,7 @@ void WaveformViewer::refreshSignalList()
 {
   const int scrollValue = labelScrollArea->verticalScrollBar()->value();
   signalList->setValues(displayedValues());
+  signalList->setSelectedSignalIndex(selectedSignalIndex);
   labelScrollArea->verticalScrollBar()->setValue(scrollValue);
 }
 
@@ -656,7 +800,9 @@ void WaveformViewer::refreshCanvas()
 {
   canvas->setPixelsPerTick(pixelsPerTick);
   canvas->setTrace(names, samples, inputSignalCount);
+  canvas->setSignalFormats(signalFormats);
   canvas->setSelectedSampleIndex(selectedSampleIndex);
+  canvas->setSelectedSignalIndex(selectedSignalIndex);
 }
 
 void WaveformViewer::scheduleRefresh()
@@ -669,11 +815,84 @@ void WaveformViewer::scheduleRefresh()
 
 QStringList WaveformViewer::displayedValues() const
 {
+  QStringList rawValues;
   if (selectedSampleIndex >= 0 && selectedSampleIndex < static_cast<int>(samples.size()))
-    return samples[selectedSampleIndex].values;
-  if (!samples.empty())
-    return samples.back().values;
-  return {};
+    rawValues = samples[selectedSampleIndex].values;
+  else if (!samples.empty())
+    rawValues = samples.back().values;
+  else
+    return {};
+
+  for (int i = 0; i < rawValues.size(); ++i)
+    rawValues[i] = displayValue(i, rawValues[i]);
+  return rawValues;
+}
+
+std::size_t WaveformViewer::signalWidth(const int signalIndex) const
+{
+  if (signalIndex < 0 || signalIndex >= names.size())
+    return 0;
+
+  std::size_t width = 1;
+  for (const auto& sample : samples) {
+    if (signalIndex < sample.values.size())
+      width = std::max(width, std::size_t(sample.values[signalIndex].size()));
+  }
+  return width;
+}
+
+QString WaveformViewer::displayValue(const int signalIndex, const QString& value) const
+{
+  if (signalWidth(signalIndex) <= 1)
+    return value;
+
+  const auto format =
+      signalIndex >= 0 && signalIndex < static_cast<int>(signalFormats.size())
+          ? signalFormats[static_cast<std::size_t>(signalIndex)]
+          : silicon::NumberFormat::Hex;
+  return QString::fromStdString(silicon::formatRawBits(value.toStdString(), format));
+}
+
+void WaveformViewer::setSelectedSignalIndex(const int signalIndex)
+{
+  const int nextIndex = signalIndex >= 0 && signalIndex < names.size() ? signalIndex : -1;
+  if (selectedSignalIndex == nextIndex)
+    return;
+
+  selectedSignalIndex = nextIndex;
+  refreshSignalList();
+  refreshCanvas();
+}
+
+void WaveformViewer::showSignalFormatMenu(const int signalIndex, QPoint globalPosition)
+{
+  if (signalWidth(signalIndex) <= 1)
+    return;
+
+  setSelectedSignalIndex(signalIndex);
+
+  QMenu menu(this);
+  auto addFormatAction = [&](const QString& label, silicon::NumberFormat format) {
+    QAction* action = menu.addAction(label);
+    action->setCheckable(true);
+    action->setChecked(signalIndex >= 0
+                       && signalIndex < static_cast<int>(signalFormats.size())
+                       && signalFormats[static_cast<std::size_t>(signalIndex)] == format);
+    connect(action, &QAction::triggered, this, [this, signalIndex, format]() {
+      if (signalIndex < 0 || signalIndex >= static_cast<int>(signalFormats.size()))
+        return;
+      signalFormats[static_cast<std::size_t>(signalIndex)] = format;
+      refreshSignalList();
+      refreshCanvas();
+    });
+  };
+
+  addFormatAction(tr("SIGNED"), silicon::NumberFormat::Signed);
+  addFormatAction(tr("UNSIGNED"), silicon::NumberFormat::Unsigned);
+  addFormatAction(tr("HEX"), silicon::NumberFormat::Hex);
+  addFormatAction(tr("OCT"), silicon::NumberFormat::Oct);
+  addFormatAction(tr("BIN"), silicon::NumberFormat::Bin);
+  menu.exec(globalPosition);
 }
 
 void WaveformViewer::saveTrace()
