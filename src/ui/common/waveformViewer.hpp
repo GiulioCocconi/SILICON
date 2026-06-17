@@ -23,6 +23,7 @@
 #include <QStringList>
 #include <QTimer>
 #include <QWidget>
+#include <utils/num_formatting.hpp>
 #include <string_view>
 #include <vector>
 
@@ -36,18 +37,26 @@ public:
 
   void setTrace(const QStringList& signalNames, int inputCount);
   void setValues(const QStringList& signalValues);
+  void setSelectedSignalIndex(int signalIndex);
+
+signals:
+  void signalSelected(int signalIndex);
+  void signalContextMenuRequested(int signalIndex, QPoint globalPosition);
 
 protected:
   void paintEvent(QPaintEvent* event) override;
+  void mousePressEvent(QMouseEvent* event) override;
 
 private:
   QStringList names;
   QStringList values;
   int         inputSignalCount = 0;
+  int         selectedSignalIndex = -1;
 
   [[nodiscard]] int signalAreaHeight() const;
   [[nodiscard]] int valueColumnX() const;
   [[nodiscard]] int yForSignalRow(int row) const;
+  [[nodiscard]] int signalRowAt(QPoint position) const;
 };
 
 class WaveformCanvas : public QWidget {
@@ -77,6 +86,8 @@ public:
   void setTrace(const QStringList& names, const std::vector<Sample>& samples,
                 int inputCount);
 
+  void setSignalFormats(const std::vector<silicon::NumberFormat>& formats);
+
   /**
    * @brief Changes horizontal waveform scale.
    * @param value Pixels rendered per simulation tick
@@ -88,6 +99,7 @@ public:
    * @param sampleIndex Sample index to highlight
    */
   void setSelectedSampleIndex(int sampleIndex);
+  void setSelectedSignalIndex(int signalIndex);
 
 signals:
   /**
@@ -95,10 +107,13 @@ signals:
    * @param sampleIndex Index of the nearest sample
    */
   void timestampHovered(int sampleIndex);
+  void signalSelected(int signalIndex);
+  void signalContextMenuRequested(int signalIndex, QPoint globalPosition);
 
 protected:
   void paintEvent(QPaintEvent* event) override;
   void mouseMoveEvent(QMouseEvent* event) override;
+  void mousePressEvent(QMouseEvent* event) override;
 
 private:
   /** @brief Signal labels rendered by the canvas. */
@@ -114,6 +129,8 @@ private:
   double                     pixelsPerTick       = 12.0;
   int                        inputSignalCount    = 0;
   int                        selectedSampleIndex = -1;
+  int                        selectedSignalIndex = -1;
+  std::vector<silicon::NumberFormat> signalFormats;
 
   [[nodiscard]] int     rowHeight() const { return 28; }
   [[nodiscard]] int     rulerHeight() const { return 24; }
@@ -123,7 +140,9 @@ private:
   [[nodiscard]] int     groupHeaderCount() const;
   [[nodiscard]] int     groupHeaderCountBeforeSignal(int row) const;
   [[nodiscard]] int     yForSignalRow(int row) const;
+  [[nodiscard]] int     signalRowAt(QPoint position) const;
   [[nodiscard]] int     yForScalarValue(int row, const QString& value) const;
+  [[nodiscard]] silicon::NumberFormat formatForSignal(int row) const;
   /** @brief Recomputes the scrollable canvas dimensions from trace extent and zoom. */
   void updateCanvasSize();
 
@@ -177,7 +196,9 @@ private:
   std::vector<WaveformCanvas::Sample> samples;
   int                                 inputSignalCount    = 0;
   int                                 selectedSampleIndex = -1;
+  int                                 selectedSignalIndex = -1;
   double                              pixelsPerTick       = 12.0;
+  std::vector<silicon::NumberFormat>  signalFormats;
   bool                                syncingScrollBars   = false;
   /** @brief Preserves tail-following behavior across a deferred refresh. */
   bool keepScrolledToEnd = false;
@@ -190,6 +211,10 @@ private:
   /** @brief Schedules a coalesced waveform refresh if one is not already pending. */
   void                      scheduleRefresh();
   [[nodiscard]] QStringList displayedValues() const;
+  [[nodiscard]] std::size_t signalWidth(int signalIndex) const;
+  [[nodiscard]] QString     displayValue(int signalIndex, const QString& value) const;
+  void                      setSelectedSignalIndex(int signalIndex);
+  void                      showSignalFormatMenu(int signalIndex, QPoint globalPosition);
   void                      saveTrace();
   void                      writeFstTrace(std::string_view fileName) const;
 };
