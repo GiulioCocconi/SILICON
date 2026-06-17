@@ -349,22 +349,33 @@ void WaveformCanvas::paintEvent(QPaintEvent* event)
   // Iterate only the visible time slice instead of the full simulation history.
   const auto firstVisibleIndex = visibleSamples.begin() - samples.cbegin();
   const auto lastVisibleIndex  = visibleSamples.end() - samples.cbegin();
-  for (int i = firstVisibleIndex; i + 1 < lastVisibleIndex; ++i) {
-    const int x0 = xForTime(samples[i].time);
-    const int x1 = xForTime(samples[i + 1].time);
+  const auto valueAt = [&samples](int sampleIndex, int row) {
+    return row < samples[sampleIndex].values.size()
+               ? samples[sampleIndex].values[row]
+               : QString("x");
+  };
 
-    for (int row = 0; row < signalNames.size(); ++row) {
-      const QString value =
-          row < samples[i].values.size() ? samples[i].values[row] : QString("x");
-      const QString nextValue =
-          row < samples[i + 1].values.size() ? samples[i + 1].values[row] : QString("x");
+  for (int row = 0; row < signalNames.size(); ++row) {
+    for (int i = firstVisibleIndex; i + 1 < lastVisibleIndex;) {
+      const QString value = valueAt(i, row);
+      int           end   = i + 1;
+      while (end < lastVisibleIndex - 1 && valueAt(end, row) == value)
+        ++end;
+
+      const int x0 = xForTime(samples[i].time);
+      const int x1 = xForTime(samples[end].time);
       if (value.size() == 1) {
         drawScalar(painter, row, x0, x1, value);
-        if (nextValue.size() == 1)
-          drawScalarTransition(painter, row, x1, value, nextValue);
+        if (end < lastVisibleIndex - 1) {
+          const QString nextValue = valueAt(end, row);
+          if (nextValue.size() == 1)
+            drawScalarTransition(painter, row, x1, value, nextValue);
+        }
       } else {
         drawBus(painter, row, x0, x1, value);
       }
+
+      i = end;
     }
   }
 
@@ -456,11 +467,12 @@ void WaveformCanvas::drawBus(QPainter& painter, int row, int x0, int x1,
   const int offset = std::min(5, (x1 - x0) / 2);
 
   painter.setPen(QPen(colorForTraceValue(value), 2));
-  painter.drawLine(x0, top, x0 + offset, mid);
-  painter.drawLine(x0, bottom, x0 + offset, mid);
-  painter.drawLine(x0 + offset, mid, x1 - offset, mid);
-  painter.drawLine(x1 - offset, mid, x1, top);
-  painter.drawLine(x1 - offset, mid, x1, bottom);
+  painter.drawLine(x0, mid, x0 + offset, top);
+  painter.drawLine(x0, mid, x0 + offset, bottom);
+  painter.drawLine(x0 + offset, top, x1 - offset, top);
+  painter.drawLine(x0 + offset, bottom, x1 - offset, bottom);
+  painter.drawLine(x1 - offset, top, x1, mid);
+  painter.drawLine(x1 - offset, bottom, x1, mid);
 
   if (x1 - x0 > 28) {
     painter.setPen(palette().text().color());
