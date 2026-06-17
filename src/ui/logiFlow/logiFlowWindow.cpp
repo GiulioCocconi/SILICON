@@ -388,6 +388,7 @@ void LogiFlowWindow::createWaveformWindow()
   connect(waveformWindow, &QDialog::finished, this, [this] {
     const QSignalBlocker blocker(toggleFstTraceAct);
     toggleFstTraceAct->setChecked(false);
+    waveformViewer->setEditMode(false);
   });
   connect(diagramScene, &DiagramScene::waveformTraceReset, waveformViewer,
           &WaveformViewer::resetTrace);
@@ -395,6 +396,12 @@ void LogiFlowWindow::createWaveformWindow()
           &WaveformViewer::appendSnapshot);
   connect(diagramScene, &DiagramScene::waveformTraceSnapshots, waveformViewer,
           &WaveformViewer::appendSnapshots);
+  connect(waveformViewer, &WaveformViewer::editModeChanged, this,
+          [this](const bool enabled) {
+            diagramScene->setIoInteractionsEnabled(!enabled);
+          });
+  connect(waveformViewer, &WaveformViewer::editTraceCommitted, diagramScene,
+          &DiagramScene::simulateEditedWaveform);
 }
 
 void LogiFlowWindow::setFileName(const QString& fn)
@@ -697,6 +704,7 @@ void LogiFlowWindow::toggleFstTracing(bool enabled)
 
   waveformWindow->setVisible(enabled);
   if (enabled) {
+    diagramScene->setInteractionMode(InteractionMode::SIMULATION_MODE);
     waveformWindow->raise();
     waveformWindow->activateWindow();
   }

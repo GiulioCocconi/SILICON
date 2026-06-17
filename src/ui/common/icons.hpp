@@ -56,6 +56,7 @@ private:
         {"open", "folder-open"},
         {"link", "link"},
         {"paste", "file-input"},
+        {"pencil", "pencil"},
         {"plug-error", "circle-alert"},
         {"play", "play"},
         {"plug", "plug"},

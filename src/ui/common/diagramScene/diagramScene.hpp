@@ -43,6 +43,7 @@
 #include <nlohmann/json.hpp>
 
 #include <core/circuit.hpp>
+#include <core/siliconWaveform.hpp>
 
 #include <ui/common/componentSearchBox.hpp>
 #include <ui/common/wireManager.hpp>
@@ -171,6 +172,17 @@ public:
   }
 
   /**
+   * @brief Enables or disables user-triggered IO interactions in simulation mode.
+   * @param enabled True to allow clicks on interactive IO components
+   */
+  void setIoInteractionsEnabled(bool enabled) { ioInteractionsEnabled = enabled; }
+
+  /**
+   * @brief Returns whether simulation-mode IO clicks are currently allowed.
+   */
+  [[nodiscard]] bool areIoInteractionsEnabled() const { return ioInteractionsEnabled; }
+
+  /**
    * @brief Serializes the full editor scene to JSON.
    *
    * @anchor diagramscene_serialization_format
@@ -296,6 +308,14 @@ public:
 
   [[nodiscard]] bool isFstTracingEnabled() const;
 
+  /**
+   * @brief Simulates the circuit using an edited input waveform.
+   * @param duration Total waveform duration to simulate
+   * @param inputSnapshots Input-only timestamped values ordered like waveform inputs
+   */
+  void simulateEditedWaveform(qulonglong                         duration,
+                              std::vector<SiliconWaveformSample> inputSnapshots);
+
   ~DiagramScene() override;
 
 public slots:
@@ -346,8 +366,12 @@ signals:
 
   /**
    * @brief Emitted when interactive waveform signals should be rebuilt.
+   * @param signalNames Ordered signal labels
+   * @param inputCount Number of leading signals belonging to the input group
+   * @param signalWidths Width of each signal in bits
    */
-  void waveformTraceReset(QStringList signalNames, int inputCount);
+  void waveformTraceReset(QStringList signalNames, int inputCount,
+                          QList<int> signalWidths);
 
   /**
    * @brief Emitted when the simulator reaches a new visible waveform state.
@@ -397,6 +421,9 @@ private:
 
   /** @brief Current interaction mode */
   InteractionMode currentInteractionMode = InteractionMode::NORMAL_MODE;
+
+  /** @brief Whether simulation-mode IO clicks may mutate input state. */
+  bool ioInteractionsEnabled = true;
 
   /** @brief Component being placed (shadow) */
   GraphicalComponent* componentToBeDrawn = nullptr;
