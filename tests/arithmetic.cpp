@@ -147,6 +147,37 @@ TEST(ArithmeticTest, AdderNBitsAtomic)
   EXPECT_EQ(sum.getCurrentValue(), 0);
 }
 
+TEST(ArithmeticTest, DelayedAdderReschedulesUnchangedOutputBits)
+{
+  auto a    = Bus(4);
+  auto b    = Bus(4);
+  auto sum  = Bus(4);
+  auto cout = std::make_shared<Wire>();
+
+  auto adder = std::make_shared<AdderNBits>(std::array<Bus, 2>{a, b}, sum, cout);
+  adder->setProperty("delay", 5);
+
+  auto      circ = std::make_shared<Circuit>(Component_set{adder});
+  Simulator sim(circ);
+
+  const std::vector<SiliconWaveformSample> inputSnapshots{
+      {0, {"0000", "0000"}},
+      {2, {"0100", "0101"}},
+  };
+  const std::vector<Simulator::WaveformInputDriver> inputDrivers{
+      {a, {}},
+      {b, {}},
+  };
+
+  EXPECT_EQ(sim.simulateWaveform(6, inputSnapshots, inputDrivers),
+            Simulator::RunResult::Completed);
+  for (const auto& wire : sum)
+    EXPECT_EQ(wire->getCurrentState(), State::UNKNOWN);
+
+  EXPECT_EQ(sim.run(1), Simulator::RunResult::Completed);
+  EXPECT_EQ(sum.getCurrentValue(), 0b1001);
+}
+
 TEST(ArithmeticTest, AdderNBitsSizePropertyDefaultsAndValidation)
 {
   auto adder = std::make_shared<AdderNBits>();

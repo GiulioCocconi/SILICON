@@ -109,7 +109,7 @@ void Circuit::updateComponentIO(const Component_ptr& component)
       rebuildEdges(u);
   }
 
-  // 4. Update the spatial wire lookup and notify the Simulator to recompile!
+  // 4. Update the spatial wire lookup and notify the Simulator!
   buildTopologyMap();
   notifyTopologyListeners();
 }

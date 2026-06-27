@@ -17,8 +17,10 @@
 
 #pragma once
 #include <core/circuit.hpp>
+#include <core/component.hpp>
 #include <core/siliconFst.hpp>
 #include <core/siliconWaveform.hpp>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <queue>
@@ -26,6 +28,8 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 /**
@@ -57,8 +61,8 @@ struct TimedEvent {
  * topological order) and cyclic parts (executed iteratively using delta cycles until
  * convergence).
  *
- * @note The Simulator automatically recompiles when the circuit topology changes (if
- * constructed with `isInteractive`) .
+ * @note The simulator compiles the circuit topology into a reusable execution plan.
+ * In interactive mode topology changes notify the simulator to rebuild that plan.
  */
 class Simulator {
 public:
@@ -83,6 +87,24 @@ public:
     Cancelled,       /**< The caller requested cancellation */
     StepLimitReached /**< The configured simulation step limit was reached */
   };
+
+  /** @brief Logical edge observed for one wire during a reactive evaluation. */
+  enum class EdgeType {
+    RISE,     /**< LOW -> HIGH */
+    FALL,     /**< HIGH -> LOW */
+    UNKNOWN,  /**< A changed transition involving UNKNOWN or ERROR state */
+    NO_CHANGE /**< No captured change for this evaluation */
+  };
+
+  /**
+   * @brief Classifies one wire's transition in a simulation context.
+   *
+   * @param context Reactive evaluation context with previous wire states
+   * @param wire Wire to inspect
+   * @return RISE, FALL, UNKNOWN, or NO_CHANGE for this evaluation
+   */
+  [[nodiscard]] static EdgeType edgeType(const SimulationContext& context,
+                                         const Wire_ptr&          wire);
 
   /**
    * @brief Constructs a Simulator for the given circuit.
@@ -117,6 +139,19 @@ public:
   RunResult run(uint64_t duration, CancellationCheck isCancelled = {});
 
   /**
+   * @brief Runs pending timed events until no further propagation is scheduled.
+   *
+   * Unlike run(duration), this is not bounded by a caller-provided time window. It is
+   * intended for interactive settling after direct input changes, where the full
+   * propagation delay depends on the circuit. Unstable circuits are still bounded by
+   * maxSimulationSteps.
+   *
+   * @param isCancelled Optional cooperative cancellation callback
+   * @return Completion, cancellation, or step-limit outcome
+   */
+  RunResult runUntilIdle(CancellationCheck isCancelled = {});
+
+  /**
    * @brief Drives input buses from a sampled internal waveform and runs to duration.
    *
    * Snapshot values are matched to input drivers by index. Missing values and extra
@@ -134,7 +169,10 @@ public:
                              CancellationCheck                      isCancelled = {});
 
   /**
-   * @brief Recompiles the execution blocks from the circuit topology.
+   * @brief Rebuilds the cached execution plan after topology changes.
+   *
+   * Topological sorting, cyclic grouping, and forward-cone reachability are compiled
+   * once here instead of during every event batch.
    */
   void recompile();
 
@@ -168,19 +206,7 @@ public:
    * circuit.
    *
    * Optimized for pass-by-value buses (copies the bus).
-   * Extracts forward subgraph and evaluates each block.
-   *
-   * @param bus The bus to set
-   * @param value The value to set
-   * @param isCancelled Optional cooperative cancellation callback
-   * @return Completion or cancellation outcome
-   */
-  /**
-   * @brief Forces a bus to a specific value and propagates the change through the
-   * circuit.
-   *
-   * Optimized for pass-by-value buses (copies the bus).
-   * Extracts forward subgraph and evaluates each block.
+   * Evaluates the cached forward execution steps affected by the bus.
    *
    * @param bus The bus to set
    * @param value The value to set
@@ -194,7 +220,8 @@ public:
    * the change through the circuit.
    *
    * Tracks the source component that authorized this state change for proper
-   * event propagation. Extracts forward subgraph and evaluates each block.
+   * event propagation. Evaluates the cached forward execution steps affected by the
+   * bus.
    *
    * @param bus The bus to set
    * @param value The value to set
@@ -241,17 +268,53 @@ public:
   [[nodiscard]] static int      getMaxTransitionsPerDeltaCycle();
 
 private:
+  using PendingTransitionKey = std::pair<uint64_t, std::uintptr_t>;
+
+  struct PendingTransitionKeyHash {
+    [[nodiscard]] std::size_t operator()(const PendingTransitionKey& key) const noexcept;
+  };
+
+  struct PendingTransition {
+    uint64_t time  = 0;
+    State    state = State::ERROR;
+  };
+
+  struct StagedSequentialTransition {
+    Wire_ptr          target;
+    State             state = State::ERROR;
+    Component_weakPtr source;
+  };
+
+  struct ExecutionStep {
+    bool                           isCyclic = false;
+    std::vector<Component_weakPtr> components;
+  };
+
+  class EvaluationStateGuard;
+
   /** @brief The circuit being simulated */
   std::shared_ptr<Circuit> circuit;
 
-  /** @brief Pre-compiled execution blocks split by cyclic/acyclic parts */
-  std::vector<Circuit::SimulationBlock> executionBlocks;
+  /** @brief Listener ID used to unregister from circuit topology notifications */
+  uint64_t topologyListenerId = 0;
+
+  /** @brief Compiled component/SCC execution plan in topological order */
+  std::vector<ExecutionStep> executionPlan;
+
+  /** @brief Cached downstream execution step indices for each input wire ID */
+  std::unordered_map<uint64_t, std::vector<std::size_t>> forwardExecutionStepsByWire;
 
   /** @brief Priority queue of timed events sorted by time */
   std::priority_queue<TimedEvent, std::vector<TimedEvent>, std::greater<>> eventQueue;
 
-  /** @brief ID of the topology change listener registered with the circuit */
-  uint64_t topologyListenerId = 0;
+  /** @brief Latest valid delayed transition for each component-output wire */
+  std::unordered_map<PendingTransitionKey, PendingTransition, PendingTransitionKeyHash>
+      pendingTransitions;
+
+  /** @brief Zero-delay sequential writes waiting for the active pass to finish */
+  std::unordered_map<PendingTransitionKey, StagedSequentialTransition,
+                     PendingTransitionKeyHash>
+      stagedSequentialTransitions;
 
   /** @brief Current simulation time */
   uint64_t currentTime = 0;
@@ -265,6 +328,12 @@ private:
   /** @brief Optional callback for live waveform viewers */
   TraceSink traceSink;
 
+  /** @brief Previous-state index being populated during the active reactive pass. */
+  std::unordered_map<uint64_t, State>* activePreviousWireStates = nullptr;
+
+  /** @brief True while reactive evaluation should stage opted-in zero-delay writes. */
+  bool stageSequentialOutputs = false;
+
   static uint64_t maxSimulationSteps;
   static int      maxTransitionsPerDeltaCycle;
 
@@ -277,12 +346,64 @@ private:
 
   [[nodiscard]] static std::string encodeTraceBusValue(const Bus& bus);
 
+  [[nodiscard]] static PendingTransitionKey
+  pendingTransitionKey(const Wire_ptr& target, const Component_weakPtr& source);
+
+  void scheduleDelayedWireUpdate(const Wire_ptr& target, State newState, uint64_t delay,
+                                 const Component_weakPtr& source);
+
+  [[nodiscard]] bool shouldStageSequentialOutput(const Component_weakPtr& source) const;
+
+  void stageSequentialWireUpdate(const Wire_ptr& target, State newState,
+                                 const Component_weakPtr& source);
+
+  [[nodiscard]] std::vector<Bus> commitStagedSequentialTransitions(
+      std::unordered_map<uint64_t, State>& previousWireStates);
+
+  [[nodiscard]] RunResult
+  evaluateForwardConeAndTrace(std::span<const Bus>                changedBuses,
+                              std::unordered_map<uint64_t, State> previousWireStates,
+                              const CancellationCheck&            isCancelled = {},
+                              bool enableSequentialStaging                    = true);
+
+  [[nodiscard]] bool isDelayedEventPending(const TimedEvent& event) const;
+
+  [[nodiscard]] static std::vector<ExecutionStep>
+  compileExecutionPlan(std::span<const Circuit::SimulationBlock> blocks);
+
+  [[nodiscard]] bool evaluateExecutionStep(const ExecutionStep&     step,
+                                           const SimulationContext& context,
+                                           const CancellationCheck& isCancelled = {});
+
+  [[nodiscard]] bool evaluateExecutionPlan(std::span<const ExecutionStep> steps,
+                                           const SimulationContext&       context,
+                                           const CancellationCheck& isCancelled = {});
+
+  [[nodiscard]] bool
+  evaluateExecutionStepIndices(std::span<const std::size_t> stepIndices,
+                               const SimulationContext&     context,
+                               const CancellationCheck&     isCancelled = {});
+
+  [[nodiscard]] RunResult
+  evaluateExecutionStepIndicesAndTrace(std::span<const std::size_t> stepIndices,
+                                       const SimulationContext&     context,
+                                       const CancellationCheck&     isCancelled = {});
+
+  [[nodiscard]] std::vector<std::size_t>
+  getForwardExecutionSteps(std::span<const Bus> changedBuses) const;
+
+  [[nodiscard]] RunResult
+  applyWaveformInputSample(std::span<const std::string>         values,
+                           std::span<const WaveformInputDriver> inputDrivers,
+                           const CancellationCheck&             isCancelled);
+
+  [[nodiscard]] RunResult processNextEventBatch(const CancellationCheck& isCancelled);
+
   /**
-   * @brief Executes all components in a simulation block.
-   * @param block The simulation block to evaluate
-   * @param isCancelled Optional cooperative cancellation callback
-   * @return True when the block completed, false when cancellation was requested
+   * @brief Evaluates a plan and emits a trace snapshot on success.
    */
-  [[nodiscard]] bool evaluateBlock(const Circuit::SimulationBlock& block,
-                                   const CancellationCheck&        isCancelled = {});
+  [[nodiscard]] RunResult
+  evaluateExecutionPlanAndTrace(std::span<const ExecutionStep> steps,
+                                const SimulationContext&       context,
+                                const CancellationCheck&       isCancelled = {});
 };

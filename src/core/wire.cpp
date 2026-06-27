@@ -23,18 +23,9 @@
 #include <stdexcept>
 #include <utility>
 
+#include <core/wireUtils.hpp>
 #include <logging/logger.hpp>
-
-namespace {
-
-bool busValueOverflowsWidth(const unsigned int value, const size_t width)
-{
-  if (width >= std::numeric_limits<unsigned int>::digits)
-    return false;
-  return value >= (1u << width);
-}  // namespace
-
-}  // namespace
+#include <utils/ranges_wrapper.hpp>
 
 State operator&&(const State& a, const State& b)
 {
@@ -90,6 +81,56 @@ std::string to_str(State s)
   }
   throw std::logic_error("Unhandled State enum value");
 }
+
+namespace silicon::wire {
+
+bool busValueOverflowsWidth(const unsigned int value, const std::size_t width)
+{
+  if (width >= std::numeric_limits<unsigned int>::digits)
+    return false;
+  return value >= (1u << width);
+}
+
+bool busWillChangeToValue(const Bus& bus, const unsigned int value)
+{
+  for (const auto& [index, wire] : bus | silicon::views::enumerate) {
+    if (!wire)
+      continue;
+
+    const State newState = (value >> index) & 1 ? State::HIGH : State::LOW;
+    if (wire->getCurrentState() != newState)
+      return true;
+  }
+
+  return false;
+}
+
+bool isKnownBinary(const State state)
+{
+  return state == State::LOW || state == State::HIGH;
+}
+
+bool mayBe(const State actual, const State expected)
+{
+  return actual == expected || !isKnownBinary(actual);
+}
+
+State normalizeBinaryOrUnknown(const State state)
+{
+  return isKnownBinary(state) ? state : State::UNKNOWN;
+}
+
+State optionalControlStateOrInactive(const std::vector<Bus>& inputs,
+                                     const unsigned int index,
+                                     const State        inactiveState)
+{
+  if (index >= inputs.size() || inputs[index].size() == 0 || !inputs[index][0])
+    return inactiveState;
+
+  return Wire::safeGetCurrentState(inputs[index][0]);
+}
+
+}  // namespace silicon::wire
 
 Wire::Wire()
 {
@@ -221,7 +262,7 @@ int Bus::forceSetCurrentValue(const unsigned int value)
       this->busData[i]->forceSetCurrentState(s);
     }
   }
-  return busValueOverflowsWidth(value, this->size());
+  return silicon::wire::busValueOverflowsWidth(value, this->size());
 }
 
 int Bus::forceSetCurrentValue(const unsigned int       value,
@@ -233,7 +274,7 @@ int Bus::forceSetCurrentValue(const unsigned int       value,
       this->busData[i]->forceSetCurrentState(s, authorizedBy);
     }
   }
-  return busValueOverflowsWidth(value, this->size());
+  return silicon::wire::busValueOverflowsWidth(value, this->size());
 }
 
 int Bus::setCurrentValue(const unsigned int value, const Component_weakPtr& requestedBy)
@@ -244,7 +285,7 @@ int Bus::setCurrentValue(const unsigned int value, const Component_weakPtr& requ
       Wire::safeSetCurrentState(this->busData[i], s, requestedBy);
     }
   }
-  return busValueOverflowsWidth(value, this->size());
+  return silicon::wire::busValueOverflowsWidth(value, this->size());
 }
 
 unsigned int Bus::getCurrentValue() const
