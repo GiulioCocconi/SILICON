@@ -16,78 +16,94 @@
 */
 
 #include "arithmetic.hpp"
+
 #include <core/simulator.hpp>
+
 #include <limits>
 #include <stdexcept>
+#include <utility>
+#include <variant>
 
 HalfAdder::HalfAdder()
 {
   defineProperty("delay", 2);
+  setPropertyCallback("delay", [](const PropertyValue& value) {
+    if (std::get<int>(value) < 0)
+      throw std::invalid_argument("HalfAdder delay must be non-negative");
+
+    return value;
+  });
 }
 
-HalfAdder::HalfAdder(std::array<Wire_ptr, 2> inputs, Wire_ptr sum, Wire_ptr cout)
+HalfAdder::HalfAdder(std::array<Wire_ptr, 2> inputWires, Wire_ptr sum, Wire_ptr cout)
   : HalfAdder()
 {
-  /* PIN MAP:
-      a    = inputs [0][0];
-      b    = inputs [1][0];
-      sum  = outputs[0][0];
-      cout = outputs[1][0];
-   */
-
-  this->inputs  = {{inputs[0]}, {inputs[1]}};
-  this->outputs = {{sum}, {cout}};
+  inputs  = {{std::move(inputWires[busIndex(Inputs::A)])},
+             {std::move(inputWires[busIndex(Inputs::B)])}};
+  outputs = {{std::move(sum)}, {std::move(cout)}};
 }
 
 void HalfAdder::simulate(Simulator& sim)
 {
-  State a = Wire::safeGetCurrentState(this->inputs[0][0]);
-  State b = Wire::safeGetCurrentState(this->inputs[1][0]);
+  if (outputBusSize(Outputs::Sum) == 0 || outputBusSize(Outputs::Cout) == 0)
+    return;
 
-  sim.updateWire(this->outputs[0][0], a ^ b, getPropertyValue<int>("delay").value_or(0),
-                 weak_from_this());
-  sim.updateWire(this->outputs[1][0], a && b, getPropertyValue<int>("delay").value_or(0),
-                 weak_from_this());
+  const State a                = inputState(Inputs::A);
+  const State b                = inputState(Inputs::B);
+  const int   propagationDelay = getPropertyValue<int>("delay").value_or(0);
+
+  sim.updateWire(outputWire(Outputs::Sum), a ^ b, propagationDelay, weak_from_this());
+  sim.updateWire(outputWire(Outputs::Cout), a && b, propagationDelay, weak_from_this());
 }
 
 FullAdder::FullAdder()
 {
   defineProperty("delay", 3);
+  setPropertyCallback("delay", [](const PropertyValue& value) {
+    if (std::get<int>(value) < 0)
+      throw std::invalid_argument("FullAdder delay must be non-negative");
+
+    return value;
+  });
 }
 
-FullAdder::FullAdder(std::array<Wire_ptr, 2> inputs, Wire_ptr cin, Wire_ptr sum,
+FullAdder::FullAdder(std::array<Wire_ptr, 2> inputWires, Wire_ptr cin, Wire_ptr sum,
                      Wire_ptr cout)
   : FullAdder()
 {
-  /* PIN MAP:
-     a    = inputs [0][0];
-     b    = inputs [1][0];
-     cin  = inputs [2][0];
-     sum  = outputs[0][0];
-     cout = outputs[1][0]; */
-
-  this->inputs  = {{inputs[0]}, {inputs[1]}, {cin}};
-  this->outputs = {{sum}, {cout}};
+  inputs  = {{std::move(inputWires[busIndex(Inputs::A)])},
+             {std::move(inputWires[busIndex(Inputs::B)])},
+             {std::move(cin)}};
+  outputs = {{std::move(sum)}, {std::move(cout)}};
 }
 
 void FullAdder::simulate(Simulator& sim)
 {
-  State a   = Wire::safeGetCurrentState(this->inputs[0][0]);
-  State b   = Wire::safeGetCurrentState(this->inputs[1][0]);
-  State cin = Wire::safeGetCurrentState(this->inputs[2][0]);
+  if (outputBusSize(Outputs::Sum) == 0 || outputBusSize(Outputs::Cout) == 0)
+    return;
 
-  State sum  = a ^ b ^ cin;
-  State cout = (a && b) || (cin && (a ^ b));
+  const State a                = inputState(Inputs::A);
+  const State b                = inputState(Inputs::B);
+  const State cin              = inputState(Inputs::Cin);
+  const State sum              = a ^ b ^ cin;
+  const State cout             = (a && b) || (cin && (a ^ b));
+  const int   propagationDelay = getPropertyValue<int>("delay").value_or(0);
 
-  int delay = getPropertyValue<int>("delay").value_or(0);
-  sim.updateWire(this->outputs[0][0], sum, delay, weak_from_this());
-  sim.updateWire(this->outputs[1][0], cout, delay, weak_from_this());
+  sim.updateWire(outputWire(Outputs::Sum), sum, propagationDelay, weak_from_this());
+  sim.updateWire(outputWire(Outputs::Cout), cout, propagationDelay, weak_from_this());
 }
 
 AdderNBits::AdderNBits()
 {
   defineProperty("delay", 5);
   defineProperty("size", 4);
+
+  setPropertyCallback("delay", [](const PropertyValue& value) {
+    if (std::get<int>(value) < 0)
+      throw std::invalid_argument("AdderNBits delay must be non-negative");
+
+    return value;
+  });
   setPropertyCallback("size", [this](const PropertyValue& value) {
     const int size = std::get<int>(value);
     if (size < 1)
@@ -102,22 +118,16 @@ AdderNBits::AdderNBits()
   });
 }
 
-AdderNBits::AdderNBits(std::array<Bus, 2> inputs, Bus sum, Wire_ptr cout) : AdderNBits()
+AdderNBits::AdderNBits(std::array<Bus, 2> inputBuses, Bus sum, Wire_ptr cout)
+  : AdderNBits()
 {
-  /* PIN MAP:
-     a    = inputs [0][0:N];
-     b    = inputs [1][0:N];
-     sum  = outputs[0][0:N];
-     cout = outputs[1][ 0 ]; */
-
-  static_assert(inputs.size() == 2);
-  if (inputs[0].size() != sum.size())
+  if (inputBuses[busIndex(Inputs::A)].size() != sum.size()
+      || inputBuses[busIndex(Inputs::B)].size() != sum.size()) {
     throw std::invalid_argument("AdderNBits: input bus width must match sum bus width");
-  if (inputs[1].size() != sum.size())
-    throw std::invalid_argument("AdderNBits: input bus width must match sum bus width");
+  }
 
-  this->inputs  = {inputs[0], inputs[1]};
-  this->outputs = {sum, {cout}};
+  inputs  = {inputBuses[busIndex(Inputs::A)], inputBuses[busIndex(Inputs::B)]};
+  outputs = {sum, {std::move(cout)}};
   setProperty("size", static_cast<int>(sum.size()));
 }
 
@@ -129,16 +139,16 @@ int AdderNBits::setSize(const int width)
   auto newInputs = getInputs();
   if (newInputs.size() < 2)
     newInputs.resize(2);
-  newInputs[0].setSize(static_cast<unsigned short>(width));
-  newInputs[1].setSize(static_cast<unsigned short>(width));
+  newInputs[busIndex(Inputs::A)].setSize(static_cast<unsigned short>(width));
+  newInputs[busIndex(Inputs::B)].setSize(static_cast<unsigned short>(width));
   setInputs(newInputs);
 
   auto newOutputs = getOutputs();
   if (newOutputs.size() < 2)
     newOutputs.resize(2);
-  newOutputs[0].setSize(static_cast<unsigned short>(width));
-  if (newOutputs[1].size() != 1)
-    newOutputs[1].setSize(1);
+  newOutputs[busIndex(Outputs::Sum)].setSize(static_cast<unsigned short>(width));
+  if (newOutputs[busIndex(Outputs::Cout)].size() != 1)
+    newOutputs[busIndex(Outputs::Cout)].setSize(1);
   setOutputs(newOutputs);
 
   return width;
@@ -146,38 +156,21 @@ int AdderNBits::setSize(const int width)
 
 void AdderNBits::simulate(Simulator& sim)
 {
-  int delay = getPropertyValue<int>("delay").value_or(0);
+  if (outputBusSize(Outputs::Sum) == 0 || outputBusSize(Outputs::Cout) == 0)
+    return;
 
-  try {
-    if (this->inputs[0].isInErrorState() || this->inputs[1].isInErrorState()) {
-      throw std::logic_error("Input bus in error state");
-    }
+  State      carry            = State::LOW;
+  const auto sumWidth         = outputBusSize(Outputs::Sum);
+  const int  propagationDelay = getPropertyValue<int>("delay").value_or(0);
 
-    unsigned int a   = this->inputs[0].getCurrentValue();
-    unsigned int b   = this->inputs[1].getCurrentValue();
-    unsigned int sum = a + b;
+  for (unsigned short bit = 0; bit < sumWidth; ++bit) {
+    const State a = inputState(Inputs::A, bit);
+    const State b = inputState(Inputs::B, bit);
 
-    for (unsigned short i = 0; i < this->outputs[0].size(); i++) {
-      if (this->outputs[0][i]) {
-        State s = (sum >> i) & 1 ? State::HIGH : State::LOW;
-        sim.updateWire(this->outputs[0][i], s, delay, weak_from_this());
-      }
-    }
-
-    const auto sumWidth = this->outputs[0].size();
-    State      overflow = State::LOW;
-    if (sumWidth < std::numeric_limits<unsigned int>::digits)
-      overflow = (sum >= (1u << sumWidth)) ? State::HIGH : State::LOW;
-
-    sim.updateWire(this->outputs[1][0], overflow, delay, weak_from_this());
-
-  } catch (const std::logic_error&) {
-    for (auto& w : this->outputs[0]) {
-      if (w)
-        sim.updateWire(w, State::ERROR, delay, weak_from_this());
-    }
-    if (this->outputs[1][0]) {
-      sim.updateWire(this->outputs[1][0], State::ERROR, delay, weak_from_this());
-    }
+    sim.updateWire(outputWire(Outputs::Sum, bit), a ^ b ^ carry, propagationDelay,
+                   weak_from_this());
+    carry = (a && b) || (carry && (a ^ b));
   }
+
+  sim.updateWire(outputWire(Outputs::Cout), carry, propagationDelay, weak_from_this());
 }
