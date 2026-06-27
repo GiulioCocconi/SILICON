@@ -19,7 +19,7 @@
 #pragma once
 
 #ifndef __EMSCRIPTEN__
-#  include <thread>
+  #include <thread>
 #endif
 
 #include <atomic>

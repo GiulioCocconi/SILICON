@@ -173,9 +173,8 @@ private:
     cachedWidthText      = QString("[%1]").arg(busWidth);
     cachedWidthTextWidth = widthMetrics.horizontalAdvance(cachedWidthText);
 
-    const QString largestKnown =
-        QString::fromStdString(silicon::formatFixedWidthHex(
-            silicon::maxValueForBusWidth(busWidth), busWidth));
+    const QString largestKnown = QString::fromStdString(
+        silicon::formatFixedWidthHex(silicon::maxValueForBusWidth(busWidth), busWidth));
     const QString unknownBits(static_cast<int>(std::min<unsigned int>(busWidth, 8)),
                               QLatin1Char('X'));
 
@@ -500,9 +499,8 @@ DummyBusInputComponent::DummyBusInputComponent(Bus bus, std::string name)
       "size", static_cast<int>(outputs[0].size()),
       [this](const PropertyValue& value) { return setSize(std::get<int>(value)); });
   defineProperty("startValue", 0, [this](const PropertyValue& value) {
-    const auto maxValue =
-        static_cast<int>(
-            silicon::maxValueForBusWidth(outputs.empty() ? 1 : outputs[0].size()));
+    const auto maxValue = static_cast<int>(
+        silicon::maxValueForBusWidth(outputs.empty() ? 1 : outputs[0].size()));
     return std::clamp(std::get<int>(value), 0, maxValue);
   });
 }
@@ -560,9 +558,8 @@ void GraphicalBusInput::installPropertyCallbacks()
       "startValue", [safeThis, boundComponent](const PropertyValue& value) {
         auto       component = boundComponent.lock();
         const auto outputs   = component ? component->getOutputs() : std::vector<Bus>{};
-        const auto maxValue =
-            static_cast<int>(
-                silicon::maxValueForBusWidth(outputs.empty() ? 1 : outputs[0].size()));
+        const auto maxValue  = static_cast<int>(
+            silicon::maxValueForBusWidth(outputs.empty() ? 1 : outputs[0].size()));
         const int clampedValue = std::clamp(std::get<int>(value), 0, maxValue);
         if (safeThis && safeThis->getComponent() == component)
           safeThis->setValue(static_cast<unsigned int>(clampedValue));
@@ -614,12 +611,10 @@ void GraphicalBusInput::editValue()
   const QString prompt =
       QString("Set %1-bit bus value (decimal, 0x..., or 0b...)").arg(width);
 
-  bool          ok = false;
-  const QString text =
-      QInputDialog::getText(nullptr, "Bus Input", prompt, QLineEdit::Normal,
-                            QString::fromStdString(
-                                silicon::formatFixedWidthHex(currentValue, width)),
-                            &ok);
+  bool          ok   = false;
+  const QString text = QInputDialog::getText(
+      nullptr, "Bus Input", prompt, QLineEdit::Normal,
+      QString::fromStdString(silicon::formatFixedWidthHex(currentValue, width)), &ok);
   if (!ok)
     return;
 

@@ -180,7 +180,8 @@ void Simulator::recompile()
   executionPlan       = compileExecutionPlan(compiledBlocks);
 
   std::unordered_map<const Component*, std::size_t> componentToStep;
-  for (const auto& [stepIndex, executionStep] : executionPlan | silicon::views::enumerate) {
+  for (const auto& [stepIndex, executionStep] :
+       executionPlan | silicon::views::enumerate) {
     for (const auto& weakComp : executionStep.components) {
       if (auto comp = weakComp.lock()) {
         componentToStep[comp.get()] = stepIndex;

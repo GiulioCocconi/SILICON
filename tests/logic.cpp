@@ -83,7 +83,7 @@ public:
   {
     Record record;
     record.initialEvaluation = context.initialEvaluation;
-    record.changedBuses = {context.changedBuses.begin(), context.changedBuses.end()};
+    record.changedBuses      = {context.changedBuses.begin(), context.changedBuses.end()};
     for (const auto& wire : inputs[0]) {
       record.previousInputStates.push_back(context.previousState(wire));
       record.changedInputs.push_back(context.changed(wire));
@@ -285,7 +285,7 @@ TEST(SimulatorTest, WaveformInputSampleCapturesPreviousWireStates)
   auto      circuit  = std::make_shared<Circuit>(Component_set{recorder});
   Simulator simulator(circuit);
 
-  const std::vector<SiliconWaveformSample> inputSnapshots{{0, {"01"}}};
+  const std::vector<SiliconWaveformSample>          inputSnapshots{{0, {"01"}}};
   const std::vector<Simulator::WaveformInputDriver> inputDrivers{{input, {}}};
 
   EXPECT_EQ(simulator.simulateWaveform(1, inputSnapshots, inputDrivers),
@@ -451,7 +451,7 @@ TEST(FlipFlopTest, DFlipFlopCapturesOnPositiveEdge)
   auto flipFlop = std::make_shared<DFlipFlop>(d, clock, clear, preset, q, notQ);
   flipFlop->setProperty("propagationDelay", 0);
 
-  auto      circuit  = std::make_shared<Circuit>(Component_set{flipFlop});
+  auto      circuit = std::make_shared<Circuit>(Component_set{flipFlop});
   Simulator simulator(circuit);
 
   EXPECT_EQ(simulator.setBus(Bus{d}, 1), Simulator::RunResult::Completed);
@@ -514,7 +514,7 @@ TEST(FlipFlopTest, EFlipFlopHonorsEnable)
 
   auto flipFlop = std::make_shared<EFlipFlop>(d, enable, clock, clear, preset, q, notQ);
   flipFlop->setProperty("propagationDelay", 0);
-  auto circuit  = std::make_shared<Circuit>(Component_set{flipFlop});
+  auto      circuit = std::make_shared<Circuit>(Component_set{flipFlop});
   Simulator simulator(circuit);
 
   EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
@@ -547,7 +547,7 @@ TEST(FlipFlopTest, JKFlipFlopImplementsTruthTable)
   auto flipFlop = std::make_shared<JKFlipFlop>(j, k, clock, clear, preset, q, notQ);
   flipFlop->setProperty("propagationDelay", 0);
 
-  auto      circuit  = std::make_shared<Circuit>(Component_set{flipFlop});
+  auto      circuit = std::make_shared<Circuit>(Component_set{flipFlop});
   Simulator simulator(circuit);
 
   EXPECT_EQ(simulator.setBus(Bus{j}, 1), Simulator::RunResult::Completed);
@@ -590,7 +590,7 @@ TEST(FlipFlopTest, AsyncClearAndPresetOverrideInputs)
   auto flipFlop = std::make_shared<DFlipFlop>(d, clock, clear, preset, q, notQ);
   flipFlop->setProperty("propagationDelay", 0);
 
-  auto      circuit  = std::make_shared<Circuit>(Component_set{flipFlop});
+  auto      circuit = std::make_shared<Circuit>(Component_set{flipFlop});
   Simulator simulator(circuit);
 
   EXPECT_EQ(simulator.setBus(Bus{clear}, 1), Simulator::RunResult::Completed);
@@ -614,8 +614,7 @@ TEST(FlipFlopTest, UnconnectedAsyncControlsDefaultInactive)
   auto q     = std::make_shared<Wire>(State::UNKNOWN);
   auto notQ  = std::make_shared<Wire>(State::UNKNOWN);
 
-  auto flipFlop =
-      std::make_shared<DFlipFlop>(d, clock, Wire_ptr{}, Wire_ptr{}, q, notQ);
+  auto flipFlop = std::make_shared<DFlipFlop>(d, clock, Wire_ptr{}, Wire_ptr{}, q, notQ);
   flipFlop->setProperty("propagationDelay", 0);
 
   auto      circuit = std::make_shared<Circuit>(Component_set{flipFlop});
@@ -633,9 +632,8 @@ TEST(FlipFlopTest, UnconnectedAsyncControlsRemainInactiveAfterClearingWires)
   auto q     = std::make_shared<Wire>(State::UNKNOWN);
   auto notQ  = std::make_shared<Wire>(State::UNKNOWN);
 
-  auto flipFlop =
-      std::make_shared<DFlipFlop>(Wire_ptr{}, Wire_ptr{}, Wire_ptr{}, Wire_ptr{},
-                                  Wire_ptr{}, Wire_ptr{});
+  auto flipFlop = std::make_shared<DFlipFlop>(Wire_ptr{}, Wire_ptr{}, Wire_ptr{},
+                                              Wire_ptr{}, Wire_ptr{}, Wire_ptr{});
   flipFlop->setProperty("propagationDelay", 0);
   flipFlop->clearWires();
   flipFlop->setInput(std::to_underlying(DFlipFlop::Inputs::D), Bus{d}, true);
@@ -663,7 +661,7 @@ TEST(FlipFlopTest, UnknownDataCapturesAsUnknown)
   auto flipFlop = std::make_shared<DFlipFlop>(d, clock, clear, preset, q, notQ);
   flipFlop->setProperty("propagationDelay", 0);
 
-  auto      circuit  = std::make_shared<Circuit>(Component_set{flipFlop});
+  auto      circuit = std::make_shared<Circuit>(Component_set{flipFlop});
   Simulator simulator(circuit);
 
   EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
@@ -748,15 +746,15 @@ TEST(FlipFlopTest, ZeroDelayChainSamplesPreEdgeCombinationalValue)
   auto q1    = std::make_shared<Wire>(State::UNKNOWN);
   auto notQ1 = std::make_shared<Wire>(State::UNKNOWN);
 
-  auto ff0     = std::make_shared<DFlipFlop>(d, clock, clear, preset, q0, notQ0);
+  auto ff0      = std::make_shared<DFlipFlop>(d, clock, clear, preset, q0, notQ0);
   auto inverter = std::make_shared<NotGate>(q0, invQ0);
-  auto ff1     = std::make_shared<DFlipFlop>(invQ0, clock, clear, preset, q1, notQ1);
+  auto ff1      = std::make_shared<DFlipFlop>(invQ0, clock, clear, preset, q1, notQ1);
 
   ff0->setProperty("propagationDelay", 0);
   ff1->setProperty("propagationDelay", 0);
   inverter->setProperty("delay", 0);
 
-  auto circuit = std::make_shared<Circuit>(Component_set{ff0, inverter, ff1});
+  auto      circuit = std::make_shared<Circuit>(Component_set{ff0, inverter, ff1});
   Simulator simulator(circuit);
 
   EXPECT_EQ(simulator.setBus(Bus{clear}, 1), Simulator::RunResult::Completed);

@@ -18,8 +18,8 @@
 
 #include <ui/serialization/gui_component_registration.hpp>
 
-#include <core/gates.hpp>
 #include <core/flipflops.hpp>
+#include <core/gates.hpp>
 #include <extraComponents/arithmetic.hpp>
 #include <extraComponents/utils.hpp>
 #include <ui/logiFlow/components/graphicalArithmetic.hpp>

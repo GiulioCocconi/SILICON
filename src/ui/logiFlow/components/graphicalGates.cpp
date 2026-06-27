@@ -47,6 +47,5 @@ GraphicalNot::GraphicalNot(QGraphicsItem* parent)
 {
   isEditable = false;
 
-  setPorts({PortPair{"i", QPoint(-20, 20)}},
-           {PortPair{"o", QPoint(80, 20)}});
+  setPorts({PortPair{"i", QPoint(-20, 20)}}, {PortPair{"o", QPoint(80, 20)}});
 }

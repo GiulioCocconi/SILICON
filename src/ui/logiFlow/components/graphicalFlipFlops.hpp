@@ -23,8 +23,7 @@
 class GraphicalFlipFlop : public GraphicalLogicComponent {
   Q_OBJECT
 protected:
-  GraphicalFlipFlop(const Component_ptr& component,
-                    QGraphicsItem* parent = nullptr);
+  GraphicalFlipFlop(const Component_ptr& component, QGraphicsItem* parent = nullptr);
 
   int type() const override { return SiliconTypes::UNKNOWN; }
 };

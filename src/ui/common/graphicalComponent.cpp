@@ -28,9 +28,9 @@
 #include <QPainter>
 #include <QTextOption>
 
-#include <utils/ranges_wrapper.hpp>
 #include <ui/common/theme.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
+#include <utils/ranges_wrapper.hpp>
 
 namespace {
 
@@ -148,10 +148,14 @@ void GraphicalComponent::rotate()
 }
 
 QRectF GraphicalComponent::getCollisionRect() const
-{ return boundingRectWithoutMargins(); }
+{
+  return boundingRectWithoutMargins();
+}
 
 void GraphicalComponent::mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event)
-{ GraphicalItem::mouseDoubleClickEvent(event); }
+{
+  GraphicalItem::mouseDoubleClickEvent(event);
+}
 
 void GraphicalComponent::setPorts(const std::vector<PortPair>& busToPortInputs,
                                   const std::vector<PortPair>& busToPortOutputs)
@@ -370,12 +374,12 @@ void Port::paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
   if (!line)
     return;
 
-  const bool   isBusPort = (size != 1);
-  const QLineF portLine  = line->line();
-  const QFont  markerFont("NovaMono", painter->font().pointSize() * 0.6);
+  const bool          isBusPort = (size != 1);
+  const QLineF        portLine  = line->line();
+  const QFont         markerFont("NovaMono", painter->font().pointSize() * 0.6);
   const QFontMetricsF metrics(markerFont);
-  const QColor portColor = inputAssignmentError ? Qt::red
-                                                : ThemeEngine::getColor("SILICON_INK");
+  const QColor        portColor =
+      inputAssignmentError ? Qt::red : ThemeEngine::getColor("SILICON_INK");
 
   if (inputAssignmentError) {
     painter->save();
@@ -387,20 +391,24 @@ void Port::paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
   if (printName) {
     auto getNameRect = [portLine, metrics, this]() -> QRectF {
       constexpr qreal margin = DiagramScene::GRID_SIZE / 2.0;
-      const QPointF linePt = portLine.p2();
+      const QPointF   linePt = portLine.p2();
 
-      const qreal textWidth = metrics.horizontalAdvance(name);
+      const qreal textWidth  = metrics.horizontalAdvance(name);
       const qreal textHeight = metrics.height();
 
       switch (this->side) {
         case PortSide::DOWN:
-          return {linePt.x() - textWidth / 2.0, linePt.y() - margin / 1.5 - textHeight, textWidth, textHeight};
+          return {linePt.x() - textWidth / 2.0, linePt.y() - margin / 1.5 - textHeight,
+                  textWidth, textHeight};
         case PortSide::UP:
-          return {linePt.x() - textWidth / 2.0, linePt.y() + margin / 1.5, textWidth, textHeight};
+          return {linePt.x() - textWidth / 2.0, linePt.y() + margin / 1.5, textWidth,
+                  textHeight};
         case PortSide::LEFT:
-          return {linePt.x() + margin, linePt.y() - textHeight / 2.0, textWidth, textHeight};
+          return {linePt.x() + margin, linePt.y() - textHeight / 2.0, textWidth,
+                  textHeight};
         case PortSide::RIGHT:
-          return {linePt.x() - margin - textWidth, linePt.y() - textHeight / 2.0, textWidth, textHeight};
+          return {linePt.x() - margin - textWidth, linePt.y() - textHeight / 2.0,
+                  textWidth, textHeight};
       }
       std::unreachable();
     };
@@ -453,7 +461,9 @@ QRectF Port::collisionRect() const
 }
 
 std::string GraphicalComponent::getTypeName() const
-{ return "Unknown"; }
+{
+  return "Unknown";
+}
 
 nlohmann::ordered_json GraphicalComponent::serialize() const
 {

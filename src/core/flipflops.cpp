@@ -67,7 +67,6 @@ void FlipFlop::simulate(Simulator& sim, const SimulationContext& context)
   const auto currentTime        = sim.getCurrentTime();
   const bool timingInputChanged = hasTimingSensitiveInputChange(context);
 
-
   if (timingInputChanged)
     lastTimingInputChangeTime = currentTime;
 
@@ -82,7 +81,6 @@ void FlipFlop::simulate(Simulator& sim, const SimulationContext& context)
   }
 
   if (clear == State::LOW && preset == State::LOW) {
-
     if (selectedClockEdge) {
       const bool setupViolation = violatesSetupTime(currentTime, timingInputChanged);
       lastSelectedClockEdgeTime = currentTime;
@@ -95,7 +93,7 @@ void FlipFlop::simulate(Simulator& sim, const SimulationContext& context)
     }
 
     else if (clockEdge == Simulator::EdgeType::UNKNOWN && previousClock
-        && mayHaveSelectedEdge(*previousClock, clock)) {
+             && mayHaveSelectedEdge(*previousClock, clock)) {
       // The clock transition is ambiguous (e.g., LOW -> UNKNOWN). We don't know if the
       // physical hardware would have triggered, so pessimistically invalidate the data.
       lastSelectedClockEdgeTime = currentTime;

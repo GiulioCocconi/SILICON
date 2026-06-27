@@ -4,10 +4,10 @@
 #include "libavoid/qtgeomtypes.h"
 #include "ui/common/wireRouting.hpp"
 
-#include <algorithm>
 #include <QPointF>
 #include <QPolygonF>
 #include <QRectF>
+#include <algorithm>
 #include <vector>
 
 namespace {
@@ -61,11 +61,10 @@ TEST(LibavoidTest, RoutesAroundObstacle)
 {
   Avoid::Router router(Avoid::PolyLineRouting);
 
-  auto obstacle_polygon = rectangle(40.0, -10.0, 60.0, 10.0);
-  auto* obstacle = new Avoid::ShapeRef(&router, obstacle_polygon, 1);
-  auto* connector =
-      new Avoid::ConnRef(&router, Avoid::ConnEnd(Avoid::Point(0.0, 0.0)),
-                         Avoid::ConnEnd(Avoid::Point(100.0, 0.0)), 2);
+  auto  obstacle_polygon = rectangle(40.0, -10.0, 60.0, 10.0);
+  auto* obstacle         = new Avoid::ShapeRef(&router, obstacle_polygon, 1);
+  auto* connector = new Avoid::ConnRef(&router, Avoid::ConnEnd(Avoid::Point(0.0, 0.0)),
+                                       Avoid::ConnEnd(Avoid::Point(100.0, 0.0)), 2);
 
   ASSERT_TRUE(router.processTransaction());
   ASSERT_TRUE(connector->needsRepaint());
@@ -130,7 +129,7 @@ TEST(WireRoutingTest, RoutesVerticalPairsAroundBufferedObstacle)
 
 TEST(LibavoidQtGeomTypesTest, ConvertsPoint)
 {
-  const QPointF qt_point(12.5, -7.25);
+  const QPointF      qt_point(12.5, -7.25);
   const Avoid::Point avoid_point = Avoid::pointFromQPointF(qt_point);
 
   EXPECT_DOUBLE_EQ(avoid_point.x, qt_point.x());
@@ -140,9 +139,9 @@ TEST(LibavoidQtGeomTypesTest, ConvertsPoint)
 
 TEST(LibavoidQtGeomTypesTest, ConvertsRectangleAndBox)
 {
-  const QRectF qt_rect(QPointF(10.0, 20.0), QPointF(30.0, 50.0));
+  const QRectF           qt_rect(QPointF(10.0, 20.0), QPointF(30.0, 50.0));
   const Avoid::Rectangle avoid_rect = Avoid::rectangleFromQRectF(qt_rect);
-  const Avoid::Box avoid_box = avoid_rect.offsetBoundingBox(0.0);
+  const Avoid::Box       avoid_box  = avoid_rect.offsetBoundingBox(0.0);
 
   EXPECT_EQ(Avoid::toQRectF(avoid_box), qt_rect);
 }
@@ -152,8 +151,8 @@ TEST(LibavoidQtGeomTypesTest, ConvertsPolygon)
   const QPolygonF qt_polygon(
       {QPointF(0.0, 0.0), QPointF(10.0, 0.0), QPointF(10.0, 15.0), QPointF(0.0, 15.0)});
 
-  const Avoid::Polygon avoid_polygon = Avoid::polygonFromQPolygonF(qt_polygon);
-  const QPolygonF round_tripped_polygon = Avoid::toQPolygonF(avoid_polygon);
+  const Avoid::Polygon avoid_polygon         = Avoid::polygonFromQPolygonF(qt_polygon);
+  const QPolygonF      round_tripped_polygon = Avoid::toQPolygonF(avoid_polygon);
 
   ASSERT_EQ(avoid_polygon.size(), static_cast<size_t>(qt_polygon.size()));
   EXPECT_EQ(round_tripped_polygon, qt_polygon);

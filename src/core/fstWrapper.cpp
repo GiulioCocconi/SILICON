@@ -97,8 +97,7 @@ FstReader::FstScopeNode FstReader::buildHierarchyTree()
 FstReader::EnumTable FstReader::parseEnumTable(std::string_view enumString)
 {
   const std::string enumStringStorage(enumString);
-  fstETab*          etab =
-      fstUtilityExtractEnumTableFromString(enumStringStorage.c_str());
+  fstETab* etab = fstUtilityExtractEnumTableFromString(enumStringStorage.c_str());
   if (!etab)
     return {};
 
@@ -124,8 +123,7 @@ FstHierarchyBuilder::FstHierarchyBuilder(std::string_view fileName,
   : fn(fileName)
 {
   const std::string fileNameStorage(fileName);
-  auto*             raw_ctx =
-      fstWriterCreate(fileNameStorage.c_str(), use_compressed_hier);
+  auto* raw_ctx = fstWriterCreate(fileNameStorage.c_str(), use_compressed_hier);
 
   if (!raw_ctx)
     throw std::runtime_error(
@@ -150,8 +148,8 @@ fstHandle FstHierarchyBuilder::createVar(fstVarType var_type, fstVarDir var_dir,
   assert(context);
 
   const std::string nameStorage(name);
-  return fstWriterCreateVar(context.get(), var_type, var_dir, len,
-                            nameStorage.c_str(), aliasHandle);
+  return fstWriterCreateVar(context.get(), var_type, var_dir, len, nameStorage.c_str(),
+                            aliasHandle);
 }
 
 fstEnumHandle FstHierarchyBuilder::createEnumTable(

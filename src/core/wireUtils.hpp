@@ -70,7 +70,7 @@ namespace silicon::wire {
  * @return Current wire state, or inactiveState when the pin is unconnected.
  */
 [[nodiscard]] State optionalControlStateOrInactive(const std::vector<Bus>& inputs,
-                                                   unsigned int index,
-                                                   State inactiveState);
+                                                   unsigned int            index,
+                                                   State                   inactiveState);
 
 }  // namespace silicon::wire

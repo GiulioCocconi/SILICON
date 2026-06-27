@@ -34,7 +34,7 @@ class WaveformViewer;
 #include <ui/common/diagramView.hpp>
 
 #ifndef QT_NO_CONTEXTMENU
-#  include <QContextMenuEvent>
+  #include <QContextMenuEvent>
 #endif
 
 class LogiFlowWindow : public QMainWindow {

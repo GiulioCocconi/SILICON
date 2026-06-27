@@ -22,7 +22,7 @@
 #include <version>
 
 #ifndef __cpp_lib_ranges_slide
-#  include <range/v3/view/sliding.hpp>
+  #include <range/v3/view/sliding.hpp>
 #endif
 
 namespace silicon::views {

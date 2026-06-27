@@ -19,8 +19,8 @@
 #include "num_formatting.hpp"
 
 #include <algorithm>
-#include <charconv>
 #include <cctype>
+#include <charconv>
 #include <limits>
 #include <sstream>
 
@@ -28,11 +28,9 @@ namespace {
 
 std::string trimmed(std::string_view text)
 {
-  while (!text.empty()
-         && std::isspace(static_cast<unsigned char>(text.front())) != 0)
+  while (!text.empty() && std::isspace(static_cast<unsigned char>(text.front())) != 0)
     text.remove_prefix(1);
-  while (!text.empty()
-         && std::isspace(static_cast<unsigned char>(text.back())) != 0)
+  while (!text.empty() && std::isspace(static_cast<unsigned char>(text.back())) != 0)
     text.remove_suffix(1);
   return std::string(text);
 }
@@ -51,9 +49,8 @@ bool startsWithIgnoreCase(std::string_view text, std::string_view prefix)
 
 bool isKnownBitString(std::string_view rawBits)
 {
-  return !rawBits.empty() && std::ranges::all_of(rawBits, [](char ch) {
-           return ch == '0' || ch == '1';
-         });
+  return !rawBits.empty()
+         && std::ranges::all_of(rawBits, [](char ch) { return ch == '0' || ch == '1'; });
 }
 
 std::string uppercaseRaw(std::string_view rawBits)
@@ -69,9 +66,9 @@ void decimalMultiplyByTwo(std::string& value)
 {
   int carry = 0;
   for (auto it = value.rbegin(); it != value.rend(); ++it) {
-    const int digit  = (*it - '0') * 2 + carry;
-    *it              = static_cast<char>('0' + digit % 10);
-    carry            = digit / 10;
+    const int digit = (*it - '0') * 2 + carry;
+    *it             = static_cast<char>('0' + digit % 10);
+    carry           = digit / 10;
   }
   if (carry != 0)
     value.insert(value.begin(), static_cast<char>('0' + carry));
@@ -160,7 +157,7 @@ unsigned int maxValueForBusWidth(const std::size_t width)
 
 std::string formatFixedWidthHex(const unsigned int value, const std::size_t width)
 {
-  const int hexDigits = std::max(1, static_cast<int>((width + 3) / 4));
+  const int          hexDigits = std::max(1, static_cast<int>((width + 3) / 4));
   std::ostringstream stream;
   stream << "0X" << std::uppercase << std::hex;
   stream.width(hexDigits);
