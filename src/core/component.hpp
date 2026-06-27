@@ -26,6 +26,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <unordered_map>
 #include <utility>
 #include <variant>
@@ -224,6 +225,96 @@ protected:
    * @param newSize The new size of the input
    */
   void handleInputSizeChange(const unsigned int index, const unsigned int newSize);
+
+  /**
+   * @brief Converts a component-local bus enum to its storage index.
+   * @tparam Enum Component input/output enum type
+   * @param value Enum value to convert
+   * @return Numeric bus index
+   */
+  template <typename Enum>
+    requires std::is_enum_v<Enum>
+  static constexpr unsigned int busIndex(Enum value)
+  {
+    return std::to_underlying(value);
+  }
+
+  [[nodiscard]] State inputState(unsigned int input, unsigned short bit = 0) const
+  {
+    if (input >= inputs.size() || bit >= inputs[input].size())
+      return State::ERROR;
+
+    return Wire::safeGetCurrentState(inputs[input][bit]);
+  }
+
+  [[nodiscard]] Wire_ptr inputWire(unsigned int input, unsigned short bit = 0) const
+  {
+    if (input >= inputs.size() || bit >= inputs[input].size())
+      return {};
+
+    return inputs[input][bit];
+  }
+
+  template <typename Enum>
+    requires std::is_enum_v<Enum>
+  [[nodiscard]] Wire_ptr inputWire(Enum input, unsigned short bit = 0) const
+  {
+    return inputWire(busIndex(input), bit);
+  }
+
+  /**
+   * @brief Reads an input bit, returning ERROR when the bus or bit is missing.
+   * @tparam Enum Component input enum type
+   * @param input Input bus enum value
+   * @param bit Bit index inside the bus
+   * @return Current wire state, or ERROR for missing wiring
+   */
+  template <typename Enum>
+    requires std::is_enum_v<Enum>
+  [[nodiscard]] State inputState(Enum input, unsigned short bit = 0) const
+  {
+    return inputState(busIndex(input), bit);
+  }
+
+  [[nodiscard]] Wire_ptr outputWire(unsigned int output, unsigned short bit = 0) const
+  {
+    if (output >= outputs.size() || bit >= outputs[output].size())
+      return {};
+
+    return outputs[output][bit];
+  }
+
+  /**
+   * @brief Returns an output wire, or null when the bus or bit is missing.
+   * @tparam Enum Component output enum type
+   * @param output Output bus enum value
+   * @param bit Bit index inside the bus
+   * @return Output wire pointer, or null
+   */
+  template <typename Enum>
+    requires std::is_enum_v<Enum>
+  [[nodiscard]] Wire_ptr outputWire(Enum output, unsigned short bit = 0) const
+  {
+    return outputWire(busIndex(output), bit);
+  }
+
+  [[nodiscard]] std::size_t outputBusSize(unsigned int output) const
+  {
+    return output < outputs.size() ? outputs[output].size() : 0;
+  }
+
+  /**
+   * @brief Returns the size of an output bus, or zero when it is missing.
+   * @tparam Enum Component output enum type
+   * @param output Output bus enum value
+   * @return Output bus width
+   */
+  template <typename Enum>
+    requires std::is_enum_v<Enum>
+  [[nodiscard]] std::size_t outputBusSize(Enum output) const
+  {
+    return outputBusSize(busIndex(output));
+  }
 
 public:
   Component() = default;
