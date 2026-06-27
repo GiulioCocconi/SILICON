@@ -48,6 +48,52 @@ public:
   std::string_view typeName() const override { return "StringListPropertyTest"; }
   void             simulate(Simulator& sim) override {}
 };
+
+class CountingNotGate : public NotGate {
+public:
+  using NotGate::NotGate;
+
+  int simulateCount = 0;
+
+  void simulate(Simulator& sim) override
+  {
+    ++simulateCount;
+    NotGate::simulate(sim);
+  }
+};
+
+class ContextRecordingComponent : public Component {
+public:
+  struct Record {
+    bool                              initialEvaluation = false;
+    std::vector<Bus>                  changedBuses;
+    std::vector<std::optional<State>> previousInputStates;
+    std::vector<bool>                 changedInputs;
+    std::vector<Simulator::EdgeType>  inputEdges;
+  };
+
+  explicit ContextRecordingComponent(Bus input) : Component({std::move(input)}, {}) {}
+
+  std::string_view typeName() const override { return "ContextRecording"; }
+
+  void simulate(Simulator&) override { ++legacyCallCount; }
+
+  void simulate(Simulator&, const SimulationContext& context) override
+  {
+    Record record;
+    record.initialEvaluation = context.initialEvaluation;
+    record.changedBuses = {context.changedBuses.begin(), context.changedBuses.end()};
+    for (const auto& wire : inputs[0]) {
+      record.previousInputStates.push_back(context.previousState(wire));
+      record.changedInputs.push_back(context.changed(wire));
+      record.inputEdges.push_back(Simulator::edgeType(context, wire));
+    }
+    records.push_back(std::move(record));
+  }
+
+  int                 legacyCallCount = 0;
+  std::vector<Record> records;
+};
 }  // namespace
 
 TEST(LogicTest, And)
@@ -128,6 +174,81 @@ TEST(SimulatorTest, CancellationStopsBusPropagation)
   EXPECT_EQ(a->getCurrentState(), State::LOW);
 }
 
+TEST(SimulatorTest, PassesSimulationContextToComponents)
+{
+  auto lowBit  = std::make_shared<Wire>(State::LOW);
+  auto highBit = std::make_shared<Wire>(State::LOW);
+  Bus  input{lowBit, highBit};
+
+  auto      recorder = std::make_shared<ContextRecordingComponent>(input);
+  auto      circuit  = std::make_shared<Circuit>(Component_set{recorder});
+  Simulator simulator(circuit);
+
+  ASSERT_EQ(recorder->records.size(), 1);
+  EXPECT_TRUE(recorder->records[0].initialEvaluation);
+  EXPECT_TRUE(recorder->records[0].changedBuses.empty());
+  EXPECT_EQ(recorder->legacyCallCount, 0);
+
+  EXPECT_EQ(simulator.setBus(input, 1), Simulator::RunResult::Completed);
+
+  ASSERT_EQ(recorder->records.size(), 2);
+  EXPECT_FALSE(recorder->records[1].initialEvaluation);
+  ASSERT_EQ(recorder->records[1].changedBuses.size(), 1);
+  ASSERT_EQ(recorder->records[1].changedBuses[0].size(), 2);
+  EXPECT_EQ(recorder->records[1].changedBuses[0][0], lowBit);
+  EXPECT_EQ(recorder->records[1].changedBuses[0][1], highBit);
+  ASSERT_EQ(recorder->records[1].previousInputStates.size(), 2);
+  ASSERT_TRUE(recorder->records[1].previousInputStates[0].has_value());
+  ASSERT_TRUE(recorder->records[1].previousInputStates[1].has_value());
+  EXPECT_EQ(*recorder->records[1].previousInputStates[0], State::LOW);
+  EXPECT_EQ(*recorder->records[1].previousInputStates[1], State::LOW);
+  EXPECT_EQ(recorder->records[1].changedInputs, (std::vector<bool>{true, false}));
+  EXPECT_EQ(recorder->records[1].inputEdges,
+            (std::vector<Simulator::EdgeType>{Simulator::EdgeType::RISE,
+                                              Simulator::EdgeType::NO_CHANGE}));
+
+  EXPECT_EQ(simulator.setBus(input, 0), Simulator::RunResult::Completed);
+
+  ASSERT_EQ(recorder->records.size(), 3);
+  EXPECT_EQ(recorder->records[2].inputEdges,
+            (std::vector<Simulator::EdgeType>{Simulator::EdgeType::FALL,
+                                              Simulator::EdgeType::NO_CHANGE}));
+}
+
+TEST(SimulatorTest, DelayedEventBatchCapturesPreviousStateBeforeApplyingEvents)
+{
+  auto a = std::make_shared<Wire>(State::LOW);
+  auto b = std::make_shared<Wire>(State::HIGH);
+  auto x = std::make_shared<Wire>(State::UNKNOWN);
+  auto y = std::make_shared<Wire>(State::UNKNOWN);
+
+  auto xDriver = std::make_shared<NotGate>(a, x);
+  auto yDriver = std::make_shared<NotGate>(b, y);
+  xDriver->setProperty("delay", 5);
+  yDriver->setProperty("delay", 5);
+
+  auto recorder = std::make_shared<ContextRecordingComponent>(Bus{x, y});
+  auto circuit  = std::make_shared<Circuit>(Component_set{xDriver, yDriver, recorder});
+  Simulator simulator(circuit);
+
+  EXPECT_EQ(simulator.run(5), Simulator::RunResult::Completed);
+
+  ASSERT_GE(recorder->records.size(), 2);
+  const auto& delayedRecord = recorder->records.back();
+  EXPECT_FALSE(delayedRecord.initialEvaluation);
+  ASSERT_EQ(delayedRecord.previousInputStates.size(), 2);
+  ASSERT_TRUE(delayedRecord.previousInputStates[0].has_value());
+  ASSERT_TRUE(delayedRecord.previousInputStates[1].has_value());
+  EXPECT_EQ(*delayedRecord.previousInputStates[0], State::UNKNOWN);
+  EXPECT_EQ(*delayedRecord.previousInputStates[1], State::UNKNOWN);
+  EXPECT_EQ(delayedRecord.changedInputs, (std::vector<bool>{true, true}));
+  EXPECT_EQ(delayedRecord.inputEdges,
+            (std::vector<Simulator::EdgeType>{Simulator::EdgeType::UNKNOWN,
+                                              Simulator::EdgeType::UNKNOWN}));
+  EXPECT_EQ(x->getCurrentState(), State::HIGH);
+  EXPECT_EQ(y->getCurrentState(), State::LOW);
+}
+
 TEST(SimulatorTest, SimulatesInternalInputWaveform)
 {
   auto a = std::make_shared<Wire>(State::LOW);
@@ -151,6 +272,271 @@ TEST(SimulatorTest, SimulatesInternalInputWaveform)
             Simulator::RunResult::Completed);
   EXPECT_EQ(simulator.getCurrentTime(), 10);
   EXPECT_EQ(o->getCurrentState(), State::HIGH);
+}
+
+TEST(SimulatorTest, WaveformInputSampleCapturesPreviousWireStates)
+{
+  auto lowBit  = std::make_shared<Wire>(State::LOW);
+  auto highBit = std::make_shared<Wire>(State::LOW);
+  Bus  input{lowBit, highBit};
+
+  auto      recorder = std::make_shared<ContextRecordingComponent>(input);
+  auto      circuit  = std::make_shared<Circuit>(Component_set{recorder});
+  Simulator simulator(circuit);
+
+  const std::vector<SiliconWaveformSample> inputSnapshots{{0, {"01"}}};
+  const std::vector<Simulator::WaveformInputDriver> inputDrivers{{input, {}}};
+
+  EXPECT_EQ(simulator.simulateWaveform(1, inputSnapshots, inputDrivers),
+            Simulator::RunResult::Completed);
+
+  ASSERT_EQ(recorder->records.size(), 2);
+  const auto& sampleRecord = recorder->records[1];
+  EXPECT_FALSE(sampleRecord.initialEvaluation);
+  ASSERT_EQ(sampleRecord.previousInputStates.size(), 2);
+  ASSERT_TRUE(sampleRecord.previousInputStates[0].has_value());
+  ASSERT_TRUE(sampleRecord.previousInputStates[1].has_value());
+  EXPECT_EQ(*sampleRecord.previousInputStates[0], State::LOW);
+  EXPECT_EQ(*sampleRecord.previousInputStates[1], State::LOW);
+  EXPECT_EQ(sampleRecord.changedInputs, (std::vector<bool>{true, false}));
+  EXPECT_EQ(sampleRecord.inputEdges,
+            (std::vector<Simulator::EdgeType>{Simulator::EdgeType::RISE,
+                                              Simulator::EdgeType::NO_CHANGE}));
+}
+
+TEST(SimulatorTest, DelayedGateRejectsShortInputPulse)
+{
+  auto a = std::make_shared<Wire>(State::LOW);
+  auto b = std::make_shared<Wire>(State::HIGH);
+  auto o = std::make_shared<Wire>(State::LOW);
+
+  auto gate = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, o);
+  gate->setProperty("delay", 10);
+
+  auto      circuit = std::make_shared<Circuit>(Component_set{gate});
+  Simulator simulator(circuit);
+
+  EXPECT_EQ(simulator.setBus(Bus{a}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.run(5), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{a}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.run(20), Simulator::RunResult::Completed);
+
+  EXPECT_EQ(o->getCurrentState(), State::LOW);
+}
+
+TEST(SimulatorTest, DelayedGateReplacesPendingTransition)
+{
+  auto a = std::make_shared<Wire>(State::LOW);
+  auto b = std::make_shared<Wire>(State::HIGH);
+  auto o = std::make_shared<Wire>(State::UNKNOWN);
+
+  auto gate = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, o);
+  gate->setProperty("delay", 10);
+
+  auto      circuit = std::make_shared<Circuit>(Component_set{gate});
+  Simulator simulator(circuit);
+
+  EXPECT_EQ(simulator.run(5), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{a}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.run(5), Simulator::RunResult::Completed);
+  EXPECT_EQ(o->getCurrentState(), State::UNKNOWN);
+
+  EXPECT_EQ(simulator.run(5), Simulator::RunResult::Completed);
+  EXPECT_EQ(o->getCurrentState(), State::HIGH);
+}
+
+TEST(SimulatorTest, DelayedGateReevaluationDoesNotPostponePendingTransition)
+{
+  auto input    = std::make_shared<Wire>(State::LOW);
+  auto inverted = std::make_shared<Wire>(State::UNKNOWN);
+  auto output   = std::make_shared<Wire>(State::UNKNOWN);
+
+  auto notGate = std::make_shared<CountingNotGate>(input, inverted);
+  notGate->setProperty("delay", 7);
+
+  auto andGate =
+      std::make_shared<AndGate>(std::vector<Wire_ptr>{input, inverted}, output);
+  andGate->setProperty("delay", 5);
+
+  auto      circuit = std::make_shared<Circuit>(Component_set{notGate, andGate});
+  Simulator simulator(circuit);
+
+  EXPECT_EQ(simulator.run(5), Simulator::RunResult::Completed);
+  EXPECT_EQ(output->getCurrentState(), State::LOW);
+  EXPECT_EQ(inverted->getCurrentState(), State::UNKNOWN);
+  EXPECT_EQ(notGate->simulateCount, 1);
+
+  EXPECT_EQ(simulator.run(2), Simulator::RunResult::Completed);
+  EXPECT_EQ(inverted->getCurrentState(), State::HIGH);
+  EXPECT_EQ(notGate->simulateCount, 1);
+}
+
+TEST(SimulatorTest, ForwardPropagationDoesNotRescheduleIndependentDelayedBranch)
+{
+  auto a1 = std::make_shared<Wire>(State::HIGH);
+  auto b1 = std::make_shared<Wire>(State::HIGH);
+  auto o1 = std::make_shared<Wire>(State::UNKNOWN);
+
+  auto a2 = std::make_shared<Wire>(State::HIGH);
+  auto b2 = std::make_shared<Wire>(State::HIGH);
+  auto o2 = std::make_shared<Wire>(State::UNKNOWN);
+
+  auto first = std::make_shared<AndGate>(std::vector<Wire_ptr>{a1, b1}, o1);
+  first->setProperty("delay", 10);
+
+  auto second = std::make_shared<AndGate>(std::vector<Wire_ptr>{a2, b2}, o2);
+  second->setProperty("delay", 10);
+
+  auto      circuit = std::make_shared<Circuit>(Component_set{first, second});
+  Simulator simulator(circuit);
+
+  EXPECT_EQ(simulator.run(5), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{a1}, 0), Simulator::RunResult::Completed);
+
+  EXPECT_EQ(simulator.run(5), Simulator::RunResult::Completed);
+  EXPECT_EQ(o1->getCurrentState(), State::UNKNOWN);
+  EXPECT_EQ(o2->getCurrentState(), State::HIGH);
+}
+
+TEST(SimulatorTest, RunUntilIdlePropagatesThroughLongDelayChain)
+{
+  auto a = std::make_shared<Wire>(State::HIGH);
+  auto b = std::make_shared<Wire>(State::HIGH);
+  auto c = std::make_shared<Wire>(State::HIGH);
+  auto w = std::make_shared<Wire>(State::UNKNOWN);
+  auto o = std::make_shared<Wire>(State::UNKNOWN);
+
+  auto first = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, w);
+  first->setProperty("delay", 50);
+
+  auto second = std::make_shared<AndGate>(std::vector<Wire_ptr>{w, c}, o);
+  second->setProperty("delay", 50);
+
+  auto      circuit = std::make_shared<Circuit>(Component_set{first, second});
+  Simulator simulator(circuit);
+
+  EXPECT_EQ(simulator.runUntilIdle(), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.getCurrentTime(), 100);
+  EXPECT_EQ(o->getCurrentState(), State::HIGH);
+}
+
+TEST(SimulatorTest, RunUntilIdleStopsAtStepLimitForDelayedFeedback)
+{
+  const auto previousMaxSimulationSteps = Simulator::getMaxSimulationSteps();
+  Simulator::setMaxSimulationSteps(3);
+
+  auto wire = std::make_shared<Wire>(State::LOW);
+  auto gate = std::make_shared<NotGate>(wire, wire);
+  gate->setProperty("delay", 1);
+
+  auto      circuit = std::make_shared<Circuit>(Component_set{gate});
+  Simulator simulator(circuit);
+
+  EXPECT_EQ(simulator.runUntilIdle(), Simulator::RunResult::StepLimitReached);
+  EXPECT_EQ(simulator.getCurrentTime(), 3);
+
+  Simulator::setMaxSimulationSteps(previousMaxSimulationSteps);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+TEST(SimulatorTest, InteractiveSettlingKeepsWaveformChangesAtDistinctTimes)
+{
+  auto a = std::make_shared<Wire>(State::LOW);
+  auto b = std::make_shared<Wire>(State::HIGH);
+  auto o = std::make_shared<Wire>(State::UNKNOWN);
+
+  auto gate = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, o);
+  gate->setProperty("delay", 0);
+
+  auto      circuit = std::make_shared<Circuit>(Component_set{gate});
+  Simulator simulator(circuit);
+
+  std::vector<SiliconWaveformSample> samples;
+  auto appendSnapshot = [&samples](uint64_t time, std::vector<std::string> values) {
+    if (!samples.empty() && samples.back().time == time) {
+      samples.back().values = std::move(values);
+      return;
+    }
+    samples.push_back({time, std::move(values)});
+  };
+
+  simulator.setTraceBuses({{"input", Bus{a}}, {"output", Bus{o}}});
+  simulator.setTraceSink([&](uint64_t time, const std::vector<std::string>& values) {
+    appendSnapshot(time, values);
+  });
+
+  auto settleInteractive = [&simulator]() {
+    const auto result = simulator.runUntilIdle();
+    if (result != Simulator::RunResult::Completed)
+      return result;
+    return simulator.run(1);
+  };
+
+  EXPECT_EQ(settleInteractive(), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{a}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(settleInteractive(), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{a}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(settleInteractive(), Simulator::RunResult::Completed);
+
+  ASSERT_GE(samples.size(), 4U);
+  EXPECT_EQ(samples[0].time, 0);
+  EXPECT_EQ(samples[1].time, 1);
+  EXPECT_EQ(samples[2].time, 2);
+  EXPECT_EQ(samples[3].time, 3);
+  EXPECT_EQ(samples[1].values, (std::vector<std::string>{"1", "1"}));
+  EXPECT_EQ(samples[2].values, (std::vector<std::string>{"0", "0"}));
+}
+
+TEST(SimulatorTest, WaveformAppliesSameTimestampInputsTogether)
+{
+  auto a = std::make_shared<Wire>(State::LOW);
+  auto b = std::make_shared<Wire>(State::LOW);
+  auto o = std::make_shared<Wire>(State::LOW);
+
+  auto gate = std::make_shared<XorGate>(std::array<Wire_ptr, 2>{a, b}, o);
+  gate->setProperty("delay", 0);
+
+  auto      circuit = std::make_shared<Circuit>(Component_set{gate});
+  Simulator simulator(circuit);
+
+  std::vector<std::string> tracedValues;
+  simulator.setTraceBuses({{"xor", Bus{o}}});
+  simulator.setTraceSink([&](uint64_t, const std::vector<std::string>& values) {
+    if (!values.empty())
+      tracedValues.push_back(values[0]);
+  });
+  tracedValues.clear();
+
+  const std::vector<SiliconWaveformSample> inputSnapshots{
+      {0, {"0", "0"}},
+      {3, {"1", "1"}},
+  };
+  const std::vector<Simulator::WaveformInputDriver> inputDrivers{
+      {Bus{a}, {}},
+      {Bus{b}, {}},
+  };
+
+  EXPECT_EQ(simulator.simulateWaveform(5, inputSnapshots, inputDrivers),
+            Simulator::RunResult::Completed);
+  EXPECT_EQ(o->getCurrentState(), State::LOW);
+  EXPECT_TRUE(std::ranges::none_of(
+      tracedValues, [](const std::string& value) { return value == "1"; }));
 }
 
 TEST(LogicTest, Nand)
@@ -334,6 +720,30 @@ TEST(LogicTest, CircuitEditing2)
 
   sim2.setBus(Bus{c}, 0);
   sim2.run(20);
+  EXPECT_EQ(o->getCurrentState(), State::LOW);
+}
+
+TEST(LogicTest, InteractiveTopologyEditRecompilesSimulatorPlan)
+{
+  auto a = std::make_shared<Wire>(State::HIGH);
+  auto b = std::make_shared<Wire>(State::HIGH);
+  auto c = std::make_shared<Wire>(State::HIGH);
+  auto o = std::make_shared<Wire>(State::UNKNOWN);
+
+  auto gate = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, o);
+  gate->setProperty("delay", 0);
+
+  auto      circuit = std::make_shared<Circuit>(Component_set{gate});
+  Simulator simulator(circuit, 0, true);
+
+  EXPECT_EQ(simulator.runUntilIdle(), Simulator::RunResult::Completed);
+  EXPECT_EQ(o->getCurrentState(), State::HIGH);
+
+  std::vector<Bus> newInputs = {{c}, {b}};
+  gate->setInputs(newInputs);
+
+  a->forceSetCurrentState(State::LOW);
+  EXPECT_EQ(simulator.setBus(Bus{c}, 0), Simulator::RunResult::Completed);
   EXPECT_EQ(o->getCurrentState(), State::LOW);
 }
 

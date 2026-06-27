@@ -23,6 +23,7 @@
 #include <memory>
 #include <optional>
 #include <ranges>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -34,6 +35,44 @@
 #include <utils/transparent_string.hpp>
 
 class Simulator;
+
+/**
+ * @brief Context describing why a component is being evaluated.
+ *
+ * Components that do not need scheduling context can keep implementing the legacy
+ * simulate(Simulator&) overload. Timing-aware components can override the overload
+ * that receives this structure.
+ */
+struct SimulationContext {
+  /** @brief True for initial or otherwise full-plan evaluation. */
+  bool initialEvaluation = false;
+
+  /** @brief Buses that caused a reactive forward-cone evaluation. */
+  std::span<const Bus> changedBuses{};
+
+  /** @brief Wire states captured before the reactive mutation that caused this pass. */
+  std::unordered_map<uint64_t, State> previousWireStates{};
+
+  /** @brief Returns true when a wire has a captured previous state different from now. */
+  [[nodiscard]] bool changed(const Wire_ptr& wire) const
+  {
+    const auto previous = previousState(wire);
+    return previous.has_value() && wire && *previous != wire->getCurrentState();
+  }
+
+  /** @brief Returns the state a wire had before this reactive evaluation, if captured. */
+  [[nodiscard]] std::optional<State> previousState(const Wire_ptr& wire) const
+  {
+    if (!wire)
+      return std::nullopt;
+
+    const auto it = previousWireStates.find(wire->getId());
+    if (it == previousWireStates.end())
+      return std::nullopt;
+
+    return it->second;
+  }
+};
 
 /**
  * @brief Concept to check if a type has a Type static member.
@@ -207,7 +246,32 @@ public:
    *
    * @param sim The simulator executing this component
    */
-  virtual void simulate(Simulator& sim) = 0;
+  virtual void simulate(Simulator& sim) { simulate(sim, SimulationContext{true, {}}); }
+
+  /**
+   * @brief Executes the component's logic with simulator scheduling context.
+   *
+   * The default implementation preserves backwards compatibility by delegating to
+   * simulate(Simulator&). Components can override this overload only when they need
+   * to inspect the evaluation context.
+   *
+   * @param sim The simulator executing this component
+   * @param context Evaluation metadata for this simulation pass
+   */
+  virtual void simulate(Simulator& sim, const SimulationContext& context)
+  {
+    (void)context;
+    simulate(sim);
+  }
+
+  /**
+   * @brief Whether zero-delay output writes should be staged during reactive passes.
+   *
+   * Edge-triggered sequential components return true so all triggered outputs are
+   * committed from the same pre-edge snapshot. Combinational components keep the
+   * default immediate zero-delay behavior.
+   */
+  [[nodiscard]] virtual bool usesStagedSequentialOutputs() const { return false; }
 
   /**
    * @brief Replaces a bus in the input or output collection.

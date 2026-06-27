@@ -62,6 +62,19 @@ std::string componentNameOr(const Component_ptr& component, const std::string& f
   return fallback;
 }
 
+Simulator::RunResult
+settleInteractiveSimulation(Simulator&                          simulator,
+                            const Simulator::CancellationCheck& isCancelled)
+{
+  const auto result = simulator.runUntilIdle(isCancelled);
+  if (result != Simulator::RunResult::Completed)
+    return result;
+
+  // Advance one display tick after settling so successive interactive changes do not
+  // collapse into one same-timestamp waveform sample.
+  return simulator.run(1, isCancelled);
+}
+
 }  // namespace
 
 DiagramSceneSimulationController::DiagramSceneSimulationController(DiagramScene& scene)
@@ -132,9 +145,9 @@ bool DiagramSceneSimulationController::enterSimulationMode()
       return isJobCancellationRequested();
     };
 
-    simulator = std::make_unique<Simulator>(circuit, 0, true, nullptr, isCancelled);
+    simulator = std::make_unique<Simulator>(circuit, 0, false, nullptr, isCancelled);
     configureSimulatorTrace(trace, traceFile);
-    return simulator->run(1, isCancelled);
+    return settleInteractiveSimulation(*simulator, isCancelled);
   });
 
   return true;
@@ -182,7 +195,7 @@ void DiagramSceneSimulationController::handleInputToggled(Bus               targ
     auto result = simulator->setBus(std::move(targetBus), value, source, isCancelled);
     if (result != Simulator::RunResult::Completed)
       return result;
-    return simulator->run(20, isCancelled);
+    return settleInteractiveSimulation(*simulator, isCancelled);
   });
 }
 
@@ -317,7 +330,7 @@ void DiagramSceneSimulationController::simulateEditedWaveform(
       return isJobCancellationRequested();
     };
 
-    simulator = std::make_unique<Simulator>(circuit, 0, true, nullptr, isCancelled);
+    simulator = std::make_unique<Simulator>(circuit, 0, false, nullptr, isCancelled);
     configureSimulatorTrace(trace, traceFile);
 
     return simulator->simulateWaveform(duration, inputSnapshots, inputDrivers,
