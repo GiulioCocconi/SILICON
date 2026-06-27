@@ -19,9 +19,11 @@
 #include <ui/serialization/gui_component_registration.hpp>
 
 #include <core/gates.hpp>
+#include <core/flipflops.hpp>
 #include <extraComponents/arithmetic.hpp>
 #include <extraComponents/utils.hpp>
 #include <ui/logiFlow/components/graphicalArithmetic.hpp>
+#include <ui/logiFlow/components/graphicalFlipFlops.hpp>
 #include <ui/logiFlow/components/graphicalGates.hpp>
 #include <ui/logiFlow/components/graphicalIO.hpp>
 #include <ui/logiFlow/components/graphicalUtils.hpp>
@@ -44,6 +46,12 @@ void registerAllGUIComponents(GUIComponentFactory& factory)
       [](QGraphicsItem* p) { return std::make_unique<GraphicalNor>(p); });
   reg(std::string(XorGate::Type),
       [](QGraphicsItem* p) { return std::make_unique<GraphicalXor>(p); });
+  reg(std::string(DFlipFlop::Type),
+      [](QGraphicsItem* p) { return std::make_unique<GraphicalDFlipFlop>(p); });
+  reg(std::string(EFlipFlop::Type),
+      [](QGraphicsItem* p) { return std::make_unique<GraphicalEFlipFlop>(p); });
+  reg(std::string(JKFlipFlop::Type),
+      [](QGraphicsItem* p) { return std::make_unique<GraphicalJKFlipFlop>(p); });
 
   reg(std::string(GraphicalInput::ComponentType),
       [](QGraphicsItem* p) { return std::make_unique<GraphicalInput>(p); });
