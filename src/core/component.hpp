@@ -475,8 +475,11 @@ public:
    *
    * Removes references to all wires in input and output buses,
    * disconnecting this component from the circuit.
+   *
+   * Derived components may override this when some pins have component-specific
+   * unconnected semantics.
    */
-  void clearWires();
+  virtual void clearWires();
 
   /**
    * @brief Gets all input buses.

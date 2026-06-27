@@ -47,6 +47,13 @@ TEST_F(FactoryTest, AvailableTypesIsNonEmpty)
   EXPECT_FALSE(registry.availableTypes().empty());
 }
 
+TEST_F(FactoryTest, RegistersCoreFlipFlops)
+{
+  EXPECT_TRUE(registry.hasType("DFlipFlop"));
+  EXPECT_TRUE(registry.hasType("EFlipFlop"));
+  EXPECT_TRUE(registry.hasType("JKFlipFlop"));
+}
+
 TEST_F(FactoryTest, CreatedComponentsHaveEmptyBuses)
 {
   for (const auto& typeName : registry.availableTypes()) {

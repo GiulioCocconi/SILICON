@@ -18,6 +18,7 @@
 
 #include "tests.hpp"
 #include <core/circuit.hpp>
+#include <core/flipflops.hpp>
 #include <core/simulator.hpp>
 
 #include <limits>
@@ -438,22 +439,490 @@ TEST(SimulatorTest, RunUntilIdleStopsAtStepLimitForDelayedFeedback)
   Simulator::setMaxSimulationSteps(previousMaxSimulationSteps);
 }
 
+TEST(FlipFlopTest, DFlipFlopCapturesOnPositiveEdge)
+{
+  auto d      = std::make_shared<Wire>(State::LOW);
+  auto clock  = std::make_shared<Wire>(State::LOW);
+  auto clear  = std::make_shared<Wire>(State::LOW);
+  auto preset = std::make_shared<Wire>(State::LOW);
+  auto q      = std::make_shared<Wire>(State::UNKNOWN);
+  auto notQ   = std::make_shared<Wire>(State::UNKNOWN);
 
+  auto flipFlop = std::make_shared<DFlipFlop>(d, clock, clear, preset, q, notQ);
+  flipFlop->setProperty("propagationDelay", 0);
 
+  auto      circuit  = std::make_shared<Circuit>(Component_set{flipFlop});
+  Simulator simulator(circuit);
 
+  EXPECT_EQ(simulator.setBus(Bus{d}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(q->getCurrentState(), State::UNKNOWN);
 
+  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(q->getCurrentState(), State::HIGH);
+  EXPECT_EQ(notQ->getCurrentState(), State::LOW);
 
+  EXPECT_EQ(simulator.setBus(Bus{d}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(q->getCurrentState(), State::HIGH);
 
+  EXPECT_EQ(simulator.setBus(Bus{clock}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(q->getCurrentState(), State::HIGH);
 
+  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(q->getCurrentState(), State::LOW);
+  EXPECT_EQ(notQ->getCurrentState(), State::HIGH);
+}
 
+TEST(FlipFlopTest, DFlipFlopCapturesOnNegativeEdge)
+{
+  auto d      = std::make_shared<Wire>(State::LOW);
+  auto clock  = std::make_shared<Wire>(State::HIGH);
+  auto clear  = std::make_shared<Wire>(State::LOW);
+  auto preset = std::make_shared<Wire>(State::LOW);
+  auto q      = std::make_shared<Wire>(State::UNKNOWN);
+  auto notQ   = std::make_shared<Wire>(State::UNKNOWN);
 
+  auto flipFlop = std::make_shared<DFlipFlop>(d, clock, clear, preset, q, notQ);
+  flipFlop->setProperty("propagationDelay", 0);
+  flipFlop->setProperty("triggerEdge", std::string("NET"));
 
+  auto      circuit = std::make_shared<Circuit>(Component_set{flipFlop});
+  Simulator simulator(circuit);
 
+  EXPECT_EQ(simulator.setBus(Bus{d}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(q->getCurrentState(), State::HIGH);
+  EXPECT_EQ(notQ->getCurrentState(), State::LOW);
 
+  EXPECT_EQ(simulator.setBus(Bus{d}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(q->getCurrentState(), State::HIGH);
 
+  EXPECT_EQ(simulator.setBus(Bus{clock}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(q->getCurrentState(), State::LOW);
+  EXPECT_EQ(notQ->getCurrentState(), State::HIGH);
+}
 
+TEST(FlipFlopTest, EFlipFlopHonorsEnable)
+{
+  auto d      = std::make_shared<Wire>(State::HIGH);
+  auto enable = std::make_shared<Wire>(State::LOW);
+  auto clock  = std::make_shared<Wire>(State::LOW);
+  auto clear  = std::make_shared<Wire>(State::LOW);
+  auto preset = std::make_shared<Wire>(State::LOW);
+  auto q      = std::make_shared<Wire>(State::UNKNOWN);
+  auto notQ   = std::make_shared<Wire>(State::UNKNOWN);
 
+  auto flipFlop = std::make_shared<EFlipFlop>(d, enable, clock, clear, preset, q, notQ);
+  flipFlop->setProperty("propagationDelay", 0);
+  auto circuit  = std::make_shared<Circuit>(Component_set{flipFlop});
+  Simulator simulator(circuit);
 
+  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(q->getCurrentState(), State::UNKNOWN);
+
+  EXPECT_EQ(simulator.setBus(Bus{clock}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{enable}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(q->getCurrentState(), State::HIGH);
+  EXPECT_EQ(notQ->getCurrentState(), State::LOW);
+
+  EXPECT_EQ(simulator.setBus(Bus{clock}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{enable}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{d}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(q->getCurrentState(), State::HIGH);
+  EXPECT_EQ(notQ->getCurrentState(), State::LOW);
+}
+
+TEST(FlipFlopTest, JKFlipFlopImplementsTruthTable)
+{
+  auto j      = std::make_shared<Wire>(State::LOW);
+  auto k      = std::make_shared<Wire>(State::LOW);
+  auto clock  = std::make_shared<Wire>(State::LOW);
+  auto clear  = std::make_shared<Wire>(State::LOW);
+  auto preset = std::make_shared<Wire>(State::LOW);
+  auto q      = std::make_shared<Wire>(State::UNKNOWN);
+  auto notQ   = std::make_shared<Wire>(State::UNKNOWN);
+
+  auto flipFlop = std::make_shared<JKFlipFlop>(j, k, clock, clear, preset, q, notQ);
+  flipFlop->setProperty("propagationDelay", 0);
+
+  auto      circuit  = std::make_shared<Circuit>(Component_set{flipFlop});
+  Simulator simulator(circuit);
+
+  EXPECT_EQ(simulator.setBus(Bus{j}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{k}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(q->getCurrentState(), State::HIGH);
+
+  EXPECT_EQ(simulator.setBus(Bus{clock}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{j}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{k}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(q->getCurrentState(), State::HIGH);
+
+  EXPECT_EQ(simulator.setBus(Bus{clock}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{k}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(q->getCurrentState(), State::LOW);
+
+  EXPECT_EQ(simulator.setBus(Bus{clock}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{j}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(q->getCurrentState(), State::HIGH);
+  EXPECT_EQ(notQ->getCurrentState(), State::LOW);
+
+  EXPECT_EQ(simulator.setBus(Bus{clock}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(q->getCurrentState(), State::LOW);
+  EXPECT_EQ(notQ->getCurrentState(), State::HIGH);
+}
+
+TEST(FlipFlopTest, AsyncClearAndPresetOverrideInputs)
+{
+  auto d      = std::make_shared<Wire>(State::HIGH);
+  auto clock  = std::make_shared<Wire>(State::LOW);
+  auto clear  = std::make_shared<Wire>(State::LOW);
+  auto preset = std::make_shared<Wire>(State::LOW);
+  auto q      = std::make_shared<Wire>(State::UNKNOWN);
+  auto notQ   = std::make_shared<Wire>(State::UNKNOWN);
+
+  auto flipFlop = std::make_shared<DFlipFlop>(d, clock, clear, preset, q, notQ);
+  flipFlop->setProperty("propagationDelay", 0);
+
+  auto      circuit  = std::make_shared<Circuit>(Component_set{flipFlop});
+  Simulator simulator(circuit);
+
+  EXPECT_EQ(simulator.setBus(Bus{clear}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(q->getCurrentState(), State::LOW);
+  EXPECT_EQ(notQ->getCurrentState(), State::HIGH);
+
+  EXPECT_EQ(simulator.setBus(Bus{clear}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{preset}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(q->getCurrentState(), State::HIGH);
+  EXPECT_EQ(notQ->getCurrentState(), State::LOW);
+
+  EXPECT_EQ(simulator.setBus(Bus{clear}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(q->getCurrentState(), State::UNKNOWN);
+  EXPECT_EQ(notQ->getCurrentState(), State::UNKNOWN);
+}
+
+TEST(FlipFlopTest, UnconnectedAsyncControlsDefaultInactive)
+{
+  auto d     = std::make_shared<Wire>(State::HIGH);
+  auto clock = std::make_shared<Wire>(State::LOW);
+  auto q     = std::make_shared<Wire>(State::UNKNOWN);
+  auto notQ  = std::make_shared<Wire>(State::UNKNOWN);
+
+  auto flipFlop =
+      std::make_shared<DFlipFlop>(d, clock, Wire_ptr{}, Wire_ptr{}, q, notQ);
+  flipFlop->setProperty("propagationDelay", 0);
+
+  auto      circuit = std::make_shared<Circuit>(Component_set{flipFlop});
+  Simulator simulator(circuit);
+
+  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(q->getCurrentState(), State::HIGH);
+  EXPECT_EQ(notQ->getCurrentState(), State::LOW);
+}
+
+TEST(FlipFlopTest, UnconnectedAsyncControlsRemainInactiveAfterClearingWires)
+{
+  auto d     = std::make_shared<Wire>(State::HIGH);
+  auto clock = std::make_shared<Wire>(State::LOW);
+  auto q     = std::make_shared<Wire>(State::UNKNOWN);
+  auto notQ  = std::make_shared<Wire>(State::UNKNOWN);
+
+  auto flipFlop =
+      std::make_shared<DFlipFlop>(Wire_ptr{}, Wire_ptr{}, Wire_ptr{}, Wire_ptr{},
+                                  Wire_ptr{}, Wire_ptr{});
+  flipFlop->setProperty("propagationDelay", 0);
+  flipFlop->clearWires();
+  flipFlop->setInput(std::to_underlying(DFlipFlop::Inputs::D), Bus{d}, true);
+  flipFlop->setInput(std::to_underlying(DFlipFlop::Inputs::Clock), Bus{clock}, true);
+  flipFlop->setOutput(0, Bus{q});
+  flipFlop->setOutput(1, Bus{notQ});
+
+  auto      circuit = std::make_shared<Circuit>(Component_set{flipFlop});
+  Simulator simulator(circuit);
+
+  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(q->getCurrentState(), State::HIGH);
+  EXPECT_EQ(notQ->getCurrentState(), State::LOW);
+}
+
+TEST(FlipFlopTest, UnknownDataCapturesAsUnknown)
+{
+  auto d      = std::make_shared<Wire>(State::UNKNOWN);
+  auto clock  = std::make_shared<Wire>(State::LOW);
+  auto clear  = std::make_shared<Wire>(State::LOW);
+  auto preset = std::make_shared<Wire>(State::LOW);
+  auto q      = std::make_shared<Wire>(State::LOW);
+  auto notQ   = std::make_shared<Wire>(State::HIGH);
+
+  auto flipFlop = std::make_shared<DFlipFlop>(d, clock, clear, preset, q, notQ);
+  flipFlop->setProperty("propagationDelay", 0);
+
+  auto      circuit  = std::make_shared<Circuit>(Component_set{flipFlop});
+  Simulator simulator(circuit);
+
+  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(q->getCurrentState(), State::UNKNOWN);
+  EXPECT_EQ(notQ->getCurrentState(), State::UNKNOWN);
+}
+
+TEST(FlipFlopTest, ZeroPropagationDelayUpdatesImmediately)
+{
+  auto d      = std::make_shared<Wire>(State::HIGH);
+  auto clock  = std::make_shared<Wire>(State::LOW);
+  auto clear  = std::make_shared<Wire>(State::LOW);
+  auto preset = std::make_shared<Wire>(State::LOW);
+  auto q      = std::make_shared<Wire>(State::UNKNOWN);
+  auto notQ   = std::make_shared<Wire>(State::UNKNOWN);
+
+  auto flipFlop = std::make_shared<DFlipFlop>(d, clock, clear, preset, q, notQ);
+  flipFlop->setProperty("propagationDelay", 0);
+
+  auto      circuit = std::make_shared<Circuit>(Component_set{flipFlop});
+  Simulator simulator(circuit);
+
+  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(q->getCurrentState(), State::HIGH);
+  EXPECT_EQ(notQ->getCurrentState(), State::LOW);
+}
+
+TEST(FlipFlopTest, ZeroDelayChainCapturesFromPreEdgeSnapshot)
+{
+  auto d      = std::make_shared<Wire>(State::LOW);
+  auto clock  = std::make_shared<Wire>(State::LOW);
+  auto clear  = std::make_shared<Wire>(State::LOW);
+  auto preset = std::make_shared<Wire>(State::LOW);
+
+  auto q0    = std::make_shared<Wire>(State::UNKNOWN);
+  auto notQ0 = std::make_shared<Wire>(State::UNKNOWN);
+  auto q1    = std::make_shared<Wire>(State::UNKNOWN);
+  auto notQ1 = std::make_shared<Wire>(State::UNKNOWN);
+  auto q2    = std::make_shared<Wire>(State::UNKNOWN);
+  auto notQ2 = std::make_shared<Wire>(State::UNKNOWN);
+
+  auto ff0 = std::make_shared<DFlipFlop>(d, clock, clear, preset, q0, notQ0);
+  auto ff1 = std::make_shared<DFlipFlop>(q0, clock, clear, preset, q1, notQ1);
+  auto ff2 = std::make_shared<DFlipFlop>(q1, clock, clear, preset, q2, notQ2);
+  for (const auto& flipFlop : {ff0, ff1, ff2})
+    flipFlop->setProperty("propagationDelay", 0);
+
+  auto      circuit = std::make_shared<Circuit>(Component_set{ff0, ff1, ff2});
+  Simulator simulator(circuit);
+
+  EXPECT_EQ(simulator.setBus(Bus{clear}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clear}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(q0->getCurrentState(), State::LOW);
+  EXPECT_EQ(q1->getCurrentState(), State::LOW);
+  EXPECT_EQ(q2->getCurrentState(), State::LOW);
+
+  EXPECT_EQ(simulator.setBus(Bus{d}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+
+  EXPECT_EQ(q0->getCurrentState(), State::HIGH);
+  EXPECT_EQ(q1->getCurrentState(), State::LOW);
+  EXPECT_EQ(q2->getCurrentState(), State::LOW);
+
+  EXPECT_EQ(simulator.setBus(Bus{clock}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+
+  EXPECT_EQ(q0->getCurrentState(), State::HIGH);
+  EXPECT_EQ(q1->getCurrentState(), State::HIGH);
+  EXPECT_EQ(q2->getCurrentState(), State::LOW);
+}
+
+TEST(FlipFlopTest, ZeroDelayChainSamplesPreEdgeCombinationalValue)
+{
+  auto d      = std::make_shared<Wire>(State::LOW);
+  auto clock  = std::make_shared<Wire>(State::LOW);
+  auto clear  = std::make_shared<Wire>(State::LOW);
+  auto preset = std::make_shared<Wire>(State::LOW);
+
+  auto q0    = std::make_shared<Wire>(State::UNKNOWN);
+  auto notQ0 = std::make_shared<Wire>(State::UNKNOWN);
+  auto invQ0 = std::make_shared<Wire>(State::UNKNOWN);
+  auto q1    = std::make_shared<Wire>(State::UNKNOWN);
+  auto notQ1 = std::make_shared<Wire>(State::UNKNOWN);
+
+  auto ff0     = std::make_shared<DFlipFlop>(d, clock, clear, preset, q0, notQ0);
+  auto inverter = std::make_shared<NotGate>(q0, invQ0);
+  auto ff1     = std::make_shared<DFlipFlop>(invQ0, clock, clear, preset, q1, notQ1);
+
+  ff0->setProperty("propagationDelay", 0);
+  ff1->setProperty("propagationDelay", 0);
+  inverter->setProperty("delay", 0);
+
+  auto circuit = std::make_shared<Circuit>(Component_set{ff0, inverter, ff1});
+  Simulator simulator(circuit);
+
+  EXPECT_EQ(simulator.setBus(Bus{clear}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clear}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(q0->getCurrentState(), State::LOW);
+  EXPECT_EQ(invQ0->getCurrentState(), State::HIGH);
+  EXPECT_EQ(q1->getCurrentState(), State::LOW);
+
+  EXPECT_EQ(simulator.setBus(Bus{d}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+
+  EXPECT_EQ(q0->getCurrentState(), State::HIGH);
+  EXPECT_EQ(invQ0->getCurrentState(), State::LOW);
+  EXPECT_EQ(q1->getCurrentState(), State::HIGH);
+}
+
+TEST(FlipFlopTest, DefaultPropagationDelayDefersOutputUpdates)
+{
+  auto d      = std::make_shared<Wire>(State::HIGH);
+  auto clock  = std::make_shared<Wire>(State::LOW);
+  auto clear  = std::make_shared<Wire>(State::LOW);
+  auto preset = std::make_shared<Wire>(State::LOW);
+  auto q      = std::make_shared<Wire>(State::UNKNOWN);
+  auto notQ   = std::make_shared<Wire>(State::UNKNOWN);
+
+  auto flipFlop = std::make_shared<DFlipFlop>(d, clock, clear, preset, q, notQ);
+  EXPECT_EQ(flipFlop->getPropertyValue<int>("propagationDelay").value_or(-1), 5);
+
+  auto      circuit = std::make_shared<Circuit>(Component_set{flipFlop});
+  Simulator simulator(circuit);
+
+  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(q->getCurrentState(), State::UNKNOWN);
+  EXPECT_EQ(notQ->getCurrentState(), State::UNKNOWN);
+
+  EXPECT_EQ(simulator.run(4), Simulator::RunResult::Completed);
+  EXPECT_EQ(q->getCurrentState(), State::UNKNOWN);
+  EXPECT_EQ(notQ->getCurrentState(), State::UNKNOWN);
+
+  EXPECT_EQ(simulator.run(1), Simulator::RunResult::Completed);
+  EXPECT_EQ(q->getCurrentState(), State::HIGH);
+  EXPECT_EQ(notQ->getCurrentState(), State::LOW);
+}
+
+TEST(FlipFlopTest, SetupViolationCapturesUnknown)
+{
+  auto d      = std::make_shared<Wire>(State::LOW);
+  auto clock  = std::make_shared<Wire>(State::LOW);
+  auto clear  = std::make_shared<Wire>(State::LOW);
+  auto preset = std::make_shared<Wire>(State::LOW);
+  auto q      = std::make_shared<Wire>(State::UNKNOWN);
+  auto notQ   = std::make_shared<Wire>(State::UNKNOWN);
+
+  auto flipFlop = std::make_shared<DFlipFlop>(d, clock, clear, preset, q, notQ);
+  flipFlop->setProperty("propagationDelay", 0);
+  flipFlop->setProperty("setupTime", 3);
+
+  auto      circuit = std::make_shared<Circuit>(Component_set{flipFlop});
+  Simulator simulator(circuit);
+
+  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(q->getCurrentState(), State::LOW);
+
+  EXPECT_EQ(simulator.setBus(Bus{clock}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.run(10), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{d}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.run(2), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+
+  EXPECT_EQ(q->getCurrentState(), State::UNKNOWN);
+  EXPECT_EQ(notQ->getCurrentState(), State::UNKNOWN);
+}
+
+TEST(FlipFlopTest, HoldViolationInvalidatesLatchedState)
+{
+  auto d      = std::make_shared<Wire>(State::HIGH);
+  auto clock  = std::make_shared<Wire>(State::LOW);
+  auto clear  = std::make_shared<Wire>(State::LOW);
+  auto preset = std::make_shared<Wire>(State::LOW);
+  auto q      = std::make_shared<Wire>(State::UNKNOWN);
+  auto notQ   = std::make_shared<Wire>(State::UNKNOWN);
+
+  auto flipFlop = std::make_shared<DFlipFlop>(d, clock, clear, preset, q, notQ);
+  flipFlop->setProperty("propagationDelay", 0);
+  flipFlop->setProperty("holdTime", 3);
+
+  auto      circuit = std::make_shared<Circuit>(Component_set{flipFlop});
+  Simulator simulator(circuit);
+
+  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(q->getCurrentState(), State::HIGH);
+
+  EXPECT_EQ(simulator.run(2), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{d}, 0), Simulator::RunResult::Completed);
+
+  EXPECT_EQ(q->getCurrentState(), State::UNKNOWN);
+  EXPECT_EQ(notQ->getCurrentState(), State::UNKNOWN);
+}
+
+TEST(FlipFlopTest, EnabledFlipFlopAppliesSetupTimeToEnable)
+{
+  auto d      = std::make_shared<Wire>(State::HIGH);
+  auto enable = std::make_shared<Wire>(State::LOW);
+  auto clock  = std::make_shared<Wire>(State::LOW);
+  auto clear  = std::make_shared<Wire>(State::LOW);
+  auto preset = std::make_shared<Wire>(State::LOW);
+  auto q      = std::make_shared<Wire>(State::UNKNOWN);
+  auto notQ   = std::make_shared<Wire>(State::UNKNOWN);
+
+  auto flipFlop = std::make_shared<EFlipFlop>(d, enable, clock, clear, preset, q, notQ);
+  flipFlop->setProperty("propagationDelay", 0);
+  flipFlop->setProperty("setupTime", 4);
+
+  auto      circuit = std::make_shared<Circuit>(Component_set{flipFlop});
+  Simulator simulator(circuit);
+
+  EXPECT_EQ(simulator.setBus(Bus{clear}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clear}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(q->getCurrentState(), State::LOW);
+
+  EXPECT_EQ(simulator.run(10), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{enable}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.run(3), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+
+  EXPECT_EQ(q->getCurrentState(), State::UNKNOWN);
+  EXPECT_EQ(notQ->getCurrentState(), State::UNKNOWN);
+}
+
+TEST(FlipFlopTest, JKFlipFlopAppliesHoldTimeToInputs)
+{
+  auto j      = std::make_shared<Wire>(State::HIGH);
+  auto k      = std::make_shared<Wire>(State::LOW);
+  auto clock  = std::make_shared<Wire>(State::LOW);
+  auto clear  = std::make_shared<Wire>(State::LOW);
+  auto preset = std::make_shared<Wire>(State::LOW);
+  auto q      = std::make_shared<Wire>(State::UNKNOWN);
+  auto notQ   = std::make_shared<Wire>(State::UNKNOWN);
+
+  auto flipFlop = std::make_shared<JKFlipFlop>(j, k, clock, clear, preset, q, notQ);
+  flipFlop->setProperty("propagationDelay", 0);
+  flipFlop->setProperty("holdTime", 5);
+
+  auto      circuit = std::make_shared<Circuit>(Component_set{flipFlop});
+  Simulator simulator(circuit);
+
+  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(q->getCurrentState(), State::HIGH);
+
+  EXPECT_EQ(simulator.run(4), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{k}, 1), Simulator::RunResult::Completed);
+
+  EXPECT_EQ(q->getCurrentState(), State::UNKNOWN);
+  EXPECT_EQ(notQ->getCurrentState(), State::UNKNOWN);
+}
+
+TEST(FlipFlopTest, TimingPropertiesAreValidated)
+{
+  auto flipFlop = std::make_shared<DFlipFlop>();
+
+  EXPECT_THROW(flipFlop->setProperty("propagationDelay", -1), std::invalid_argument);
+  EXPECT_THROW(flipFlop->setProperty("setupTime", -1), std::invalid_argument);
+  EXPECT_THROW(flipFlop->setProperty("holdTime", -1), std::invalid_argument);
+  EXPECT_THROW(flipFlop->setProperty("triggerEdge", std::string("BOTH")),
+               std::invalid_argument);
+}
 
 TEST(SimulatorTest, InteractiveSettlingKeepsWaveformChangesAtDistinctTimes)
 {
