@@ -19,43 +19,174 @@
 #pragma once
 
 #include <array>
-#include <memory>
 #include <string_view>
 
 #include <core/component.hpp>
 #include <core/wire.hpp>
 
+/**
+ * @class HalfAdder
+ * @brief One-bit half adder.
+ *
+ * Computes Sum = A xor B and Cout = A and B after the configured delay.
+ * Input order: A, B. Output order: Sum, Cout.
+ */
 class HalfAdder : public Component {
 public:
+  /** @brief Serialization/type-registry identifier. */
   static constexpr std::string_view Type = "HalfAdder";
-  std::string_view                  typeName() const override { return Type; }
 
+  /**
+   * @brief Returns the component type name.
+   * @return Type identifier
+   */
+  std::string_view typeName() const override { return Type; }
+
+  /** @brief Input bus indices for HalfAdder. */
+  enum class Inputs : unsigned int {
+    /** @brief First addend bit. */
+    A = 0,
+    /** @brief Second addend bit. */
+    B = 1,
+  };
+
+  /** @brief Output bus indices for HalfAdder. */
+  enum class Outputs : unsigned int {
+    /** @brief Sum bit. */
+    Sum = 0,
+    /** @brief Carry-out bit. */
+    Cout = 1,
+  };
+
+  /** @brief Constructs an unconnected half adder. */
   HalfAdder();
+
+  /**
+   * @brief Constructs a connected half adder.
+   * @param inputs Input wires ordered as A and B
+   * @param sum Sum output
+   * @param cout Carry-out output
+   */
   HalfAdder(std::array<Wire_ptr, 2> inputs, Wire_ptr sum, Wire_ptr cout);
 
+  /**
+   * @brief Evaluates the half-adder truth table.
+   * @param sim Simulator used to drive output wires
+   */
   void simulate(class Simulator& sim) override;
 };
 
+/**
+ * @class FullAdder
+ * @brief One-bit full adder.
+ *
+ * Computes a one-bit sum and carry from A, B, and Cin after the configured delay.
+ * Input order: A, B, Cin. Output order: Sum, Cout.
+ */
 class FullAdder : public Component {
 public:
+  /** @brief Serialization/type-registry identifier. */
   static constexpr std::string_view Type = "FullAdder";
-  std::string_view                  typeName() const override { return Type; }
 
+  /**
+   * @brief Returns the component type name.
+   * @return Type identifier
+   */
+  std::string_view typeName() const override { return Type; }
+
+  /** @brief Input bus indices for FullAdder. */
+  enum class Inputs : unsigned int {
+    /** @brief First addend bit. */
+    A = 0,
+    /** @brief Second addend bit. */
+    B = 1,
+    /** @brief Carry-in bit. */
+    Cin = 2,
+  };
+
+  /** @brief Output bus indices for FullAdder. */
+  enum class Outputs : unsigned int {
+    /** @brief Sum bit. */
+    Sum = 0,
+    /** @brief Carry-out bit. */
+    Cout = 1,
+  };
+
+  /** @brief Constructs an unconnected full adder. */
   FullAdder();
+
+  /**
+   * @brief Constructs a connected full adder.
+   * @param inputs Input wires ordered as A and B
+   * @param cin Carry-in input
+   * @param sum Sum output
+   * @param cout Carry-out output
+   */
   FullAdder(std::array<Wire_ptr, 2> inputs, Wire_ptr cin, Wire_ptr sum, Wire_ptr cout);
 
+  /**
+   * @brief Evaluates the full-adder truth table.
+   * @param sim Simulator used to drive output wires
+   */
   void simulate(Simulator& sim) override;
 };
 
+/**
+ * @class AdderNBits
+ * @brief Fixed-width unsigned ripple adder.
+ *
+ * Adds two equally sized input buses, drives a same-width sum bus, and emits a
+ * one-bit carry-out after the configured delay.
+ * Input order: A, B. Output order: Sum, Cout.
+ */
 class AdderNBits : public Component {
 public:
+  /** @brief Serialization/type-registry identifier. */
   static constexpr std::string_view Type = "AdderNBits";
-  std::string_view                  typeName() const override { return Type; }
 
+  /**
+   * @brief Returns the component type name.
+   * @return Type identifier
+   */
+  std::string_view typeName() const override { return Type; }
+
+  /** @brief Input bus indices for AdderNBits. */
+  enum class Inputs : unsigned int {
+    /** @brief First addend bus, least-significant bit first. */
+    A = 0,
+    /** @brief Second addend bus, least-significant bit first. */
+    B = 1,
+  };
+
+  /** @brief Output bus indices for AdderNBits. */
+  enum class Outputs : unsigned int {
+    /** @brief Sum bus, least-significant bit first. */
+    Sum = 0,
+    /** @brief Carry-out bit. */
+    Cout = 1,
+  };
+
+  /** @brief Constructs an unconnected N-bit adder. */
   AdderNBits();
+
+  /**
+   * @brief Constructs a connected N-bit adder.
+   * @param inputs Input buses ordered as A and B
+   * @param sum Sum output bus
+   * @param cout Carry-out output
+   */
   AdderNBits(std::array<Bus, 2> inputs, Bus sum, Wire_ptr cout);
 
+  /**
+   * @brief Evaluates the N-bit adder.
+   * @param sim Simulator used to drive output wires
+   */
   void simulate(Simulator& sim) override;
 
+  /**
+   * @brief Resizes both inputs, the sum output, and the carry output.
+   * @param width New adder width in bits
+   * @return Applied width, or the current configured size when width is invalid
+   */
   int setSize(int width);
 };

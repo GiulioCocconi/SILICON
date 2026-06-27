@@ -17,8 +17,6 @@
 
 #pragma once
 
-#include <QGraphicsSvgItem>
-
 #include <extraComponents/arithmetic.hpp>
 #include <ui/logiFlow/components/graphicalLogicComponent.hpp>
 

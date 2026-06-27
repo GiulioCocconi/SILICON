@@ -17,6 +17,8 @@
 
 #include "graphicalArithmetic.hpp"
 
+#include <QGraphicsSvgItem>
+
 namespace {
 
 std::shared_ptr<HalfAdder> makeHalfAdder()
@@ -45,9 +47,8 @@ std::shared_ptr<AdderNBits> makeAdderNBits()
 GraphicalHalfAdder::GraphicalHalfAdder(QGraphicsItem* parent)
   : GraphicalLogicComponent(makeHalfAdder(),
                             new QGraphicsSvgItem(":/other_components/H_ADDER.svg"),
-                            parent)
+                            parent, true)
 {
-  scanShape = true;
   printPortNames = true;
   setPorts({PortPair{"a", QPoint(20, -20)}, PortPair{"b", QPoint(80, -20)}},
            {PortPair{"sum", QPoint(50, 120)}, PortPair{"co", QPoint(-10, 40)}});
@@ -56,9 +57,8 @@ GraphicalHalfAdder::GraphicalHalfAdder(QGraphicsItem* parent)
 GraphicalFullAdder::GraphicalFullAdder(QGraphicsItem* parent)
   : GraphicalLogicComponent(makeFullAdder(),
                             new QGraphicsSvgItem(":/other_components/F_ADDER.svg"),
-                            parent)
+                            parent, true)
 {
-  scanShape = true;
   printPortNames = true;
   setPorts({PortPair{"a", QPoint(20, -20)}, PortPair{"b", QPoint(80, -20)},
             PortPair{"ci", QPoint(110, 40)}},
@@ -68,9 +68,8 @@ GraphicalFullAdder::GraphicalFullAdder(QGraphicsItem* parent)
 GraphicalAdderNBits::GraphicalAdderNBits(QGraphicsItem* parent)
   : GraphicalLogicComponent(makeAdderNBits(),
                             new QGraphicsSvgItem(":/other_components/ADDER.svg"),
-                            parent)
+                            parent, true)
 {
-  scanShape = true;
   printPortNames = true;
   setPorts({PortPair{"a", QPoint(20, -20)}, PortPair{"b", QPoint(80, -20)}},
            {PortPair{"sum", QPoint(50, 120)}, PortPair{"of", QPoint(110, 40)}});
