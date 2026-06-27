@@ -223,7 +223,10 @@ bool WireManager::evaluateWireSplits(GraphicalWire* wire)
   if (!wire || wire->empty())
     return false;
 
-  const auto segments = wire->getSegments();
+  auto segments = wire->getSegments() | std::views::filter([&](auto* segment) {
+                    return std::ranges::find(allSegments, segment) != allSegments.end();
+                  })
+                | std::ranges::to<std::vector>();
 
   // A wire with 0 or 1 segments cannot be split
   if (segments.size() <= 1)
@@ -425,7 +428,24 @@ void WireManager::fuseSegments(GraphicalWireSegment* a, GraphicalWireSegment* b)
     throw std::logic_error("fuseSegments() produced no points");
   a->setPoints(std::move(newPoints));
 
-  // The segment b is no longer needed, it was merged into a.
-  // It removes itself from the scene and safely cleans itself from the parent wire.
+  // The segment b is no longer needed, it was merged into a. Detach it from
+  // topology bookkeeping before deleting it so its destructor cannot re-enter
+  // the manager while this update is still in progress.
+  auto* const aWire        = a->getGraphicalWire();
+  auto* const absorbedWire = b->getGraphicalWire();
+
+  std::erase(allSegments, b);
+  if (absorbedWire)
+    absorbedWire->removeSegment(b);
+  b->detachFromWire();
   delete b;
+
+  if (!absorbedWire || absorbedWire == aWire)
+    return;
+
+  if (absorbedWire->empty()) {
+    removeWire(absorbedWire);
+  } else {
+    evaluateWireSplits(absorbedWire);
+  }
 }
