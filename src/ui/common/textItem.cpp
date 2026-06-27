@@ -24,7 +24,8 @@ TextItem::TextItem(std::string_view text, QGraphicsItem* parent) : QGraphicsItem
 
 void TextItem::setText(std::string_view text)
 {
-  const QString qText = QString::fromUtf8(text.data(), static_cast<qsizetype>(text.size()));
-  this->rect          = QFontMetrics(QApplication::font()).boundingRect(qText);
-  this->text          = qText;
+  const QString qText =
+      QString::fromUtf8(text.data(), static_cast<qsizetype>(text.size()));
+  this->rect = QFontMetrics(QApplication::font()).boundingRect(qText);
+  this->text = qText;
 }

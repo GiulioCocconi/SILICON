@@ -8,11 +8,11 @@ IndentWidth: 2
 TabWidth: 2
 UseTab: Never
 IndentCaseLabels: true
-IndentPPDirectives: AfterHash
+IndentPPDirectives: BeforeHash
 NamespaceIndentation: Inner
 
 # Alignment settings
-AlignAfterOpenBracket: Align
+AlignAfterOpenBracket: true
 AlignConsecutiveAssignments: true
 AlignConsecutiveDeclarations: true
 AlignConsecutiveMacros: true

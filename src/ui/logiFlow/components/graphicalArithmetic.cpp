@@ -23,15 +23,14 @@ namespace {
 
 std::shared_ptr<HalfAdder> makeHalfAdder()
 {
-  return std::make_shared<HalfAdder>(
-      std::array<Wire_ptr, 2>{Wire_ptr{}, Wire_ptr{}}, Wire_ptr{}, Wire_ptr{});
+  return std::make_shared<HalfAdder>(std::array<Wire_ptr, 2>{Wire_ptr{}, Wire_ptr{}},
+                                     Wire_ptr{}, Wire_ptr{});
 }
 
 std::shared_ptr<FullAdder> makeFullAdder()
 {
-  return std::make_shared<FullAdder>(
-      std::array<Wire_ptr, 2>{Wire_ptr{}, Wire_ptr{}}, Wire_ptr{}, Wire_ptr{},
-      Wire_ptr{});
+  return std::make_shared<FullAdder>(std::array<Wire_ptr, 2>{Wire_ptr{}, Wire_ptr{}},
+                                     Wire_ptr{}, Wire_ptr{}, Wire_ptr{});
 }
 
 std::shared_ptr<AdderNBits> makeAdderNBits()
@@ -67,8 +66,8 @@ GraphicalFullAdder::GraphicalFullAdder(QGraphicsItem* parent)
 
 GraphicalAdderNBits::GraphicalAdderNBits(QGraphicsItem* parent)
   : GraphicalLogicComponent(makeAdderNBits(),
-                            new QGraphicsSvgItem(":/other_components/ADDER.svg"),
-                            parent, true)
+                            new QGraphicsSvgItem(":/other_components/ADDER.svg"), parent,
+                            true)
 {
   printPortNames = true;
   setPorts({PortPair{"a", QPoint(20, -20)}, PortPair{"b", QPoint(80, -20)}},

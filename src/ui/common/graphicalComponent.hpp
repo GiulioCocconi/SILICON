@@ -229,9 +229,8 @@ public:
    * @param busToPortInputs Vector of (name, position) pairs for inputs
    * @param busToPortOutputs Vector of (name, position) pairs for outputs
    */
-  virtual void
-  setPorts(const std::vector<PortPair>& busToPortInputs,
-           const std::vector<PortPair>& busToPortOutputs);
+  virtual void setPorts(const std::vector<PortPair>& busToPortInputs,
+                        const std::vector<PortPair>& busToPortOutputs);
 
   /** @brief Gets all input ports */
   [[nodiscard]] std::vector<Port*> getInputPorts() const { return inputPorts; };

@@ -74,9 +74,9 @@ TEST(NumFormattingTest, SupportsWideValuesWithoutBigIntDependency)
 {
   EXPECT_EQ(silicon::formatRawBits(std::string(65, '1'), silicon::NumberFormat::Unsigned),
             "36893488147419103231");
-  EXPECT_EQ(silicon::formatRawBits("1" + std::string(64, '0'),
-                                   silicon::NumberFormat::Signed),
-            "-18446744073709551616");
+  EXPECT_EQ(
+      silicon::formatRawBits("1" + std::string(64, '0'), silicon::NumberFormat::Signed),
+      "-18446744073709551616");
 }
 
 TEST(NumFormattingTest, UnknownAndMixedValuesRemainReadable)

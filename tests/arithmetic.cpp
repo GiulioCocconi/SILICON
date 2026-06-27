@@ -192,8 +192,8 @@ TEST(ArithmeticTest, AdderNBitsSizePropertyDefaultsAndValidation)
 
 TEST(ArithmeticTest, AdderNBitsSizePropertyReshapesIO)
 {
-  auto adder = std::make_shared<AdderNBits>(
-      std::array<Bus, 2>{Bus(4), Bus(4)}, Bus(4), std::make_shared<Wire>());
+  auto adder = std::make_shared<AdderNBits>(std::array<Bus, 2>{Bus(4), Bus(4)}, Bus(4),
+                                            std::make_shared<Wire>());
 
   ASSERT_EQ(adder->getInputs().size(), 2);
   ASSERT_EQ(adder->getOutputs().size(), 2);

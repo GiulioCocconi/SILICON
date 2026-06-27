@@ -226,7 +226,7 @@ bool WireManager::evaluateWireSplits(GraphicalWire* wire)
   auto segments = wire->getSegments() | std::views::filter([&](auto* segment) {
                     return std::ranges::find(allSegments, segment) != allSegments.end();
                   })
-                | std::ranges::to<std::vector>();
+                  | std::ranges::to<std::vector>();
 
   // A wire with 0 or 1 segments cannot be split
   if (segments.size() <= 1)

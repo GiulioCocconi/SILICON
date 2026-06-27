@@ -70,7 +70,7 @@ public:
 }  // namespace
 
 GraphicalFlipFlop::GraphicalFlipFlop(const Component_ptr& component,
-                                     QGraphicsItem* parent)
+                                     QGraphicsItem*       parent)
   : GraphicalLogicComponent(component, new FlipFlopShape(parent), parent)
 {
   isEditable     = false;
@@ -98,7 +98,7 @@ GraphicalJKFlipFlop::GraphicalJKFlipFlop(QGraphicsItem* parent)
   : GraphicalFlipFlop(makeJKFlipFlop(), parent)
 {
   setPorts({PortPair{"j", QPoint(-20, 20)}, PortPair{"k", QPoint(-20, 40)},
-	    PortPair{"clk", QPoint(-20, 60)}, PortPair{"clr", QPoint(40, -20)},
+            PortPair{"clk", QPoint(-20, 60)}, PortPair{"clr", QPoint(40, -20)},
             PortPair{"pre", QPoint(40, 100)}},
            {PortPair{"q", QPoint(100, 20)}, PortPair{"!q", QPoint(100, 60)}});
 }

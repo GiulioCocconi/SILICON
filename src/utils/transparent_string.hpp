@@ -65,8 +65,7 @@ struct TransparentStringHash {
 struct TransparentStringEqual {
   using is_transparent = void;
 
-  [[nodiscard]] bool operator()(std::string_view lhs,
-                                std::string_view rhs) const noexcept
+  [[nodiscard]] bool operator()(std::string_view lhs, std::string_view rhs) const noexcept
   {
     return lhs == rhs;
   }

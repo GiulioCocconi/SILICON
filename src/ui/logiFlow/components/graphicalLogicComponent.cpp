@@ -73,7 +73,7 @@ void GraphicalLogicComponent::updatePortSizes()
   update();
 }
 
-void GraphicalLogicComponent::applyProperty(std::string_view key,
+void GraphicalLogicComponent::applyProperty(std::string_view     key,
                                             const PropertyValue& value)
 {
   if (!associatedComponent)
@@ -95,9 +95,8 @@ void GraphicalLogicComponent::setComponent(const Component_ptr& component)
   updatePortSizes();
 }
 
-void GraphicalLogicComponent::setPorts(
-    const std::vector<PortPair>& busToPortInputs,
-    const std::vector<PortPair>& busToPortOutputs)
+void GraphicalLogicComponent::setPorts(const std::vector<PortPair>& busToPortInputs,
+                                       const std::vector<PortPair>& busToPortOutputs)
 {
   if (associatedComponent) {
     const std::vector<Bus> componentInputs  = associatedComponent->getInputs();

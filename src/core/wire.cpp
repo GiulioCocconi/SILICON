@@ -121,8 +121,7 @@ State normalizeBinaryOrUnknown(const State state)
 }
 
 State optionalControlStateOrInactive(const std::vector<Bus>& inputs,
-                                     const unsigned int index,
-                                     const State        inactiveState)
+                                     const unsigned int index, const State inactiveState)
 {
   if (index >= inputs.size() || inputs[index].size() == 0 || !inputs[index][0])
     return inactiveState;
