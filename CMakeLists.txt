@@ -63,6 +63,7 @@ set(COMMON_SOURCE_FILES
         ${src_dir}/utils/num_formatting.cpp
         ${src_dir}/core/wire.cpp
         ${src_dir}/core/gates.cpp
+        ${src_dir}/core/flipflops.cpp
         ${src_dir}/core/component.cpp
         ${src_dir}/core/circuit.cpp
         ${src_dir}/core/simulator.cpp

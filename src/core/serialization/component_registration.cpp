@@ -19,6 +19,7 @@
 #include <core/serialization/component_registry.hpp>
 
 #include <core/component.hpp>
+#include <core/flipflops.hpp>
 #include <core/gates.hpp>
 #include <extraComponents/arithmetic.hpp>
 #include <extraComponents/utils.hpp>
@@ -38,6 +39,10 @@ void registerAllComponents(ComponentRegistry& registry)
   registerComponent<NandGate>(registry);
   registerComponent<NorGate>(registry);
   registerComponent<XorGate>(registry);
+
+  registerComponent<DFlipFlop>(registry);
+  registerComponent<EFlipFlop>(registry);
+  registerComponent<JKFlipFlop>(registry);
 
   // TODO: HalfAdder, FullAdder, AdderNBits are registered in the core layer
   // but have no GraphicalComponent counterpart yet. Add GUI registrations
