@@ -59,6 +59,11 @@ public:
            unsigned int clearIndex, unsigned int presetIndex);
 
   /**
+   * @brief Clear FF internal state (state, last transitions time, ...).
+   */
+  void clearState();
+
+  /**
    * @brief Evaluates async controls and selected clock edges.
    *
    * Initial/full evaluations drive the initial stored state when needed. Reactive

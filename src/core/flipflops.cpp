@@ -23,6 +23,7 @@
 #include <variant>
 
 #include <core/wireUtils.hpp>
+#include <logging/logger.hpp>
 
 namespace {
 
@@ -50,6 +51,13 @@ FlipFlop::FlipFlop(std::vector<Bus> inputs, std::vector<Bus> outputs,
 {
   this->inputs  = std::move(inputs);
   this->outputs = std::move(outputs);
+}
+
+void FlipFlop::clearState()
+{
+  state = State::UNKNOWN;
+  lastSelectedClockEdgeTime.reset();
+  lastTimingInputChangeTime.reset();
 }
 
 void FlipFlop::simulate(Simulator& sim, const SimulationContext& context)
@@ -101,6 +109,7 @@ void FlipFlop::simulate(Simulator& sim, const SimulationContext& context)
     }
 
     else if (context.initialEvaluation) {
+      clearState();
       driveOutput(sim, state);
     }
 
