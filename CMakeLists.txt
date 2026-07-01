@@ -118,6 +118,7 @@ set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
 option(SILICON_ENABLE_SANITIZERS "Enable address and undefined behavior sanitizers" ON)
 option(SILICON_BUILD_TESTS "Build silicon tests" ON)
+option(SILICON_BUILD_BENCHMARKS "Build standalone silicon performance benchmarks" ON)
 
 add_compile_definitions(
         SILICON_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
@@ -241,6 +242,10 @@ if (SILICON_BUILD_TESTS AND NOT EMSCRIPTEN)
 
     add_subdirectory("${CMAKE_SOURCE_DIR}/tests")
     enable_testing()
+endif ()
+
+if (SILICON_BUILD_BENCHMARKS AND NOT EMSCRIPTEN)
+    add_subdirectory("${CMAKE_SOURCE_DIR}/benchmarks")
 endif ()
 
 install(TARGETS SILICON
