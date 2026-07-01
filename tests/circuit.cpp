@@ -41,6 +41,20 @@ public:
   void             simulate(Simulator& sim) override {}
 };
 
+std::vector<Component_ptr> componentsIn(const Circuit& circuit)
+{
+  std::vector<Component_ptr> components;
+  const auto&                graph = circuit.getGraph();
+  components.reserve(boost::num_vertices(graph));
+
+  for (const auto vertex : boost::make_iterator_range(boost::vertices(graph))) {
+    if (auto component = graph[vertex].component)
+      components.push_back(component);
+  }
+
+  return components;
+}
+
 }  // namespace
 
 TEST(CircuitTest, EmptyCircuit)
@@ -404,52 +418,6 @@ TEST(CircuitTest, GetForwardSubgraphPartial)
   EXPECT_EQ(outputs[0], Bus({o}));
 }
 
-TEST(CircuitTest, TopologicalOrderSingleGate)
-{
-  auto a = std::make_shared<Wire>();
-  auto b = std::make_shared<Wire>();
-  auto o = std::make_shared<Wire>();
-
-  auto g = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, o);
-
-  Circuit c(g, false);
-
-  auto order = c.topologicalOrder();
-  EXPECT_EQ(order.size(), 1);
-  EXPECT_EQ(order[0].lock().get(), g.get());
-}
-
-TEST(CircuitTest, TopologicalOrderTwoGates)
-{
-  // a,b → AND(g1, mid) → NOT(g2, o)
-  // Topological order: g1 before g2.
-  auto a   = std::make_shared<Wire>();
-  auto b   = std::make_shared<Wire>();
-  auto mid = std::make_shared<Wire>();
-  auto o   = std::make_shared<Wire>();
-
-  auto g1 = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, mid);
-  auto g2 = std::make_shared<NotGate>(mid, o);
-
-  Component_set comps;
-  comps.insert(g1);
-  comps.insert(g2);
-
-  Circuit c(comps, false);
-
-  auto order = c.topologicalOrder();
-  ASSERT_EQ(order.size(), 2);
-  EXPECT_EQ(order[0].lock().get(), g1.get());
-  EXPECT_EQ(order[1].lock().get(), g2.get());
-}
-
-TEST(CircuitTest, TopologicalOrderEmpty)
-{
-  Circuit c;
-  auto    order = c.topologicalOrder();
-  EXPECT_TRUE(order.empty());
-}
-
 TEST(CircuitTest, GetGraphNotEmpty)
 {
   auto a = std::make_shared<Wire>();
@@ -749,8 +717,7 @@ TEST(CircuitTest, DeserializeEmptyCircuit)
 
   auto c = Circuit::deserialize(json, registry);
 
-  auto topo = c.topologicalOrder();
-  EXPECT_TRUE(topo.empty());
+  EXPECT_EQ(boost::num_vertices(c.getGraph()), 0);
 }
 
 TEST(CircuitTest, DeserializeSingleGate)
@@ -789,8 +756,7 @@ TEST(CircuitTest, DeserializePreservesWireIds)
 
   auto deserialized = Circuit::deserialize(serialized, registry);
 
-  auto topo = deserialized.topologicalOrder();
-  EXPECT_EQ(topo.size(), 1);
+  EXPECT_EQ(boost::num_vertices(deserialized.getGraph()), 1);
 }
 
 TEST(CircuitTest, DeserializeComplexCircuit)
@@ -863,8 +829,7 @@ TEST(CircuitTest, DeserializeAllGateTypes)
 
   auto deserialized = Circuit::deserialize(serialized, registry);
 
-  auto topoComps = deserialized.topologicalOrder();
-  EXPECT_EQ(topoComps.size(), 6);
+  EXPECT_EQ(boost::num_vertices(deserialized.getGraph()), 6);
 }
 
 TEST(CircuitTest, DeserializeMultiWireBus)
@@ -921,8 +886,7 @@ TEST(CircuitTest, DeserializeHalfAdder)
 
   auto deserialized = Circuit::deserialize(serialized, registry);
 
-  auto topoComps = deserialized.topologicalOrder();
-  EXPECT_EQ(topoComps.size(), 1);
+  EXPECT_EQ(boost::num_vertices(deserialized.getGraph()), 1);
 }
 
 TEST(CircuitTest, DeserializeAndNotGates)
@@ -947,8 +911,7 @@ TEST(CircuitTest, DeserializeAndNotGates)
 
   auto deserialized = Circuit::deserialize(serialized, registry);
 
-  auto topoComps = deserialized.topologicalOrder();
-  EXPECT_EQ(topoComps.size(), 2);
+  EXPECT_EQ(boost::num_vertices(deserialized.getGraph()), 2);
 }
 
 TEST(CircuitTest, SerializeIncludesProperties)
@@ -983,10 +946,10 @@ TEST(CircuitTest, DeserializeRestoresStringListProperty)
   auto    serialized = original.serialize();
   auto    restored   = Circuit::deserialize(serialized, registry);
 
-  const auto components = restored.topologicalOrder();
+  const auto components = componentsIn(restored);
   ASSERT_EQ(components.size(), 1);
 
-  const auto restoredComponent = components.front().lock();
+  const auto restoredComponent = components.front();
   ASSERT_TRUE(restoredComponent);
   EXPECT_EQ(restoredComponent->getPropertyValue<std::string>("orientation").value(),
             "LEFT");
@@ -1007,10 +970,10 @@ TEST(CircuitTest, DeserializeRestoresBitwiseGatePropertiesAndBusWidths)
   auto    serialized = original.serialize();
   auto    restored   = Circuit::deserialize(serialized, registry);
 
-  const auto components = restored.topologicalOrder();
+  const auto components = componentsIn(restored);
   ASSERT_EQ(components.size(), 1);
 
-  const auto component = components.front().lock();
+  const auto component = components.front();
   ASSERT_TRUE(component);
   EXPECT_EQ(component->typeName(), "XorGate");
   EXPECT_EQ(component->getPropertyValue<bool>("bitwise"), true);
@@ -1035,10 +998,10 @@ TEST(CircuitTest, DeserializeRestoresAdderNBitsSizeAndBusWidths)
   auto    serialized = original.serialize();
   auto    restored   = Circuit::deserialize(serialized, registry);
 
-  const auto components = restored.topologicalOrder();
+  const auto components = componentsIn(restored);
   ASSERT_EQ(components.size(), 1);
 
-  const auto component = components.front().lock();
+  const auto component = components.front();
   ASSERT_TRUE(component);
   EXPECT_EQ(component->typeName(), "AdderNBits");
   EXPECT_EQ(component->getPropertyValue<int>("size"), 8);
@@ -1147,4 +1110,155 @@ TEST(CircuitTest, RemoveMiddleComponent)
 
   EXPECT_EQ(afterInputs.size(), 4);
   EXPECT_EQ(afterOutputs.size(), 2);
+}
+
+TEST(CircuitTest, GetLevelMapEmpty)
+{
+  Circuit c;
+  auto    levelMap = c.getLevelMap();
+  EXPECT_TRUE(levelMap.empty());
+}
+
+TEST(CircuitTest, GetLevelMapSingleGate)
+{
+  auto a = std::make_shared<Wire>();
+  auto b = std::make_shared<Wire>();
+  auto o = std::make_shared<Wire>();
+
+  auto g = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, o);
+
+  Circuit c(g, false);
+
+  auto levelMap = c.getLevelMap();
+  ASSERT_EQ(levelMap.size(), 1);
+  EXPECT_EQ(levelMap[g], 0);
+}
+
+TEST(CircuitTest, GetLevelMapTwoGatesSeries)
+{
+  auto a   = std::make_shared<Wire>();
+  auto b   = std::make_shared<Wire>();
+  auto mid = std::make_shared<Wire>();
+  auto o   = std::make_shared<Wire>();
+
+  auto g1 = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, mid);
+  auto g2 = std::make_shared<NotGate>(mid, o);
+
+  Component_set comps;
+  comps.insert(g1);
+  comps.insert(g2);
+
+  Circuit c(comps, false);
+
+  auto levelMap = c.getLevelMap();
+  ASSERT_EQ(levelMap.size(), 2);
+  EXPECT_EQ(levelMap[g1], 0);
+  EXPECT_EQ(levelMap[g2], 1);
+}
+
+TEST(CircuitTest, GetLevelMapThreeGatesSeries)
+{
+  auto a = std::make_shared<Wire>();
+  auto b = std::make_shared<Wire>();
+  auto x = std::make_shared<Wire>();
+  auto y = std::make_shared<Wire>();
+  auto o = std::make_shared<Wire>();
+
+  auto g1 = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, x);
+  auto g2 = std::make_shared<NotGate>(x, y);
+  auto g3 = std::make_shared<NotGate>(y, o);
+
+  Component_set comps;
+  comps.insert(g1);
+  comps.insert(g2);
+  comps.insert(g3);
+
+  Circuit c(comps, false);
+
+  auto levelMap = c.getLevelMap();
+  ASSERT_EQ(levelMap.size(), 3);
+  EXPECT_EQ(levelMap[g1], 0);
+  EXPECT_EQ(levelMap[g2], 1);
+  EXPECT_EQ(levelMap[g3], 2);
+}
+
+TEST(CircuitTest, GetLevelMapIndependentGates)
+{
+  auto a1 = std::make_shared<Wire>();
+  auto b1 = std::make_shared<Wire>();
+  auto o1 = std::make_shared<Wire>();
+  auto a2 = std::make_shared<Wire>();
+  auto o2 = std::make_shared<Wire>();
+
+  auto g1 = std::make_shared<AndGate>(std::vector<Wire_ptr>{a1, b1}, o1);
+  auto g2 = std::make_shared<NotGate>(a2, o2);
+
+  Component_set comps;
+  comps.insert(g1);
+  comps.insert(g2);
+
+  Circuit c(comps, false);
+
+  auto levelMap = c.getLevelMap();
+  ASSERT_EQ(levelMap.size(), 2);
+  EXPECT_EQ(levelMap[g1], 0);
+  EXPECT_EQ(levelMap[g2], 0);
+}
+
+TEST(CircuitTest, GetLevelMapDiamond)
+{
+  // a → NOT(x) → AND(x, b) → o
+  // Both NOT and b are at level 0, AND is at level 1 (max of NOT level+1 and b level+1 = 1).
+  auto a = std::make_shared<Wire>();
+  auto b = std::make_shared<Wire>();
+  auto x = std::make_shared<Wire>();
+  auto o = std::make_shared<Wire>();
+
+  auto g1 = std::make_shared<NotGate>(a, x);
+  auto g2 = std::make_shared<AndGate>(std::vector<Wire_ptr>{x, b}, o);
+
+  Component_set comps;
+  comps.insert(g1);
+  comps.insert(g2);
+
+  Circuit c(comps, false);
+
+  auto levelMap = c.getLevelMap();
+  ASSERT_EQ(levelMap.size(), 2);
+  EXPECT_EQ(levelMap[g1], 0);
+  EXPECT_EQ(levelMap[g2], 1);
+}
+
+TEST(CircuitTest, GetLevelMapMultiplePathsDifferentDepths)
+{
+  // a → NOT(w1) ─┐
+  //               AND(w3) → NOT(o)
+  // b → NOT(w2) ─┘
+  // Both NOTs are level 0, AND is level 1, final NOT is level 2.
+  auto a  = std::make_shared<Wire>();
+  auto b  = std::make_shared<Wire>();
+  auto w1 = std::make_shared<Wire>();
+  auto w2 = std::make_shared<Wire>();
+  auto w3 = std::make_shared<Wire>();
+  auto o  = std::make_shared<Wire>();
+
+  auto n1 = std::make_shared<NotGate>(a, w1);
+  auto n2 = std::make_shared<NotGate>(b, w2);
+  auto a1 = std::make_shared<AndGate>(std::vector<Wire_ptr>{w1, w2}, w3);
+  auto n3 = std::make_shared<NotGate>(w3, o);
+
+  Component_set comps;
+  comps.insert(n1);
+  comps.insert(n2);
+  comps.insert(a1);
+  comps.insert(n3);
+
+  Circuit c(comps, false);
+
+  auto levelMap = c.getLevelMap();
+  ASSERT_EQ(levelMap.size(), 4);
+  EXPECT_EQ(levelMap[n1], 0);
+  EXPECT_EQ(levelMap[n2], 0);
+  EXPECT_EQ(levelMap[a1], 1);
+  EXPECT_EQ(levelMap[n3], 2);
 }

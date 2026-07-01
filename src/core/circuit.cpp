@@ -46,9 +46,7 @@ uint64_t Circuit::addTopologyListener(TopologyObserver cb)
 }
 
 void Circuit::removeTopologyListener(uint64_t id)
-{
-  topologyListeners.erase(id);
-}
+{ topologyListeners.erase(id); }
 
 void Circuit::notifyTopologyListeners()
 {
@@ -515,29 +513,6 @@ Circuit Circuit::getForwardSubgraph(const Bus& sourceInput) const
 
 // --- Execution Blocks -----------------------------------------------------------------
 
-std::vector<Component_weakPtr> Circuit::topologicalOrder() const
-{
-  std::vector<VertexDescriptor> order;
-  order.reserve(boost::num_vertices(graph));
-
-  try {
-    circuitLog.debug("Topologically sorting the circuit...");
-    boost::topological_sort(graph, std::back_inserter(order));
-  } catch (const boost::not_a_dag&) {
-    return {};
-  }
-
-  // Boost's topological_sort produces reverse order, so we need to reverse it.
-  std::ranges::reverse(order);
-
-  std::vector<Component_weakPtr> result;
-  result.reserve(order.size());
-  for (auto v : order)
-    result.push_back(graph[v].component);
-
-  return result;
-}
-
 std::vector<Circuit::SimulationBlock> Circuit::splitCyclic() const
 {
   circuitLog.debug("Splitting the circuit in cyclic and acyclic blocks...");
@@ -623,6 +598,54 @@ std::vector<Circuit::SimulationBlock> Circuit::splitCyclic() const
   flushDag();
   circuitLog.debug(std::format("Found {} blocks!", blocks.size()));
   return blocks;
+}
+
+std::vector<VertexDescriptor> Circuit::topologicalOrder() const
+{
+  std::vector<VertexDescriptor> order;
+  order.reserve(boost::num_vertices(graph));
+
+  circuitLog.debug("Topologically sorting the circuit...");
+  boost::topological_sort(graph, std::back_inserter(order));
+
+  // Boost's topological_sort produces reverse order, so we need to reverse it.
+  std::ranges::reverse(order);
+
+  return order;
+}
+
+Circuit::LevelMap Circuit::getLevelMap() const
+{
+  LevelMap levelMap;
+
+  // Because vertex descriptors are integers 0 to N-1, a flat vector is the fastest way to
+  // cache levels.
+  std::vector<unsigned int> vertexLevels(boost::num_vertices(graph), 0);
+
+  for (const VertexDescriptor v : topologicalOrder()) {
+    unsigned int maxLevel = 0;
+
+    // 1. Calculate the level based on predecessors
+    for (const auto& edge : boost::make_iterator_range(boost::in_edges(v, graph))) {
+      const VertexDescriptor pred = boost::source(edge, graph);
+
+      // the topological sort guarantees that the pred level has already been processed
+      const auto predLevel = vertexLevels[pred];
+      maxLevel = std::max(maxLevel, predLevel + 1);
+    }
+
+    // Cache this vertex's level
+    vertexLevels[v] = maxLevel;
+
+    // 2. Map the calculated level back to the actual Component
+    const Component_weakPtr compWeak = graph[v].component;
+
+    if (compWeak.lock()) {
+      levelMap[compWeak] = maxLevel;
+    }
+  }
+
+  return levelMap;
 }
 
 // --- Serialization ---------------------------------------------------------------------

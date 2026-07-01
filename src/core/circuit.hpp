@@ -146,6 +146,14 @@ private:
   void addComponentRecursive(const Component_ptr&           component,
                              std::vector<VertexDescriptor>& newlyAdded);
 
+  /**
+   * @brief Computes a valid execution order for all vertices in the circuit.
+   *
+   * @note Uses Boost's topological_sort algorithm which requires a DAG (Directed Acyclic
+   * Graph).
+   */
+  [[nodiscard]] std::vector<VertexDescriptor> topologicalOrder() const;
+
 public:
   struct SimulationBlock;
 
@@ -320,15 +328,6 @@ public:
    */
   [[nodiscard]] Circuit getForwardSubgraph(const Bus& sourceInput) const;
 
-  /**
-   * @brief Computes a valid execution order for all components in the circuit.
-   *
-   * Uses Boost's topological_sort algorithm which requires a DAG (Directed Acyclic
-   * Graph).
-   *
-   * @return Vector of components in topological order, or empty if cyclic
-   */
-  [[nodiscard]] std::vector<Component_weakPtr> topologicalOrder() const;
 
   /**
    * @brief Gets the underlying circuit graph
@@ -346,6 +345,11 @@ public:
    * @return Vector of SimulationBlocks ordered for proper execution
    */
   [[nodiscard]] std::vector<SimulationBlock> splitCyclic() const;
+
+  using LevelMap = std::map<Component_weakPtr, unsigned int, std::owner_less<Component_weakPtr>>;
+
+  /** @brief Get a levelized map between the components and their level number */
+  [[nodiscard]] Circuit::LevelMap getLevelMap() const;
 
   /**
    * @brief Serializes the core circuit model to a JSON string.
