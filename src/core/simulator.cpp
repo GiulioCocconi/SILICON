@@ -220,7 +220,7 @@ void Simulator::recompile()
       continue;
 
     auto inputWires =
-        comp->getInputs() | std::views::join
+        comp->inputBuses() | std::views::join
         | std::views::filter([](const auto& wire) { return static_cast<bool>(wire); });
 
     for (const auto& wire : inputWires) {

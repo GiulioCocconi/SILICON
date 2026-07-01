@@ -148,7 +148,7 @@ void Circuit::rebuildEdges(VertexDescriptor v)
   if (!cPtr)
     return;
 
-  const auto& outputs = cPtr->getOutputs();
+  const auto& outputs = cPtr->outputBuses();
 
   // 1. subrange allows us to use range-based for loops with Boost.Graph
   for (auto target_v : boost::make_iterator_range(boost::vertices(graph))) {
@@ -160,7 +160,7 @@ void Circuit::rebuildEdges(VertexDescriptor v)
       continue;
 
     // 2. Flatten all neighbor input buses into a single view of wires
-    auto neighbor_wires = neighbor->getInputs() | std::views::join;
+    auto neighbor_wires = neighbor->inputBuses() | std::views::join;
 
     for (const Bus& outBus : outputs) {
       // 3. Filter out null/falsy wires lazily
@@ -197,10 +197,10 @@ std::pair<std::vector<Bus>, std::vector<Bus>> Circuit::getComponentIOs() const
     if (!cPtr)
       continue;
 
-    for (const Bus& bus : cPtr->getInputs())
+    for (const Bus& bus : cPtr->inputBuses())
       inputs.push_back(bus);
 
-    for (const Bus& bus : cPtr->getOutputs())
+    for (const Bus& bus : cPtr->outputBuses())
       outputs.push_back(bus);
   }
 
@@ -225,7 +225,7 @@ void Circuit::buildTopologyMap()
       continue;
 
     auto valid_wires =
-        comp->getInputs() | std::views::join
+        comp->inputBuses() | std::views::join
         | std::views::filter([](const auto& wire) { return static_cast<bool>(wire); });
 
     for (const auto& wire : valid_wires) {
@@ -294,11 +294,11 @@ void Circuit::addComponentRecursive(const Component_ptr&           component,
   newlyAdded.push_back(v);
 
   // Recursively explore neighbors through shared buses
-  for (const Bus& bus : component->getInputs())
+  for (const Bus& bus : component->inputBuses())
     for (const auto& c : getComponentsForBus(bus))
       addComponentRecursive(c, newlyAdded);
 
-  for (const Bus& bus : component->getOutputs())
+  for (const Bus& bus : component->outputBuses())
     for (const auto& c : getComponentsForBus(bus))
       addComponentRecursive(c, newlyAdded);
 }
@@ -402,7 +402,7 @@ Component_set Circuit::getComponentsForBus(Bus b) const
       continue;
 
     // Flatten all of this component's output buses into a single stream of wires
-    auto out_wires = cPtr->getOutputs() | std::views::join;
+    auto out_wires = cPtr->outputBuses() | std::views::join;
 
     // Check if ANY valid wire from `b` exists in this component's outputs
     const bool matches = std::ranges::any_of(valid_wires, [&](const auto& wire) {
@@ -436,7 +436,7 @@ Circuit Circuit::getBackwardsSubgraph(const Bus& targetOutput) const
       continue;
 
     // Flatten all output buses into a single stream of wires
-    auto out_wires = cPtr->getOutputs() | std::views::join;
+    auto out_wires = cPtr->outputBuses() | std::views::join;
 
     // Check if this component drives ANY of our valid target wires
     const bool drivesWire =
