@@ -488,10 +488,22 @@ public:
   [[nodiscard]] std::vector<Bus> getInputs() const { return inputs; }
 
   /**
+   * @brief Gets all input buses without copying.
+   * @return Const reference to the input bus vector
+   */
+  [[nodiscard]] const std::vector<Bus>& inputBuses() const { return inputs; }
+
+  /**
    * @brief Gets all output buses.
    * @return Vector of output buses
    */
   [[nodiscard]] std::vector<Bus> getOutputs() const { return outputs; }
+
+  /**
+   * @brief Gets all output buses without copying.
+   * @return Const reference to the output bus vector
+   */
+  [[nodiscard]] const std::vector<Bus>& outputBuses() const { return outputs; }
 
   /**
    * @brief Gets the component type name.
