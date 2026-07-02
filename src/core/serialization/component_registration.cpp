@@ -21,6 +21,7 @@
 #include <core/component.hpp>
 #include <core/flipflops.hpp>
 #include <core/gates.hpp>
+#include <core/register.hpp>
 #include <extraComponents/arithmetic.hpp>
 #include <extraComponents/multiplexer.hpp>
 #include <extraComponents/utils.hpp>
@@ -44,6 +45,7 @@ void registerAllComponents(ComponentRegistry& registry)
   registerComponent<DFlipFlop>(registry);
   registerComponent<EFlipFlop>(registry);
   registerComponent<JKFlipFlop>(registry);
+  registerComponent<Register>(registry);
 
   registerComponent<HalfAdder>(registry);
   registerComponent<FullAdder>(registry);

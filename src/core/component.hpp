@@ -42,6 +42,7 @@ enum class ComponentCategory {
   Multiplexers,
   Arithmetic,
   FlipFlops,
+  Register,
   Inputs,
   Outputs,
   Utils,
