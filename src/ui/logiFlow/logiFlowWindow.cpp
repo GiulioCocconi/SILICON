@@ -36,7 +36,7 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFormLayout>
-#include <QGraphicsScene>
+#include <QGraphicsView>
 #include <QHBoxLayout>
 #include <QKeySequence>
 #include <QLabel>
@@ -63,6 +63,7 @@
 #include <ui/common/theme.hpp>
 #include <ui/common/undoCommands.hpp>
 #include <ui/common/waveformViewer.hpp>
+#include <ui/logiFlow/componentCatalogOverlay.hpp>
 #include <ui/logiFlow/components/graphicalLogicComponent.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
 
@@ -101,6 +102,10 @@ bool hasClipboardItems(const nlohmann::json& payload)
 
   return hasComponents || hasWires;
 }
+
+}  // namespace
+
+namespace {
 
 const Logger uiLog("ui");
 
@@ -153,6 +158,10 @@ LogiFlowWindow::LogiFlowWindow()
           &LogiFlowWindow::selectionChanged);
 
   layout->addWidget(diagramView);
+  componentCatalogOverlay =
+      new ComponentCatalogOverlay(diagramScene, diagramView->viewport());
+  diagramView->viewport()->installEventFilter(this);
+  updateComponentCatalogGeometry();
 
   aboutDialog = new AboutDialog("SILICON", this);
 
@@ -219,6 +228,7 @@ void LogiFlowWindow::createActions()
   toggleFstTraceAct      = new QAction(Icon("chart"), tr("Trace"), this);
   toggleFstTraceAct->setCheckable(true);
 
+  openComponentCatalogAct    = new QAction(Icon("plus"), "", this);
   setComponentPlacingModeAct = new QAction(Icon("plus"), "", this);
 
   toggleFstTraceAct->setStatusTip(tr("Show waveform viewer"));
@@ -234,6 +244,8 @@ void LogiFlowWindow::createActions()
   deleteAct->setStatusTip(tr("Delete selected components"));
   aboutAct->setStatusTip(tr("Show the application's about box"));
   settingsAct->setStatusTip(tr("Edit application settings"));
+  openComponentCatalogAct->setStatusTip(tr("Open the component catalog"));
+  setComponentPlacingModeAct->setStatusTip(tr("Open quick component search"));
 
   connect(newAct, &QAction::triggered, this, &LogiFlowWindow::newFile);
   connect(openAct, &QAction::triggered, this, &LogiFlowWindow::open);
@@ -254,9 +266,13 @@ void LogiFlowWindow::createActions()
           &LogiFlowWindow::setWireCreationMode);
   connect(setSimulationModeAct, &QAction::triggered, this,
           &LogiFlowWindow::setSimulationMode);
+  connect(openComponentCatalogAct, &QAction::triggered, this,
+          &LogiFlowWindow::showComponentCatalog);
   connect(setComponentPlacingModeAct, &QAction::triggered, this,
           &LogiFlowWindow::setComponentPlacingMode);
   connect(toggleFstTraceAct, &QAction::toggled, this, &LogiFlowWindow::toggleFstTracing);
+
+  addAction(setComponentPlacingModeAct);
 }
 
 QVector<ShortcutSetting> LogiFlowWindow::shortcutSettings() const
@@ -367,7 +383,7 @@ void LogiFlowWindow::createToolBar()
   toolBar->addAction(toggleFstTraceAct);
 
   toolBar->addSeparator();
-  toolBar->addAction(setComponentPlacingModeAct);
+  toolBar->addAction(openComponentCatalogAct);
 
   addToolBar(toolBar);
 }
@@ -427,9 +443,20 @@ void LogiFlowWindow::contextMenuEvent(QContextMenuEvent* event)
 }
 #endif  // QT_NO_CONTEXTMENU
 
+bool LogiFlowWindow::eventFilter(QObject* watched, QEvent* event)
+{
+  if (diagramView && watched == diagramView->viewport()
+      && event->type() == QEvent::Resize) {
+    updateComponentCatalogGeometry();
+  }
+
+  return QMainWindow::eventFilter(watched, event);
+}
+
 void LogiFlowWindow::resizeEvent(QResizeEvent* event)
 {
   QMainWindow::resizeEvent(event);
+  updateComponentCatalogGeometry();
 
   const int currentWidth  = event->size().width();
   const int currentHeight = event->size().height();
@@ -452,6 +479,14 @@ void LogiFlowWindow::resizeEvent(QResizeEvent* event)
   logDock->setMaximumWidth(QWIDGETSIZE_MAX);
   logDock->setMinimumHeight(120);
   logDock->setMaximumHeight(std::max(160, currentHeight / 3));
+}
+
+void LogiFlowWindow::updateComponentCatalogGeometry()
+{
+  if (!componentCatalogOverlay || !diagramView)
+    return;
+
+  componentCatalogOverlay->setGeometry(diagramView->viewport()->rect());
 }
 
 /* ACTIONS IMPLEMENTATION */
@@ -694,6 +729,15 @@ void LogiFlowWindow::setSimulationMode()
 void LogiFlowWindow::setComponentPlacingMode()
 {
   diagramScene->setInteractionMode(InteractionMode::COMPONENT_PLACING_MODE);
+}
+
+void LogiFlowWindow::showComponentCatalog()
+{
+  if (!componentCatalogOverlay)
+    return;
+
+  updateComponentCatalogGeometry();
+  componentCatalogOverlay->open();
 }
 
 void LogiFlowWindow::toggleFstTracing(bool enabled)

@@ -82,6 +82,7 @@ set(UI_SOURCE_FILES
         ${src_dir}/ui/common/graphicalLogStream.cpp
         ${src_dir}/ui/common/logSideView.cpp
         ${src_dir}/ui/common/theme.cpp
+        ${src_dir}/ui/common/componentSearchMatcher.cpp
         ${src_dir}/ui/common/componentSearchBox.cpp
         ${src_dir}/ui/common/diagramView.cpp
         ${src_dir}/ui/common/diagramScene/diagramScene.cpp
@@ -104,6 +105,7 @@ set(UI_SOURCE_FILES
         ${src_dir}/ui/logiFlow/components/graphicalFlipFlops.cpp
         ${src_dir}/ui/logiFlow/components/graphicalArithmetic.cpp
         ${src_dir}/ui/logiFlow/components/graphicalUtils.cpp
+        ${src_dir}/ui/logiFlow/componentCatalogOverlay.cpp
         ${src_dir}/ui/logiFlow/logiFlowWindow.cpp
         ${src_dir}/ui/serialization/gui_component_factory.cpp
         ${src_dir}/ui/serialization/gui_component_registration.cpp)

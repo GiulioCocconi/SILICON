@@ -21,6 +21,7 @@
 
 #include <algorithm>
 #include <stdexcept>
+#include <utility>
 
 ComponentRegistry::ComponentRegistry() = default;
 
@@ -35,9 +36,25 @@ ComponentRegistry& ComponentRegistry::instance()
   return registry;
 }
 
+namespace {
+
+bool isValidMetadata(const ComponentMetadata& metadata)
+{
+  return !metadata.displayName.empty() && !metadata.description.empty();
+}
+
+}  // namespace
+
 void ComponentRegistry::registerType(std::string type, Factory factory)
 {
-  auto [it, inserted] = types_.emplace(std::move(type), std::move(factory));
+  if (!factory)
+    throw std::invalid_argument("Component registration requires a factory");
+
+  const ComponentMetadata metadata = factory()->metadata();
+  if (!isValidMetadata(metadata))
+    throw std::invalid_argument("Component registration requires metadata");
+
+  auto [it, inserted] = types_.emplace(std::move(type), Entry{std::move(factory)});
   if (!inserted) {
     throw std::logic_error(std::string("Duplicate component registration: ") + it->first);
   }
@@ -49,12 +66,21 @@ Component_ptr ComponentRegistry::create(std::string_view type) const
   if (it == types_.end()) {
     throw std::runtime_error(std::string("Unknown component type: ") + std::string{type});
   }
-  return it->second();
+  return it->second.factory();
 }
 
 bool ComponentRegistry::hasType(std::string_view type) const
 {
   return types_.contains(type);
+}
+
+ComponentRegistry::ComponentMetadata ComponentRegistry::metadata(std::string_view type) const
+{
+  auto it = types_.find(type);
+  if (it == types_.end()) {
+    throw std::runtime_error(std::string("Unknown component type: ") + std::string{type});
+  }
+  return it->second.factory()->metadata();
 }
 
 std::vector<std::string> ComponentRegistry::availableTypes() const
@@ -65,4 +91,18 @@ std::vector<std::string> ComponentRegistry::availableTypes() const
     types.push_back(type);
   }
   return types;
+}
+
+std::string_view componentCategoryName(const ComponentCategory category)
+{
+  using Category = ComponentCategory;
+  switch (category) {
+    case Category::Gates: return "Gates";
+    case Category::Arithmetic: return "Arithmetic";
+    case Category::FlipFlops: return "Flip Flops";
+    case Category::Inputs: return "Inputs";
+    case Category::Outputs: return "Outputs";
+    case Category::Utils: return "Utils";
+  }
+  std::unreachable();
 }

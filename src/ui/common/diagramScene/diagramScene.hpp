@@ -103,6 +103,12 @@ public:
   void setInteractionMode(InteractionMode mode);
 
   /**
+   * @brief Cancels the active transient interaction, returning to normal editing.
+   * @return True when there was an interaction to cancel
+   */
+  bool cancelCurrentInteraction();
+
+  /**
    * @brief Gets the current interaction mode.
    * @return Current mode
    */
@@ -150,6 +156,13 @@ public:
    * @param typeName The component type name
    */
   void placeComponent(std::string_view typeName);
+
+  /**
+   * @brief Begins placing a component of the given type.
+   * @param typeName The component type name
+   * @param showSearchBox Whether entering placement mode should show the quick search box
+   */
+  void placeComponent(std::string_view typeName, bool showSearchBox);
 
   /**
    * @brief Snaps a point to the grid.
@@ -427,6 +440,9 @@ private:
 
   /** @brief Component being placed (shadow) */
   GraphicalComponent* componentToBeDrawn = nullptr;
+
+  /** @brief Suppresses the quick search popup for catalog-driven placement. */
+  bool suppressNextComponentSearch = false;
 
   /** @brief Wire segment being drawn */
   GraphicalWireSegment* wireSegmentToBeDrawn = nullptr;

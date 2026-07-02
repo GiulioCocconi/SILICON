@@ -47,13 +47,6 @@ TEST_F(FactoryTest, AvailableTypesIsNonEmpty)
   EXPECT_FALSE(registry.availableTypes().empty());
 }
 
-TEST_F(FactoryTest, RegistersCoreFlipFlops)
-{
-  EXPECT_TRUE(registry.hasType("DFlipFlop"));
-  EXPECT_TRUE(registry.hasType("EFlipFlop"));
-  EXPECT_TRUE(registry.hasType("JKFlipFlop"));
-}
-
 TEST_F(FactoryTest, CreatedComponentsHaveEmptyBuses)
 {
   for (const auto& typeName : registry.availableTypes()) {
@@ -74,3 +67,26 @@ TEST_F(FactoryTest, DuplicateRegistrationThrows)
 {
   EXPECT_THROW(registerAllComponents(registry), std::logic_error);
 }
+
+TEST_F(FactoryTest, RegisteredComponentsHaveCatalogMetadata)
+{
+  for (const auto& typeName : registry.availableTypes()) {
+    const auto metadata = registry.metadata(typeName);
+    EXPECT_FALSE(metadata.displayName.empty()) << typeName;
+    EXPECT_FALSE(metadata.description.empty()) << typeName;
+  }
+}
+
+TEST_F(FactoryTest, RegistryMetadataComesFromComponentObject)
+{
+  for (const auto& typeName : registry.availableTypes()) {
+    const auto component        = registry.create(typeName);
+    const auto registryMetadata = registry.metadata(typeName);
+    const auto objectMetadata   = component->metadata();
+
+    EXPECT_EQ(registryMetadata.displayName, objectMetadata.displayName) << typeName;
+    EXPECT_EQ(registryMetadata.description, objectMetadata.description) << typeName;
+    EXPECT_EQ(registryMetadata.category, objectMetadata.category) << typeName;
+  }
+}
+

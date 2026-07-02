@@ -28,10 +28,15 @@
 #include <ui/logiFlow/components/graphicalIO.hpp>
 #include <ui/logiFlow/components/graphicalUtils.hpp>
 
+#include <utility>
+
 void registerAllGUIComponents(GUIComponentFactory& factory)
 {
   auto reg = [&factory](std::string name, auto factoryFunc) {
     factory.registerType(std::move(name), std::move(factoryFunc));
+  };
+  auto regGuiOnly = [&factory](std::string name, auto factoryFunc) {
+    factory.registerType(std::move(name), std::move(factoryFunc), {.coreType = {}});
   };
 
   reg(std::string(AndGate::Type),
@@ -53,14 +58,16 @@ void registerAllGUIComponents(GUIComponentFactory& factory)
   reg(std::string(JKFlipFlop::Type),
       [](QGraphicsItem* p) { return std::make_unique<GraphicalJKFlipFlop>(p); });
 
-  reg(std::string(GraphicalInput::ComponentType),
-      [](QGraphicsItem* p) { return std::make_unique<GraphicalInput>(p); });
-  reg(std::string(GraphicalOutputSingle::ComponentType),
-      [](QGraphicsItem* p) { return std::make_unique<GraphicalOutputSingle>(p); });
-  reg(std::string(GraphicalBusInput::ComponentType),
-      [](QGraphicsItem* p) { return std::make_unique<GraphicalBusInput>(p); });
-  reg(std::string(GraphicalBusOutput::ComponentType),
-      [](QGraphicsItem* p) { return std::make_unique<GraphicalBusOutput>(p); });
+  regGuiOnly(std::string(GraphicalInput::ComponentType),
+             [](QGraphicsItem* p) { return std::make_unique<GraphicalInput>(p); });
+  regGuiOnly(std::string(GraphicalOutputSingle::ComponentType),
+             [](QGraphicsItem* p) {
+               return std::make_unique<GraphicalOutputSingle>(p);
+             });
+  regGuiOnly(std::string(GraphicalBusInput::ComponentType),
+             [](QGraphicsItem* p) { return std::make_unique<GraphicalBusInput>(p); });
+  regGuiOnly(std::string(GraphicalBusOutput::ComponentType),
+             [](QGraphicsItem* p) { return std::make_unique<GraphicalBusOutput>(p); });
 
   reg(std::string(WireSplitter::Type),
       [](QGraphicsItem* p) { return std::make_unique<GraphicalWireSplitter>(p); });

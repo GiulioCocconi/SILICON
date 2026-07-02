@@ -18,42 +18,11 @@
 
 #include "componentSearchBox.hpp"
 
-#include <algorithm>
 #include <stdexcept>
 #include <vector>
 
+#include <ui/common/componentSearchMatcher.hpp>
 #include <ui/common/theme.hpp>
-
-namespace {
-
-int editDistance(QString lhs, QString rhs)
-{
-  lhs = lhs.toCaseFolded();
-  rhs = rhs.toCaseFolded();
-
-  std::vector<int> previous(rhs.size() + 1);
-  std::vector<int> current(rhs.size() + 1);
-
-  for (qsizetype i = 0; i <= rhs.size(); ++i) {
-    previous[i] = static_cast<int>(i);
-  }
-
-  for (qsizetype i = 1; i <= lhs.size(); ++i) {
-    current[0] = static_cast<int>(i);
-
-    for (qsizetype j = 1; j <= rhs.size(); ++j) {
-      const int substitutionCost = lhs[i - 1] == rhs[j - 1] ? 0 : 1;
-      current[j]                 = std::min(
-          {previous[j] + 1, current[j - 1] + 1, previous[j - 1] + substitutionCost});
-    }
-
-    std::swap(previous, current);
-  }
-
-  return previous[rhs.size()];
-}
-
-}  // namespace
 
 ComponentSearchBox::ComponentSearchBox(std::vector<std::string> list, QString title,
                                        QGraphicsItem* parent)
@@ -158,54 +127,20 @@ void ComponentSearchBox::updateCompletionModel() const
 {
   const QString query = le->text().trimmed();
 
-  struct RankedCompletion {
-    QString text;
-    int     rank;
-    int     distance;
-  };
-
-  std::vector<RankedCompletion> ranked;
-  ranked.reserve(completionList.size());
-
-  for (const auto& item : completionList) {
-    const QString text     = QString::fromStdString(item);
-    int           rank     = 3;
-    int           distance = 0;
-
-    if (!query.isEmpty()) {
-      if (text.compare(query, Qt::CaseInsensitive) == 0)
-        rank = 0;
-      else if (text.startsWith(query, Qt::CaseInsensitive))
-        rank = 1;
-      else if (text.contains(query, Qt::CaseInsensitive))
-        rank = 2;
-      else
-        rank = 3;
-
-      distance = editDistance(query, text);
-    }
-
-    ranked.push_back({text, rank, distance});
-  }
-
-  std::ranges::sort(ranked, [](const RankedCompletion& lhs, const RankedCompletion& rhs) {
-    if (lhs.rank != rhs.rank)
-      return lhs.rank < rhs.rank;
-
-    if (lhs.distance != rhs.distance)
-      return lhs.distance < rhs.distance;
-
-    if (lhs.text.size() != rhs.text.size())
-      return lhs.text.size() < rhs.text.size();
-
-    return QString::compare(lhs.text, rhs.text, Qt::CaseInsensitive) < 0;
-  });
-
   QStringList strings;
-  for (const auto& item : ranked) {
-    strings.append(item.text);
+  strings.reserve(static_cast<qsizetype>(completionList.size()));
+  for (const auto& item : completionList) {
+    strings.append(QString::fromStdString(item));
   }
-  completionModel->setStringList(strings);
+
+  const auto ranked = ComponentSearchMatcher::rank(strings, query, true);
+
+  QStringList sortedStrings;
+  sortedStrings.reserve(static_cast<qsizetype>(ranked.size()));
+  for (const auto& match : ranked) {
+    sortedStrings.append(strings[match.index]);
+  }
+  completionModel->setStringList(sortedStrings);
 }
 
 std::string ComponentSearchBox::selectedTypeName() const

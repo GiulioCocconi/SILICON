@@ -30,6 +30,12 @@ Component::Component(std::vector<Bus> inputs, std::vector<Bus> outputs)
 {
 }
 
+ComponentMetadata Component::metadata() const
+{
+  const std::string type = std::string(typeName());
+  return {type, type, ComponentCategory::Utils};
+}
+
 uint64_t Component::addIOListener(IOObserver cb)
 {
   uint64_t id     = ++nextIoListenerId;

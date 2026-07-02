@@ -50,9 +50,9 @@ DiagramScene::DiagramScene(QObject* parent) : QGraphicsScene(parent)
   csb->setParent(this);
   connect(csb, &ComponentSearchBox::requestHide, this, &DiagramScene::hideCSB);
   connect(csb, &ComponentSearchBox::requestCancel, this,
-          [this] { setInteractionMode(InteractionMode::NORMAL_MODE); });
+          &DiagramScene::cancelCurrentInteraction);
   connect(csb, &ComponentSearchBox::selectedComponent, this,
-          &DiagramScene::placeComponent);
+          [this](std::string typeName, QPointF) { placeComponent(typeName); });
 
   wireManager.setTopologyChangedCallback(
       [this]() { simulationController->handleTopologyChanged(); });
@@ -88,6 +88,15 @@ void DiagramScene::drawBackground(QPainter* painter, const QRectF& rect)
 void DiagramScene::setInteractionMode(InteractionMode mode)
 {
   setInteractionMode(mode, false);
+}
+
+bool DiagramScene::cancelCurrentInteraction()
+{
+  if (currentInteractionMode == InteractionMode::NORMAL_MODE)
+    return false;
+
+  setInteractionMode(InteractionMode::NORMAL_MODE);
+  return true;
 }
 
 void DiagramScene::setInteractionMode(const InteractionMode newMode, const bool force)
@@ -167,6 +176,11 @@ void DiagramScene::enterComponentPlacingMode()
   //            When the component is placed then go to component placing mode and
   //            repeat the placing of the same component until ESC is pressed
   //            (NORMAL_MODE)
+
+  if (suppressNextComponentSearch) {
+    suppressNextComponentSearch = false;
+    return;
+  }
 
   const QPoint globalCursorPos = QCursor::pos();
   const auto   view            = views()[0];
@@ -308,7 +322,10 @@ void DiagramScene::keyPressEvent(QKeyEvent* event)
 {
   switch (event->key()) {
     case Qt::Key_Escape: {
-      setInteractionMode(InteractionMode::NORMAL_MODE);
+      if (cancelCurrentInteraction()) {
+        event->accept();
+        return;
+      }
       break;
     }
     default: break;
@@ -477,11 +494,17 @@ void DiagramScene::addComponent(GraphicalComponent* component, QPointF pos)
 
 void DiagramScene::placeComponent(std::string_view typeName)
 {
+  placeComponent(typeName, true);
+}
+
+void DiagramScene::placeComponent(std::string_view typeName, const bool showSearchBox)
+{
   if (componentToBeDrawn)
     throw std::logic_error("placeComponent: previous component not yet placed");
 
   componentToBeDrawn      = GUIComponentFactory::instance().create(typeName).release();
   lastPlacedComponentType = typeName;
+  suppressNextComponentSearch = !showSearchBox;
 
   // TODO: IMPLEMENT COMPONENT SHADOW TO BE SHOWN WHILE DRAGGING
   setInteractionMode(InteractionMode::COMPONENT_PLACING_MODE);

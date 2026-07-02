@@ -33,7 +33,18 @@ GUIComponentFactory& GUIComponentFactory::instance()
 
 void GUIComponentFactory::registerType(std::string type, Factory factory)
 {
-  auto [it, inserted] = factories_.emplace(std::move(type), std::move(factory));
+  const std::string coreType = type;
+  registerType(std::move(type), std::move(factory), {.coreType = coreType});
+}
+
+void GUIComponentFactory::registerType(std::string type, Factory factory,
+                                       EntryMetadata metadata)
+{
+  if (!factory)
+    throw std::invalid_argument("GUI component registration requires a factory");
+
+  auto [it, inserted] =
+      factories_.emplace(std::move(type), Entry{std::move(factory), std::move(metadata)});
   if (!inserted) {
     throw std::logic_error(std::string("Duplicate GUI component registration: ")
                            + it->first);
@@ -48,7 +59,7 @@ GUIComponentFactory::create(std::string_view type, QGraphicsItem* parent) const
     throw std::runtime_error(std::string("Unknown GUI component type: ")
                              + std::string{type});
   }
-  return it->second(parent);
+  return it->second.factory(parent);
 }
 
 std::vector<std::string> GUIComponentFactory::availableTypes() const
@@ -64,4 +75,15 @@ std::vector<std::string> GUIComponentFactory::availableTypes() const
 bool GUIComponentFactory::hasType(std::string_view type) const
 {
   return factories_.contains(type);
+}
+
+const GUIComponentFactory::EntryMetadata&
+GUIComponentFactory::metadata(std::string_view type) const
+{
+  auto it = factories_.find(type);
+  if (it == factories_.end()) {
+    throw std::runtime_error(std::string("Unknown GUI component type: ")
+                             + std::string{type});
+  }
+  return it->second.metadata;
 }

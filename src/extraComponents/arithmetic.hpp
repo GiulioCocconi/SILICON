@@ -41,6 +41,11 @@ public:
    * @return Type identifier
    */
   std::string_view typeName() const override { return Type; }
+  ComponentMetadata metadata() const override
+  {
+    return {"Half Adder", "Adds two one-bit inputs and outputs sum and carry.",
+            ComponentCategory::Arithmetic};
+  }
 
   /** @brief Input bus indices for HalfAdder. */
   enum class Inputs : unsigned int {
@@ -93,6 +98,12 @@ public:
    * @return Type identifier
    */
   std::string_view typeName() const override { return Type; }
+  ComponentMetadata metadata() const override
+  {
+    return {"Full Adder",
+            "Adds two one-bit inputs plus carry-in and outputs sum and carry.",
+            ComponentCategory::Arithmetic};
+  }
 
   /** @brief Input bus indices for FullAdder. */
   enum class Inputs : unsigned int {
@@ -149,6 +160,11 @@ public:
    * @return Type identifier
    */
   std::string_view typeName() const override { return Type; }
+  ComponentMetadata metadata() const override
+  {
+    return {"N-bit Adder", "Adds two fixed-width buses and outputs sum and carry.",
+            ComponentCategory::Arithmetic};
+  }
 
   /** @brief Input bus indices for AdderNBits. */
   enum class Inputs : unsigned int {

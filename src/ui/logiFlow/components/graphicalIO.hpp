@@ -172,9 +172,9 @@ private:
 
 /**
  * @class DummyInputComponent
- * @brief The core logic backend for a single-bit input.
+ * @brief The logic backend for a single-bit GUI input.
  *
- * Acts as the bridge between the GraphicalInput UI and the core Simulation engine.
+ * Acts as the bridge between the GraphicalInput UI and the Simulation engine.
  */
 class DummyInputComponent : public Component {
 public:
@@ -192,6 +192,11 @@ public:
   }
 
   std::string_view typeName() const override { return Type; }
+  ComponentMetadata metadata() const override
+  {
+    return {"Input", "Provides a user-toggleable one-bit signal.",
+            ComponentCategory::Inputs};
+  }
   void             simulate(Simulator& sim) override {}
 };
 
@@ -249,7 +254,7 @@ private:
 
 /**
  * @class DummyBusInputComponent
- * @brief The core logic backend for a multi-bit bus input.
+ * @brief The logic backend for a multi-bit GUI bus input.
  */
 class DummyBusInputComponent : public Component {
 public:
@@ -274,6 +279,11 @@ public:
   }
 
   std::string_view typeName() const override { return Type; }
+  ComponentMetadata metadata() const override
+  {
+    return {"Bus Input", "Provides an editable multi-bit bus value.",
+            ComponentCategory::Inputs};
+  }
   void             simulate(Simulator& sim) override {}
 };
 
@@ -329,7 +339,7 @@ private:
 
 /**
  * @class DummyOutputComponent
- * @brief The core logic backend for a single-bit output.
+ * @brief The logic backend for a single-bit GUI output.
  *
  * The graphical output reads this component's input after simulation completes.
  * @note simulate() intentionally performs no UI work so this component remains safe to
@@ -342,6 +352,11 @@ public:
   DummyOutputComponent(Bus bus, std::string name);
 
   std::string_view typeName() const override { return Type; }
+  ComponentMetadata metadata() const override
+  {
+    return {"Output", "Displays the current state of a one-bit signal.",
+            ComponentCategory::Outputs};
+  }
   void             simulate(Simulator& sim) override {}
 };
 
@@ -387,7 +402,7 @@ private:
 
 /**
  * @class DummyBusOutputComponent
- * @brief The core logic backend for a multi-bit bus output display.
+ * @brief The logic backend for a multi-bit GUI bus output display.
  *
  * @note simulate() intentionally performs no UI work; GraphicalBusOutput refreshes from
  * the input bus on the GUI thread after simulation completes.
@@ -406,6 +421,11 @@ public:
   int setSize(int newSize);
 
   std::string_view typeName() const override { return Type; }
+  ComponentMetadata metadata() const override
+  {
+    return {"Bus Output", "Displays the current value of a multi-bit bus.",
+            ComponentCategory::Outputs};
+  }
 
   void simulate(Simulator& sim) override {}
 };

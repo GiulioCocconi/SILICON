@@ -29,6 +29,11 @@ private:
 public:
   static constexpr std::string_view Type = "WireSplitter";
   std::string_view                  typeName() const override { return Type; }
+  ComponentMetadata metadata() const override
+  {
+    return {"Wire Splitter", "Splits a bus into individual output bits.",
+            ComponentCategory::Utils};
+  }
 
   WireSplitter();
   WireSplitter(Bus input, const std::vector<Bus>& outputs);
@@ -45,6 +50,11 @@ private:
 public:
   static constexpr std::string_view Type = "WireMerger";
   std::string_view                  typeName() const override { return Type; }
+  ComponentMetadata metadata() const override
+  {
+    return {"Wire Merger", "Merges individual input bits into a bus.",
+            ComponentCategory::Utils};
+  }
 
   WireMerger();
   WireMerger(const std::vector<Bus>& inputs, Bus output);

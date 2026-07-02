@@ -20,6 +20,8 @@
 
 #include <QGraphicsItem>
 
+#include <core/serialization/component_registry.hpp>
+
 #include <memory>
 #include <ui/common/graphicalComponent.hpp>
 
@@ -58,6 +60,10 @@ public:
    */
   using Factory = std::function<std::unique_ptr<GraphicalComponent>(QGraphicsItem*)>;
 
+  struct EntryMetadata {
+    std::string coreType;
+  };
+
   GUIComponentFactory();
 
   /**
@@ -80,6 +86,7 @@ public:
    * @throws std::logic_error if type is already registered
    */
   void registerType(std::string type, Factory factory);
+  void registerType(std::string type, Factory factory, EntryMetadata metadata);
 
   /**
    * @brief Creates a component by type name.
@@ -98,6 +105,8 @@ public:
    */
   std::vector<std::string> availableTypes() const;
 
+  const EntryMetadata& metadata(std::string_view type) const;
+
   /**
    * @brief Checks if a type is registered.
    * @param type The type to check
@@ -107,5 +116,10 @@ public:
 
 private:
   /** @brief Map of type names to factory functions */
-  std::map<std::string, Factory, std::less<>> factories_;
+  struct Entry {
+    Factory       factory;
+    EntryMetadata metadata;
+  };
+
+  std::map<std::string, Entry, std::less<>> factories_;
 };
