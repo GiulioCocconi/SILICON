@@ -742,18 +742,6 @@ Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry
             std::format("Failed to create unknown component type: {}", type));
       }
 
-      if (auto in_it = compJson.find("inputs");
-          in_it != compJson.end() && in_it->is_array()) {
-        auto inputs = deserializeBusList(*in_it);
-        cPtr->setInputs(inputs);
-      }
-
-      if (auto out_it = compJson.find("outputs");
-          out_it != compJson.end() && out_it->is_array()) {
-        auto outputs = deserializeBusList(*out_it);
-        cPtr->setOutputs(outputs);
-      }
-
       if (auto props_it = compJson.find("properties");
           props_it != compJson.end() && props_it->is_object()) {
         for (const auto& [key, val] : props_it->items()) {
@@ -772,6 +760,18 @@ Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry
           }
           cPtr->setProperty(key, propValue);
         }
+      }
+
+      if (auto in_it = compJson.find("inputs");
+          in_it != compJson.end() && in_it->is_array()) {
+        auto inputs = deserializeBusList(*in_it);
+        cPtr->setInputs(inputs);
+      }
+
+      if (auto out_it = compJson.find("outputs");
+          out_it != compJson.end() && out_it->is_array()) {
+        auto outputs = deserializeBusList(*out_it);
+        cPtr->setOutputs(outputs);
       }
 
       /* --- CRITICAL ORDERING STEP ------------------------------------------------------

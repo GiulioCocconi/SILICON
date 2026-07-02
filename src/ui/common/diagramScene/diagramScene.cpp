@@ -58,10 +58,10 @@ DiagramScene::DiagramScene(QObject* parent) : QGraphicsScene(parent)
       [this]() { simulationController->handleTopologyChanged(); });
 }
 
-QPointF DiagramScene::snapToGrid(const QPointF point)
+QPoint DiagramScene::snapToGrid(const QPointF point)
 {
-  const auto x = round(point.x() / DiagramScene::GRID_SIZE) * DiagramScene::GRID_SIZE;
-  const auto y = round(point.y() / DiagramScene::GRID_SIZE) * DiagramScene::GRID_SIZE;
+  const auto x = (int)round(point.x() / DiagramScene::GRID_SIZE) * DiagramScene::GRID_SIZE;
+  const auto y = (int)round(point.y() / DiagramScene::GRID_SIZE) * DiagramScene::GRID_SIZE;
 
   return {x, y};
 }
@@ -452,7 +452,7 @@ bool DiagramScene::calculateWiresForComponents()
              gComp->getInputPorts() | silicon::views::enumerate) {
           if (gComp->mapToScene(p->getPosition()) == vertex) {
             try {
-              gComp->getComponent()->setInput(index, wire->getBus(), true);
+              gComp->assignInputPortBus(index, wire->getBus());
             } catch (const std::exception& e) {
               p->setInputAssignmentError(true);
               QMessageBox::critical(views().first(), "Error while assigning inputs!",

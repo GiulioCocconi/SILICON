@@ -64,13 +64,29 @@ void GraphicalLogicComponent::updatePortSizes()
   const std::vector<Bus> componentInputs  = associatedComponent->getInputs();
   const std::vector<Bus> componentOutputs = associatedComponent->getOutputs();
 
-  for (size_t i = 0; i < inputPorts.size() && i < componentInputs.size(); ++i)
-    inputPorts[i]->setSize(componentInputs[i].size());
+  for (size_t i = 0; i < inputPorts.size(); ++i)
+    inputPorts[i]->setSize(inputPortSize(i, componentInputs));
 
   for (size_t i = 0; i < outputPorts.size() && i < componentOutputs.size(); ++i)
     outputPorts[i]->setSize(componentOutputs[i].size());
 
   update();
+}
+
+bool GraphicalLogicComponent::acceptsInputPortCount(
+    const size_t portCount, const std::vector<Bus>& componentInputs) const
+{
+  return componentInputs.size() == portCount;
+}
+
+unsigned int
+GraphicalLogicComponent::inputPortSize(const size_t             portIndex,
+                                       const std::vector<Bus>& componentInputs) const
+{
+  if (portIndex >= componentInputs.size())
+    return 1;
+
+  return static_cast<unsigned int>(componentInputs[portIndex].size());
 }
 
 void GraphicalLogicComponent::applyProperty(std::string_view     key,
@@ -95,6 +111,15 @@ void GraphicalLogicComponent::setComponent(const Component_ptr& component)
   updatePortSizes();
 }
 
+void GraphicalLogicComponent::assignInputPortBus(const unsigned int portIndex,
+                                                 const Bus&         bus) const
+{
+  if (!associatedComponent)
+    return;
+
+  associatedComponent->setInput(portIndex, bus, true);
+}
+
 void GraphicalLogicComponent::setPorts(const std::vector<PortPair>& busToPortInputs,
                                        const std::vector<PortPair>& busToPortOutputs)
 {
@@ -102,7 +127,7 @@ void GraphicalLogicComponent::setPorts(const std::vector<PortPair>& busToPortInp
     const std::vector<Bus> componentInputs  = associatedComponent->getInputs();
     const std::vector<Bus> componentOutputs = associatedComponent->getOutputs();
 
-    if (componentInputs.size() != busToPortInputs.size())
+    if (!acceptsInputPortCount(busToPortInputs.size(), componentInputs))
       throw std::logic_error("Input port count mismatch with component");
     if (componentOutputs.size() != busToPortOutputs.size())
       throw std::logic_error("Output port count mismatch with component");

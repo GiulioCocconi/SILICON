@@ -21,11 +21,13 @@
 #include <core/flipflops.hpp>
 #include <core/gates.hpp>
 #include <extraComponents/arithmetic.hpp>
+#include <extraComponents/multiplexer.hpp>
 #include <extraComponents/utils.hpp>
 #include <ui/logiFlow/components/graphicalArithmetic.hpp>
 #include <ui/logiFlow/components/graphicalFlipFlops.hpp>
 #include <ui/logiFlow/components/graphicalGates.hpp>
 #include <ui/logiFlow/components/graphicalIO.hpp>
+#include <ui/logiFlow/components/graphicalMultiplexer.hpp>
 #include <ui/logiFlow/components/graphicalUtils.hpp>
 
 #include <utility>
@@ -80,4 +82,10 @@ void registerAllGUIComponents(GUIComponentFactory& factory)
       [](QGraphicsItem* p) { return std::make_unique<GraphicalFullAdder>(p); });
   reg(std::string(AdderNBits::Type),
       [](QGraphicsItem* p) { return std::make_unique<GraphicalAdderNBits>(p); });
+  reg(std::string(Multiplexer::Type),
+      [](QGraphicsItem* p) { return std::make_unique<GraphicalMultiplexer>(p); });
+  reg(std::string(Demultiplexer::Type),
+      [](QGraphicsItem* p) { return std::make_unique<GraphicalDemultiplexer>(p); });
+  reg(std::string(Decoder::Type),
+      [](QGraphicsItem* p) { return std::make_unique<GraphicalDecoder>(p); });
 }
