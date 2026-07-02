@@ -16,6 +16,7 @@
 enable_testing()
 add_executable(logic_tests logic.cpp)
 add_executable(arithmetic_tests arithmetic.cpp)
+add_executable(multiplexer_tests multiplexer.cpp)
 add_executable(utils_tests utils.cpp)
 add_executable(num_formatting_tests num_formatting.cpp)
 add_executable(libfst_tests fstlib.cpp)
@@ -26,13 +27,13 @@ add_executable(factory_tests factory.cpp)
 add_executable(logger_tests logger.cpp)
 add_executable(libavoid_tests libavoid.cpp ${CMAKE_SOURCE_DIR}/src/ui/common/wireRouting.cpp)
 
-foreach (target logic_tests arithmetic_tests utils_tests num_formatting_tests libfst_tests fstwrapper_tests silicon_waveform_tests circuit_tests factory_tests logger_tests)
+foreach (target logic_tests arithmetic_tests multiplexer_tests utils_tests num_formatting_tests libfst_tests fstwrapper_tests silicon_waveform_tests circuit_tests factory_tests logger_tests)
     set_target_properties(${target} PROPERTIES
             AUTOMOC OFF
             AUTOUIC OFF
             AUTORCC OFF)
     target_link_libraries(${target} GTest::gtest_main GTest::gtest silicon_core silicon_logging)
-    gtest_discover_tests(${target})
+    gtest_discover_tests(${target} DISCOVERY_MODE PRE_TEST)
 endforeach ()
 
 set_target_properties(libavoid_tests PROPERTIES

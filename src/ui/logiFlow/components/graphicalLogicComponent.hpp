@@ -65,7 +65,15 @@ protected:
   void refreshComponentIOListener();
 
   /** @brief Copies associated component bus sizes into graphical ports */
-  void updatePortSizes();
+  virtual void updatePortSizes();
+
+  /** @brief Checks whether a visible input port count is valid for this component */
+  [[nodiscard]] virtual bool
+  acceptsInputPortCount(size_t portCount, const std::vector<Bus>& componentInputs) const;
+
+  /** @brief Returns the visible size for an input port */
+  [[nodiscard]] virtual unsigned int
+  inputPortSize(size_t portIndex, const std::vector<Bus>& componentInputs) const;
 
 protected:
   explicit GraphicalLogicComponent(ItemCategory category, const Component_ptr& component,
@@ -94,6 +102,13 @@ public:
    */
   void setPorts(const std::vector<PortPair>& busToPortInputs,
                 const std::vector<PortPair>& busToPortOutputs) override;
+
+  /**
+   * @brief Assigns a bus connected to a visible input port.
+   * @param portIndex Visible input port index
+   * @param bus Connected wire bus
+   */
+  virtual void assignInputPortBus(unsigned int portIndex, const Bus& bus) const;
 
   /**
    * @brief Gets the associated logical component.

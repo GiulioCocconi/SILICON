@@ -22,6 +22,7 @@
 #include <core/flipflops.hpp>
 #include <core/gates.hpp>
 #include <extraComponents/arithmetic.hpp>
+#include <extraComponents/multiplexer.hpp>
 #include <extraComponents/utils.hpp>
 
 template <typename T> inline void registerComponent(ComponentRegistry& registry)
@@ -47,6 +48,9 @@ void registerAllComponents(ComponentRegistry& registry)
   registerComponent<HalfAdder>(registry);
   registerComponent<FullAdder>(registry);
   registerComponent<AdderNBits>(registry);
+  registerComponent<Multiplexer>(registry);
+  registerComponent<Demultiplexer>(registry);
+  registerComponent<Decoder>(registry);
 
   registerComponent<WireSplitter>(registry);
   registerComponent<WireMerger>(registry);

@@ -98,6 +98,7 @@ std::string_view componentCategoryName(const ComponentCategory category)
   using Category = ComponentCategory;
   switch (category) {
     case Category::Gates: return "Gates";
+    case Category::Multiplexers: return "Multiplexers";
     case Category::Arithmetic: return "Arithmetic";
     case Category::FlipFlops: return "Flip Flops";
     case Category::Inputs: return "Inputs";

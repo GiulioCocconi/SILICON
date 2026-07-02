@@ -76,6 +76,7 @@ set(COMMON_SOURCE_FILES
 
 set(EXTRA_COMPONENTS_SOURCE_FILES
         ${src_dir}/extraComponents/arithmetic.cpp
+        ${src_dir}/extraComponents/multiplexer.cpp
         ${src_dir}/extraComponents/utils.cpp)
 
 set(UI_SOURCE_FILES
@@ -104,6 +105,7 @@ set(UI_SOURCE_FILES
         ${src_dir}/ui/logiFlow/components/graphicalGates.cpp
         ${src_dir}/ui/logiFlow/components/graphicalFlipFlops.cpp
         ${src_dir}/ui/logiFlow/components/graphicalArithmetic.cpp
+        ${src_dir}/ui/logiFlow/components/graphicalMultiplexer.cpp
         ${src_dir}/ui/logiFlow/components/graphicalUtils.cpp
         ${src_dir}/ui/logiFlow/componentCatalogOverlay.cpp
         ${src_dir}/ui/logiFlow/logiFlowWindow.cpp

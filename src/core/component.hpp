@@ -39,6 +39,7 @@ class Simulator;
 
 enum class ComponentCategory {
   Gates,
+  Multiplexers,
   Arithmetic,
   FlipFlops,
   Inputs,
