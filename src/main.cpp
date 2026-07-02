@@ -18,12 +18,19 @@
 
 #include <QApplication>
 #include <QCommandLineParser>
+#include <QCoreApplication>
+#include <QEvent>
+#include <QEventLoop>
 #include <QFont>
 #include <QFontDatabase>
 #include <QIcon>
 #include <QLabel>
 #include <QMainWindow>
 #include <QSplashScreen>
+
+#ifdef SILICON_HAS_FONTCONFIG
+  #include <fontconfig/fontconfig.h>
+#endif
 
 #include <iostream>
 
@@ -41,64 +48,80 @@ int siliconMain(int argc, char** argv)
   Logger::addConsoleSink(std::clog);
   Logger::setMinimumLevel(LogLevel::Debug);
 
-  QApplication app(argc, argv);
-  QApplication::setApplicationName("SILICON");
-  QApplication::setStyle("Fusion");
-  QApplication::setApplicationVersion(SILICON_VERSION);
+  int exitCode = 0;
 
-  // LOAD THE FONTS
-  QFontDatabase::addApplicationFont(":/fonts/Chango.ttf");
-  QFontDatabase::addApplicationFont(":/fonts/Quicksand.ttf");
-  QFontDatabase::addApplicationFont(":/fonts/NovaMono.ttf");
+  {
+    QApplication app(argc, argv);
+    QApplication::setApplicationName("SILICON");
+    QApplication::setStyle("Fusion");
+    QApplication::setApplicationVersion(SILICON_VERSION);
 
-  QApplication::setFont(QFont("Quicksand", app.font().pointSize() * 1.2, QFont::Medium));
+    // LOAD THE FONTS
+    QFontDatabase::addApplicationFont(":/fonts/Chango.ttf");
+    QFontDatabase::addApplicationFont(":/fonts/Quicksand.ttf");
+    QFontDatabase::addApplicationFont(":/fonts/NovaMono.ttf");
 
-  QApplication::setWindowIcon(Icon("silicon", {QSize(32, 32), QSize(128, 128)}));
+    QApplication::setFont(
+        QFont("Quicksand", app.font().pointSize() * 1.2, QFont::Medium));
 
-  // Command Line Parser
-  QCommandLineParser parser;
-  parser.setApplicationDescription("SILICON: Simulation of Interconnected Logical\
+    QApplication::setWindowIcon(Icon("silicon", {QSize(32, 32), QSize(128, 128)}));
+
+    // Command Line Parser
+    QCommandLineParser parser;
+    parser.setApplicationDescription("SILICON: Simulation of Interconnected Logical\
   Inputs, Circuits, and Output Nodes");
-  parser.addHelpOption();
-  parser.addVersionOption();
-  parser.process(app);
+    parser.addHelpOption();
+    parser.addVersionOption();
+    parser.process(app);
 
-  // Theme
-  ThemeEngine::apply(app, SiliconTheme::Mode::Light);
+    // Theme
+    ThemeEngine::apply(app, SiliconTheme::Mode::Light);
 
 #ifdef __MINGW32__
-  QFont font = QApplication::font();
-  font.setHintingPreference(QFont::PreferNoHinting);
-  QApplication::setFont(font);
+    QFont font = QApplication::font();
+    font.setHintingPreference(QFont::PreferNoHinting);
+    QApplication::setFont(font);
 #endif
 
-  // Splash screen
-  QSplashScreen splashScreen(QPixmap(":/splash.jpg"));
-  splashScreen.show();
-  splashScreen.showMessage("Loading...", Qt::AlignBottom | Qt::AlignHCenter, Qt::white);
+    // Splash screen
+    QSplashScreen splashScreen(QPixmap(":/splash.jpg"));
+    splashScreen.show();
+    splashScreen.showMessage("Loading...", Qt::AlignBottom | Qt::AlignHCenter, Qt::white);
 
-  // Force processing of events to show the splash screen immediately
-  QApplication::processEvents();
+    // Force processing of events to show the splash screen immediately
+    QApplication::processEvents();
 
-  // Register all components explicitly
-  ComponentRegistry::instance();
-  registerAllComponents(ComponentRegistry::instance());
+    // Register all components explicitly
+    ComponentRegistry::instance();
+    registerAllComponents(ComponentRegistry::instance());
 
-  static GUIComponentFactory& guiFactory = GUIComponentFactory::instance();
-  registerAllGUIComponents(guiFactory);
+    static GUIComponentFactory& guiFactory = GUIComponentFactory::instance();
+    registerAllGUIComponents(guiFactory);
 
-  LogiFlowWindow lfWin{};
-  lfWin.resize(QGuiApplication::primaryScreen()->size() * 0.6);
-  lfWin.show();
+    {
+      LogiFlowWindow lfWin{};
+      lfWin.resize(QGuiApplication::primaryScreen()->size() * 0.6);
+      lfWin.show();
 
-  Logger::setMinimumLevel(LogLevel::Debug);
+      Logger::setMinimumLevel(LogLevel::Debug);
 
-  Logger uiLog("ui");
-  uiLog.info("SILICON UI started");
+      Logger uiLog("ui");
+      uiLog.info("SILICON UI started");
 
-  splashScreen.finish(&lfWin);
-  const int exitCode = QApplication::exec();
-  QFontDatabase::removeAllApplicationFonts();
+      splashScreen.finish(&lfWin);
+      exitCode = QApplication::exec();
+      lfWin.close();
+    }
+
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    QCoreApplication::processEvents(QEventLoop::AllEvents);
+    QFontDatabase::removeAllApplicationFonts();
+  }
+
+#ifdef SILICON_HAS_FONTCONFIG
+  FcFini();
+#endif
+
   Logger::shutdown();
   return exitCode;
 }

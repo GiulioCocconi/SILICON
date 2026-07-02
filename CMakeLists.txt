@@ -210,6 +210,9 @@ if ((CMAKE_CXX_COMPILER_ID MATCHES "Clang") OR EMSCRIPTEN)
 endif ()
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets SvgWidgets)
+if (UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
+    find_package(Fontconfig QUIET)
+endif ()
 qt_standard_project_setup()
 
 qt_add_executable(SILICON
@@ -226,6 +229,11 @@ target_link_libraries(SILICON PRIVATE
         Qt6::SvgWidgets
         avoid
         silicon_core)
+
+if (TARGET Fontconfig::Fontconfig)
+    target_link_libraries(SILICON PRIVATE Fontconfig::Fontconfig)
+    target_compile_definitions(SILICON PRIVATE SILICON_HAS_FONTCONFIG=1)
+endif ()
 
 set_target_properties(SILICON PROPERTIES
         # Spawn a console windows (on Windows) only when in debug mode
