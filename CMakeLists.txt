@@ -64,6 +64,7 @@ set(COMMON_SOURCE_FILES
         ${src_dir}/core/wire.cpp
         ${src_dir}/core/gates.cpp
         ${src_dir}/core/flipflops.cpp
+        ${src_dir}/core/register.cpp
         ${src_dir}/core/component.cpp
         ${src_dir}/core/circuit.cpp
         ${src_dir}/core/simulator.cpp
@@ -104,6 +105,7 @@ set(UI_SOURCE_FILES
         ${src_dir}/ui/logiFlow/components/graphicalIO.cpp
         ${src_dir}/ui/logiFlow/components/graphicalGates.cpp
         ${src_dir}/ui/logiFlow/components/graphicalFlipFlops.cpp
+        ${src_dir}/ui/logiFlow/components/graphicalRegister.cpp
         ${src_dir}/ui/logiFlow/components/graphicalArithmetic.cpp
         ${src_dir}/ui/logiFlow/components/graphicalMultiplexer.cpp
         ${src_dir}/ui/logiFlow/components/graphicalUtils.cpp

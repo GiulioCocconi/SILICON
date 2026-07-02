@@ -100,6 +100,7 @@ enum SiliconTypes {
   MULTIPLEXER,
   DEMULTIPLEXER,
   DECODER,
+  REGISTER,
 
   LOGIFLOW_END,
 };
