@@ -8,6 +8,7 @@ Cloudsmith is the only fully hosted, cloud-native, universal package management 
 enables your organization to create, store and share packages in any format, to any place, with total
 confidence._
 
+_Currently sponsored by UniGe_
 
 ## TODOs
 
@@ -16,33 +17,33 @@ Since it's a pre-alpha product, there are quite a lot of things to be done:
 A roadmap (+ various diagrams/ideas) is available [here](https://www.canva.com/design/DAGqb7QaA-w/_ld_l41b__KKIG6wlUhFLg/view)![Canva](https://img.shields.io/badge/Canva-%2300C4CC.svg?style=for-the-badge&logo=Canva&logoColor=white), written partly in Italian.
 _Common_
 
-- [ ] GUI with QT6:
-    * [ ] Implement logic for moving graphicalWires,
-    * [ ] Use [QSettings](https://doc.qt.io/qt-6/qsettings.html) to save user preferences
-- [ ] Multi-OS support
-- [ ] Documentation
-    * [ ] [Doxygen](https://www.doxygen.nl/index.html)?
-    * [ ] [Read the Docs](https://readthedocs.org/)?
+- [X] GUI with QT6:
+    * [X] Implement logic for moving graphicalWires,
+    * [X] Use [QSettings](https://doc.qt.io/qt-6/qsettings.html) to save user preferences
+- [ ] MacOS support
+- [X] Documentation
+    * [ ] User docs
 - [X] CI/CD
     * [X] [GitHub Actions](https://github.com/features/actions)
-    * [ ] Multi-OS support (_kinda done: windows builds are now supported_)
+    * [X] Multi-OS support (_kinda done: windows builds are now supported_)
         * [ ] Deployment (setup packages for Win & Mac). See [here](https://www.qt.io/blog/cmake-deployment-api).
 
 _Logic circuits (Silicon LogiFlow)_
 
-- [ ] Multiplexers & demultiplexers
-- [ ] Timed simulation
-- [ ] Flip flops & synchronous components
-- [x] Wires-to-bus & bus-to-wires
-- [x] INPUTS & OUTPUTS!!!!
-- [ ] Bus display
+- [X] Multiplexers & demultiplexers
+- [X] Timed simulation
+- [X] Flip flops & synchronous components
+- [X] Wires-to-bus & bus-to-wires
+- [X] INPUTS & OUTPUTS!!!!
+- [X] Bus display
 - [ ] 7-segment display
+- [ ] Memories
+- [ ] Counters
+- [ ] Waveform input & automated testing
+- [ ] Subcircuits
 - [ ] Verilog support
-    * [ ] [Slang](https://github.com/MikePopoloski/slang) for parsing
-    * [ ] [Inja](https://github.com/pantor/inja) for reverse parsing (needs template file)
-- [ ] File format
-    * [ ] Implement [Quine-McCluskey method](https://en.wikipedia.org/wiki/Quine%E2%80%93McCluskey_algorithm) to minimize the combinatorial logic net
-    * [ ] Using verilog & Slang?
+    * Yosys integration (JSON netlist)
+- [X] File format
 
 _FSMs_
 
