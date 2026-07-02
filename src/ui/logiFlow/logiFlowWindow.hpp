@@ -23,6 +23,7 @@
 #include <QUndoStack>
 #include <QVector>
 
+class ComponentCatalogOverlay;
 class QDialog;
 class GraphicalLogStream;
 class LogSideView;
@@ -51,6 +52,7 @@ protected:
 #ifndef QT_NO_CONTEXTMENU
   void contextMenuEvent(QContextMenuEvent* event) override;
 #endif  // QT_NO_CONTEXTMENU
+  bool eventFilter(QObject* watched, QEvent* event) override;
   void resizeEvent(QResizeEvent* event) override;
 
 private slots:
@@ -95,6 +97,7 @@ private slots:
   void setWireCreationMode();
   void setSimulationMode();
   void setComponentPlacingMode();
+  void showComponentCatalog();
   void toggleFstTracing(bool enabled);
 
   void updateStatus() const;
@@ -107,6 +110,7 @@ private:
   void createToolBar();
   void createWaveformWindow();
   void applyStoredSettings();
+  void updateComponentCatalogGeometry();
 
   void setFileName(const QString& fn);
 
@@ -130,6 +134,7 @@ private:
 
   DiagramScene* diagramScene;
   DiagramView*  diagramView;
+  ComponentCatalogOverlay* componentCatalogOverlay = nullptr;
 
   QMenu* fileMenu;
   QMenu* editMenu;
@@ -154,6 +159,7 @@ private:
   QAction* setSimulationModeAct;
   QAction* toggleFstTraceAct;
 
+  QAction* openComponentCatalogAct;
   QAction* setComponentPlacingModeAct;
 
   QAction*    undoAct;

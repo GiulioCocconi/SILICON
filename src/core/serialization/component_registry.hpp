@@ -34,6 +34,8 @@ using Component_ptr = std::shared_ptr<Component>;
 class ComponentRegistry {
 public:
   using Factory = std::function<Component_ptr()>;
+  using ComponentCategory = ::ComponentCategory;
+  using ComponentMetadata = ::ComponentMetadata;
 
   ComponentRegistry();
   static ComponentRegistry  empty();
@@ -42,8 +44,15 @@ public:
   void                     registerType(std::string type, Factory factory);
   Component_ptr            create(std::string_view type) const;
   bool                     hasType(std::string_view type) const;
+  ComponentMetadata        metadata(std::string_view type) const;
   std::vector<std::string> availableTypes() const;
 
 private:
-  std::map<std::string, Factory, std::less<>> types_;
+  struct Entry {
+    Factory factory;
+  };
+
+  std::map<std::string, Entry, std::less<>> types_;
 };
+
+std::string_view componentCategoryName(ComponentCategory category);

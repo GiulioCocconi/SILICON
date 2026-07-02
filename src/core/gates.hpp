@@ -75,6 +75,11 @@ class AndGate : public Gate {
 public:
   static constexpr std::string_view Type = "AndGate";
   std::string_view                  typeName() const override { return Type; }
+  ComponentMetadata metadata() const override
+  {
+    return {"AND Gate", "Outputs HIGH only when every input is HIGH.",
+            ComponentCategory::Gates};
+  }
 
   AndGate() = default;
   AndGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output);
@@ -85,6 +90,11 @@ class OrGate : public Gate {
 public:
   static constexpr std::string_view Type = "OrGate";
   std::string_view                  typeName() const override { return Type; }
+  ComponentMetadata metadata() const override
+  {
+    return {"OR Gate", "Outputs HIGH when at least one input is HIGH.",
+            ComponentCategory::Gates};
+  }
 
   OrGate() = default;
   OrGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output);
@@ -95,6 +105,10 @@ class NotGate : public Gate {
 public:
   static constexpr std::string_view Type = "NotGate";
   std::string_view                  typeName() const override { return Type; }
+  ComponentMetadata metadata() const override
+  {
+    return {"NOT Gate", "Inverts a single input signal.", ComponentCategory::Gates};
+  }
 
   NotGate() = default;
   NotGate(Wire_ptr input, Wire_ptr output);
@@ -105,6 +119,11 @@ class NandGate : public Gate {
 public:
   static constexpr std::string_view Type = "NandGate";
   std::string_view                  typeName() const override { return Type; }
+  ComponentMetadata metadata() const override
+  {
+    return {"NAND Gate", "Outputs the inverse of an AND operation.",
+            ComponentCategory::Gates};
+  }
 
   NandGate() = default;
   NandGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output);
@@ -115,6 +134,11 @@ class NorGate : public Gate {
 public:
   static constexpr std::string_view Type = "NorGate";
   std::string_view                  typeName() const override { return Type; }
+  ComponentMetadata metadata() const override
+  {
+    return {"NOR Gate", "Outputs the inverse of an OR operation.",
+            ComponentCategory::Gates};
+  }
 
   NorGate() = default;
   NorGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output);
@@ -125,6 +149,11 @@ class XorGate : public Gate {
 public:
   static constexpr std::string_view Type = "XorGate";
   std::string_view                  typeName() const override { return Type; }
+  ComponentMetadata metadata() const override
+  {
+    return {"XOR Gate", "Outputs HIGH when exactly one input is HIGH.",
+            ComponentCategory::Gates};
+  }
 
   XorGate() = default;
   XorGate(const std::array<Wire_ptr, 2>& inputs, Wire_ptr output);

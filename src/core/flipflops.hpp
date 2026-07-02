@@ -172,6 +172,11 @@ public:
    * @return Type identifier
    */
   std::string_view typeName() const override { return Type; }
+  ComponentMetadata metadata() const override
+  {
+    return {"D Flip Flop", "Captures D on the configured clock edge.",
+            ComponentCategory::FlipFlops};
+  }
 
   /** @brief Input bus indices for DFlipFlop. */
   enum class Inputs : unsigned int {
@@ -227,6 +232,12 @@ public:
    * @return Type identifier
    */
   std::string_view typeName() const override { return Type; }
+  ComponentMetadata metadata() const override
+  {
+    return {"Enabled D Flip Flop",
+            "Captures D on the configured clock edge while enable is HIGH.",
+            ComponentCategory::FlipFlops};
+  }
 
   /** @brief Input bus indices for EFlipFlop. */
   enum class Inputs : unsigned int {
@@ -285,6 +296,11 @@ public:
    * @return Type identifier
    */
   std::string_view typeName() const override { return Type; }
+  ComponentMetadata metadata() const override
+  {
+    return {"JK Flip Flop", "Stores, sets, resets, or toggles state from J and K.",
+            ComponentCategory::FlipFlops};
+  }
 
   /** @brief Input bus indices for JKFlipFlop. */
   enum class Inputs : unsigned int {

@@ -44,9 +44,6 @@ void registerAllComponents(ComponentRegistry& registry)
   registerComponent<EFlipFlop>(registry);
   registerComponent<JKFlipFlop>(registry);
 
-  // TODO: HalfAdder, FullAdder, AdderNBits are registered in the core layer
-  // but have no GraphicalComponent counterpart yet. Add GUI registrations
-  // here once their graphical representations are implemented.
   registerComponent<HalfAdder>(registry);
   registerComponent<FullAdder>(registry);
   registerComponent<AdderNBits>(registry);

@@ -37,6 +37,21 @@
 
 class Simulator;
 
+enum class ComponentCategory {
+  Gates,
+  Arithmetic,
+  FlipFlops,
+  Inputs,
+  Outputs,
+  Utils,
+};
+
+struct ComponentMetadata {
+  std::string       displayName;
+  std::string       description;
+  ComponentCategory category;
+};
+
 /**
  * @brief Context describing why a component is being evaluated.
  *
@@ -510,6 +525,12 @@ public:
    * @return String view of the type identifier
    */
   virtual std::string_view typeName() const = 0;
+
+  /**
+   * @brief Gets catalog metadata for this component type.
+   * @return Display name, description, and category for UI catalogs.
+   */
+  [[nodiscard]] virtual ComponentMetadata metadata() const;
 
   // --- IO Observer Pattern ---
 

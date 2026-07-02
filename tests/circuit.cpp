@@ -936,8 +936,9 @@ TEST(CircuitTest, SerializeIncludesProperties)
 TEST(CircuitTest, DeserializeRestoresStringListProperty)
 {
   ComponentRegistry registry;
-  registry.registerType(std::string(StringListTestComponent::Type),
-                        [] { return std::make_shared<StringListTestComponent>(); });
+  registry.registerType(
+      std::string(StringListTestComponent::Type),
+      [] { return std::make_shared<StringListTestComponent>(); });
 
   auto component = std::make_shared<StringListTestComponent>();
   component->setProperty("orientation", std::string("LEFT"));
