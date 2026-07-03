@@ -33,10 +33,10 @@
 #include <QAbstractItemView>
 #include <QAction>
 #include <QEvent>
+#include <QFile>
 #include <QFileDialog>
 #include <QFrame>
 #include <QHBoxLayout>
-#include <QInputDialog>
 #include <QIntValidator>
 #include <QLabel>
 #include <QLineEdit>
@@ -46,12 +46,16 @@
 #include <QPaintEvent>
 #include <QPainter>
 #include <QPen>
+#include <QPointer>
 #include <QScrollBar>
 #include <QSignalBlocker>
+#include <QTemporaryFile>
 #include <QToolBar>
 #include <QVBoxLayout>
 
+#include <ui/common/fileDialogUtils.hpp>
 #include <ui/common/icons.hpp>
+#include <ui/common/inputDialogUtils.hpp>
 #include <ui/common/theme.hpp>
 
 namespace {
@@ -1107,40 +1111,45 @@ void WaveformViewer::promptEditIntervalValue(int signalIndex, quint64 startTime,
 
   setEditIntervalFields(startTime, endTime);
 
-  const std::size_t width = signalWidth(signalIndex);
-  bool              ok    = false;
-  QString           text;
+  const std::size_t              width = signalWidth(signalIndex);
+  const QPointer<WaveformViewer> safeThis(this);
   if (width <= 1) {
-    text =
-        QInputDialog::getItem(this, tr("Input Value"),
-                              tr("Set value from %1 to %2").arg(startTime).arg(endTime),
-                              QStringList{tr("0"), tr("1")}, 0, false, &ok);
-    if (!ok)
-      return;
-    applyEditInterval(signalIndex, startTime, endTime, text);
+    SiliconInputDialog::getItem(
+        this, tr("Input Value"),
+        tr("Set value from %1 to %2").arg(startTime).arg(endTime),
+        QStringList{tr("0"), tr("1")}, 0, false,
+        [safeThis, signalIndex, startTime, endTime](const QString& text) {
+          if (safeThis)
+            safeThis->applyEditInterval(signalIndex, startTime, endTime, text);
+        });
     return;
   }
 
-  text = QInputDialog::getText(this, tr("Bus Input"),
-                               tr("Set %1-bit value from %2 to %3 "
-                                  "(decimal, 0x..., or 0b...)")
-                                   .arg(width)
-                                   .arg(startTime)
-                                   .arg(endTime),
-                               QLineEdit::Normal, QString("0"), &ok);
-  if (!ok)
-    return;
+  SiliconInputDialog::getText(
+      this, tr("Bus Input"),
+      tr("Set %1-bit value from %2 to %3 "
+         "(decimal, 0x..., or 0b...)")
+          .arg(width)
+          .arg(startTime)
+          .arg(endTime),
+      QString("0"),
+      [safeThis, signalIndex, startTime, endTime, width](const QString& text) {
+        if (!safeThis)
+          return;
 
-  unsigned int value = 0;
-  if (!silicon::parseBusValue(text.toStdString(), value)
-      || value > silicon::maxValueForBusWidth(width)) {
-    QMessageBox::warning(this, tr("Bus Input"),
-                         tr("The value does not fit in the selected signal width."));
-    return;
-  }
+        unsigned int value = 0;
+        if (!silicon::parseBusValue(text.toStdString(), value)
+            || value > silicon::maxValueForBusWidth(width)) {
+          SiliconInputDialog::warning(
+              safeThis, QObject::tr("Bus Input"),
+              QObject::tr("The value does not fit in the selected signal width."));
+          return;
+        }
 
-  applyEditInterval(signalIndex, startTime, endTime,
-                    QString::fromStdString(rawBitsForValue(value, width)));
+        safeThis->applyEditInterval(
+            signalIndex, startTime, endTime,
+            QString::fromStdString(rawBitsForValue(value, width)));
+      });
 }
 
 void WaveformViewer::promptSelectedEditIntervalValue()
@@ -1283,9 +1292,16 @@ void WaveformViewer::showSignalFormatMenu(const int signalIndex, QPoint globalPo
 
   setSelectedSignalIndex(signalIndex);
 
-  QMenu menu(this);
-  auto  addFormatAction = [&](const QString& label, silicon::NumberFormat format) {
-    QAction* action = menu.addAction(label);
+#ifdef __EMSCRIPTEN__
+  auto* menu = new QMenu(this);
+  menu->setAttribute(Qt::WA_DeleteOnClose);
+#else
+  QMenu stackMenu(this);
+  auto* menu = &stackMenu;
+#endif
+
+  auto addFormatAction = [&](const QString& label, silicon::NumberFormat format) {
+    QAction* action = menu->addAction(label);
     action->setCheckable(true);
     action->setChecked(signalIndex >= 0
                         && signalIndex < static_cast<int>(signalFormats.size())
@@ -1304,11 +1320,44 @@ void WaveformViewer::showSignalFormatMenu(const int signalIndex, QPoint globalPo
   addFormatAction(tr("HEX"), silicon::NumberFormat::Hex);
   addFormatAction(tr("OCT"), silicon::NumberFormat::Oct);
   addFormatAction(tr("BIN"), silicon::NumberFormat::Bin);
-  menu.exec(globalPosition);
+#ifdef __EMSCRIPTEN__
+  menu->popup(globalPosition);
+#else
+  menu->exec(globalPosition);
+#endif
 }
 
 void WaveformViewer::saveTrace()
 {
+#ifdef __EMSCRIPTEN__
+  QTemporaryFile traceFile(this);
+  if (!traceFile.open()) {
+    QMessageBox::warning(
+        this, tr("Save Waveform"),
+        tr("Cannot write FST trace:\nCould not create a temporary file."));
+    return;
+  }
+
+  try {
+    const QString traceFileName = traceFile.fileName();
+    traceFile.close();
+
+    ::writeFstTrace(traceFileName.toStdString(), trace);
+    QFile file(traceFileName);
+    if (!file.open(QIODevice::ReadOnly)) {
+      QMessageBox::warning(
+          this, tr("Save Waveform"),
+          tr("Cannot write FST trace:\nCould not read the generated trace."));
+      return;
+    }
+    SiliconFileDialog::saveFileContent(
+        this, tr("Save Waveform"), QStringLiteral("waveform.fst"),
+        tr("FST Trace (*.fst);;All Files (*)"), file.readAll());
+  } catch (const std::exception& e) {
+    QMessageBox::warning(this, tr("Save Waveform"),
+                         tr("Cannot write FST trace:\n%1").arg(e.what()));
+  }
+#else
   const QString fileName = QFileDialog::getSaveFileName(
       this, tr("Save Waveform"), QString(), tr("FST Trace (*.fst);;All Files (*)"));
   if (fileName.isEmpty())
@@ -1320,4 +1369,5 @@ void WaveformViewer::saveTrace()
     QMessageBox::warning(this, tr("Save Waveform"),
                          tr("Cannot write FST trace:\n%1").arg(e.what()));
   }
+#endif
 }

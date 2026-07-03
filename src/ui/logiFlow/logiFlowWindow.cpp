@@ -19,6 +19,7 @@
 #include "logiFlowWindow.hpp"
 
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <ranges>
 #include <stdexcept>
@@ -33,14 +34,18 @@
 #include <QCursor>
 #include <QDialog>
 #include <QDockWidget>
+#include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFormLayout>
 #include <QGraphicsView>
 #include <QHBoxLayout>
+#include <QJsonArray>
+#include <QJsonDocument>
 #include <QKeySequence>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QMimeData>
@@ -53,9 +58,14 @@
 #include <QToolBar>
 #include <QVBoxLayout>
 
+#ifdef __EMSCRIPTEN__
+  #include <emscripten/emscripten.h>
+#endif
+
 #include <core/serialization/component_registry.hpp>
 #include <core/simulator.hpp>
 #include <logging/logger.hpp>
+#include <ui/common/fileDialogUtils.hpp>
 #include <ui/common/graphicalLogStream.hpp>
 #include <ui/common/icons.hpp>
 #include <ui/common/logSideView.hpp>
@@ -103,6 +113,103 @@ bool hasClipboardItems(const nlohmann::json& payload)
   return hasComponents || hasWires;
 }
 
+void syncWasmShortcutCapture(const QVector<ShortcutSetting>& shortcuts)
+{
+#ifdef __EMSCRIPTEN__
+  QJsonArray shortcutSequences;
+  for (const ShortcutSetting& shortcut : shortcuts) {
+    if (!shortcut.action)
+      continue;
+
+    for (const QKeySequence& sequence : shortcut.action->shortcuts()) {
+      if (sequence.isEmpty())
+        continue;
+
+      for (int index = 0; index < sequence.count(); ++index)
+        shortcutSequences.append(
+            QKeySequence(sequence[index]).toString(QKeySequence::PortableText));
+    }
+  }
+
+  const QByteArray shortcutsJson =
+      QJsonDocument(shortcutSequences).toJson(QJsonDocument::Compact);
+
+  EM_ASM(
+      {
+        const shortcuts = JSON.parse(UTF8ToString($0));
+        globalThis.__siliconShortcutSequences =
+            shortcuts.map(sequence = > sequence.trim()
+                                           .split('+')
+                                           .map(part = > part.trim().toLowerCase())
+                                           .filter(Boolean));
+
+        const isEditableTarget = target = > target instanceof HTMLInputElement || target
+            instanceof HTMLTextAreaElement || target
+            instanceof HTMLSelectElement || target ?.isContentEditable;
+
+        const normalizedKeyToken = token = > ({
+                                             esc : 'escape',
+                                             del : 'delete',
+                                             ins : 'insert',
+                                             return : 'enter',
+                                             enter : 'enter',
+                                             backtab : 'tab',
+                                             space : ' ',
+                                             pgup : 'pageup',
+                                             pgdown : 'pagedown',
+                                             plus : '+',
+                                             comma : ','
+                                           })[token]
+            ? ? token;
+
+        const eventMatchesShortcut = (event, shortcut) = >
+        {
+          if (shortcut.length == = 0)
+            return false;
+
+          const key        = event.key.toLowerCase();
+          const keyToken   = normalizedKeyToken(shortcut[shortcut.length - 1]);
+          const wantsCtrl  = shortcut.includes('ctrl') || shortcut.includes('control');
+          const wantsMeta  = shortcut.includes('meta');
+          const wantsAlt   = shortcut.includes('alt');
+          const wantsShift = shortcut.includes('shift');
+          const usesCommandModifier = wantsCtrl || wantsMeta || wantsAlt;
+
+          if (!usesCommandModifier && isEditableTarget(event.target))
+            return false;
+
+          if (wantsCtrl && !(event.ctrlKey || event.metaKey))
+            return false;
+          if (wantsMeta && !event.metaKey)
+            return false;
+          if (wantsAlt != = event.altKey)
+            return false;
+          if (wantsShift != = event.shiftKey)
+            return false;
+
+          return key == = keyToken || event.code.toLowerCase() == = keyToken;
+        };
+
+        globalThis.__siliconShouldCaptureShortcut = event =
+            > globalThis.__siliconShortcutSequences.some(
+                shortcut = > eventMatchesShortcut(event, shortcut));
+
+        if (globalThis.__siliconShortcutCaptureInstalled)
+          return;
+
+        globalThis.__siliconShortcutCaptureInstalled = true;
+        document.addEventListener(
+        'keydown',
+        event => {
+          if (globalThis.__siliconShouldCaptureShortcut?.(event))
+            event.preventDefault();
+        },
+        true);
+      },
+      shortcutsJson.constData());
+#endif
+}
+
 }  // namespace
 
 namespace {
@@ -113,10 +220,47 @@ const Logger uiLog("ui");
 
 LogiFlowWindow::~LogiFlowWindow()
 {
+#ifdef __EMSCRIPTEN__
+  emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_DOCUMENT, nullptr, true,
+                                  nullptr);
+#endif
+
   if (diagramScene) {
     disconnect(diagramScene, nullptr, this, nullptr);
   }
 }
+
+#ifdef __EMSCRIPTEN__
+EM_BOOL LogiFlowWindow::wasmKeyDownCallback(int, const EmscriptenKeyboardEvent* keyEvent,
+                                            void* userData)
+{
+  if (!userData || !keyEvent)
+    return EM_FALSE;
+
+  if (std::strcmp(keyEvent->key, "Escape") != 0
+      && std::strcmp(keyEvent->code, "Escape") != 0)
+    return EM_FALSE;
+
+  auto* window = static_cast<LogiFlowWindow*>(userData);
+  return window->handleWasmEscapeKey() ? EM_TRUE : EM_FALSE;
+}
+
+bool LogiFlowWindow::handleWasmEscapeKey()
+{
+  if (QApplication::activeModalWidget())
+    return false;
+
+  if (componentCatalogOverlay && componentCatalogOverlay->isVisible()) {
+    componentCatalogOverlay->hide();
+    return true;
+  }
+
+  if (diagramScene)
+    diagramScene->cancelCurrentInteraction();
+
+  return true;
+}
+#endif
 
 LogiFlowWindow::LogiFlowWindow()
 {
@@ -179,6 +323,11 @@ LogiFlowWindow::LogiFlowWindow()
   logDock->setMinimumHeight(logSideView->minimumSizeHint().height());
   logDock->resize(width(), logSideView->sizeHint().height());
 
+#ifdef __EMSCRIPTEN__
+  emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_DOCUMENT, this, true,
+                                  &LogiFlowWindow::wasmKeyDownCallback);
+#endif
+
   connect(graphicalLogStream, &GraphicalLogStream::lineReceived, logSideView,
           &LogSideView::appendLine, Qt::QueuedConnection);
   graphicalLogStream->attachToBoostLog();
@@ -227,6 +376,7 @@ void LogiFlowWindow::createActions()
   setSimulationModeAct   = new QAction(Icon("play"), "", this);
   toggleFstTraceAct      = new QAction(Icon("chart"), tr("Trace"), this);
   toggleFstTraceAct->setCheckable(true);
+  cancelInteractionAct = new QAction(this);
 
   openComponentCatalogAct    = new QAction(Icon("plus"), "", this);
   setComponentPlacingModeAct = new QAction(Icon("plus"), "", this);
@@ -246,6 +396,7 @@ void LogiFlowWindow::createActions()
   settingsAct->setStatusTip(tr("Edit application settings"));
   openComponentCatalogAct->setStatusTip(tr("Open the component catalog"));
   setComponentPlacingModeAct->setStatusTip(tr("Open quick component search"));
+  cancelInteractionAct->setStatusTip(tr("Cancel the current interaction"));
 
   connect(newAct, &QAction::triggered, this, &LogiFlowWindow::newFile);
   connect(openAct, &QAction::triggered, this, &LogiFlowWindow::open);
@@ -270,9 +421,12 @@ void LogiFlowWindow::createActions()
           &LogiFlowWindow::showComponentCatalog);
   connect(setComponentPlacingModeAct, &QAction::triggered, this,
           &LogiFlowWindow::setComponentPlacingMode);
+  connect(cancelInteractionAct, &QAction::triggered, this,
+          &LogiFlowWindow::cancelCurrentInteraction);
   connect(toggleFstTraceAct, &QAction::toggled, this, &LogiFlowWindow::toggleFstTracing);
 
   addAction(setComponentPlacingModeAct);
+  addAction(cancelInteractionAct);
 }
 
 QVector<ShortcutSetting> LogiFlowWindow::shortcutSettings() const
@@ -314,6 +468,9 @@ QVector<ShortcutSetting> LogiFlowWindow::shortcutSettings() const
       shortcut(QStringLiteral("keybindings/componentPlacingMode"),
                tr("Component placing mode"), setComponentPlacingModeAct,
                QKeySequence(Qt::AltModifier | Qt::Key_A)),
+      shortcut(QStringLiteral("keybindings/cancelInteraction"),
+               tr("Cancel current interaction"), cancelInteractionAct,
+               QKeySequence(Qt::Key_Escape)),
       shortcut(QStringLiteral("keybindings/toggleTrace"), tr("Waveform trace"),
                toggleFstTraceAct, QKeySequence()),
       shortcut(QStringLiteral("keybindings/settings"), tr("Settings"), settingsAct,
@@ -334,7 +491,14 @@ void LogiFlowWindow::applyStoredSettings()
   for (const ShortcutSetting& shortcut : shortcutSettings()) {
     shortcut.action->setShortcut(
         SiliconSetting::value(settings, shortcut.setting).value<QKeySequence>());
+#ifdef __EMSCRIPTEN__
+    shortcut.action->setShortcutContext(Qt::ApplicationShortcut);
+    if (!actions().contains(shortcut.action))
+      addAction(shortcut.action);
+#endif
   }
+
+  syncWasmShortcutCapture(shortcutSettings());
 }
 
 void LogiFlowWindow::createMenus()
@@ -433,6 +597,16 @@ void LogiFlowWindow::setFileName(const QString& fn)
 #ifndef QT_NO_CONTEXTMENU
 void LogiFlowWindow::contextMenuEvent(QContextMenuEvent* event)
 {
+  #ifdef __EMSCRIPTEN__
+  auto* menu = new QMenu(this);
+  menu->setAttribute(Qt::WA_DeleteOnClose);
+  menu->addAction(cutAct);
+  menu->addAction(copyAct);
+  menu->addAction(pasteAct);
+  menu->addAction(rotateAct);
+  menu->addAction(deleteAct);
+  menu->popup(event->globalPos());
+  #else
   QMenu menu(this);
   menu.addAction(cutAct);
   menu.addAction(copyAct);
@@ -440,6 +614,8 @@ void LogiFlowWindow::contextMenuEvent(QContextMenuEvent* event)
   menu.addAction(rotateAct);
   menu.addAction(deleteAct);
   menu.exec(event->globalPos());
+  #endif
+  event->accept();
 }
 #endif  // QT_NO_CONTEXTMENU
 
@@ -615,63 +791,54 @@ void LogiFlowWindow::del()
       diagramScene, payload, SceneSelectionCommand::Operation::Remove, true));
 }
 
-void LogiFlowWindow::open()
+void LogiFlowWindow::loadCircuitContent(const QString&    fileName,
+                                        const QByteArray& fileContent)
 {
-  // 1. Ask the user for the file
-  QString fileName = QFileDialog::getOpenFileName(
-      this, tr("Open Circuit"), QString(), tr("Silicon Circuit (*.sil);;All Files (*)"));
-
-  // User canceled the dialog
-  if (fileName.isEmpty()) {
-    return;
-  }
-
   uiLog.info(std::format("Opening {}", fileName.toStdString()));
 
-  // 2. Open the file for reading
-  QFile file(fileName);
-  if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-    QMessageBox::warning(this, tr("Error"),
-                         tr("Cannot open file for reading:\n%1").arg(file.errorString()));
-    return;
-  }
-
-  // 3. Read the contents with strict UTF-8 encoding
-  QTextStream in(&file);
-  in.setEncoding(QStringConverter::Utf8);
-
-  QString fileContent = in.readAll();
-  file.close();
-
-  // 4. Deserialize and update the scene safely
   try {
-    // Clear the current scene items to prepare for the new circuit.
     diagramScene->clear();
 
-    // Fetch the global registry singletons
     auto& guiFactory   = GUIComponentFactory::instance();
     auto& coreRegistry = ComponentRegistry::instance();
 
-    // Delegate parsing to the scene
-    diagramScene->deserialize(fileContent.toStdString(), guiFactory, coreRegistry);
-
-    // 5. Update application state on success
+    diagramScene->deserialize(QString::fromUtf8(fileContent).toStdString(), guiFactory,
+                              coreRegistry);
     setFileName(fileName);
 
   } catch (const nlohmann::json::exception& e) {
-    // Catches JSON parsing/formatting errors
     QMessageBox::critical(
         this, tr("Corrupted File"),
         tr("The circuit file contains invalid JSON data:\n%1").arg(e.what()));
   } catch (const std::exception& e) {
-    // Catches missing components, version mismatches (from Circuit::deserialize), etc.
     QMessageBox::critical(this, tr("Load Error"),
                           tr("Failed to load the circuit:\n%1").arg(e.what()));
   }
 }
 
+void LogiFlowWindow::open()
+{
+  SiliconFileDialog::openFileContent(
+      this, tr("Open Circuit"), tr("Silicon Circuit (*.sil);;All Files (*)"),
+      [this](const QString& fileName, const QByteArray& fileContent) {
+        loadCircuitContent(fileName, fileContent);
+      });
+}
+
 void LogiFlowWindow::save()
 {
+  const QByteArray content = QByteArray::fromStdString(diagramScene->serialize());
+
+#ifdef __EMSCRIPTEN__
+  const QString suggestedFileName =
+      currentFileName.isEmpty() ? QStringLiteral("circuit.sil") : currentFileName;
+  if (const auto savedFileName = SiliconFileDialog::saveFileContent(
+          this, tr("Save Circuit"), suggestedFileName,
+          tr("Silicon Circuit (*.sil);;All Files (*)"), content);
+      savedFileName) {
+    setFileName(*savedFileName);
+  }
+#else
   if (currentFileName.isEmpty()) {
     QString desiredFileName =
         QFileDialog::getSaveFileName(this, tr("Save Circuit"), QString(),
@@ -689,10 +856,9 @@ void LogiFlowWindow::save()
     return;
   }
 
-  QTextStream out(&file);
-  out.setEncoding(QStringConverter::Utf8);
-  out << QString::fromStdString(diagramScene->serialize());
+  file.write(content);
   file.close();
+#endif
 }
 
 void LogiFlowWindow::about() const
@@ -704,6 +870,7 @@ void LogiFlowWindow::openSettings()
 {
   SettingsWindow settingsWindow("LogiFlow", shortcutSettings(), this);
   settingsWindow.exec();
+  syncWasmShortcutCapture(shortcutSettings());
 }
 
 void LogiFlowWindow::setNormalMode()
@@ -738,6 +905,11 @@ void LogiFlowWindow::showComponentCatalog()
 
   updateComponentCatalogGeometry();
   componentCatalogOverlay->open();
+}
+
+void LogiFlowWindow::cancelCurrentInteraction()
+{
+  diagramScene->cancelCurrentInteraction();
 }
 
 void LogiFlowWindow::toggleFstTracing(bool enabled)

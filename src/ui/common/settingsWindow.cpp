@@ -25,7 +25,7 @@
 #include <QApplication>
 #include <QComboBox>
 #include <QDialogButtonBox>
-#include <QFileDialog>
+#include <QFile>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -36,9 +36,11 @@
 #include <QScrollArea>
 #include <QSettings>
 #include <QSpinBox>
+#include <QTemporaryFile>
 #include <QVBoxLayout>
 
 #include <core/simulator.hpp>
+#include <ui/common/fileDialogUtils.hpp>
 #include <ui/common/theme.hpp>
 
 namespace {
@@ -193,20 +195,13 @@ bool SettingsWindow::saveSettings()
   return true;
 }
 
-void SettingsWindow::importSettings()
+bool SettingsWindow::importSettingsStore(QSettings& importedSettings)
 {
-  const QString fileName =
-      QFileDialog::getOpenFileName(this, tr("Import Settings"), QString(),
-                                   tr("TOML Settings (*.toml);;All Files (*)"));
-  if (fileName.isEmpty())
-    return;
-
-  QSettings importedSettings(fileName, SiliconSettings::format());
   importedSettings.sync();
   if (importedSettings.status() != QSettings::NoError) {
     QMessageBox::warning(this, tr("Import Settings"),
                          tr("Could not read the selected settings file."));
-    return;
+    return false;
   }
 
   settings.clear();
@@ -215,22 +210,27 @@ void SettingsWindow::importSettings()
   if (settings.status() != QSettings::NoError) {
     QMessageBox::warning(this, tr("Import Settings"),
                          tr("Could not save the imported settings."));
-    return;
+    return false;
   }
 
   loadSettings();
   applySettings();
+  return true;
 }
 
-void SettingsWindow::exportSettings()
+QByteArray SettingsWindow::exportSettingsContent()
 {
-  const QString fileName =
-      QFileDialog::getSaveFileName(this, tr("Export Settings"), QString(),
-                                   tr("TOML Settings (*.toml);;All Files (*)"));
-  if (fileName.isEmpty())
-    return;
+  QTemporaryFile exportedFile(this);
+  if (!exportedFile.open()) {
+    QMessageBox::warning(this, tr("Export Settings"),
+                         tr("Could not write the settings file."));
+    return {};
+  }
 
-  QSettings exportedSettings(fileName, SiliconSettings::format());
+  const QString exportedFileName = exportedFile.fileName();
+  exportedFile.close();
+
+  QSettings exportedSettings(exportedFileName, SiliconSettings::format());
   exportedSettings.clear();
   copySettings(settings, exportedSettings);
   writeVisibleSettings(exportedSettings);
@@ -239,7 +239,46 @@ void SettingsWindow::exportSettings()
   if (exportedSettings.status() != QSettings::NoError) {
     QMessageBox::warning(this, tr("Export Settings"),
                          tr("Could not write the settings file."));
+    return {};
   }
+
+  QFile file(exportedFileName);
+  if (!file.open(QIODevice::ReadOnly)) {
+    QMessageBox::warning(this, tr("Export Settings"),
+                         tr("Could not read back the exported settings file."));
+    return {};
+  }
+  return file.readAll();
+}
+
+void SettingsWindow::importSettings()
+{
+  SiliconFileDialog::openFileContent(
+      this, tr("Import Settings"), tr("TOML Settings (*.toml);;All Files (*)"),
+      [this](const QString& fileName, const QByteArray& fileContent) {
+        QTemporaryFile importedFile(this);
+        if (!importedFile.open()
+            || importedFile.write(fileContent) != fileContent.size()) {
+          QMessageBox::warning(this, tr("Import Settings"),
+                               tr("Could not read the selected settings file."));
+          return;
+        }
+        importedFile.flush();
+        const QString importedFileName = importedFile.fileName();
+        importedFile.close();
+
+        QSettings importedSettings(importedFileName, SiliconSettings::format());
+        importSettingsStore(importedSettings);
+      });
+}
+
+void SettingsWindow::exportSettings()
+{
+  const QByteArray content = exportSettingsContent();
+  if (!content.isEmpty())
+    SiliconFileDialog::saveFileContent(
+        this, tr("Export Settings"), QStringLiteral("silicon-settings.toml"),
+        tr("TOML Settings (*.toml);;All Files (*)"), content);
 }
 
 void SettingsWindow::addShortcutEditor(const ShortcutSetting& shortcut)

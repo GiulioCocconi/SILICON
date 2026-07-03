@@ -24,6 +24,7 @@
 #include <QVector>
 
 class ComponentCatalogOverlay;
+class QByteArray;
 class QDialog;
 class GraphicalLogStream;
 class LogSideView;
@@ -33,6 +34,10 @@ class WaveformViewer;
 #include <ui/common/aboutDialog.hpp>
 #include <ui/common/diagramScene/diagramScene.hpp>
 #include <ui/common/diagramView.hpp>
+
+#ifdef __EMSCRIPTEN__
+  #include <emscripten/html5.h>
+#endif
 
 #ifndef QT_NO_CONTEXTMENU
   #include <QContextMenuEvent>
@@ -98,6 +103,7 @@ private slots:
   void setSimulationMode();
   void setComponentPlacingMode();
   void showComponentCatalog();
+  void cancelCurrentInteraction();
   void toggleFstTracing(bool enabled);
 
   void updateStatus() const;
@@ -113,6 +119,14 @@ private:
   void updateComponentCatalogGeometry();
 
   void setFileName(const QString& fn);
+  void loadCircuitContent(const QString& fileName, const QByteArray& fileContent);
+
+#ifdef __EMSCRIPTEN__
+  static EM_BOOL wasmKeyDownCallback(int                            eventType,
+                                     const EmscriptenKeyboardEvent* keyEvent,
+                                     void*                          userData);
+  bool           handleWasmEscapeKey();
+#endif
 
   /**
    * @brief Serializes the current selection and stores it on the system clipboard.
@@ -158,6 +172,7 @@ private:
   QAction* setWireCreationModeAct;
   QAction* setSimulationModeAct;
   QAction* toggleFstTraceAct;
+  QAction* cancelInteractionAct;
 
   QAction* openComponentCatalogAct;
   QAction* setComponentPlacingModeAct;
