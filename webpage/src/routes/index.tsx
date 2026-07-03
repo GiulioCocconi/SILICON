@@ -73,7 +73,7 @@ const links = [
     color: "var(--silicon-orange)",
   },
   {
-    href: "/wasm",
+    href: "wasm/",
     label: "Try online",
     sub: "SILICON in the browser",
     color: "var(--silicon-blue)",

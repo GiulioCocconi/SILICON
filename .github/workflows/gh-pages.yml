@@ -11,7 +11,24 @@ permissions:
   id-token: write
 
 jobs:
+  build-wasm:
+    name: Build WASM for Pages
+    uses: ./.github/workflows/reusable-build-wasm.yml
+    with:
+      build_type: Release
+      publish: false
+      package_name: silicon-pages-wasm
+      package_version: ${{ github.sha }}
+      cloudsmith_owner: ${{ vars.CLOUDSMITH_OWNER }}
+      cloudsmith_repo: ${{ vars.CLOUDSMITH_RELEASE_REPO }}
+      cloudsmith_oidc_namespace: ${{ vars.CLOUDSMITH_OIDC_NAMESPACE }}
+      cloudsmith_oidc_service_slug: ${{ vars.CLOUDSMITH_OIDC_SERVICE_SLUG }}
+    permissions:
+      contents: read
+      id-token: write
+
   build:
+    needs: build-wasm
     runs-on: ubuntu-latest
 
     steps:
@@ -21,7 +38,7 @@ jobs:
       - name: Install doxygen dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y doxygen graphviz
+          sudo apt-get install -y doxygen graphviz unzip
 
       - name: Generate Doxygen documentation
         run: doxygen Doxyfile
@@ -47,6 +64,18 @@ jobs:
           mkdir -p dist/internaldocs
           cp -r docs/html/* dist/internaldocs
           cp -r webpage/dist/* dist/
+
+      - name: Download WASM deployment
+        uses: actions/download-artifact@v8
+        with:
+          name: wasm-package
+          path: out
+
+      - name: Add WASM deployment to Pages site
+        run: |
+          mkdir -p dist/wasm
+          unzip -o out/silicon-pages-wasm-${{ github.sha }}.zip -d dist/wasm
+          test -f dist/wasm/index.html
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
