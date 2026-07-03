@@ -20,11 +20,10 @@
 
 #include <core/simulator.hpp>
 #include <ui/common/diagramScene/diagramScene.hpp>
+#include <ui/common/inputDialogUtils.hpp>
 #include <ui/common/theme.hpp>
 #include <utils/num_formatting.hpp>
 
-#include <QInputDialog>
-#include <QLineEdit>
 #include <QPointer>
 
 #include <algorithm>
@@ -611,17 +610,18 @@ void GraphicalBusInput::editValue()
   const QString prompt =
       QString("Set %1-bit bus value (decimal, 0x..., or 0b...)").arg(width);
 
-  bool          ok   = false;
-  const QString text = QInputDialog::getText(
-      nullptr, "Bus Input", prompt, QLineEdit::Normal,
-      QString::fromStdString(silicon::formatFixedWidthHex(currentValue, width)), &ok);
-  if (!ok)
-    return;
+  const QPointer<GraphicalBusInput> safeThis(this);
+  SiliconInputDialog::getText(
+      SiliconInputDialog::parentWidgetForGraphicsItem(this), "Bus Input", prompt,
+      QString::fromStdString(silicon::formatFixedWidthHex(currentValue, width)),
+      [safeThis, width](const QString& text) {
+        if (!safeThis)
+          return;
 
-  unsigned int value = 0;
-  if (silicon::parseBusValue(text.toStdString(), value)) {
-    setValue(std::min(value, silicon::maxValueForBusWidth(width)));
-  }
+        unsigned int value = 0;
+        if (silicon::parseBusValue(text.toStdString(), value))
+          safeThis->setValue(std::min(value, silicon::maxValueForBusWidth(width)));
+      });
 }
 
 void GraphicalBusInput::handleSimulationClick()

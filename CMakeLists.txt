@@ -84,6 +84,8 @@ set(UI_SOURCE_FILES
         ${src_dir}/ui/common/graphicalLogStream.cpp
         ${src_dir}/ui/common/logSideView.cpp
         ${src_dir}/ui/common/theme.cpp
+        ${src_dir}/ui/common/fileDialogUtils.cpp
+        ${src_dir}/ui/common/inputDialogUtils.cpp
         ${src_dir}/ui/common/componentSearchMatcher.cpp
         ${src_dir}/ui/common/componentSearchBox.cpp
         ${src_dir}/ui/common/diagramView.cpp

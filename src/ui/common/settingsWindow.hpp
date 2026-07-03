@@ -24,6 +24,7 @@
 #include <ui/common/siliconSettings.hpp>
 
 class QAction;
+class QByteArray;
 class QComboBox;
 class QDialogButtonBox;
 class QFormLayout;
@@ -66,6 +67,10 @@ private:
   void importSettings();
   /** @brief Exports the current settings to an external TOML file. */
   void exportSettings();
+  /** @brief Applies settings from another settings store. */
+  bool importSettingsStore(QSettings& importedSettings);
+  /** @brief Serializes the visible settings to TOML bytes. */
+  QByteArray exportSettingsContent();
   /** @brief Resets the visible editors to their declared default values. */
   void restoreDefaults();
   /** @brief Adds one key sequence editor row for a shortcut setting. */

@@ -24,6 +24,7 @@ fi
 
 cp "${html_files[0]}" "${staging_dir}/index.html"
 cp bin/*.js bin/*.wasm "${staging_dir}/"
+cp resources/app/icons/silicon-icon.svg "${staging_dir}/qtlogo.svg"
 
 (
   cd "${staging_dir}"
