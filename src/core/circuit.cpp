@@ -39,20 +39,14 @@ const Logger circuitLog("circuit");
 // --- Topology Observers & Live Editing -------------------------------------------------
 
 uint64_t Circuit::addTopologyListener(TopologyObserver cb)
-{
-  uint64_t id           = ++nextTopologyListenerId;
-  topologyListeners[id] = std::move(cb);
-  return id;
-}
+{ return topologyListeners.add(std::move(cb)); }
 
 void Circuit::removeTopologyListener(uint64_t id)
-{ topologyListeners.erase(id); }
+{ topologyListeners.remove(id); }
 
 void Circuit::notifyTopologyListeners()
 {
-  for (auto& [id, cb] : topologyListeners) {
-    cb();
-  }
+  topologyListeners.notify();
 }
 
 void Circuit::makeInteractive()
@@ -654,6 +648,7 @@ std::string Circuit::serialize() const
 {
   nlohmann::ordered_json j = {{"version", SILICON_VERSION},
                               {"name", name},
+                              {"description", description},
                               {"components", nlohmann::ordered_json::array()}};
 
   auto serializeBusList = [](const std::vector<Bus>& buses) -> nlohmann::ordered_json {
@@ -811,6 +806,9 @@ Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry
 
   if (auto it = j.find("name"); it != j.end() && it->is_string()) {
     result.name = it->get<std::string>();
+  }
+  if (auto it = j.find("description"); it != j.end() && it->is_string()) {
+    result.description = it->get<std::string>();
   }
 
   result.buildTopologyMap();

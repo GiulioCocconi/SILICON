@@ -1,4 +1,4 @@
-#  Copyright (C) 2026 Giulio Cocconi
+#  Copyright (c) 2026. Giulio Cocconi
 
 #  This program is free software: you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -23,12 +23,14 @@ add_executable(num_formatting_tests num_formatting.cpp)
 add_executable(libfst_tests fstlib.cpp)
 add_executable(fstwrapper_tests fstWrapper.cpp)
 add_executable(silicon_waveform_tests siliconWaveform.cpp)
+add_executable(project_file_tests projectFile.cpp)
+add_executable(project_document_tests projectDocument.cpp)
 add_executable(circuit_tests circuit.cpp)
 add_executable(factory_tests factory.cpp)
 add_executable(logger_tests logger.cpp)
 add_executable(libavoid_tests libavoid.cpp ${CMAKE_SOURCE_DIR}/src/ui/common/wireRouting.cpp)
 
-foreach (target logic_tests register_tests arithmetic_tests multiplexer_tests utils_tests num_formatting_tests libfst_tests fstwrapper_tests silicon_waveform_tests circuit_tests factory_tests logger_tests)
+foreach (target logic_tests register_tests arithmetic_tests multiplexer_tests utils_tests num_formatting_tests libfst_tests fstwrapper_tests silicon_waveform_tests project_file_tests project_document_tests circuit_tests factory_tests logger_tests)
     set_target_properties(${target} PROPERTIES
             AUTOMOC OFF
             AUTOUIC OFF

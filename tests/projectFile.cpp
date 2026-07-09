@@ -1,0 +1,319 @@
+/*
+ Copyright (c) 2026. Giulio Cocconi
+ ...
+ */
+
+#include "tests.hpp"
+
+#include <chrono>
+#include <filesystem>
+#include <format>
+#include <fstream>
+#include <memory>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
+
+#include <core/serialization/projectFile.hpp>
+#include <nlohmann/json.hpp>
+#include <zip.h>
+
+namespace {
+
+// RAII wrappers for Libzip C-pointers to prevent test leaks on assertion failures
+struct ZipDeleter       { void operator()(zip_t* z) const noexcept { if (z) zip_discard(z); } };
+struct ZipFileDeleter   { void operator()(zip_file_t* f) const noexcept { if (f) zip_fclose(f); } };
+struct ZipSourceDeleter { void operator()(zip_source_t* s) const noexcept { if (s) zip_source_free(s); } };
+
+using UniqueZip       = std::unique_ptr<zip_t, ZipDeleter>;
+using UniqueZipFile   = std::unique_ptr<zip_file_t, ZipFileDeleter>;
+using UniqueZipSource = std::unique_ptr<zip_source_t, ZipSourceDeleter>;
+
+struct FileCleanup {
+  std::filesystem::path filename;
+  ~FileCleanup() { std::filesystem::remove(filename); }
+};
+
+std::filesystem::path tempProjectPath(const std::string_view testName)
+{
+  const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+  return std::filesystem::temp_directory_path()
+         / std::format("silicon_{}_{}.sil", testName, stamp);
+}
+
+nlohmann::ordered_json validMetadata()
+{
+  return nlohmann::ordered_json{{"formatVersion", silicon::project::ProjectFormatVersion},
+                                {"siliconVersion", SILICON_VERSION},
+                                {"creationDate", "2026-01-02T03:04:05Z"},
+                                {"lastModify", "2026-01-02T03:04:05Z"}};
+}
+
+nlohmann::ordered_json validProject(const std::string_view mainCircuit = silicon::project::DefaultMainCircuitPath)
+{
+  return nlohmann::ordered_json{
+      {"name", "CPU demo"},
+      {"mainCircuit", mainCircuit},
+      {"description", ""}
+  };
+}
+
+void addZipEntry(zip_t* archive, const std::string& name, const std::string_view contents)
+{
+  // freep=0 implies libzip will not free the buffer. This is safe here because
+  // contents strings outlive zip_close() in the test's scope.
+  UniqueZipSource source(zip_source_buffer(archive, contents.data(), contents.size(), 0));
+  if (!source)
+    throw std::runtime_error("zip_source_buffer failed");
+
+  if (zip_file_add(archive, name.c_str(), source.get(), ZIP_FL_OVERWRITE | ZIP_FL_ENC_UTF_8) < 0) {
+    throw std::runtime_error("zip_file_add failed");
+  }
+
+  // Release source ownership to the archive now that it has been successfully added
+  source.release();
+}
+
+void writeZip(const std::filesystem::path& path,
+              const std::vector<std::pair<std::string, std::string>>& entries)
+{
+  int errorCode = 0;
+  UniqueZip archive(zip_open(path.string().c_str(), ZIP_CREATE | ZIP_TRUNCATE, &errorCode));
+  ASSERT_NE(archive, nullptr);
+
+  for (const auto& [name, contents] : entries) {
+    addZipEntry(archive.get(), name, contents);
+  }
+
+  // zip_close commits and deletes the pointer.
+  // If it fails, RAII will zip_discard. If it passes, we release ownership.
+  ASSERT_EQ(zip_close(archive.get()), 0);
+  archive.release();
+}
+
+std::string readZipEntry(const std::filesystem::path& path, const std::string& entryName)
+{
+  int errorCode = 0;
+  UniqueZip archive(zip_open(path.string().c_str(), ZIP_RDONLY, &errorCode));
+  if (!archive)
+    throw std::runtime_error("zip_open failed");
+
+  const zip_int64_t index = zip_name_locate(archive.get(), entryName.c_str(), ZIP_FL_ENC_UTF_8);
+  if (index < 0)
+    throw std::runtime_error(std::format("zip_name_locate failed for {}", entryName));
+
+  zip_stat_t stat;
+  zip_stat_init(&stat);
+  if (zip_stat_index(archive.get(), static_cast<zip_uint64_t>(index), 0, &stat) != 0)
+    throw std::runtime_error("zip_stat_index failed");
+
+  UniqueZipFile file(zip_fopen_index(archive.get(), static_cast<zip_uint64_t>(index), 0));
+  if (!file)
+    throw std::runtime_error("zip_fopen_index failed");
+
+  std::string contents;
+  // C++23 String creation optimization avoiding double-initialization
+  contents.resize_and_overwrite(stat.size, [&](char* buf, std::size_t) {
+    const auto bytesRead = zip_fread(file.get(), buf, stat.size);
+    return static_cast<std::size_t>(std::max<zip_int64_t>(0, bytesRead));
+  });
+
+  return contents;
+}
+
+void readProjectFileIgnoringResult(const std::filesystem::path& path)
+{
+  [[maybe_unused]] const auto projectFile = silicon::project::readProjectFile(path);
+}
+
+}  // namespace
+
+TEST(ProjectFileTest, WritesAndReadsProjectArchive)
+{
+  const auto path = tempProjectPath("roundtrip");
+  FileCleanup cleanup{path};
+
+  silicon::project::ProjectFile projectFile{
+      .metadata        = {.formatVersion  = silicon::project::ProjectFormatVersion,
+                          .siliconVersion = SILICON_VERSION,
+                          .creationDate   = "2026-01-02T03:04:05Z",
+                          .lastModify     = "2026-01-02T03:05:06Z"},
+      .project         = {.name        = "CPU demo",
+                          .mainCircuit = std::string(silicon::project::DefaultMainCircuitPath),
+                          .description = "Demo project"},
+      .documents       = {{std::string(silicon::project::DefaultMainCircuitPath),
+                           R"({"circuit":{},"visual":{"components":[],"wires":[]}})"}},
+      .mainCircuitJson = R"({"circuit":{},"visual":{"components":[],"wires":[]}})"};
+
+  silicon::project::writeProjectFile(path, projectFile);
+
+  EXPECT_EQ(readZipEntry(path, "mimetype"), silicon::project::ProjectMimeType);
+
+  const auto metadataJson = nlohmann::json::parse(readZipEntry(path, "metadata.json"));
+  EXPECT_EQ(metadataJson["formatVersion"], silicon::project::ProjectFormatVersion);
+  EXPECT_EQ(metadataJson["siliconVersion"], SILICON_VERSION);
+  EXPECT_EQ(metadataJson["creationDate"], "2026-01-02T03:04:05Z");
+  EXPECT_EQ(metadataJson["lastModify"], "2026-01-02T03:05:06Z");
+
+  const auto projectJson = nlohmann::json::parse(readZipEntry(path, "project.json"));
+  EXPECT_EQ(projectJson["name"], "CPU demo");
+  EXPECT_EQ(projectJson["mainCircuit"], silicon::project::DefaultMainCircuitPath);
+  EXPECT_EQ(projectJson["description"], "Demo project");
+
+  const auto loaded = silicon::project::readProjectFile(path);
+  EXPECT_EQ(loaded.project.name, "CPU demo");
+  EXPECT_EQ(loaded.project.mainCircuit, silicon::project::DefaultMainCircuitPath);
+  ASSERT_EQ(loaded.documents.size(), 1);
+  EXPECT_EQ(loaded.documents.front().path(), silicon::project::DefaultMainCircuitPath);
+  EXPECT_EQ(loaded.documents.front().sceneJson(), projectFile.mainCircuitJson);
+  EXPECT_EQ(loaded.mainCircuitJson, projectFile.mainCircuitJson);
+}
+
+TEST(ProjectFileTest, WritesAndReadsProjectArchiveWithMultipleCircuits)
+{
+  const auto path = tempProjectPath("multi_circuit_roundtrip");
+  FileCleanup cleanup{path};
+
+  const std::string mainJson =
+      R"({"circuit":{"name":"Main"},"visual":{"components":[],"wires":[]}})";
+  const std::string controllerJson =
+      R"({"circuit":{"name":"Controller"},"visual":{"components":[],"wires":[]}})";
+
+  silicon::project::ProjectFile projectFile{
+      .metadata        = {.formatVersion  = silicon::project::ProjectFormatVersion,
+                          .siliconVersion = SILICON_VERSION,
+                          .creationDate   = "2026-01-02T03:04:05Z",
+                          .lastModify     = "2026-01-02T03:05:06Z"},
+      .project         = {.name        = "CPU demo",
+                          .mainCircuit = std::string(silicon::project::DefaultMainCircuitPath),
+                          .description = "Demo project"},
+      .documents       = {{std::string(silicon::project::DefaultMainCircuitPath),
+                           mainJson},
+                          {"circuits/controller.json", controllerJson}},
+      .mainCircuitJson = mainJson};
+
+  silicon::project::writeProjectFile(path, projectFile);
+
+  EXPECT_EQ(readZipEntry(path, silicon::project::DefaultMainCircuitPath.data()),
+            mainJson);
+  EXPECT_EQ(readZipEntry(path, "circuits/controller.json"), controllerJson);
+
+  const auto loaded = silicon::project::readProjectFile(path);
+  EXPECT_EQ(loaded.project.mainCircuit, silicon::project::DefaultMainCircuitPath);
+  ASSERT_EQ(loaded.documents.size(), 2);
+  const auto mainIt =
+      std::ranges::find(loaded.documents,
+                        std::string(silicon::project::DefaultMainCircuitPath),
+                        &silicon::project::Document::path);
+  const auto controllerIt =
+      std::ranges::find(loaded.documents, std::string("circuits/controller.json"),
+                        &silicon::project::Document::path);
+  ASSERT_NE(mainIt, loaded.documents.end());
+  ASSERT_NE(controllerIt, loaded.documents.end());
+  EXPECT_EQ(mainIt->sceneJson(), mainJson);
+  EXPECT_EQ(controllerIt->sceneJson(), controllerJson);
+  EXPECT_EQ(loaded.mainCircuitJson, mainJson);
+}
+
+TEST(ProjectFileTest, RejectsNestedCircuitEntry)
+{
+  const auto path = tempProjectPath("nested_circuit_entry");
+  FileCleanup cleanup{path};
+
+  writeZip(path, {{"mimetype", std::string(silicon::project::ProjectMimeType)},
+                  {"metadata.json", validMetadata().dump(2)},
+                  {"project.json", validProject().dump(2)},
+                  {std::string(silicon::project::DefaultMainCircuitPath), "{}"},
+                  {"circuits/nested/controller.json", "{}"}});
+
+  EXPECT_THROW(readProjectFileIgnoringResult(path), std::runtime_error);
+}
+TEST(ProjectFileTest, RejectsWrongMimetype)
+{
+  const auto path = tempProjectPath("wrong_mimetype");
+  FileCleanup cleanup{path};
+
+  writeZip(path, {{"mimetype", "application/octet-stream"},
+                  {"metadata.json", validMetadata().dump(2)},
+                  {"project.json", validProject().dump(2)},
+                  {std::string(silicon::project::DefaultMainCircuitPath), "{}"}});
+
+  EXPECT_THROW(readProjectFileIgnoringResult(path), std::runtime_error);
+}
+
+TEST(ProjectFileTest, RejectsRawJsonFile)
+{
+  const auto path = tempProjectPath("raw_json");
+  FileCleanup cleanup{path};
+
+  std::ofstream file(path);
+  file << R"({"circuit":{},"visual":{}})";
+  file.close();
+
+  EXPECT_THROW(readProjectFileIgnoringResult(path), std::runtime_error);
+}
+
+TEST(ProjectFileTest, RejectsMissingProjectJson)
+{
+  const auto path = tempProjectPath("missing_project");
+  FileCleanup cleanup{path};
+
+  writeZip(path, {{"mimetype", std::string(silicon::project::ProjectMimeType)},
+                  {"metadata.json", validMetadata().dump(2)},
+                  {std::string(silicon::project::DefaultMainCircuitPath), "{}"}});
+
+  EXPECT_THROW(readProjectFileIgnoringResult(path), std::runtime_error);
+}
+
+TEST(ProjectFileTest, RejectsMissingMetadataJson)
+{
+  const auto path = tempProjectPath("missing_metadata");
+  FileCleanup cleanup{path};
+
+  writeZip(path, {{"mimetype", std::string(silicon::project::ProjectMimeType)},
+                  {"project.json", validProject().dump(2)},
+                  {std::string(silicon::project::DefaultMainCircuitPath), "{}"}});
+
+  EXPECT_THROW(readProjectFileIgnoringResult(path), std::runtime_error);
+}
+
+TEST(ProjectFileTest, RejectsMissingMainCircuit)
+{
+  const auto path = tempProjectPath("missing_circuit");
+  FileCleanup cleanup{path};
+
+  writeZip(path, {{"mimetype", std::string(silicon::project::ProjectMimeType)},
+                  {"metadata.json", validMetadata().dump(2)},
+                  {"project.json", validProject().dump(2)}});
+
+  EXPECT_THROW(readProjectFileIgnoringResult(path), std::runtime_error);
+}
+
+TEST(ProjectFileTest, RejectsMainCircuitOutsideCircuitsDirectory)
+{
+  const auto path = tempProjectPath("main_outside_circuits");
+  FileCleanup cleanup{path};
+
+  writeZip(path, {{"mimetype", std::string(silicon::project::ProjectMimeType)},
+                  {"metadata.json", validMetadata().dump(2)},
+                  {"project.json", validProject("main.json").dump(2)},
+                  {std::string(silicon::project::DefaultMainCircuitPath), "{}"}});
+
+  EXPECT_THROW(readProjectFileIgnoringResult(path), std::runtime_error);
+}
+
+TEST(ProjectFileTest, RejectsMainCircuitNotPresentInArchive)
+{
+  const auto path = tempProjectPath("main_not_present");
+  FileCleanup cleanup{path};
+
+  writeZip(path, {{"mimetype", std::string(silicon::project::ProjectMimeType)},
+                  {"metadata.json", validMetadata().dump(2)},
+                  {"project.json", validProject("circuits/controller.json").dump(2)},
+                  {std::string(silicon::project::DefaultMainCircuitPath), "{}"},
+                  {"circuits/io.json", "{}"}});
+
+  EXPECT_THROW(readProjectFileIgnoringResult(path), std::runtime_error);
+}

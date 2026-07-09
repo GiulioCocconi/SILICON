@@ -1,3 +1,21 @@
+/*
+  Copyright (c) 2026. Giulio Cocconi
+
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+ */
+
 #include "undoCommands.hpp"
 #include "graphicalComponent.hpp"
 #include "graphicalItem.hpp"
@@ -8,6 +26,7 @@
 
 #include <core/serialization/component_registry.hpp>
 #include <ui/common/diagramScene/diagramScene.hpp>
+#include <ui/logiFlow/logiFlowWindow.hpp>
 #include <ui/logiFlow/components/graphicalLogicComponent.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
 
@@ -18,6 +37,33 @@ DiagramScene* itemScene(const QGraphicsItem* item)
   if (!item || !item->scene())
     return nullptr;
   return qobject_cast<DiagramScene*>(item->scene());
+}
+
+LogiFlowWindow* sceneWindow(DiagramScene* scene)
+{
+  if (!scene || scene->views().empty())
+    return nullptr;
+
+  return qobject_cast<LogiFlowWindow*>(scene->views().first()->window());
+}
+
+std::string activeCircuitPath(DiagramScene* scene)
+{
+  if (auto* window = sceneWindow(scene))
+    return window->activeProjectCircuitPath();
+
+  return {};
+}
+
+bool activateCircuit(DiagramScene* scene, const std::string& circuitPath)
+{
+  if (circuitPath.empty())
+    return true;
+
+  if (auto* window = sceneWindow(scene))
+    return window->activateProjectCircuit(circuitPath);
+
+  return false;
 }
 
 GraphicalItem* findItem(DiagramScene* scene, const uint64_t uiId)
@@ -57,11 +103,17 @@ void MoveItemCommand::addItemMove(GraphicalItem* item, const QPointF& oldPos,
 
   // Commands store scene + uiId instead of raw item pointers so undo survives
   // delete/recreate cycles triggered by selection-level commands.
-  moves.push_back({itemScene(item), item->getUiId(), oldPos, newPos});
+  auto* scene = itemScene(item);
+  if (circuitPath.empty())
+    circuitPath = activeCircuitPath(scene);
+  moves.push_back({scene, item->getUiId(), oldPos, newPos});
 }
 
 void MoveItemCommand::undo()
 {
+  if (!moves.empty() && !activateCircuit(moves.front().scene, circuitPath))
+    return;
+
   for (const auto& move : moves) {
     if (auto* item = findItem(move.scene, move.uiId)) {
       item->setPos(move.oldPos);
@@ -77,6 +129,9 @@ void MoveItemCommand::redo()
     skipInitialRedo = false;
     return;
   }
+
+  if (!moves.empty() && !activateCircuit(moves.front().scene, circuitPath))
+    return;
 
   for (const auto& move : moves) {
     if (auto* item = findItem(move.scene, move.uiId)) {
@@ -94,6 +149,7 @@ MoveWirePointCommand::MoveWirePointCommand(GraphicalWireSegment* segment,
                                            const QPointF& newPos, QUndoCommand* parent)
   : QUndoCommand(parent),
     scene(itemScene(segment)),
+    circuitPath(activeCircuitPath(scene)),
     uiId(segment ? segment->getUiId() : 0),
     pointIndex(pointIndex),
     oldPos(oldPos),
@@ -104,6 +160,9 @@ MoveWirePointCommand::MoveWirePointCommand(GraphicalWireSegment* segment,
 
 void MoveWirePointCommand::undo()
 {
+  if (!activateCircuit(scene, circuitPath))
+    return;
+
   if (auto* segment = findWireSegment(scene, uiId)) {
     segment->movePointTo(pointIndex, oldPos);
 
@@ -122,6 +181,9 @@ void MoveWirePointCommand::redo()
     skipInitialRedo = false;
     return;
   }
+
+  if (!activateCircuit(scene, circuitPath))
+    return;
 
   if (auto* segment = findWireSegment(scene, uiId)) {
     segment->movePointTo(pointIndex, newPos);
@@ -142,6 +204,7 @@ RotateItemCommand::RotateItemCommand(GraphicalComponent* component,
                                      QUndoCommand* parent)
   : QUndoCommand(parent),
     scene(itemScene(component)),
+    circuitPath(activeCircuitPath(scene)),
     uiId(component ? component->getUiId() : 0),
     oldRotation(oldRotation),
     newRotation(newRotation)
@@ -151,6 +214,9 @@ RotateItemCommand::RotateItemCommand(GraphicalComponent* component,
 
 void RotateItemCommand::undo()
 {
+  if (!activateCircuit(scene, circuitPath))
+    return;
+
   if (auto* component = findComponent(scene, uiId)) {
     component->setRotation(oldRotation);
     component->setInitialRotation();
@@ -164,6 +230,9 @@ void RotateItemCommand::redo()
     skipInitialRedo = false;
     return;
   }
+
+  if (!activateCircuit(scene, circuitPath))
+    return;
 
   if (auto* component = findComponent(scene, uiId)) {
     component->setRotation(newRotation);
@@ -187,11 +256,17 @@ void ModifyPropertyCommand::addPropertyChange(GraphicalLogicComponent* component
   if (!component || oldValue == newValue)
     return;
 
-  changes.push_back({itemScene(component), component->getUiId(), oldValue, newValue});
+  auto* scene = itemScene(component);
+  if (circuitPath.empty())
+    circuitPath = activeCircuitPath(scene);
+  changes.push_back({scene, component->getUiId(), oldValue, newValue});
 }
 
 void ModifyPropertyCommand::apply(const bool useNewValue)
 {
+  if (!changes.empty() && !activateCircuit(changes.front().scene, circuitPath))
+    return;
+
   for (const auto& change : changes) {
     if (auto* component = findLogicComponent(change.scene, change.uiId)) {
       component->applyProperty(key, useNewValue ? change.newValue : change.oldValue);
@@ -218,6 +293,7 @@ SceneSelectionCommand::SceneSelectionCommand(DiagramScene*         scene,
                                              QUndoCommand*         parent)
   : QUndoCommand(parent),
     scene(scene),
+    circuitPath(activeCircuitPath(scene)),
     bsonPayload(encodePayload(payload)),
     operation(operation),
     skipInitialRedo(skipInitialRedo)
@@ -256,6 +332,9 @@ void SceneSelectionCommand::undo()
   if (!scene)
     return;
 
+  if (!activateCircuit(scene, circuitPath))
+    return;
+
   if (scene->getInteractionMode() != InteractionMode::NORMAL_MODE)
     scene->setInteractionMode(InteractionMode::NORMAL_MODE);
 
@@ -280,6 +359,9 @@ void SceneSelectionCommand::redo()
     skipInitialRedo = false;
     return;
   }
+
+  if (!activateCircuit(scene, circuitPath))
+    return;
 
   if (scene->getInteractionMode() != InteractionMode::NORMAL_MODE)
     scene->setInteractionMode(InteractionMode::NORMAL_MODE);

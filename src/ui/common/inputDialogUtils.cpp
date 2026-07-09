@@ -102,4 +102,39 @@ void warning(QWidget* parent, const QString& title, const QString& text)
 #endif
 }
 
+void critical(QWidget* parent, const QString& title, const QString& text)
+{
+#ifdef __EMSCRIPTEN__
+  auto* messageBox =
+      new QMessageBox(QMessageBox::Critical, title, text, QMessageBox::Ok, parent);
+  messageBox->setAttribute(Qt::WA_DeleteOnClose);
+  messageBox->open();
+#else
+  QMessageBox::critical(parent, title, text);
+#endif
+}
+
+void question(QWidget* parent, const QString& title, const QString& text,
+              AcceptedCallback accepted)
+{
+#ifdef __EMSCRIPTEN__
+  auto* messageBox = new QMessageBox(QMessageBox::Question, title, text,
+                                     QMessageBox::Yes | QMessageBox::No, parent);
+  messageBox->setDefaultButton(QMessageBox::No);
+  messageBox->setAttribute(Qt::WA_DeleteOnClose);
+  QObject::connect(messageBox, &QMessageBox::finished, messageBox,
+                   [accepted = std::move(accepted)](const int result) {
+                     if (result == QMessageBox::Yes)
+                       accepted();
+                   });
+  messageBox->open();
+#else
+  if (QMessageBox::question(parent, title, text, QMessageBox::Yes | QMessageBox::No,
+                            QMessageBox::No)
+      == QMessageBox::Yes) {
+    accepted();
+  }
+#endif
+}
+
 }  // namespace SiliconInputDialog

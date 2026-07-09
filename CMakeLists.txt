@@ -1,4 +1,4 @@
-#  Copyright (C) 2025 Giulio Cocconi
+#  Copyright (c) 2026. Giulio Cocconi
 
 #  This program is free software: you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -67,12 +67,14 @@ set(COMMON_SOURCE_FILES
         ${src_dir}/core/register.cpp
         ${src_dir}/core/component.cpp
         ${src_dir}/core/circuit.cpp
+        ${src_dir}/core/projectDocument.cpp
         ${src_dir}/core/simulator.cpp
         ${src_dir}/core/serialization/component_registry.cpp
         ${src_dir}/core/serialization/component_registration.cpp
         ${src_dir}/core/fstTraceWriter.cpp
         ${src_dir}/core/siliconWaveform.cpp
         ${src_dir}/core/siliconFst.cpp
+        ${src_dir}/core/serialization/projectFile.cpp
         ${src_dir}/core/fstWrapper.cpp)
 
 set(EXTRA_COMPONENTS_SOURCE_FILES
@@ -163,6 +165,15 @@ endif ()
 find_package(Boost REQUIRED COMPONENTS graph log log_setup thread)
 find_package(nlohmann_json REQUIRED)
 find_package(tomlplusplus REQUIRED)
+find_package(libzip CONFIG REQUIRED)
+
+if (TARGET libzip::zip)
+    set(SILICON_LIBZIP_TARGET libzip::zip)
+elseif (TARGET zip)
+    set(SILICON_LIBZIP_TARGET zip)
+else ()
+    message(FATAL_ERROR "libzip was found, but no supported CMake target is available")
+endif ()
 
 add_subdirectory(vendor/libfst)
 add_subdirectory(vendor/libavoid)
@@ -189,7 +200,8 @@ target_link_libraries(silicon_core
         fst
         Boost::graph
         silicon_logging
-        nlohmann_json)
+        nlohmann_json
+        ${SILICON_LIBZIP_TARGET})
 
 if ((CMAKE_CXX_COMPILER_ID MATCHES "Clang") OR EMSCRIPTEN)
     # Some view/ranges features are not yet implemented in clang libc++

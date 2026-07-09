@@ -28,6 +28,9 @@
       "name": "zlib"
     },
     {
+      "name": "libzip"
+    },
+    {
       "name": "boost-graph"
     },
     {
