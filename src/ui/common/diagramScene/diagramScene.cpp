@@ -618,7 +618,7 @@ void DiagramScene::updateSceneAfterEdit()
   update();
 }
 
-void DiagramScene::clear()
+void DiagramScene::clear(const bool clearUndoStack, const bool clearLogs)
 {
   setInteractionMode(InteractionMode::NORMAL_MODE);
 
@@ -634,10 +634,10 @@ void DiagramScene::clear()
 
   wireManager.clear();
 
-  if (getUndoStack())
+  if (clearUndoStack && getUndoStack())
     getUndoStack()->clear();
 
-  if (getLogSideView())
+  if (clearLogs && getLogSideView())
     getLogSideView()->clear();
 
   QGraphicsScene::clear();

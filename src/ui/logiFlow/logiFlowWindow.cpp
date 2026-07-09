@@ -18,28 +18,39 @@
 
 #include "logiFlowWindow.hpp"
 
+#include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <cstring>
+#include <functional>
+#include <initializer_list>
 #include <limits>
 #include <ranges>
 #include <stdexcept>
+#include <tuple>
+#include <unordered_map>
 #include <variant>
 #include <vector>
 
+#include <QAbstractItemView>
 #include <QApplication>
 #include <QByteArray>
 #include <QCheckBox>
 #include <QClipboard>
 #include <QComboBox>
+#include <QContextMenuEvent>
 #include <QCursor>
 #include <QDialog>
 #include <QDockWidget>
+#include <QEvent>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFocusEvent>
 #include <QFormLayout>
 #include <QGraphicsView>
 #include <QHBoxLayout>
+#include <QIcon>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QKeySequence>
@@ -47,15 +58,20 @@
 #include <QLineEdit>
 #include <QMenu>
 #include <QMenuBar>
-#include <QMessageBox>
 #include <QMimeData>
+#include <QPlainTextEdit>
 #include <QResizeEvent>
 #include <QSignalBlocker>
 #include <QSpinBox>
 #include <QStatusBar>
 #include <QString>
+#include <QTemporaryFile>
 #include <QTimer>
 #include <QToolBar>
+#include <QTreeWidget>
+#include <QTreeWidgetItem>
+#include <QUndoCommand>
+#include <QUndoStack>
 #include <QVBoxLayout>
 
 #ifdef __EMSCRIPTEN__
@@ -63,11 +79,16 @@
 #endif
 
 #include <core/serialization/component_registry.hpp>
+#include <core/serialization/projectFile.hpp>
 #include <core/simulator.hpp>
 #include <logging/logger.hpp>
+#include <ui/common/aboutDialog.hpp>
+#include <ui/common/diagramScene/diagramScene.hpp>
+#include <ui/common/diagramView.hpp>
 #include <ui/common/fileDialogUtils.hpp>
 #include <ui/common/graphicalLogStream.hpp>
 #include <ui/common/icons.hpp>
+#include <ui/common/inputDialogUtils.hpp>
 #include <ui/common/logSideView.hpp>
 #include <ui/common/settingsWindow.hpp>
 #include <ui/common/theme.hpp>
@@ -83,6 +104,205 @@ namespace {
 // from the native LogiFlow selection format.
 constexpr auto LogiFlowSelectionMimeType =
     "application/vnd.silicon.logiflow-selection+bson";
+
+enum class ProjectTreeItemKind { Project, CircuitSection, Circuit };
+
+constexpr int ProjectTreeItemKindRole = Qt::UserRole;
+constexpr int ProjectTreePathRole     = Qt::UserRole + 1;
+
+const Logger uiLog("ui");
+
+std::string defaultMainCircuitPath()
+{
+  return std::string(silicon::project::DefaultMainCircuitPath);
+}
+
+silicon::project::Document defaultCircuitDocument()
+{
+  return {defaultMainCircuitPath(), ""};
+}
+
+QString defaultProjectName(const QString& currentFileName)
+{
+  const QString baseName = QFileInfo(currentFileName).baseName();
+  return baseName.isEmpty() ? QStringLiteral("Untitled Project") : baseName;
+}
+
+silicon::project::ProjectInfo defaultProjectInfo(const QString& currentFileName)
+{
+  return {.name        = defaultProjectName(currentFileName).toStdString(),
+          .mainCircuit = defaultMainCircuitPath(),
+          .description = ""};
+}
+
+std::string
+projectMainCircuitPath(const std::optional<silicon::project::ProjectInfo>& projectInfo)
+{
+  if (projectInfo && !projectInfo->mainCircuit.empty())
+    return projectInfo->mainCircuit;
+
+  return defaultMainCircuitPath();
+}
+
+void ensureProjectDocuments()
+{
+  auto& store = silicon::project::DocumentStore::active();
+  if (store.documents(silicon::project::DocumentKind::Circuit).empty())
+    store.upsertDocument(defaultCircuitDocument());
+}
+
+QString documentDisplayName(const silicon::project::Document& document)
+{
+  try {
+    const auto scene = nlohmann::json::parse(document.sceneJson());
+    if (scene.contains("circuit") && scene["circuit"].is_object()) {
+      const auto name = scene["circuit"].value("name", "");
+      if (!name.empty())
+        return QString::fromStdString(name);
+    }
+  } catch (const nlohmann::json::exception&) {
+  }
+
+  const QString fileName = QFileInfo(QString::fromStdString(document.path())).baseName();
+  return fileName.isEmpty() ? QString::fromStdString(document.path()) : fileName;
+}
+
+std::pair<std::string, std::string>
+circuitMetadata(const silicon::project::Document& document)
+{
+  try {
+    const auto scene = nlohmann::json::parse(document.sceneJson());
+    if (scene.contains("circuit") && scene["circuit"].is_object())
+      return {scene["circuit"].value("name", ""),
+              scene["circuit"].value("description", "")};
+  } catch (const nlohmann::json::exception&) {
+  }
+  return {};
+}
+
+QString interactionModeName(const InteractionMode mode)
+{
+  switch (mode) {
+    case InteractionMode::NORMAL_MODE: return QStringLiteral("NORMAL");
+    case InteractionMode::COMPONENT_PLACING_MODE:
+      return QStringLiteral("COMPONENT PLACING");
+    case InteractionMode::WIRE_CREATION_MODE: return QStringLiteral("WIRE CREATION");
+    case InteractionMode::PAN_MODE: return QStringLiteral("PAN");
+    case InteractionMode::SIMULATION_MODE: return QStringLiteral("SIMULATION");
+  }
+
+  throw std::logic_error("Unhandled InteractionMode in interactionModeName");
+}
+
+QAction* makeAction(QObject* parent, const QIcon& icon, const QString& text,
+                    const QString& statusTip = {})
+{
+  auto* action = new QAction(icon, text, parent);
+  if (!statusTip.isEmpty())
+    action->setStatusTip(statusTip);
+  return action;
+}
+
+QAction* makeAction(QObject* parent, const QString& text, const QString& statusTip = {})
+{
+  auto* action = new QAction(text, parent);
+  if (!statusTip.isEmpty())
+    action->setStatusTip(statusTip);
+  return action;
+}
+
+void setActionsEnabled(std::initializer_list<QAction*> actions, const bool enabled)
+{
+  for (QAction* action : actions) {
+    if (action)
+      action->setEnabled(enabled);
+  }
+}
+
+QTreeWidgetItem* selectedProjectTreeItem(QTreeWidget* projectTree)
+{
+  if (!projectTree)
+    return nullptr;
+
+  const auto selectedItems = projectTree->selectedItems();
+  return selectedItems.empty() ? nullptr : selectedItems.front();
+}
+
+QTreeWidgetItem* projectCircuitSectionItem(QTreeWidget* projectTree)
+{
+  if (!projectTree || projectTree->topLevelItemCount() == 0)
+    return nullptr;
+
+  auto* projectItem = projectTree->topLevelItem(0);
+  return projectItem ? projectItem->child(0) : nullptr;
+}
+
+ProjectTreeItemKind projectTreeItemKind(QTreeWidgetItem* item)
+{
+  return static_cast<ProjectTreeItemKind>(item->data(0, ProjectTreeItemKindRole).toInt());
+}
+
+std::string projectTreeCircuitPath(QTreeWidgetItem* item)
+{
+  return item->data(0, ProjectTreePathRole).toString().toStdString();
+}
+
+class MetadataEditCommand : public QUndoCommand {
+public:
+  using ApplyFn = std::function<void(const std::string&)>;
+
+  MetadataEditCommand(QString text, std::string oldValue, std::string newValue,
+                      ApplyFn apply, QUndoCommand* parent = nullptr)
+    : QUndoCommand(std::move(text), parent),
+      oldValue(std::move(oldValue)),
+      newValue(std::move(newValue)),
+      apply(std::move(apply))
+  {
+  }
+
+  void undo() override { apply(oldValue); }
+  void redo() override { apply(newValue); }
+
+private:
+  std::string oldValue;
+  std::string newValue;
+  ApplyFn     apply;
+};
+
+class ProjectStateCommand : public QUndoCommand {
+public:
+  using Fn = std::function<void()>;
+
+  ProjectStateCommand(QString text, Fn undoFn, Fn redoFn, QUndoCommand* parent = nullptr)
+    : QUndoCommand(std::move(text), parent),
+      undoFn(std::move(undoFn)),
+      redoFn(std::move(redoFn))
+  {
+  }
+
+  void undo() override { undoFn(); }
+  void redo() override { redoFn(); }
+
+private:
+  Fn undoFn;
+  Fn redoFn;
+};
+
+class MetadataDescriptionEdit : public QPlainTextEdit {
+public:
+  explicit MetadataDescriptionEdit(QWidget* parent = nullptr) : QPlainTextEdit(parent) {}
+
+  std::function<void()> commit;
+
+protected:
+  void focusOutEvent(QFocusEvent* event) override
+  {
+    if (commit)
+      commit();
+
+    QPlainTextEdit::focusOutEvent(event);
+  }
+};
 
 ShortcutSetting shortcut(const QString& key, const QString& label, QAction* action,
                          const QKeySequence& defaultShortcut)
@@ -214,12 +434,6 @@ void syncWasmShortcutCapture(const QVector<ShortcutSetting>& shortcuts)
 
 }  // namespace
 
-namespace {
-
-const Logger uiLog("ui");
-
-}  // namespace
-
 LogiFlowWindow::~LogiFlowWindow()
 {
 #ifdef __EMSCRIPTEN__
@@ -276,7 +490,6 @@ LogiFlowWindow::LogiFlowWindow()
   componentsDock = new QDockWidget(this);
   propertyDock   = new QDockWidget(this);
   logDock        = new QDockWidget(this);
-  waveformWindow = nullptr;
 
   addDockWidget(Qt::LeftDockWidgetArea, componentsDock);
   addDockWidget(Qt::LeftDockWidgetArea, propertyDock);
@@ -288,7 +501,7 @@ LogiFlowWindow::LogiFlowWindow()
   logDock->setAllowedAreas(Qt::BottomDockWidgetArea | Qt::TopDockWidgetArea);
 
   propertyDock->setWindowTitle("Properties");
-  componentsDock->setWindowTitle("Components");
+  componentsDock->setWindowTitle("Project");
   logDock->setWindowTitle("Logs");
 
   splitDockWidget(componentsDock, propertyDock, Qt::Vertical);
@@ -308,6 +521,7 @@ LogiFlowWindow::LogiFlowWindow()
       new ComponentCatalogOverlay(diagramScene, diagramView->viewport());
   diagramView->viewport()->installEventFilter(this);
   updateComponentCatalogGeometry();
+  initializeProjectTree();
 
   aboutDialog = new AboutDialog("SILICON", this);
 
@@ -340,65 +554,59 @@ LogiFlowWindow::LogiFlowWindow()
   setWindowTitle(tr("SILICON LogiFlow"));
   setMinimumSize(160, 160);
 
+  resetProjectState();
+  rebuildProjectTree();
   updatePropertyDock();
 
   uiLog.info("Qt logging sideview initialized");
 }
+
 void LogiFlowWindow::createActions()
 {
-  newAct         = new QAction(Icon("file"), tr("&New"), this);
-  openAct        = new QAction(Icon("open"), tr("&Open..."), this);
-  saveAct        = new QAction(Icon("save"), tr("&Save"), this);
-  exportImageAct = new QAction(Icon("export"), tr("&Export..."), this);
-  exitAct        = new QAction(Icon("xmark"), tr("E&xit"), this);
-  cutAct         = new QAction(Icon("cut"), tr("Cu&t"), this);
-  copyAct        = new QAction(Icon("copy"), tr("&Copy"), this);
-  pasteAct       = new QAction(Icon("paste"), tr("&Paste"), this);
-  rotateAct      = new QAction(Icon("rotate"), tr("&Rotate"), this);
-  deleteAct      = new QAction(Icon("delete"), tr("&Delete"), this);
-  aboutAct       = new QAction(Icon("info"), tr("&About"), this);
-  settingsAct    = new QAction(Icon("settings"), tr("&Settings..."), this);
+  newAct  = makeAction(this, Icon("file"), tr("&New"), tr("Create a new file"));
+  openAct = makeAction(this, Icon("open"), tr("&Open..."),
+                       tr("Open an existing logiFlow file"));
+  saveAct = makeAction(this, Icon("save"), tr("&Save"), tr("Save the circuit to disk"));
+  exportImageAct = makeAction(this, Icon("export"), tr("&Export..."),
+                              tr("Export the circuit as an image"));
+  exitAct   = makeAction(this, Icon("xmark"), tr("E&xit"), tr("Exit the application"));
+  cutAct    = makeAction(this, Icon("cut"), tr("Cu&t"),
+                         tr("Cut the current selection's contents to the clipboard"));
+  copyAct   = makeAction(this, Icon("copy"), tr("&Copy"));
+  pasteAct  = makeAction(this, Icon("paste"), tr("&Paste"),
+                         tr("Paste the clipboard's contents into the current selection"));
+  rotateAct = makeAction(this, Icon("rotate"), tr("&Rotate"));
+  deleteAct =
+      makeAction(this, Icon("delete"), tr("&Delete"), tr("Delete selected components"));
+  aboutAct    = makeAction(this, Icon("info"), tr("&About"),
+                           tr("Show the application's about box"));
+  settingsAct = makeAction(this, Icon("settings"), tr("&Settings..."),
+                           tr("Edit application settings"));
 
   undoAct = undoStack->createUndoAction(this, tr("&Undo"));
   undoAct->setIcon(Icon("undo"));
+  undoAct->setStatusTip(tr("Undo the last operation"));
 
   redoAct = undoStack->createRedoAction(this, tr("&Redo"));
   redoAct->setIcon(Icon("redo"));
+  redoAct->setStatusTip(tr("Redo the last operation"));
 
-  // The rotate, cut, copy and delete actions should be disabled when no component is
-  // selected
-  rotateAct->setEnabled(false);
-  cutAct->setEnabled(false);
-  copyAct->setEnabled(false);
-  deleteAct->setEnabled(false);
+  setActionsEnabled({rotateAct, cutAct, copyAct, deleteAct}, false);
 
   setNormalModeAct       = new QAction(Icon("mouse-pointer"), "", this);
   setPanModeAct          = new QAction(Icon("pan"), "", this);
   setWireCreationModeAct = new QAction(Icon("link"), "", this);
   setSimulationModeAct   = new QAction(Icon("play"), "", this);
-  toggleFstTraceAct      = new QAction(Icon("chart"), tr("Trace"), this);
+  toggleFstTraceAct =
+      makeAction(this, Icon("chart"), tr("Trace"), tr("Show waveform viewer"));
   toggleFstTraceAct->setCheckable(true);
-  cancelInteractionAct = new QAction(this);
+  cancelInteractionAct =
+      makeAction(this, QString(), tr("Cancel the current interaction"));
 
-  openComponentCatalogAct    = new QAction(Icon("plus"), "", this);
-  setComponentPlacingModeAct = new QAction(Icon("plus"), "", this);
-
-  toggleFstTraceAct->setStatusTip(tr("Show waveform viewer"));
-  newAct->setStatusTip(tr("Create a new file"));
-  openAct->setStatusTip(tr("Open an existing logiFlow file"));
-  saveAct->setStatusTip(tr("Save the circuit to disk"));
-  exportImageAct->setStatusTip(tr("Export the circuit as an image"));
-  exitAct->setStatusTip(tr("Exit the application"));
-  undoAct->setStatusTip(tr("Undo the last operation"));
-  redoAct->setStatusTip(tr("Redo the last operation"));
-  cutAct->setStatusTip(tr("Cut the current selection's contents to the clipboard"));
-  pasteAct->setStatusTip(tr("Paste the clipboard's contents into the current selection"));
-  deleteAct->setStatusTip(tr("Delete selected components"));
-  aboutAct->setStatusTip(tr("Show the application's about box"));
-  settingsAct->setStatusTip(tr("Edit application settings"));
-  openComponentCatalogAct->setStatusTip(tr("Open the component catalog"));
-  setComponentPlacingModeAct->setStatusTip(tr("Open quick component search"));
-  cancelInteractionAct->setStatusTip(tr("Cancel the current interaction"));
+  openComponentCatalogAct =
+      makeAction(this, Icon("plus"), "", tr("Open the component catalog"));
+  setComponentPlacingModeAct =
+      makeAction(this, Icon("plus"), "", tr("Open quick component search"));
 
   connect(newAct, &QAction::triggered, this, &LogiFlowWindow::newFile);
   connect(openAct, &QAction::triggered, this, &LogiFlowWindow::open);
@@ -490,7 +698,8 @@ void LogiFlowWindow::applyStoredSettings()
 
   ThemeEngine::apply(*qApp, themeModeFromText(values.theme));
 
-  for (const ShortcutSetting& shortcut : shortcutSettings()) {
+  const auto shortcuts = shortcutSettings();
+  for (const ShortcutSetting& shortcut : shortcuts) {
     shortcut.action->setShortcut(
         SiliconSetting::value(settings, shortcut.setting).value<QKeySequence>());
 #ifdef __EMSCRIPTEN__
@@ -500,7 +709,7 @@ void LogiFlowWindow::applyStoredSettings()
 #endif
   }
 
-  syncWasmShortcutCapture(shortcutSettings());
+  syncWasmShortcutCapture(shortcuts);
 }
 
 void LogiFlowWindow::createMenus()
@@ -583,6 +792,297 @@ void LogiFlowWindow::createWaveformWindow()
       [this](const bool enabled) { diagramScene->setIoInteractionsEnabled(!enabled); });
   connect(waveformViewer, &WaveformViewer::editTraceCommitted, diagramScene,
           &DiagramScene::simulateEditedWaveform);
+}
+
+void LogiFlowWindow::initializeProjectTree()
+{
+  projectTree = new QTreeWidget(componentsDock);
+  projectTree->setHeaderHidden(true);
+  projectTree->setRootIsDecorated(true);
+  projectTree->setSelectionMode(QAbstractItemView::SingleSelection);
+  projectTree->setContextMenuPolicy(Qt::CustomContextMenu);
+  componentsDock->setWidget(projectTree);
+
+  connect(projectTree, &QTreeWidget::itemSelectionChanged, this,
+          &LogiFlowWindow::projectTreeSelectionChanged);
+  connect(projectTree, &QTreeWidget::customContextMenuRequested, this,
+          &LogiFlowWindow::showProjectTreeContextMenu);
+}
+
+std::string LogiFlowWindow::activeProjectCircuitPath() const
+{
+  if (!activeDocumentPath.empty()
+      && silicon::project::classifyDocumentPath(activeDocumentPath)
+             == silicon::project::DocumentKind::Circuit)
+    return activeDocumentPath;
+
+  return projectMainCircuitPath(currentProjectInfo);
+}
+
+bool LogiFlowWindow::activateProjectCircuit(const std::string& circuitPath)
+{
+  if (circuitPath == activeProjectCircuitPath()) {
+    selectProjectTreeDocument(circuitPath);
+    return true;
+  }
+
+  return switchToDocument(circuitPath, true);
+}
+
+std::shared_ptr<Circuit> LogiFlowWindow::activeCircuit()
+{
+  return diagramScene->getCircuit();
+}
+
+bool LogiFlowWindow::hasDocument(const std::string& path) const
+{
+  return silicon::project::DocumentStore::active().contains(path);
+}
+
+std::string LogiFlowWindow::emptyCircuitSceneJson(const std::string& name) const
+{
+  const auto             circuitName = name.empty() ? std::string("Circuit") : name;
+  nlohmann::ordered_json scene;
+  scene["circuit"] =
+      nlohmann::ordered_json{{"version", SILICON_VERSION},
+                             {"name", circuitName},
+                             {"description", ""},
+                             {"components", nlohmann::ordered_json::array()}};
+  scene["visual"]["components"] = nlohmann::ordered_json::array();
+  scene["visual"]["wires"]      = nlohmann::ordered_json::array();
+  return scene.dump(2);
+}
+
+std::string LogiFlowWindow::uniqueDocumentPath(const silicon::project::DocumentKind kind,
+                                               const QString& requestedName) const
+{
+  const auto trimmed = requestedName.trimmed();
+  const auto fallback =
+      kind == silicon::project::DocumentKind::Circuit ? "circuit" : "subcircuit";
+  const auto directory =
+      kind == silicon::project::DocumentKind::Circuit ? "circuits" : "subcircuits";
+  std::string slug = trimmed.isEmpty() ? fallback : trimmed.toStdString();
+
+  for (char& ch : slug) {
+    const auto byte = static_cast<unsigned char>(ch);
+    if (std::isalnum(byte)) {
+      ch = static_cast<char>(std::tolower(byte));
+    } else if (ch != '-' && ch != '_') {
+      ch = '_';
+    }
+  }
+
+  if (const auto first = slug.find_first_not_of('_'); first == std::string::npos) {
+    slug = fallback;
+  } else {
+    const auto last = slug.find_last_not_of('_');
+    slug            = slug.substr(first, last - first + 1);
+  }
+
+  auto candidate = std::format("{}/{}.json", directory, slug);
+  int  suffix    = 2;
+  while (hasDocument(candidate)) {
+    candidate = std::format("{}/{}-{}.json", directory, slug, suffix);
+    ++suffix;
+  }
+
+  return candidate;
+}
+
+void LogiFlowWindow::saveActiveDocumentPayload()
+{
+  if (activeDocumentPath.empty())
+    activeDocumentPath = projectMainCircuitPath(currentProjectInfo);
+  silicon::project::DocumentStore::active().upsertDocument(
+      {activeDocumentPath, diagramScene->serialize()});
+}
+
+void LogiFlowWindow::selectProjectTreeDocument(const std::string& path)
+{
+  if (!projectTree || projectTree->topLevelItemCount() == 0)
+    return;
+
+  const QSignalBlocker blocker(projectTree);
+  projectTree->clearSelection();
+
+  auto* circuitsItem = projectCircuitSectionItem(projectTree);
+  if (!circuitsItem)
+    return;
+
+  const QString targetPath = QString::fromStdString(path);
+  for (int i = 0; i < circuitsItem->childCount(); ++i) {
+    auto* item = circuitsItem->child(i);
+    if (item->data(0, ProjectTreePathRole).toString() == targetPath) {
+      item->setSelected(true);
+      projectTree->setCurrentItem(item);
+      return;
+    }
+  }
+}
+
+bool LogiFlowWindow::switchToDocument(const std::string& path, const bool selectInTree)
+{
+  auto& store = silicon::project::DocumentStore::active();
+  if (path.empty()
+      || silicon::project::classifyDocumentPath(path)
+             != silicon::project::DocumentKind::Circuit
+      || !store.contains(path))
+    return false;
+
+  if (path == activeDocumentPath) {
+    if (selectInTree)
+      selectProjectTreeDocument(path);
+    updatePropertyDock();
+    return true;
+  }
+
+  if (componentCatalogOverlay)
+    componentCatalogOverlay->hide();
+
+  if (diagramScene->getInteractionMode() != InteractionMode::NORMAL_MODE)
+    diagramScene->setInteractionMode(InteractionMode::NORMAL_MODE);
+
+  try {
+    saveActiveDocumentPayload();
+  } catch (const std::exception& e) {
+    SiliconInputDialog::warning(
+        this, tr("Circuit Switch Error"),
+        tr("Failed to save the current circuit before switching:\n%1").arg(e.what()));
+    return false;
+  }
+
+  const auto* target = store.find(path);
+  if (!target)
+    return false;
+  const auto payload = target->sceneJson();
+
+  try {
+    diagramScene->clear(false, false);
+
+    auto& guiFactory   = GUIComponentFactory::instance();
+    auto& coreRegistry = ComponentRegistry::instance();
+    diagramScene->deserialize(payload, guiFactory, coreRegistry);
+    activeDocumentPath = path;
+  } catch (const std::exception& e) {
+    SiliconInputDialog::critical(
+        this, tr("Circuit Switch Error"),
+        tr("Failed to load the selected circuit:\n%1").arg(e.what()));
+    return false;
+  }
+
+  if (selectInTree)
+    selectProjectTreeDocument(path);
+
+  setActionsEnabled({rotateAct, cutAct, copyAct, deleteAct}, false);
+  updatePropertyDock();
+  return true;
+}
+
+void LogiFlowWindow::removeDocument(const std::string& path)
+{
+  auto& store = silicon::project::DocumentStore::active();
+  if (!store.contains(path))
+    return;
+
+  if (activeDocumentPath == path)
+    switchToDocument(projectMainCircuitPath(currentProjectInfo), true);
+
+  store.removeDocument(path);
+  rebuildProjectTree();
+  selectProjectTreeDocument(activeProjectCircuitPath());
+  updatePropertyDock();
+}
+
+void LogiFlowWindow::insertDocument(silicon::project::Document          document,
+                                    const std::optional<std::ptrdiff_t> insertAt,
+                                    const bool                          activate)
+{
+  auto&      store = silicon::project::DocumentStore::active();
+  const auto path  = document.path();
+  if (store.contains(path))
+    return;
+
+  if (insertAt)
+    store.insertDocument(
+        std::move(document),
+        static_cast<std::size_t>(std::max<std::ptrdiff_t>(0, *insertAt)));
+  else
+    store.upsertDocument(std::move(document));
+
+  rebuildProjectTree();
+  if (activate)
+    switchToDocument(path, true);
+}
+
+void LogiFlowWindow::rebuildProjectTree()
+{
+  if (!projectTree)
+    return;
+
+  const QSignalBlocker blocker(projectTree);
+  projectTree->clear();
+
+  const auto project = currentProjectInfo.value_or(defaultProjectInfo(currentFileName));
+
+  auto* projectItem = new QTreeWidgetItem(projectTree);
+  projectItem->setText(0, QString::fromStdString(project.name));
+  projectItem->setData(0, ProjectTreeItemKindRole,
+                       static_cast<int>(ProjectTreeItemKind::Project));
+  projectItem->setExpanded(true);
+
+  ensureProjectDocuments();
+
+  auto* circuitsItem = new QTreeWidgetItem(projectItem);
+  circuitsItem->setText(0, tr("Circuits"));
+  circuitsItem->setData(0, ProjectTreeItemKindRole,
+                        static_cast<int>(ProjectTreeItemKind::CircuitSection));
+  circuitsItem->setExpanded(true);
+
+  for (const auto& document : silicon::project::DocumentStore::active().documents(
+           silicon::project::DocumentKind::Circuit)) {
+    auto* circuitItem = new QTreeWidgetItem(circuitsItem);
+    circuitItem->setText(0, documentDisplayName(document));
+    circuitItem->setIcon(0, Icon("circuit-board"));
+    circuitItem->setData(0, ProjectTreeItemKindRole,
+                         static_cast<int>(ProjectTreeItemKind::Circuit));
+    circuitItem->setData(0, ProjectTreePathRole, QString::fromStdString(document.path()));
+  }
+
+  projectTree->expandAll();
+  if (!activeProjectCircuitPath().empty())
+    selectProjectTreeDocument(activeProjectCircuitPath());
+}
+
+void LogiFlowWindow::updateProjectTreeLabels()
+{
+  if (!projectTree || projectTree->topLevelItemCount() == 0)
+    return;
+
+  const QSignalBlocker blocker(projectTree);
+  auto*                projectItem = projectTree->topLevelItem(0);
+
+  if (currentProjectInfo)
+    projectItem->setText(0, QString::fromStdString(currentProjectInfo->name));
+
+  auto* circuitsItem = projectCircuitSectionItem(projectTree);
+  if (!circuitsItem)
+    return;
+
+  const auto documents = silicon::project::DocumentStore::active().documents(
+      silicon::project::DocumentKind::Circuit);
+  for (int i = 0;
+       i < circuitsItem->childCount() && i < static_cast<int>(documents.size()); ++i) {
+    circuitsItem->child(i)->setText(0, documentDisplayName(documents[i]));
+  }
+}
+
+void LogiFlowWindow::clearProjectTreeSelection()
+{
+  if (!projectTree)
+    return;
+
+  const QSignalBlocker blocker(projectTree);
+  projectTree->clearSelection();
 }
 
 void LogiFlowWindow::setFileName(const QString& fn)
@@ -672,7 +1172,21 @@ void LogiFlowWindow::updateComponentCatalogGeometry()
 void LogiFlowWindow::newFile()
 {
   setFileName("");
+  resetProjectState();
+  rebuildProjectTree();
+  updatePropertyDock();
+}
+
+void LogiFlowWindow::resetProjectState()
+{
+  currentProjectMetadata.reset();
+  currentProjectInfo = defaultProjectInfo(currentFileName);
+  activeDocumentPath = defaultMainCircuitPath();
   diagramScene->clear();
+  diagramScene->setCircuit(std::make_shared<Circuit>());
+  auto document = defaultCircuitDocument();
+  document.setSceneJson(diagramScene->serialize());
+  silicon::project::DocumentStore::active().setDocuments({std::move(document)});
 }
 
 bool LogiFlowWindow::copySelectionToClipboard()
@@ -713,14 +1227,11 @@ void LogiFlowWindow::paste()
     return;
 
   try {
-    std::vector<std::uint8_t> bson;
-    bson.reserve(static_cast<size_t>(bytes.size()));
-    for (const char byte : bytes)
-      bson.push_back(static_cast<std::uint8_t>(byte));
-
     auto&      guiFactory   = GUIComponentFactory::instance();
     auto&      coreRegistry = ComponentRegistry::instance();
-    const auto payload      = nlohmann::json::from_bson(bson);
+    const auto payload      = nlohmann::json::from_bson(
+        reinterpret_cast<const std::uint8_t*>(bytes.data()),
+        reinterpret_cast<const std::uint8_t*>(bytes.data() + bytes.size()));
 
     // Pasting changes scene topology, so leave simulation/placement modes first.
     if (diagramScene->getInteractionMode() != InteractionMode::NORMAL_MODE)
@@ -798,23 +1309,48 @@ void LogiFlowWindow::loadCircuitContent(const QString&    fileName,
 {
   uiLog.info(std::format("Opening {}", fileName.toStdString()));
 
+  // 2. Read, validate, deserialize, and update the scene safely
   try {
+    QTemporaryFile archive;
+    if (!archive.open()
+        || archive.write(fileContent) != static_cast<qint64>(fileContent.size())
+        || !archive.flush()) {
+      throw std::runtime_error("Cannot stage the selected project archive");
+    }
+    const QString archivePath = archive.fileName();
+    archive.close();
+
+    auto projectFile = silicon::project::readProjectFile(archivePath.toStdString());
+
+    // Clear the current scene items to prepare for the new circuit.
     diagramScene->clear();
 
-    auto& guiFactory   = GUIComponentFactory::instance();
-    auto& coreRegistry = ComponentRegistry::instance();
+    // 3. Update application state on success
+    currentProjectMetadata = std::move(projectFile.metadata);
+    currentProjectInfo     = std::move(projectFile.project);
+    activeDocumentPath     = projectMainCircuitPath(currentProjectInfo);
+    silicon::project::DocumentStore::active().setDocuments(
+        std::move(projectFile.documents));
 
-    diagramScene->deserialize(QString::fromUtf8(fileContent).toStdString(), guiFactory,
-                              coreRegistry);
+    auto&       guiFactory   = GUIComponentFactory::instance();
+    auto&       coreRegistry = ComponentRegistry::instance();
+    const auto* document =
+        silicon::project::DocumentStore::active().find(activeDocumentPath);
+    if (!document)
+      throw std::runtime_error("Main circuit payload is missing");
+    diagramScene->deserialize(document->sceneJson(), guiFactory, coreRegistry);
+
     setFileName(fileName);
+    rebuildProjectTree();
+    updatePropertyDock();
 
   } catch (const nlohmann::json::exception& e) {
-    QMessageBox::critical(
+    SiliconInputDialog::critical(
         this, tr("Corrupted File"),
         tr("The circuit file contains invalid JSON data:\n%1").arg(e.what()));
   } catch (const std::exception& e) {
-    QMessageBox::critical(this, tr("Load Error"),
-                          tr("Failed to load the circuit:\n%1").arg(e.what()));
+    SiliconInputDialog::critical(this, tr("Load Error"),
+                                 tr("Failed to load the circuit:\n%1").arg(e.what()));
   }
 }
 
@@ -829,38 +1365,84 @@ void LogiFlowWindow::open()
 
 void LogiFlowWindow::save()
 {
-  const QByteArray content = QByteArray::fromStdString(diagramScene->serialize());
-
-#ifdef __EMSCRIPTEN__
-  const QString suggestedFileName =
-      currentFileName.isEmpty() ? QStringLiteral("circuit.sil") : currentFileName;
-  if (const auto savedFileName = SiliconFileDialog::saveFileContent(
-          this, tr("Save Circuit"), suggestedFileName,
-          tr("Silicon Circuit (*.sil);;All Files (*)"), content);
-      savedFileName) {
-    setFileName(*savedFileName);
-  }
-#else
-  if (currentFileName.isEmpty()) {
-    QString desiredFileName =
-        QFileDialog::getSaveFileName(this, tr("Save Circuit"), QString(),
-                                     tr("Silicon Circuit (*.sil);;All Files (*)"));
-    if (desiredFileName.isEmpty())
-      return;
-
-    setFileName(desiredFileName);
-  }
-
-  QFile file(currentFileName);
-  if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-    QMessageBox::warning(this, tr("Error"),
-                         tr("Cannot open file for writing: %1").arg(file.errorString()));
+  try {
+    saveActiveDocumentPayload();
+  } catch (const std::exception& e) {
+    SiliconInputDialog::critical(
+        this, tr("Save Error"),
+        tr("Failed to serialize the active circuit:\n%1").arg(e.what()));
     return;
   }
 
-  file.write(content);
-  file.close();
+  QString destinationFileName = currentFileName;
+#ifndef __EMSCRIPTEN__
+  if (destinationFileName.isEmpty()) {
+    destinationFileName =
+        QFileDialog::getSaveFileName(this, tr("Save Circuit"), QString(),
+                                     tr("Silicon Circuit (*.sil);;All Files (*)"));
+    if (destinationFileName.isEmpty())
+      return;
+  }
+#else
+  if (destinationFileName.isEmpty())
+    destinationFileName = QStringLiteral("circuit.sil");
 #endif
+
+  try {
+    auto metadata =
+        currentProjectMetadata.value_or(silicon::project::metadataForNewFile());
+    metadata.formatVersion  = silicon::project::ProjectFormatVersion;
+    metadata.siliconVersion = SILICON_VERSION;
+    metadata.lastModify     = silicon::project::currentUtcTimestamp();
+
+    auto project = currentProjectInfo.value_or(silicon::project::ProjectInfo{});
+    if (project.name.empty())
+      project.name = QFileInfo(destinationFileName).baseName().toStdString();
+    if (project.mainCircuit.empty())
+      project.mainCircuit = defaultMainCircuitPath();
+    currentProjectInfo = project;
+    ensureProjectDocuments();
+    const auto  documents = silicon::project::DocumentStore::active().documents();
+    const auto* mainDocument =
+        silicon::project::DocumentStore::active().find(project.mainCircuit);
+    if (!mainDocument)
+      throw std::runtime_error("Main circuit payload is missing");
+
+    silicon::project::ProjectFile projectFile{.metadata  = metadata,
+                                              .project   = project,
+                                              .documents = documents,
+                                              .mainCircuitJson =
+                                                  mainDocument->sceneJson()};
+
+#ifdef __EMSCRIPTEN__
+    QTemporaryFile archive;
+    if (!archive.open())
+      throw std::runtime_error("Cannot create a temporary project archive");
+    const QString archivePath = archive.fileName();
+    archive.close();
+
+    silicon::project::writeProjectFile(archivePath.toStdString(), projectFile);
+
+    QFile archiveFile(archivePath);
+    if (!archiveFile.open(QIODevice::ReadOnly))
+      throw std::runtime_error("Cannot read the temporary project archive");
+
+    const auto savedFileName = SiliconFileDialog::saveFileContent(
+        this, tr("Save Circuit"), destinationFileName,
+        tr("Silicon Circuit (*.sil);;All Files (*)"), archiveFile.readAll());
+    if (!savedFileName)
+      return;
+    setFileName(*savedFileName);
+#else
+    silicon::project::writeProjectFile(destinationFileName.toStdString(), projectFile);
+    setFileName(destinationFileName);
+#endif
+    currentProjectMetadata = std::move(metadata);
+    updateProjectTreeLabels();
+  } catch (const std::exception& e) {
+    SiliconInputDialog::critical(this, tr("Save Error"),
+                                 tr("Failed to save the circuit:\n%1").arg(e.what()));
+  }
 }
 
 void LogiFlowWindow::about() const
@@ -870,9 +1452,10 @@ void LogiFlowWindow::about() const
 
 void LogiFlowWindow::openSettings()
 {
-  SettingsWindow settingsWindow("LogiFlow", shortcutSettings(), this);
+  const auto     shortcuts = shortcutSettings();
+  SettingsWindow settingsWindow("LogiFlow", shortcuts, this);
   settingsWindow.exec();
-  syncWasmShortcutCapture(shortcutSettings());
+  syncWasmShortcutCapture(shortcuts);
 }
 
 void LogiFlowWindow::setNormalMode()
@@ -929,39 +1512,164 @@ void LogiFlowWindow::toggleFstTracing(bool enabled)
 
 void LogiFlowWindow::updateStatus() const
 {
-  QString modeMsg = "Interaction Mode: ";
-
-  switch (diagramScene->getInteractionMode()) {
-    case InteractionMode::NORMAL_MODE: modeMsg += "NORMAL"; break;
-    case InteractionMode::COMPONENT_PLACING_MODE: modeMsg += "COMPONENT PLACING"; break;
-    case InteractionMode::WIRE_CREATION_MODE: modeMsg += "WIRE CREATION"; break;
-    case InteractionMode::PAN_MODE: modeMsg += "PAN"; break;
-    case InteractionMode::SIMULATION_MODE: modeMsg += "SIMULATION"; break;
-    default: throw std::logic_error("Unhandled InteractionMode in modeToString");
-  }
-
-  statusBar()->showMessage(modeMsg);
+  statusBar()->showMessage(
+      tr("Interaction Mode: %1")
+          .arg(interactionModeName(diagramScene->getInteractionMode())));
 }
+
 void LogiFlowWindow::selectionChanged()
 {
-  auto interactionMode = diagramScene->getInteractionMode();
+  const auto interactionMode = diagramScene->getInteractionMode();
+  const auto selected        = diagramScene->selectedItems();
+  const bool hasSelection    = !selected.empty();
+
   // Enable rotation only when a single component is selected or when in component placing
   // mode
+  rotateAct->setEnabled(
+      (interactionMode == InteractionMode::NORMAL_MODE && selected.size() == 1)
+      || interactionMode == InteractionMode::COMPONENT_PLACING_MODE);
 
-  rotateAct->setEnabled((interactionMode == InteractionMode::NORMAL_MODE
-                         && diagramScene->selectedItems().size() == 1)
-                        || interactionMode == InteractionMode::COMPONENT_PLACING_MODE);
+  // Enable cut, copy and delete only when in normal mode and some items are selected
+  const bool cutCopyDelete =
+      interactionMode == InteractionMode::NORMAL_MODE && hasSelection;
+  setActionsEnabled({cutAct, copyAct, deleteAct}, cutCopyDelete);
 
-  // Enable cut, copy, paste and delete only when in normal mode and some items are
-  // selected
-  const bool cutCopyDelete = interactionMode == InteractionMode::NORMAL_MODE
-                             && !diagramScene->selectedItems().empty();
-
-  cutAct->setEnabled(cutCopyDelete);
-  copyAct->setEnabled(cutCopyDelete);
-  deleteAct->setEnabled(cutCopyDelete);
+  if (hasSelection)
+    clearProjectTreeSelection();
 
   updatePropertyDock();
+}
+
+void LogiFlowWindow::projectTreeSelectionChanged()
+{
+  auto* selectedProjectItem = selectedProjectTreeItem(projectTree);
+  if (!selectedProjectItem) {
+    updatePropertyDock();
+    return;
+  }
+
+  if (projectTreeItemKind(selectedProjectItem) == ProjectTreeItemKind::Circuit) {
+    const QSignalBlocker blocker(diagramScene);
+    diagramScene->clearSelection();
+    switchToDocument(projectTreeCircuitPath(selectedProjectItem), false);
+    return;
+  }
+
+  const QSignalBlocker blocker(diagramScene);
+  diagramScene->clearSelection();
+  setActionsEnabled({rotateAct, cutAct, copyAct, deleteAct}, false);
+  updatePropertyDock();
+}
+
+void LogiFlowWindow::showProjectTreeContextMenu(const QPoint& position)
+{
+  if (!projectTree)
+    return;
+
+  if (auto* item = projectTree->itemAt(position)) {
+    projectTree->setCurrentItem(item);
+    item->setSelected(true);
+  }
+
+#ifdef __EMSCRIPTEN__
+  auto* menu = new QMenu(this);
+  menu->setAttribute(Qt::WA_DeleteOnClose);
+#else
+  QMenu stackMenu(this);
+  auto* menu = &stackMenu;
+#endif
+  menu->addAction(Icon("plus"), tr("New Circuit"), this, &LogiFlowWindow::createCircuit);
+
+  auto* selectedProjectItem = selectedProjectTreeItem(projectTree);
+  if (selectedProjectItem) {
+    if (projectTreeItemKind(selectedProjectItem) == ProjectTreeItemKind::Circuit) {
+      const auto circuitPath = projectTreeCircuitPath(selectedProjectItem);
+      auto* deleteAction     = menu->addAction(Icon("delete"), tr("Delete Circuit"), this,
+                                               &LogiFlowWindow::deleteSelectedCircuit);
+      deleteAction->setEnabled(circuitPath != projectMainCircuitPath(currentProjectInfo));
+    }
+  }
+
+#ifdef __EMSCRIPTEN__
+  menu->popup(projectTree->viewport()->mapToGlobal(position));
+#else
+  menu->exec(projectTree->viewport()->mapToGlobal(position));
+#endif
+}
+
+void LogiFlowWindow::createCircuit()
+{
+  SiliconInputDialog::getText(
+      this, tr("New Circuit"), tr("Circuit name"), tr("Circuit"),
+      [this](const QString& requestedName) {
+        const QString trimmedName = requestedName.trimmed();
+        const QString displayName =
+            trimmedName.isEmpty() ? QStringLiteral("Circuit") : trimmedName;
+        const auto displayNameString = displayName.toStdString();
+        const auto path =
+            uniqueDocumentPath(silicon::project::DocumentKind::Circuit, displayName);
+        const auto sceneJson = emptyCircuitSceneJson(displayNameString);
+
+        auto addCircuit = [this, path, sceneJson, displayNameString] {
+          try {
+            saveActiveDocumentPayload();
+          } catch (const std::exception&) {
+          }
+
+          insertDocument({path, sceneJson}, std::nullopt, true);
+        };
+
+        auto removeCircuit = [this, path] { removeDocument(path); };
+
+        undoStack->push(
+            new ProjectStateCommand(tr("Create Circuit"), removeCircuit, addCircuit));
+      });
+}
+
+void LogiFlowWindow::deleteSelectedCircuit()
+{
+  auto* selectedProjectItem = selectedProjectTreeItem(projectTree);
+  if (!selectedProjectItem)
+    return;
+
+  if (projectTreeItemKind(selectedProjectItem) != ProjectTreeItemKind::Circuit)
+    return;
+
+  const auto circuitPath = projectTreeCircuitPath(selectedProjectItem);
+  if (circuitPath == projectMainCircuitPath(currentProjectInfo))
+    return;
+
+  SiliconInputDialog::question(
+      this, tr("Delete Circuit"),
+      tr("Delete circuit \"%1\"?").arg(selectedProjectItem->text(0)),
+      [this, circuitPath] {
+        try {
+          if (activeProjectCircuitPath() == circuitPath)
+            saveActiveDocumentPayload();
+        } catch (const std::exception& e) {
+          SiliconInputDialog::warning(
+              this, tr("Delete Circuit"),
+              tr("Failed to save the circuit before deleting it:\n%1").arg(e.what()));
+          return;
+        }
+
+        auto&       store          = silicon::project::DocumentStore::active();
+        const auto* storedDocument = store.find(circuitPath);
+        const auto  storedIndex    = store.indexOf(circuitPath);
+        if (!storedDocument || !storedIndex)
+          return;
+
+        const auto document = *storedDocument;
+        const auto index    = static_cast<std::ptrdiff_t>(*storedIndex);
+
+        auto removeCircuit  = [this, circuitPath] { removeDocument(circuitPath); };
+        auto restoreCircuit = [this, document, index] {
+          insertDocument(document, index, true);
+        };
+
+        undoStack->push(
+            new ProjectStateCommand(tr("Delete Circuit"), restoreCircuit, removeCircuit));
+      });
 }
 
 void LogiFlowWindow::updatePropertyDock()
@@ -983,8 +1691,148 @@ void LogiFlowWindow::updatePropertyDock()
   }
 
   if (selectedNodes.empty()) {
-    layout->addRow(
-        new QLabel(tr("Select one or more components\nto view their properties.")));
+    QTreeWidgetItem* selectedProjectItem = selectedProjectTreeItem(projectTree);
+
+    if (!selectedProjectItem) {
+      layout->addRow(new QLabel(tr(
+          "Select a project, circuit, or one or more components\nto view properties.")));
+      return;
+    }
+
+    const auto itemKind = projectTreeItemKind(selectedProjectItem);
+
+    if (itemKind == ProjectTreeItemKind::CircuitSection) {
+      layout->addRow(new QLabel(tr("Select a circuit to view its properties.")));
+      return;
+    }
+
+    auto* nameEdit        = new QLineEdit(container);
+    auto* descriptionEdit = new MetadataDescriptionEdit(container);
+    descriptionEdit->setMinimumHeight(90);
+
+    auto pushMetadataEdit = [this](const QString& label, const std::string& oldValue,
+                                   const std::string&           newValue,
+                                   MetadataEditCommand::ApplyFn apply) {
+      if (oldValue == newValue)
+        return;
+
+      undoStack->push(
+          new MetadataEditCommand(label, oldValue, newValue, std::move(apply)));
+    };
+
+    auto schedulePropertyDockRefresh = [this] {
+      QTimer::singleShot(0, this, &LogiFlowWindow::updatePropertyDock);
+    };
+
+    if (itemKind == ProjectTreeItemKind::Project) {
+      if (!currentProjectInfo)
+        currentProjectInfo = defaultProjectInfo(currentFileName);
+
+      nameEdit->setText(QString::fromStdString(currentProjectInfo->name));
+      descriptionEdit->setPlainText(
+          QString::fromStdString(currentProjectInfo->description));
+      descriptionEdit->document()->setModified(false);
+
+      connect(nameEdit, &QLineEdit::editingFinished, this,
+              [this, nameEdit, pushMetadataEdit, schedulePropertyDockRefresh] {
+                if (!currentProjectInfo || !nameEdit->isModified())
+                  return;
+
+                const auto oldValue = currentProjectInfo->name;
+                const auto newValue = nameEdit->text().toStdString();
+                nameEdit->setModified(false);
+                pushMetadataEdit(
+                    tr("Modify Project Name"), oldValue, newValue,
+                    [this, schedulePropertyDockRefresh](const std::string& value) {
+                      if (!currentProjectInfo)
+                        return;
+                      currentProjectInfo->name = value;
+                      updateProjectTreeLabels();
+                      schedulePropertyDockRefresh();
+                    });
+              });
+      descriptionEdit->commit = [this, descriptionEdit, pushMetadataEdit,
+                                 schedulePropertyDockRefresh] {
+        if (!currentProjectInfo || !descriptionEdit->document()->isModified())
+          return;
+
+        const auto oldValue = currentProjectInfo->description;
+        const auto newValue = descriptionEdit->toPlainText().toStdString();
+        descriptionEdit->document()->setModified(false);
+        pushMetadataEdit(tr("Modify Project Description"), oldValue, newValue,
+                         [this, schedulePropertyDockRefresh](const std::string& value) {
+                           if (!currentProjectInfo)
+                             return;
+                           currentProjectInfo->description = value;
+                           schedulePropertyDockRefresh();
+                         });
+      };
+    } else {
+      const auto  circuitPath = projectTreeCircuitPath(selectedProjectItem);
+      std::string name;
+      std::string description;
+      if (activeProjectCircuitPath() == circuitPath) {
+        const auto circuit = activeCircuit();
+        if (circuit) {
+          name        = circuit->getName();
+          description = circuit->getDescription();
+        }
+      } else if (const auto* document =
+                     silicon::project::DocumentStore::active().find(circuitPath)) {
+        std::tie(name, description) = circuitMetadata(*document);
+      }
+      nameEdit->setText(QString::fromStdString(name));
+      descriptionEdit->setPlainText(QString::fromStdString(description));
+      descriptionEdit->document()->setModified(false);
+
+      connect(
+          nameEdit, &QLineEdit::editingFinished, this,
+          [this, nameEdit, circuitPath, pushMetadataEdit, schedulePropertyDockRefresh] {
+            if (!nameEdit->isModified())
+              return;
+
+            const auto oldValue =
+                activeCircuit() ? activeCircuit()->getName() : std::string{};
+            const auto newValue = nameEdit->text().toStdString();
+            nameEdit->setModified(false);
+            pushMetadataEdit(tr("Modify Circuit Name"), oldValue, newValue,
+                             [this, circuitPath,
+                              schedulePropertyDockRefresh](const std::string& value) {
+                               if (!activateProjectCircuit(circuitPath))
+                                 return;
+                               if (const auto circuit = activeCircuit()) {
+                                 circuit->setName(value);
+                                 saveActiveDocumentPayload();
+                               }
+                               updateProjectTreeLabels();
+                               schedulePropertyDockRefresh();
+                             });
+          });
+      descriptionEdit->commit = [this, circuitPath, descriptionEdit, pushMetadataEdit,
+                                 schedulePropertyDockRefresh] {
+        if (!descriptionEdit->document()->isModified())
+          return;
+
+        const auto oldValue =
+            activeCircuit() ? activeCircuit()->getDescription() : std::string{};
+        const auto newValue = descriptionEdit->toPlainText().toStdString();
+        descriptionEdit->document()->setModified(false);
+        pushMetadataEdit(
+            tr("Modify Circuit Description"), oldValue, newValue,
+            [this, circuitPath, schedulePropertyDockRefresh](const std::string& value) {
+              if (!activateProjectCircuit(circuitPath))
+                return;
+              if (const auto circuit = activeCircuit()) {
+                circuit->setDescription(value);
+                saveActiveDocumentPayload();
+              }
+              schedulePropertyDockRefresh();
+            });
+      };
+    }
+
+    layout->addRow(tr("Name"), nameEdit);
+    layout->addRow(tr("Description"), descriptionEdit);
     return;
   }
 
@@ -1025,7 +1873,7 @@ void LogiFlowWindow::updatePropertyDock()
         undoStack->push(command);
       }
     } catch (const std::exception& e) {
-      QMessageBox::warning(this, tr("Invalid Property"), e.what());
+      SiliconInputDialog::warning(this, tr("Invalid Property"), e.what());
       QTimer::singleShot(0, this, &LogiFlowWindow::updatePropertyDock);
     }
   };
@@ -1139,6 +1987,8 @@ PropertySpinBox::PropertySpinBox(QWidget* parent) : QSpinBox(parent)
 
 void PropertySpinBox::setMixed(const bool mixed, const QString& placeholder)
 {
+  m_isMixed = mixed;
+
   if (mixed) {
     lineEdit()->setPlaceholderText(placeholder);
     setValue(minimum());

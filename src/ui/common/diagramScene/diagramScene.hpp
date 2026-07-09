@@ -307,7 +307,7 @@ public:
    */
   bool removeSelection(const nlohmann::json& payload);
 
-  void clear();
+  void clear(bool clearUndoStack = true, bool clearLogs = true);
   void updateSceneAfterEdit();
 
   /**

@@ -1,8 +1,27 @@
+/*
+  Copyright (c) 2026. Giulio Cocconi
+
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+ */
+
 #pragma once
 
 #include <QByteArray>
 #include <QPointF>
 #include <QUndoCommand>
+#include <string>
 #include <vector>
 
 #include <nlohmann/json.hpp>
@@ -35,6 +54,7 @@ private:
     QPointF       newPos;
   };
   std::vector<ItemMove> moves;
+  std::string           circuitPath;
   bool                  skipInitialRedo = true;
 };
 
@@ -49,6 +69,7 @@ public:
 
 private:
   DiagramScene* scene;
+  std::string   circuitPath;
   uint64_t      uiId;
   size_t        pointIndex;
   QPointF       oldPos;
@@ -66,6 +87,7 @@ public:
 
 private:
   DiagramScene* scene;
+  std::string   circuitPath;
   uint64_t      uiId;
   qreal         oldRotation;
   qreal         newRotation;
@@ -94,6 +116,7 @@ private:
   void apply(bool useNewValue);
 
   std::string                 key;
+  std::string                 circuitPath;
   std::vector<PropertyChange> changes;
 };
 
@@ -115,6 +138,7 @@ private:
   static QPointF               payloadOrigin(const nlohmann::json& payload);
 
   DiagramScene* scene;
+  std::string   circuitPath;
   QByteArray    bsonPayload;
   Operation     operation;
   bool          skipInitialRedo;
