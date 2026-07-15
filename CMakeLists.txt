@@ -28,6 +28,7 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/lib")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin")
 set(src_dir "${CMAKE_SOURCE_DIR}/src")
 set(resources_dir "${CMAKE_SOURCE_DIR}/resources/app")
+set(yosys_resources_dir "${CMAKE_SOURCE_DIR}/resources/yosys")
 
 include_directories(${src_dir})
 
@@ -79,6 +80,7 @@ set(COMMON_SOURCE_FILES
         ${src_dir}/core/serialization/yosys.cpp
         ${src_dir}/core/serialization/yosys_deserialization.cpp
         ${src_dir}/core/serialization/yosys_components.cpp
+        ${src_dir}/core/serialization/yosys_tool.cpp
         ${src_dir}/core/projectDependencyGraph.cpp
         ${src_dir}/core/fstTraceWriter.cpp
         ${src_dir}/core/siliconWaveform.cpp
@@ -175,7 +177,11 @@ if (UNIX AND NOT APPLE AND NOT EMSCRIPTEN AND SILICON_ENABLE_SANITIZERS)
 endif ()
 
 
-find_package(Boost REQUIRED COMPONENTS graph log log_setup thread)
+set(SILICON_BOOST_COMPONENTS graph log log_setup thread)
+if (NOT EMSCRIPTEN)
+    list(APPEND SILICON_BOOST_COMPONENTS process)
+endif ()
+find_package(Boost REQUIRED COMPONENTS ${SILICON_BOOST_COMPONENTS})
 find_package(nlohmann_json REQUIRED)
 find_package(tomlplusplus REQUIRED)
 find_package(libzip CONFIG REQUIRED)
@@ -208,6 +214,16 @@ add_library(silicon_core STATIC
 
 target_compile_options(silicon_core PRIVATE -Werror)
 
+file(TO_CMAKE_PATH "${yosys_resources_dir}" SILICON_YOSYS_BUILD_RESOURCE_DIR)
+file(TO_CMAKE_PATH "${CMAKE_INSTALL_FULL_DATADIR}/silicon/yosys"
+        SILICON_YOSYS_INSTALL_RESOURCE_DIR)
+file(TO_CMAKE_PATH "${CMAKE_INSTALL_DATADIR}/silicon/yosys"
+        SILICON_YOSYS_INSTALL_RELATIVE_RESOURCE_DIR)
+target_compile_definitions(silicon_core PRIVATE
+        SILICON_YOSYS_BUILD_RESOURCE_DIR="${SILICON_YOSYS_BUILD_RESOURCE_DIR}"
+        SILICON_YOSYS_INSTALL_RESOURCE_DIR="${SILICON_YOSYS_INSTALL_RESOURCE_DIR}"
+        SILICON_YOSYS_INSTALL_RELATIVE_RESOURCE_DIR="${SILICON_YOSYS_INSTALL_RELATIVE_RESOURCE_DIR}")
+
 target_link_libraries(silicon_core
         PUBLIC
         fst
@@ -215,6 +231,10 @@ target_link_libraries(silicon_core
         silicon_logging
         nlohmann_json
         ${SILICON_LIBZIP_TARGET})
+
+if (NOT EMSCRIPTEN)
+    target_link_libraries(silicon_core PRIVATE Boost::process)
+endif ()
 
 if ((CMAKE_CXX_COMPILER_ID MATCHES "Clang") OR EMSCRIPTEN)
     # Some view/ranges features are not yet implemented in clang libc++
@@ -308,3 +328,6 @@ install(TARGETS SILICON
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
+
+install(DIRECTORY "${yosys_resources_dir}/"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/silicon/yosys")

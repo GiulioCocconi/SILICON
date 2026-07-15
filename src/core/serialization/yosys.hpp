@@ -20,6 +20,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -34,6 +35,38 @@ class Circuit;
 namespace silicon::yosys {
 
 using Json = nlohmann::ordered_json;
+
+/** @brief Options controlling invocation of the external Yosys executable. */
+struct ToolOptions {
+  /** @brief Executable to invoke directly; when absent, `yosys` is found on PATH. */
+  std::optional<std::filesystem::path> executable;
+  /** @brief Override the directory containing the packaged SILICON Yosys library. */
+  std::optional<std::filesystem::path> technologyLibraryDirectory;
+};
+
+/** @brief Output captured from one external Yosys invocation. */
+struct ScriptResult {
+  std::string standardOutput;
+  std::string standardError;
+};
+
+/**
+ * @brief Execute an arbitrary Yosys script and capture its output streams separately.
+ *
+ * The executable is invoked directly, without an intermediary command shell. This
+ * operation is unavailable in Emscripten builds and throws on discovery, launch, or
+ * script-execution failure.
+ */
+[[nodiscard]] ScriptResult runScript(std::string_view   script,
+                                     const ToolOptions& options = {});
+
+/** @brief Lower one Verilog-2005 source string into a flattened Silicon circuit. */
+[[nodiscard]] Circuit importVerilog(std::string_view source, std::string_view topModule,
+                                    const ToolOptions& options = {});
+
+/** @brief Convert a Silicon circuit to structural Verilog using external Yosys. */
+[[nodiscard]] std::string exportVerilog(const Circuit&     circuit,
+                                        const ToolOptions& options = {});
 
 /**
  * @brief Mutable module-building interface passed to component serializers.
