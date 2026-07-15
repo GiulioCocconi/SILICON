@@ -22,10 +22,12 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <map>
 #include <memory>
 #include <ranges>
 #include <set>
@@ -46,6 +48,29 @@
 #include <nlohmann/json.hpp>
 
 namespace {
+
+#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
+class PathEnvironmentGuard {
+public:
+  PathEnvironmentGuard()
+  {
+    if (const char* value = std::getenv("PATH"))
+      original = value;
+    setenv("PATH", "", 1);
+  }
+
+  ~PathEnvironmentGuard()
+  {
+    if (original)
+      setenv("PATH", original->c_str(), 1);
+    else
+      unsetenv("PATH");
+  }
+
+private:
+  std::optional<std::string> original;
+};
+#endif
 
 [[nodiscard]] nlohmann::json exportComponent(const Component_ptr& component)
 {
@@ -131,11 +156,21 @@ registerWithMode(const bool parallelInput, const bool parallelOutput, const int 
     output << circuit.getYosysJson();
   }
 
-  const std::string command = std::format(
-      "\"{}\" -q -p \"read_verilog -lib resources/yosys/silicon_cells_bb.v; "
-      "read_json {}; hierarchy -check -top top; check -assert\"",
-      SILICON_TEST_YOSYS_EXECUTABLE, path.string());
-  const int result = std::system(command.c_str());
+  int result = 0;
+  try {
+    const silicon::yosys::ToolOptions options{
+        .executable = std::filesystem::path(SILICON_TEST_YOSYS_EXECUTABLE),
+        .technologyLibraryDirectory = std::nullopt};
+    (void)silicon::yosys::runScript(
+        std::format("read_verilog -lib \"{}/silicon_cells_bb.v\"\n"
+                    "read_json \"{}\"\n"
+                    "hierarchy -check -top top\n"
+                    "check -assert\n",
+                    SILICON_TEST_YOSYS_RESOURCE_DIR, path.string()),
+        options);
+  } catch (const std::runtime_error&) {
+    result = 1;
+  }
   std::filesystem::remove(path);
   return result;
 }
@@ -253,8 +288,8 @@ TEST(YosysTest, CustomTechnologyCellsRoundTripToNativeComponents)
       std::make_shared<Wire>(), std::make_shared<Wire>(), nullptr, nullptr,
       std::make_shared<Wire>(), std::make_shared<Wire>());
   dff->setProperty("triggerEdge", std::string("NET"));
-  const auto dffDesign = exportComponent(dff);
-  const auto& dffCell  = onlyCell(dffDesign);
+  const auto  dffDesign = exportComponent(dff);
+  const auto& dffCell   = onlyCell(dffDesign);
   EXPECT_EQ(dffCell.at("type"), "SILICON_DFF");
   EXPECT_EQ(dffCell.at("connections").size(), 4);
   EXPECT_EQ(dffCell.at("parameters").at("CLK_POLARITY"), "0");
@@ -303,8 +338,8 @@ TEST(YosysTest, CustomTechnologyCellsRoundTripToNativeComponents)
 
   auto adder = std::make_shared<AdderNBits>(std::array<Bus, 2>{Bus(5), Bus(5)}, Bus(5),
                                             std::make_shared<Wire>());
-  const auto adderDesign = exportComponent(adder);
-  const auto& adderCell  = onlyCell(adderDesign);
+  const auto  adderDesign = exportComponent(adder);
+  const auto& adderCell   = onlyCell(adderDesign);
   EXPECT_EQ(adderCell.at("type"), "SILICON_ADDER");
   EXPECT_EQ(adderCell.at("connections").at("A").size(), 5);
   const auto importedAdder = roundTrip(adder);
@@ -317,17 +352,17 @@ TEST(YosysTest, CustomTechnologyCellsRoundTripToNativeComponents)
     std::string_view cellType;
   };
   static constexpr std::array registerModes{
-      RegisterMode{true, true, "SILICON_PIPO"},
+                                               RegisterMode{true, true, "SILICON_PIPO"},
       RegisterMode{true, false, "SILICON_PISO"},
       RegisterMode{false, true, "SILICON_SIPO"},
       RegisterMode{false, false, "SILICON_SISO"},
   };
-  for (const auto& mode : registerModes) {
+                                               for (const auto& mode : registerModes) {
     SCOPED_TRACE(mode.cellType);
     const auto  reg = registerWithMode(mode.parallelInput, mode.parallelOutput);
-    const auto  registerDesign = exportComponent(reg);
-    const auto& registerCell   = onlyCell(registerDesign);
-    EXPECT_EQ(registerCell.at("type"), mode.cellType);
+  const auto  registerDesign = exportComponent(reg);
+  const auto& registerCell   = onlyCell(registerDesign);
+  EXPECT_EQ(registerCell.at("type"), mode.cellType);
     EXPECT_EQ(registerCell.at("connections").at("DATA").size(),
               mode.parallelInput ? 4 : 1);
     EXPECT_EQ(registerCell.at("connections").at("OUT").size(),
@@ -771,6 +806,9 @@ TEST(YosysTest, ExportsSubcircuitsAsHierarchicalModules)
         [](const auto& cell) { return cell.at("type") == "and_child"; }));
 #ifdef SILICON_TEST_YOSYS_EXECUTABLE
     EXPECT_EQ(validateWithYosys(circuit, "hierarchy"), 0);
+    const auto verilog = silicon::yosys::exportVerilog(circuit);
+    EXPECT_NE(verilog.find("module and_child"), std::string::npos);
+    EXPECT_NO_THROW((void)silicon::yosys::importVerilog(verilog, "top"));
 #endif
   }
 
@@ -798,3 +836,472 @@ TEST(YosysTest, YosysReadJsonAcceptsExport)
   EXPECT_EQ(validateWithYosys(circuit, "simple"), 0);
 #endif
 }
+
+#ifndef __EMSCRIPTEN__
+TEST(YosysToolTest, RejectsMissingConfiguredExecutable)
+{
+  const auto missing = std::filesystem::temp_directory_path()
+                       / "silicon_yosys_executable_that_does_not_exist";
+  try {
+    (void)silicon::yosys::runScript(
+        "help", silicon::yosys::ToolOptions{.executable                 = missing,
+                                            .technologyLibraryDirectory = std::nullopt});
+    FAIL() << "Expected a missing Yosys executable to be rejected";
+  } catch (const std::runtime_error& error) {
+    EXPECT_NE(std::string(error.what()).find("executable-validation phase"),
+              std::string::npos);
+    EXPECT_NE(std::string(error.what()).find(missing.string()), std::string::npos);
+  }
+}
+
+  #if !defined(_WIN32)
+TEST(YosysToolTest, ReportsProcessCreationFailure)
+{
+  const auto path =
+      std::filesystem::temp_directory_path()
+      / std::format("silicon_yosys_non_executable_{}",
+                    std::chrono::steady_clock::now().time_since_epoch().count());
+  {
+    std::ofstream file(path);
+    ASSERT_TRUE(file.good());
+    file << "not an executable";
+  }
+  std::filesystem::permissions(path, std::filesystem::perms::owner_read,
+                               std::filesystem::perm_options::replace);
+
+  std::string message;
+  try {
+    (void)silicon::yosys::runScript(
+        "help", silicon::yosys::ToolOptions{.executable                 = path,
+                                            .technologyLibraryDirectory = std::nullopt});
+  } catch (const std::runtime_error& error) {
+    message = error.what();
+  }
+  std::filesystem::remove(path);
+
+  EXPECT_NE(message.find("process-creation phase"), std::string::npos);
+  EXPECT_NE(message.find("stdout:"), std::string::npos);
+  EXPECT_NE(message.find("stderr:"), std::string::npos);
+}
+
+TEST(YosysToolTest, ReportsPathDiscoveryFailure)
+{
+  std::string message;
+  {
+    const PathEnvironmentGuard emptyPath;
+    try {
+      (void)silicon::yosys::runScript("help");
+    } catch (const std::runtime_error& error) {
+      message = error.what();
+    }
+  }
+  EXPECT_NE(message.find("executable-discovery phase"), std::string::npos);
+  EXPECT_NE(message.find("PATH"), std::string::npos);
+}
+  #endif
+#endif
+
+#ifdef SILICON_TEST_YOSYS_EXECUTABLE
+TEST(YosysToolTest, RunsScriptsWithPathDiscoveryAndExplicitSelection)
+{
+  const auto discovered = silicon::yosys::runScript("help echo");
+  EXPECT_FALSE(discovered.standardOutput.empty());
+
+  const silicon::yosys::ToolOptions explicitOptions{
+      .executable                 = std::filesystem::path(SILICON_TEST_YOSYS_EXECUTABLE),
+      .technologyLibraryDirectory = std::nullopt};
+  const auto explicitResult = silicon::yosys::runScript("help echo", explicitOptions);
+  EXPECT_FALSE(explicitResult.standardOutput.empty());
+  EXPECT_EQ(explicitResult.standardError, discovered.standardError);
+}
+
+TEST(YosysToolTest, ReportsExitStatusAndCapturedDiagnostics)
+{
+  try {
+    (void)silicon::yosys::runScript("this_command_does_not_exist");
+    FAIL() << "Expected an invalid Yosys script to fail";
+  } catch (const std::runtime_error& error) {
+    const std::string message(error.what());
+    EXPECT_NE(message.find("script-execution phase"), std::string::npos);
+    EXPECT_NE(message.find("exit status"), std::string::npos);
+    EXPECT_NE(message.find("stdout:"), std::string::npos);
+    EXPECT_NE(message.find("stderr:"), std::string::npos);
+    EXPECT_NE(message.find("this_command_does_not_exist"), std::string::npos);
+  }
+}
+
+TEST(YosysToolTest, ImportsCombinationalVerilogAndFlattensHelpers)
+{
+  constexpr std::string_view source = R"(
+    module helper(input a, input b, output y);
+      assign y = a & b;
+    endmodule
+    module unused(input a, output y);
+      assign y = ~a;
+    endmodule
+    module selected(input a, input b, output y);
+      helper instance(.a(a), .b(b), .y(y));
+    endmodule
+  )";
+
+  const Circuit circuit = silicon::yosys::importVerilog(source, "selected");
+  EXPECT_EQ(circuit.getName(), "selected");
+  EXPECT_EQ(componentTypes(circuit),
+            (std::multiset<std::string>{"AndGate", "DummyInputComponent",
+                                        "DummyInputComponent", "DummyOutputComponent"}));
+  EXPECT_THROW((void)silicon::yosys::importVerilog(source, "selected; delete selected"),
+               std::invalid_argument);
+  EXPECT_THROW((void)silicon::yosys::importVerilog(source, "missing"),
+               std::runtime_error);
+}
+
+TEST(YosysToolTest, ImportsSequentialVerilog)
+{
+  constexpr std::string_view source  = R"(
+    module storage(input d, input clk, output reg q);
+      always @(posedge clk)
+        q <= d;
+    endmodule
+  )";
+  const Circuit              circuit = silicon::yosys::importVerilog(source, "storage");
+  EXPECT_TRUE(componentTypes(circuit).contains("DFlipFlop"));
+}
+
+TEST(YosysToolTest, MapsVerilogToSiliconTechnologyCells)
+{
+  const auto mappedTypes = [](const std::string_view source, const std::string_view top) {
+    return cellTypes(onlyModule(nlohmann::json::parse(
+        silicon::yosys::importVerilog(source, top).getYosysJson())));
+  };
+
+  EXPECT_EQ(mappedTypes(R"(
+      module top(input d, input clk, output reg q);
+        always @(posedge clk) q <= d;
+      endmodule
+    )",
+                        "top"),
+            std::multiset<std::string>{"SILICON_DFF"});
+  EXPECT_EQ(mappedTypes(R"(
+      module top(input d, input clk, output reg q);
+        always @(negedge clk) q <= d;
+      endmodule
+    )",
+                        "top"),
+            std::multiset<std::string>{"SILICON_DFF"});
+  EXPECT_EQ(mappedTypes(R"(
+      module top(input d, input en, input clk, output reg q);
+        always @(posedge clk) if (en) q <= d;
+      endmodule
+    )",
+                        "top"),
+            std::multiset<std::string>{"SILICON_DFFE"});
+  const auto asyncTypes = mappedTypes(R"(
+      module top(input d, input clk, input set, input clear, output reg q);
+        always @(posedge clk or posedge set or posedge clear)
+          if (clear) q <= 1'b0;
+          else if (set) q <= 1'b1;
+          else q <= d;
+      endmodule
+    )",
+                                      "top");
+  EXPECT_TRUE(asyncTypes.contains("SILICON_DFFSR"));
+  EXPECT_EQ(mappedTypes(R"(
+      module top(input [3:0] a, input [3:0] b, output [4:0] y);
+        assign y = a + b;
+      endmodule
+    )",
+                        "top"),
+            std::multiset<std::string>{"SILICON_ADDER"});
+  EXPECT_EQ(mappedTypes(R"(
+      module top(input a, input b, output sum, output cout);
+        assign sum = a ^ b;
+        assign cout = a & b;
+      endmodule
+    )",
+                        "top"),
+            std::multiset<std::string>{"SILICON_HALF_ADDER"});
+  EXPECT_EQ(mappedTypes(R"(
+      module top(input a, input b, input cin, output sum, output cout);
+        assign sum = a ^ b ^ cin;
+        assign cout = (a & b) | (a & cin) | (b & cin);
+      endmodule
+    )",
+                        "top"),
+            std::multiset<std::string>{"SILICON_FULL_ADDER"});
+  EXPECT_EQ(mappedTypes(R"(
+      module top(input j, input k, input clk, output q, output qn);
+        SILICON_JKFF #(
+          .CLK_POLARITY(1), .SET_POLARITY(1), .CLR_POLARITY(1)
+        ) cell(.J(j), .K(k), .CLK(clk), .SET(1'b0), .CLR(1'b0), .Q(q), .QN(qn));
+      endmodule
+    )",
+                        "top"),
+            std::multiset<std::string>{"SILICON_JKFF"});
+}
+
+TEST(YosysToolTest, ImportedTechnologyCellsPreserveRepresentativeBehavior)
+{
+  const auto simulateDff = [](const std::string_view edge) {
+    const auto source = std::format(
+        R"(
+          module top(input d, input clk, output reg q);
+            always @({} clk) q <= d;
+          endmodule
+        )",
+        edge);
+    auto circuit =
+        std::make_shared<Circuit>(silicon::yosys::importVerilog(source, "top"));
+    auto dff = findComponent<DFlipFlop>(*circuit);
+    if (!dff)
+      throw std::runtime_error("Mapped D flip-flop was not reconstructed");
+    Simulator  simulator(circuit);
+    const bool positive = edge == "posedge";
+    EXPECT_EQ(simulator.setBus(dff->inputBuses()[1], positive ? 0 : 1),
+              Simulator::RunResult::Completed);
+    EXPECT_EQ(simulator.setBus(dff->inputBuses()[0], 1), Simulator::RunResult::Completed);
+    EXPECT_EQ(simulator.setBus(dff->inputBuses()[1], positive ? 1 : 0),
+              Simulator::RunResult::Completed);
+    EXPECT_EQ(dff->outputBuses()[0][0]->getCurrentState(), State::HIGH);
+    EXPECT_EQ(dff->outputBuses()[1][0]->getCurrentState(), State::LOW);
+  };
+  simulateDff("posedge");
+  simulateDff("negedge");
+
+  constexpr std::string_view enabledSource = R"(
+    module top(input d, input en, input clk, output reg q);
+      always @(posedge clk) if (en) q <= d;
+    endmodule
+  )";
+  auto                       enabledCircuit =
+      std::make_shared<Circuit>(silicon::yosys::importVerilog(enabledSource, "top"));
+  auto dffe = findComponent<EFlipFlop>(*enabledCircuit);
+  ASSERT_TRUE(dffe);
+  Simulator enabledSimulator(enabledCircuit);
+  EXPECT_EQ(enabledSimulator.setBus(dffe->inputBuses()[2], 0),
+            Simulator::RunResult::Completed);
+  EXPECT_EQ(enabledSimulator.setBus(dffe->inputBuses()[0], 1),
+            Simulator::RunResult::Completed);
+  EXPECT_EQ(enabledSimulator.setBus(dffe->inputBuses()[1], 0),
+            Simulator::RunResult::Completed);
+  EXPECT_EQ(enabledSimulator.setBus(dffe->inputBuses()[2], 1),
+            Simulator::RunResult::Completed);
+  EXPECT_EQ(dffe->outputBuses()[0][0]->getCurrentState(), State::UNKNOWN);
+  EXPECT_EQ(enabledSimulator.setBus(dffe->inputBuses()[2], 0),
+            Simulator::RunResult::Completed);
+  EXPECT_EQ(enabledSimulator.setBus(dffe->inputBuses()[1], 1),
+            Simulator::RunResult::Completed);
+  EXPECT_EQ(enabledSimulator.setBus(dffe->inputBuses()[2], 1),
+            Simulator::RunResult::Completed);
+  EXPECT_EQ(dffe->outputBuses()[0][0]->getCurrentState(), State::HIGH);
+
+  constexpr std::string_view adderSource = R"(
+    module top(input [3:0] a, input [3:0] b, output [4:0] y);
+      assign y = a + b;
+    endmodule
+  )";
+  auto                       adderCircuit =
+      std::make_shared<Circuit>(silicon::yosys::importVerilog(adderSource, "top"));
+  std::map<std::string, std::shared_ptr<DummyBusInputComponent>> inputs;
+  std::shared_ptr<DummyBusOutputComponent>                       output;
+  for (const auto vertex :
+       boost::make_iterator_range(boost::vertices(adderCircuit->getGraph()))) {
+    const auto& component = adderCircuit->getGraph()[vertex].component;
+    if (auto input = std::dynamic_pointer_cast<DummyBusInputComponent>(component))
+      inputs.emplace(input->getPropertyValue<std::string>("name").value_or(""), input);
+    if (auto candidate = std::dynamic_pointer_cast<DummyBusOutputComponent>(component))
+      output = std::move(candidate);
+  }
+  ASSERT_TRUE(inputs.contains("a"));
+  ASSERT_TRUE(inputs.contains("b"));
+  ASSERT_TRUE(output);
+  inputs.at("a")->setState(15);
+  inputs.at("b")->setState(1);
+  Simulator adderSimulator(adderCircuit);
+  ASSERT_EQ(adderSimulator.runUntilIdle(), Simulator::RunResult::Completed);
+  EXPECT_EQ(output->inputBuses()[0].getCurrentValue(), 16U);
+}
+
+TEST(YosysToolTest, CustomCellStructuralVerilogRoundTrips)
+{
+  auto component = std::make_shared<FullAdder>(
+      std::array<Wire_ptr, 2>{std::make_shared<Wire>(), std::make_shared<Wire>()},
+      std::make_shared<Wire>(), std::make_shared<Wire>(), std::make_shared<Wire>());
+  const Circuit circuit = circuitWithBoundaryPorts(component);
+  const auto    verilog = silicon::yosys::exportVerilog(circuit);
+  EXPECT_NE(verilog.find("SILICON_FULL_ADDER"), std::string::npos);
+
+  const Circuit restored = silicon::yosys::importVerilog(verilog, "top");
+  EXPECT_TRUE(componentTypes(restored).contains("FullAdder"));
+  EXPECT_EQ(cellTypes(onlyModule(nlohmann::json::parse(restored.getYosysJson()))),
+            std::multiset<std::string>{"SILICON_FULL_ADDER"});
+
+  for (unsigned value = 0; value < 8; ++value) {
+    auto simulated =
+        std::make_shared<Circuit>(silicon::yosys::importVerilog(verilog, "top"));
+    auto adder = findComponent<FullAdder>(*simulated);
+    ASSERT_TRUE(adder);
+    Simulator simulator(simulated);
+    ASSERT_EQ(simulator.setBus(adder->inputBuses()[0], value & 1U),
+              Simulator::RunResult::Completed);
+    ASSERT_EQ(simulator.setBus(adder->inputBuses()[1], (value >> 1U) & 1U),
+              Simulator::RunResult::Completed);
+    ASSERT_EQ(simulator.setBus(adder->inputBuses()[2], (value >> 2U) & 1U),
+              Simulator::RunResult::Completed);
+    const unsigned result =
+        static_cast<unsigned>(adder->outputBuses()[0][0]->getCurrentState()
+                              == State::HIGH)
+        | (static_cast<unsigned>(adder->outputBuses()[1][0]->getCurrentState()
+                                 == State::HIGH)
+           << 1U);
+    EXPECT_EQ(result, (value & 1U) + ((value >> 1U) & 1U) + ((value >> 2U) & 1U));
+  }
+
+  auto dff = std::make_shared<DFlipFlop>(
+      std::make_shared<Wire>(), std::make_shared<Wire>(), nullptr, nullptr,
+      std::make_shared<Wire>(), std::make_shared<Wire>());
+  dff->setProperty("triggerEdge", std::string("NET"));
+  Circuit dffBoundary(
+      Component_set{
+          dff,
+          std::make_shared<DummyInputComponent>(dff->inputBuses()[0], "d"),
+          std::make_shared<DummyInputComponent>(dff->inputBuses()[1], "clk"),
+          std::make_shared<DummyOutputComponent>(dff->outputBuses()[0], "q"),
+          std::make_shared<DummyOutputComponent>(dff->outputBuses()[1], "qn"),
+      },
+      false);
+  dffBoundary.setName("top");
+  const auto dffVerilog = silicon::yosys::exportVerilog(dffBoundary);
+  auto       dffCircuit =
+      std::make_shared<Circuit>(silicon::yosys::importVerilog(dffVerilog, "top"));
+  auto restoredDff = findComponent<DFlipFlop>(*dffCircuit);
+  ASSERT_TRUE(restoredDff);
+  EXPECT_EQ(restoredDff->getPropertyValue<std::string>("triggerEdge"),
+            std::optional<std::string>("NET"));
+  Simulator dffSimulator(dffCircuit);
+  ASSERT_EQ(dffSimulator.setBus(restoredDff->inputBuses()[1], 1),
+            Simulator::RunResult::Completed);
+  ASSERT_EQ(dffSimulator.setBus(restoredDff->inputBuses()[0], 1),
+            Simulator::RunResult::Completed);
+  ASSERT_EQ(dffSimulator.setBus(restoredDff->inputBuses()[1], 0),
+            Simulator::RunResult::Completed);
+  EXPECT_EQ(restoredDff->outputBuses()[0][0]->getCurrentState(), State::HIGH);
+  EXPECT_EQ(restoredDff->outputBuses()[1][0]->getCurrentState(), State::LOW);
+}
+
+TEST(YosysToolTest, ReportsMissingTechnologyLibrary)
+{
+  const auto missing = std::filesystem::temp_directory_path()
+                       / "silicon_yosys_library_that_does_not_exist";
+  try {
+    (void)silicon::yosys::importVerilog(
+        "module top; endmodule", "top",
+        {.executable = std::filesystem::path(SILICON_TEST_YOSYS_EXECUTABLE),
+         .technologyLibraryDirectory = missing});
+    FAIL() << "Expected a missing technology library to be rejected";
+  } catch (const std::runtime_error& error) {
+    EXPECT_NE(std::string(error.what()).find("resource-discovery phase"),
+              std::string::npos);
+    EXPECT_NE(std::string(error.what()).find(missing.string()), std::string::npos);
+  }
+}
+
+TEST(YosysToolTest, ExportsParseableStructuralVerilog)
+{
+  auto    a = std::make_shared<Wire>();
+  auto    b = std::make_shared<Wire>();
+  auto    y = std::make_shared<Wire>();
+  Circuit circuit(
+      Component_set{
+          std::make_shared<DummyInputComponent>(Bus{a}, "a"),
+          std::make_shared<DummyInputComponent>(Bus{b}, "b"),
+          std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, y),
+          std::make_shared<DummyOutputComponent>(Bus{y}, "y"),
+      },
+      false);
+  circuit.setName("top");
+
+  const auto verilog = silicon::yosys::exportVerilog(circuit);
+  EXPECT_NE(verilog.find("module top"), std::string::npos);
+  EXPECT_NO_THROW({
+    const Circuit reparsed = silicon::yosys::importVerilog(verilog, "top");
+    EXPECT_TRUE(componentTypes(reparsed).contains("AndGate"));
+  });
+}
+
+TEST(YosysToolTest, VerilogCircuitVerilogRoundTripPreservesBehavior)
+{
+  constexpr std::string_view source       = R"(
+    module top(input [1:0] a, output y);
+      assign y = a[0] & a[1];
+    endmodule
+  )";
+  const auto                 firstCircuit = silicon::yosys::importVerilog(source, "top");
+  const auto roundTrippedVerilog          = silicon::yosys::exportVerilog(firstCircuit);
+
+  const auto evaluate = [](Circuit circuit, const std::uint64_t inputValue) {
+    auto sharedCircuit = std::make_shared<Circuit>(std::move(circuit));
+    std::shared_ptr<DummyBusInputComponent> input;
+    Component_ptr                           output;
+    for (const auto vertex :
+         boost::make_iterator_range(boost::vertices(sharedCircuit->getGraph()))) {
+      const auto& component = sharedCircuit->getGraph()[vertex].component;
+      if (auto candidate = std::dynamic_pointer_cast<DummyBusInputComponent>(component))
+        input = std::move(candidate);
+      if (std::dynamic_pointer_cast<DummyOutputComponent>(component)
+          || std::dynamic_pointer_cast<DummyBusOutputComponent>(component))
+        output = component;
+    }
+    if (!input || !output)
+      throw std::runtime_error("Round-trip circuit boundary was not preserved");
+    input->setState(inputValue);
+    Simulator simulator(sharedCircuit);
+    if (simulator.runUntilIdle() != Simulator::RunResult::Completed)
+      throw std::runtime_error("Round-trip circuit simulation did not complete");
+    return output->inputBuses()[0].getCurrentValue();
+  };
+
+  for (std::uint64_t value = 0; value < 4; ++value) {
+    SCOPED_TRACE(std::format("input {}", value));
+    EXPECT_EQ(evaluate(silicon::yosys::importVerilog(source, "top"), value),
+              evaluate(silicon::yosys::importVerilog(roundTrippedVerilog, "top"), value));
+  }
+}
+#endif
+
+#ifdef __EMSCRIPTEN__
+TEST(YosysToolTest, ExternalOperationsAreUnavailableUnderEmscripten)
+{
+  const auto expectUnavailable = [](const auto& operation) {
+    try {
+      operation();
+      FAIL() << "Expected external Yosys execution to be unavailable";
+    } catch (const std::runtime_error& error) {
+      EXPECT_NE(std::string(error.what()).find("Emscripten"), std::string::npos);
+      EXPECT_NE(std::string(error.what()).find("platform-availability phase"),
+                std::string::npos);
+    }
+  };
+
+  expectUnavailable([] { (void)silicon::yosys::runScript("help"); });
+  expectUnavailable(
+      [] { (void)silicon::yosys::importVerilog("module top; endmodule", "top"); });
+  expectUnavailable([] {
+    const Circuit circuit(Component_set{}, false);
+    (void)silicon::yosys::exportVerilog(circuit);
+  });
+}
+
+TEST(YosysToolTest, InProcessJsonRemainsAvailableUnderEmscripten)
+{
+  auto component = std::make_shared<HalfAdder>(
+      std::array<Wire_ptr, 2>{std::make_shared<Wire>(), std::make_shared<Wire>()},
+      std::make_shared<Wire>(), std::make_shared<Wire>());
+  Circuit    circuit(component, false);
+  const auto json = circuit.getYosysJson();
+  EXPECT_NE(json.find("SILICON_HALF_ADDER"), std::string::npos);
+  EXPECT_NO_THROW({
+    const Circuit restored = Circuit::deserializeYosys(json);
+    EXPECT_EQ(componentTypes(restored), componentTypes(circuit));
+  });
+}
+#endif

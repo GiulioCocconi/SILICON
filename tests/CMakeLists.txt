@@ -45,7 +45,8 @@ endforeach ()
 find_program(SILICON_TEST_YOSYS_EXECUTABLE yosys)
 if (SILICON_TEST_YOSYS_EXECUTABLE)
     target_compile_definitions(yosys_tests PRIVATE
-            SILICON_TEST_YOSYS_EXECUTABLE="${SILICON_TEST_YOSYS_EXECUTABLE}")
+            SILICON_TEST_YOSYS_EXECUTABLE="${SILICON_TEST_YOSYS_EXECUTABLE}"
+            SILICON_TEST_YOSYS_RESOURCE_DIR="${SILICON_YOSYS_BUILD_RESOURCE_DIR}")
 endif ()
 
 set_target_properties(libavoid_tests PROPERTIES

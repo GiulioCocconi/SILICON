@@ -37,6 +37,9 @@
       "name": "boost-log"
     },
     {
+      "name": "boost-process"
+    },
+    {
       "name": "nlohmann-json"
     },
     {
