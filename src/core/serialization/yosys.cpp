@@ -243,7 +243,8 @@ namespace {
         throw std::runtime_error(std::format("Unknown subcircuit slug '{}'", slugString));
 
       auto definition =
-          subcircuits::loadDefinition(slugString, ComponentRegistry::instance());
+          subcircuits::loadSubcircuitDefinition(slugString,
+                                                ComponentRegistry::instance());
 
       ModuleInterface interface;
       interface.moduleName = slugString;
