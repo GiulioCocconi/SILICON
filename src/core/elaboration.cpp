@@ -75,35 +75,36 @@ struct ElaborationContext {
   return remapped;
 }
 
-void mapInterfaceWires(const std::vector<Bus>& internalBuses,
+void mapInterfaceWires(const std::vector<CircuitPort>& internalPorts,
                        const std::vector<Bus>& externalBuses, WirePtrMap& wireMap)
 {
-  for (std::size_t busIndex = 0; busIndex < internalBuses.size(); ++busIndex) {
-    for (std::size_t bit = 0; bit < internalBuses[busIndex].size(); ++bit) {
+  for (std::size_t busIndex = 0; busIndex < internalPorts.size(); ++busIndex) {
+    const auto& internalBus = internalPorts[busIndex].bus;
+    for (std::size_t bit = 0; bit < internalBus.size(); ++bit) {
       const auto index = static_cast<unsigned short>(bit);
-      if (internalBuses[busIndex][index] && externalBuses[busIndex][index])
-        wireMap[internalBuses[busIndex][index].get()] = externalBuses[busIndex][index];
+      if (internalBus[index] && externalBuses[busIndex][index])
+        wireMap[internalBus[index].get()] = externalBuses[busIndex][index];
     }
   }
 }
 
 void validateInterface(const std::string_view moduleKey, const std::string_view direction,
-                       const std::vector<Bus>& definitionBuses,
+                       const std::vector<CircuitPort>& definitionPorts,
                        const std::vector<Bus>& instanceBuses)
 {
-  if (definitionBuses.size() != instanceBuses.size()) {
+  if (definitionPorts.size() != instanceBuses.size()) {
     throw std::runtime_error(std::format(
         "Module '{}' {} bus count mismatch: definition has {}, instance has {}",
-        moduleKey, direction, definitionBuses.size(), instanceBuses.size()));
+        moduleKey, direction, definitionPorts.size(), instanceBuses.size()));
   }
 
-  for (std::size_t busIndex = 0; busIndex < definitionBuses.size(); ++busIndex) {
-    if (definitionBuses[busIndex].size() == instanceBuses[busIndex].size())
+  for (std::size_t busIndex = 0; busIndex < definitionPorts.size(); ++busIndex) {
+    if (definitionPorts[busIndex].bus.size() == instanceBuses[busIndex].size())
       continue;
 
     throw std::runtime_error(std::format(
         "Module '{}' {} bus {} width mismatch: definition has {}, instance has {}",
-        moduleKey, direction, busIndex, definitionBuses[busIndex].size(),
+        moduleKey, direction, busIndex, definitionPorts[busIndex].bus.size(),
         instanceBuses[busIndex].size()));
   }
 }

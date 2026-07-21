@@ -21,6 +21,7 @@
 #include <format>
 #include <ranges>
 #include <stdexcept>
+#include <unordered_map>
 #include <utility>
 
 #include <nlohmann/json.hpp>
@@ -30,6 +31,58 @@
 #include <core/projectDocument.hpp>
 
 namespace {
+
+[[nodiscard]] std::unordered_map<std::uint64_t, Wire_ptr>
+wireMapForCircuit(const Circuit& circuit)
+{
+  std::unordered_map<std::uint64_t, Wire_ptr> wiresById;
+  auto collectBus = [&wiresById](const Bus& bus) {
+    for (const auto& wire : bus) {
+      if (wire)
+        wiresById.emplace(wire->getId(), wire);
+    }
+  };
+
+  for (const auto& [component, _vertex] : circuit.getComponentToVertex()) {
+    if (!component)
+      continue;
+    for (const auto& bus : component->inputBuses())
+      collectBus(bus);
+    for (const auto& bus : component->outputBuses())
+      collectBus(bus);
+  }
+  return wiresById;
+}
+
+[[nodiscard]] std::vector<CircuitPort>
+resolvePorts(const Circuit& target, const std::vector<CircuitPort>& ports)
+{
+  auto                     wiresById = wireMapForCircuit(target);
+  std::vector<CircuitPort> resolved;
+  resolved.reserve(ports.size());
+
+  for (const auto& port : ports) {
+    std::vector<Wire_ptr> wires;
+    wires.reserve(port.bus.size());
+    for (const auto& wire : port.bus) {
+      if (!wire) {
+        wires.push_back(nullptr);
+        continue;
+      }
+
+      const auto id = wire->getId();
+      if (const auto it = wiresById.find(id); it != wiresById.end()) {
+        wires.push_back(it->second);
+      } else {
+        auto interfaceWire = std::make_shared<Wire>(id, State::UNKNOWN);
+        wiresById.emplace(id, interfaceWire);
+        wires.push_back(std::move(interfaceWire));
+      }
+    }
+    resolved.push_back({.name = port.name, .bus = Bus(std::move(wires))});
+  }
+  return resolved;
+}
 
 }  // namespace
 
@@ -60,8 +113,10 @@ SubcircuitDefinition loadSubcircuitDefinition(const std::string_view slug,
   const auto coreJson =
       document->coreCircuitJson().value_or(extractCoreCircuitJson(document->sceneJson()));
   auto circuit = Circuit::deserialize(coreJson, registry);
-  auto inputs  = circuit.getInputs();
-  auto outputs = circuit.getOutputs();
+  const auto portCircuit =
+      Circuit::deserialize(extractCoreCircuitJson(document->sceneJson()), registry);
+  auto inputs  = resolvePorts(circuit, portCircuit.getInputPorts());
+  auto outputs = resolvePorts(circuit, portCircuit.getOutputPorts());
 
   return {.circuit = std::move(circuit),
           .inputs = std::move(inputs),

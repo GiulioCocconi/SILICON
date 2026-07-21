@@ -27,12 +27,13 @@
 
 namespace {
 
-[[nodiscard]] std::vector<Bus> makeExternalBuses(const std::vector<Bus>& interfaceBuses)
+[[nodiscard]] std::vector<Bus>
+makeExternalBuses(const std::vector<CircuitPort>& interfacePorts)
 {
   std::vector<Bus> buses;
-  buses.reserve(interfaceBuses.size());
-  for (const auto& bus : interfaceBuses)
-    buses.emplace_back(static_cast<unsigned short>(bus.size()));
+  buses.reserve(interfacePorts.size());
+  for (const auto& port : interfacePorts)
+    buses.emplace_back(static_cast<unsigned short>(port.bus.size()));
   return buses;
 }
 

@@ -30,9 +30,9 @@ namespace silicon::subcircuits {
 
 /** @brief Core-circuit implementation and interface of a project subcircuit. */
 struct SubcircuitDefinition {
-  Circuit          circuit;
-  std::vector<Bus> inputs;
-  std::vector<Bus> outputs;
+  Circuit                  circuit;
+  std::vector<CircuitPort> inputs;
+  std::vector<CircuitPort> outputs;
 };
 
 [[nodiscard]] std::string extractCoreCircuitJson(std::string_view sceneJson);

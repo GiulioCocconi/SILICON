@@ -33,6 +33,7 @@
 #include <core/wire.hpp>
 
 class ComponentRegistry;
+enum class PortRole;
 
 /** @brief Property stored in each vertex of the circuit graph */
 struct VertexProperty {
@@ -63,6 +64,12 @@ using VertexDescriptor = boost::graph_traits<CircuitGraph>::vertex_descriptor;
 
 /** @brief Descriptor type for edges in the circuit graph */
 using EdgeDescriptor = boost::graph_traits<CircuitGraph>::edge_descriptor;
+
+/** @brief Named bus exposed by a circuit boundary component or topology fallback. */
+struct CircuitPort {
+  std::string name;
+  Bus         bus;
+};
 
 /**
  * @class Circuit
@@ -141,6 +148,7 @@ private:
    * @return A pair of vectors: first is input buses, second is output buses
    */
   std::pair<std::vector<Bus>, std::vector<Bus>> getComponentIOs() const;
+  [[nodiscard]] std::vector<CircuitPort> interfacePorts(PortRole role) const;
 
   /**
    * @brief Recursively adds a component and all connected components
@@ -291,22 +299,28 @@ public:
   /**
    * @brief Gets all input buses of the circuit.
    *
-   * An input bus is one that appears as an input to some component but never
-   * as an output of any component in the circuit.
+   * Boundary components with PortRole::Input define the interface when present.
+   * Otherwise topology-derived inputs are returned.
    *
    * @return Vector of input buses
    */
   [[nodiscard]] std::vector<Bus> getInputs() const;
 
+  /** @brief Gets named input ports using boundary names or deterministic fallbacks. */
+  [[nodiscard]] std::vector<CircuitPort> getInputPorts() const;
+
   /**
    * @brief Gets all output buses of the circuit.
    *
-   * An output bus is one that appears as an output from some component but never
-   * as an input to any component in the circuit.
+   * Boundary components with PortRole::Output define the interface when present.
+   * Otherwise topology-derived outputs are returned.
    *
    * @return Vector of output buses
    */
   [[nodiscard]] std::vector<Bus> getOutputs() const;
+
+  /** @brief Gets named output ports using boundary names or deterministic fallbacks. */
+  [[nodiscard]] std::vector<CircuitPort> getOutputPorts() const;
 
   /**
    * @brief Finds all components that are connected to a given bus.

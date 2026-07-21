@@ -247,6 +247,61 @@ std::string recursiveSubcircuitDocument(std::string_view slug)
                      slug);
 }
 
+std::string feedbackLatchCoreDocument()
+{
+  return R"({
+    "circuit": {
+      "version": "0.1.0",
+      "name": "feedback_latch",
+      "description": "",
+      "components": [
+        {
+          "id": 0,
+          "type": "NorGate",
+          "properties": {"delay": 0, "bitwise": false, "size": 1},
+          "inputs": [[778], [776]],
+          "outputs": [[777]]
+        },
+        {
+          "id": 1,
+          "type": "NorGate",
+          "properties": {"delay": 0, "bitwise": false, "size": 1},
+          "inputs": [[777], [779]],
+          "outputs": [[776]]
+        },
+        {
+          "id": 2,
+          "type": "DummyInputComponent",
+          "properties": {"name": "set", "portOrientation": "DOWN", "startValue": 0},
+          "inputs": [],
+          "outputs": [[778]]
+        },
+        {
+          "id": 3,
+          "type": "DummyInputComponent",
+          "properties": {"name": "reset", "portOrientation": "DOWN", "startValue": 0},
+          "inputs": [],
+          "outputs": [[779]]
+        },
+        {
+          "id": 4,
+          "type": "DummyOutputComponent",
+          "properties": {"name": "q", "portOrientation": "DOWN"},
+          "inputs": [[777]],
+          "outputs": []
+        },
+        {
+          "id": 5,
+          "type": "DummyOutputComponent",
+          "properties": {"name": "not_q", "portOrientation": "DOWN"},
+          "inputs": [[776]],
+          "outputs": []
+        }
+      ]
+    }
+  })";
+}
+
 class SubcircuitTest : public ::testing::Test {
 protected:
   void SetUp() override
@@ -720,6 +775,13 @@ TEST_F(SubcircuitTest, UsesPreparedCoreCircuitJsonForGraphicalSubcircuitDocument
           "graphical_bus", graphicalBusSubcircuitDocument(),
           silicon::subcircuits::extractCoreCircuitJson(busNotCoreDocument())));
 
+  const auto definition = silicon::subcircuits::loadSubcircuitDefinition(
+      "graphical_bus", ComponentRegistry::instance());
+  ASSERT_EQ(definition.inputs.size(), 1);
+  ASSERT_EQ(definition.outputs.size(), 1);
+  EXPECT_EQ(definition.inputs[0].name, "data");
+  EXPECT_EQ(definition.outputs[0].name, "result");
+
   auto component = std::make_shared<SubcircuitComponent>();
   component->setPropertyValue("slug", std::string("graphical_bus"));
 
@@ -727,6 +789,96 @@ TEST_F(SubcircuitTest, UsesPreparedCoreCircuitJsonForGraphicalSubcircuitDocument
   ASSERT_EQ(component->getOutputs().size(), 1);
   EXPECT_EQ(component->getInputs()[0].size(), 8);
   EXPECT_EQ(component->getOutputs()[0].size(), 8);
+}
+
+TEST_F(SubcircuitTest, CircuitUsesPortRoleDeclaredInterface)
+{
+  const auto circuit = Circuit::deserialize(
+      silicon::subcircuits::extractCoreCircuitJson(graphicalAndSubcircuitDocument()),
+      ComponentRegistry::instance());
+
+  const auto inputs  = circuit.getInputPorts();
+  const auto outputs = circuit.getOutputPorts();
+  ASSERT_EQ(inputs.size(), 2);
+  ASSERT_EQ(outputs.size(), 1);
+  EXPECT_EQ(inputs[0].name, "a");
+  EXPECT_EQ(inputs[1].name, "b");
+  EXPECT_EQ(outputs[0].name, "q");
+}
+
+TEST_F(SubcircuitTest, CircuitUsesDeterministicTopologyFallbackPortNames)
+{
+  const auto circuit = Circuit::deserialize(
+      silicon::subcircuits::extractCoreCircuitJson(andSubcircuitDocument()),
+      ComponentRegistry::instance());
+  const auto inputs  = circuit.getInputPorts();
+  const auto outputs = circuit.getOutputPorts();
+  ASSERT_EQ(inputs.size(), 2);
+  ASSERT_EQ(outputs.size(), 1);
+  EXPECT_EQ(inputs[0].name, "input_0");
+  EXPECT_EQ(inputs[1].name, "input_1");
+  EXPECT_EQ(outputs[0].name, "output_0");
+}
+
+TEST_F(SubcircuitTest, CircuitPreservesDuplicateAndEmptyBoundaryNames)
+{
+  auto document = nlohmann::json::parse(graphicalAndSubcircuitDocument());
+  document["circuit"]["components"][0]["properties"]["name"] = "data";
+  document["circuit"]["components"][1]["properties"]["name"] = "data";
+  document["circuit"]["components"][3]["properties"]["name"] = "";
+  const auto circuit = Circuit::deserialize(document["circuit"].dump(),
+                                             ComponentRegistry::instance());
+
+  const auto inputs  = circuit.getInputPorts();
+  const auto outputs = circuit.getOutputPorts();
+  ASSERT_EQ(inputs.size(), 2);
+  ASSERT_EQ(outputs.size(), 1);
+  EXPECT_EQ(inputs[0].name, "data");
+  EXPECT_EQ(inputs[1].name, "data");
+  EXPECT_TRUE(outputs[0].name.empty());
+}
+
+TEST_F(SubcircuitTest, UsesBoundaryComponentsForFeedbackOutputs)
+{
+  silicon::project::DocumentStore::active().upsertDocument(
+      subcircuitDocument("feedback_latch", feedbackLatchCoreDocument()));
+
+  auto component = std::make_shared<SubcircuitComponent>();
+  component->setPropertyValue("slug", std::string("feedback_latch"));
+
+  EXPECT_EQ(component->getInputs().size(), 2);
+  ASSERT_EQ(component->getOutputs().size(), 2);
+  EXPECT_EQ(component->getOutputs()[0].size(), 1);
+  EXPECT_EQ(component->getOutputs()[1].size(), 1);
+}
+
+TEST_F(SubcircuitTest, SimulatesFeedbackSubcircuitWithBoundaryOutputs)
+{
+  silicon::project::DocumentStore::active().upsertDocument(
+      subcircuitDocument("feedback_latch", feedbackLatchCoreDocument()));
+
+  auto component = std::make_shared<SubcircuitComponent>();
+  component->setPropertyValue("slug", std::string("feedback_latch"));
+
+  auto set   = std::make_shared<Wire>(State::LOW);
+  auto reset = std::make_shared<Wire>(State::HIGH);
+  auto q     = std::make_shared<Wire>(State::UNKNOWN);
+  auto notQ  = std::make_shared<Wire>(State::UNKNOWN);
+  component->setInput(0, Bus{set});
+  component->setInput(1, Bus{reset});
+  component->setOutput(0, Bus{q});
+  component->setOutput(1, Bus{notQ});
+
+  auto circuit = std::make_shared<Circuit>(component, false);
+  silicon::simulation::SimulationSession simulator(circuit);
+
+  EXPECT_EQ(q->getCurrentState(), State::HIGH);
+  EXPECT_EQ(notQ->getCurrentState(), State::LOW);
+
+  EXPECT_EQ(simulator.setBus(Bus{reset}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{set}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(q->getCurrentState(), State::LOW);
+  EXPECT_EQ(notQ->getCurrentState(), State::HIGH);
 }
 
 TEST_F(SubcircuitTest, SimulatesGraphicalSubcircuitDocument)

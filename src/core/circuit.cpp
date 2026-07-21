@@ -37,6 +37,33 @@ namespace {
 
 const Logger circuitLog("circuit");
 
+[[nodiscard]] std::string interfacePortName(const PortRole role,
+                                            const std::size_t index)
+{
+  return std::format("{}_{}", role == PortRole::Input ? "input" : "output", index);
+}
+
+[[nodiscard]] std::vector<CircuitPort> boundaryPorts(const CircuitGraph& graph,
+                                                     const PortRole role)
+{
+  std::vector<CircuitPort> ports;
+  for (const auto vertex : boost::make_iterator_range(boost::vertices(graph))) {
+    const auto& component = graph[vertex].component;
+    if (!component || component->metadata().portRole != role)
+      continue;
+
+    const auto& buses =
+        role == PortRole::Input ? component->outputBuses() : component->inputBuses();
+    for (const auto& bus : buses) {
+      ports.push_back(
+          {.name = component->getPropertyValue<std::string>("name").value_or(
+               interfacePortName(role, ports.size())),
+           .bus = bus});
+    }
+  }
+  return ports;
+}
+
 [[nodiscard]] bool hasRegistryDefinedInterface(const std::string_view type)
 {
   return type == "Subcircuit";
@@ -378,6 +405,20 @@ std::optional<VertexDescriptor> Circuit::getVertexId(const Component* component)
 
 std::vector<Bus> Circuit::getInputs() const
 {
+  auto ports = getInputPorts();
+  return ports | std::views::transform(&CircuitPort::bus)
+         | std::ranges::to<std::vector>();
+}
+
+std::vector<CircuitPort> Circuit::getInputPorts() const
+{ return interfacePorts(PortRole::Input); }
+
+std::vector<CircuitPort> Circuit::interfacePorts(const PortRole role) const
+{
+  auto ports = boundaryPorts(graph, role);
+  if (!ports.empty())
+    return ports;
+
   auto [inputBuses, outputBuses] = getComponentIOs();
 
   std::ranges::sort(inputBuses);
@@ -385,23 +426,30 @@ std::vector<Bus> Circuit::getInputs() const
 
   std::vector<Bus> result;
 
-  std::ranges::set_difference(inputBuses, outputBuses, std::back_inserter(result));
+  if (role == PortRole::Input)
+    std::ranges::set_difference(inputBuses, outputBuses,
+                                std::back_inserter(result));
+  else
+    std::ranges::set_difference(outputBuses, inputBuses,
+                                std::back_inserter(result));
 
-  return result;
+  std::vector<CircuitPort> fallback;
+  fallback.reserve(result.size());
+  for (std::size_t index = 0; index < result.size(); ++index)
+    fallback.push_back(
+        {.name = interfacePortName(role, index), .bus = result[index]});
+  return fallback;
 }
 
 std::vector<Bus> Circuit::getOutputs() const
 {
-  auto [inputBuses, outputBuses] = getComponentIOs();
-
-  std::ranges::sort(inputBuses);
-  std::ranges::sort(outputBuses);
-
-  std::vector<Bus> result;
-
-  std::ranges::set_difference(outputBuses, inputBuses, std::back_inserter(result));
-  return result;
+  auto ports = getOutputPorts();
+  return ports | std::views::transform(&CircuitPort::bus)
+         | std::ranges::to<std::vector>();
 }
+
+std::vector<CircuitPort> Circuit::getOutputPorts() const
+{ return interfacePorts(PortRole::Output); }
 
 Component_set Circuit::getComponentsForBus(Bus b) const
 {

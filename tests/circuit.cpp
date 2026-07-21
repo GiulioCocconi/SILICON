@@ -21,6 +21,7 @@
 
 #include <core/circuit.hpp>
 #include <core/gates.hpp>
+#include <core/io.hpp>
 #include <core/serialization/component_registration.hpp>
 #include <core/serialization/component_registry.hpp>
 #include <core/simulator.hpp>
@@ -70,6 +71,48 @@ TEST(CircuitTest, SingleGateInputsOutputs)
   EXPECT_EQ(inputs[0], Bus({a}));
   EXPECT_EQ(inputs[1], Bus({b}));
   EXPECT_EQ(outputs[0], Bus({o}));
+}
+
+TEST(CircuitTest, BoundaryComponentsDefineNamedInterface)
+{
+  auto a = std::make_shared<Wire>();
+  auto b = std::make_shared<Wire>();
+  auto o = std::make_shared<Wire>();
+
+  Component_set components{
+      std::make_shared<DummyInputComponent>(Bus{a}, "data"),
+      std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, o),
+      std::make_shared<DummyOutputComponent>(Bus{o}, "result")};
+  Circuit circuit(components, false);
+
+  const auto inputs  = circuit.getInputPorts();
+  const auto outputs = circuit.getOutputPorts();
+  ASSERT_EQ(inputs.size(), 1);
+  ASSERT_EQ(outputs.size(), 1);
+  EXPECT_EQ(inputs[0].name, "data");
+  EXPECT_EQ(inputs[0].bus, Bus({a}));
+  EXPECT_EQ(outputs[0].name, "result");
+  EXPECT_EQ(outputs[0].bus, Bus({o}));
+  EXPECT_EQ(circuit.getInputs(), std::vector<Bus>({Bus{a}}));
+  EXPECT_EQ(circuit.getOutputs(), std::vector<Bus>({Bus{o}}));
+}
+
+TEST(CircuitTest, BoundaryFallbackIsIndependentPerDirection)
+{
+  auto a = std::make_shared<Wire>();
+  auto o = std::make_shared<Wire>();
+  Component_set components{
+      std::make_shared<DummyInputComponent>(Bus{a}, "data"),
+      std::make_shared<NotGate>(a, o)};
+  Circuit circuit(components, false);
+
+  const auto inputs  = circuit.getInputPorts();
+  const auto outputs = circuit.getOutputPorts();
+  ASSERT_EQ(inputs.size(), 1);
+  ASSERT_EQ(outputs.size(), 1);
+  EXPECT_EQ(inputs[0].name, "data");
+  EXPECT_EQ(outputs[0].name, "output_0");
+  EXPECT_EQ(outputs[0].bus, Bus({o}));
 }
 
 TEST(CircuitTest, TwoGatesInternalWire)
