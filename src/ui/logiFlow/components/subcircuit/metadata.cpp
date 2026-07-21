@@ -236,11 +236,11 @@ interfaceBusWireIdsFromDocument(const nlohmann::json& document, const bool input
       return {};
     const auto coreJson = coreCircuit->dump();
     const auto circuit  = Circuit::deserialize(coreJson, ComponentRegistry::instance());
-    const auto buses    = inputPort ? circuit.getInputs() : circuit.getOutputs();
+    const auto selectedBuses = inputPort ? circuit.getInputs() : circuit.getOutputs();
 
     std::vector<BusWireIds> ids;
-    ids.reserve(buses.size());
-    for (const auto& bus : buses)
+    ids.reserve(selectedBuses.size());
+    for (const auto& bus : selectedBuses)
       ids.push_back(busWireIds(bus));
     return ids;
   } catch (const std::exception&) {

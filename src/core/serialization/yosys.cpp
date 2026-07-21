@@ -35,15 +35,14 @@
 #include <core/serialization/component_registry.hpp>
 #include <core/subcircuit.hpp>
 #include <core/subcircuitDefinition.hpp>
-#include <core/projectDocument.hpp>
 
 namespace silicon::yosys {
 namespace {
 
   struct ModuleInterface {
     std::string              moduleName;
-    std::vector<std::string> inputNames;
-    std::vector<std::string> outputNames;
+    std::vector<CircuitPort> inputs;
+    std::vector<CircuitPort> outputs;
   };
 
   struct ForcedPort {
@@ -54,88 +53,9 @@ namespace {
 
   class DesignBuilder;
 
-  [[nodiscard]] std::vector<std::optional<std::uint64_t>> busIds(const Bus& bus)
-  {
-    std::vector<std::optional<std::uint64_t>> ids;
-    ids.reserve(bus.size());
-    for (const auto& wire : bus)
-      ids.push_back(wire ? std::optional(wire->getId()) : std::nullopt);
-    return ids;
-  }
-
   [[nodiscard]] std::string fallbackPortName(const bool input, const std::size_t index)
   {
     return std::format("{}_{}", input ? "input" : "output", index);
-  }
-
-  [[nodiscard]] std::vector<std::string>
-  boundaryNamesFromDocument(const project::Document& document,
-                            const std::vector<Bus>& interfaceBuses, const bool input)
-  {
-    struct Candidate {
-      std::string                               name;
-      std::vector<std::optional<std::uint64_t>> ids;
-    };
-
-    std::vector<Candidate> candidates;
-    try {
-      Json scene = Json::parse(document.sceneJson());
-      if (scene.contains("circuit"))
-        scene = scene["circuit"];
-
-      if (const auto it = scene.find("components"); it != scene.end() && it->is_array()) {
-        for (const auto& component : *it) {
-          const std::string type = component.value("type", std::string());
-          const bool        matches =
-              input ? type == "DummyInputComponent" || type == "DummyBusInputComponent"
-                           : type == "DummyOutputComponent" || type == "DummyBusOutputComponent";
-          if (!matches)
-            continue;
-
-          const auto busesIt = component.find(input ? "outputs" : "inputs");
-          if (busesIt == component.end() || !busesIt->is_array() || busesIt->empty()
-              || !(*busesIt)[0].is_array()) {
-            continue;
-          }
-
-          Candidate candidate;
-          candidate.name = input ? "input" : "output";
-          if (const auto properties = component.find("properties");
-              properties != component.end() && properties->is_object()) {
-            candidate.name = properties->value("name", candidate.name);
-          }
-          for (const auto& id : (*busesIt)[0]) {
-            candidate.ids.push_back(
-                id.is_null() ? std::nullopt : std::optional(id.get<std::uint64_t>()));
-          }
-          candidates.push_back(std::move(candidate));
-        }
-      }
-    } catch (const nlohmann::json::exception&) {
-      // The core subcircuit loader produces the authoritative diagnostics. A document
-      // without usable graphical metadata simply receives deterministic fallback names.
-    }
-
-    std::vector<std::string> names;
-    names.reserve(interfaceBuses.size());
-    std::vector<bool> used(candidates.size(), false);
-    for (std::size_t index = 0; index < interfaceBuses.size(); ++index) {
-      const auto ids   = busIds(interfaceBuses[index]);
-      auto       match = candidates.size();
-      for (std::size_t candidate = 0; candidate < candidates.size(); ++candidate) {
-        if (!used[candidate] && candidates[candidate].ids == ids) {
-          match = candidate;
-          break;
-        }
-      }
-      if (match != candidates.size()) {
-        used[match] = true;
-        names.push_back(candidates[match].name);
-      } else {
-        names.push_back(fallbackPortName(input, index));
-      }
-    }
-    return names;
   }
 
 }  // namespace
@@ -237,21 +157,14 @@ namespace {
         return it->second;
       }
 
-      const auto* document = project::DocumentStore::active().find(
-          project::subcircuitPathForSlug(slugString));
-      if (!document)
-        throw std::runtime_error(std::format("Unknown subcircuit slug '{}'", slugString));
-
       auto definition =
           subcircuits::loadSubcircuitDefinition(slugString,
                                                 ComponentRegistry::instance());
 
       ModuleInterface interface;
       interface.moduleName = slugString;
-      interface.inputNames =
-          boundaryNamesFromDocument(*document, definition.inputs, true);
-      interface.outputNames =
-          boundaryNamesFromDocument(*document, definition.outputs, false);
+      interface.inputs     = definition.inputs;
+      interface.outputs    = definition.outputs;
 
       std::set<std::string> names;
       auto makeUnique = [&names](std::string name, const std::string_view fallback) {
@@ -265,23 +178,22 @@ namespace {
             return candidate;
         }
       };
-      for (std::size_t index = 0; index < interface.inputNames.size(); ++index)
-        interface.inputNames[index] =
-            makeUnique(interface.inputNames[index], fallbackPortName(true, index));
-      for (std::size_t index = 0; index < interface.outputNames.size(); ++index)
-        interface.outputNames[index] =
-            makeUnique(interface.outputNames[index], fallbackPortName(false, index));
+      for (std::size_t index = 0; index < interface.inputs.size(); ++index)
+        interface.inputs[index].name =
+            makeUnique(interface.inputs[index].name, fallbackPortName(true, index));
+      for (std::size_t index = 0; index < interface.outputs.size(); ++index)
+        interface.outputs[index].name =
+            makeUnique(interface.outputs[index].name, fallbackPortName(false, index));
 
       // Publish the interface before walking the definition so repeated, non-recursive
       // instances reuse exactly the same module and connection names.
       subcircuitInterfaces.emplace(slugString, interface);
 
       std::vector<ForcedPort> ports;
-      for (std::size_t index = 0; index < definition.inputs.size(); ++index)
-        ports.push_back({interface.inputNames[index], "input", definition.inputs[index]});
-      for (std::size_t index = 0; index < definition.outputs.size(); ++index)
-        ports.push_back(
-            {interface.outputNames[index], "output", definition.outputs[index]});
+      for (const auto& port : interface.inputs)
+        ports.push_back({port.name, "input", port.bus});
+      for (const auto& port : interface.outputs)
+        ports.push_back({port.name, "output", port.bus});
 
       serializeModule(definition.circuit, interface.moduleName, ports);
       return interface;
@@ -376,24 +288,24 @@ void SerializationContext::addSubcircuitInstance(const std::string_view  slug,
                                                  const std::vector<Bus>& outputs)
 {
   const auto interface = impl.design->ensureSubcircuit(slug);
-  if (inputs.size() != interface.inputNames.size()
-      || outputs.size() != interface.outputNames.size()) {
+  if (inputs.size() != interface.inputs.size()
+      || outputs.size() != interface.outputs.size()) {
     throw std::runtime_error(std::format("Subcircuit '{}' interface mismatch: expected "
                                          "{} inputs and {} outputs, got {} and {}",
-                                         slug, interface.inputNames.size(),
-                                         interface.outputNames.size(), inputs.size(),
+                                         slug, interface.inputs.size(),
+                                         interface.outputs.size(), inputs.size(),
                                          outputs.size()));
   }
 
   Json portDirections = Json::object();
   Json connections    = Json::object();
   for (std::size_t index = 0; index < inputs.size(); ++index) {
-    portDirections[interface.inputNames[index]] = "input";
-    connections[interface.inputNames[index]]    = bits(inputs[index]);
+    portDirections[interface.inputs[index].name] = "input";
+    connections[interface.inputs[index].name]    = bits(inputs[index]);
   }
   for (std::size_t index = 0; index < outputs.size(); ++index) {
-    portDirections[interface.outputNames[index]] = "output";
-    connections[interface.outputNames[index]]    = bits(outputs[index]);
+    portDirections[interface.outputs[index].name] = "output";
+    connections[interface.outputs[index].name]    = bits(outputs[index]);
   }
   addCell("instance", interface.moduleName, Json::object(), std::move(portDirections),
           std::move(connections));

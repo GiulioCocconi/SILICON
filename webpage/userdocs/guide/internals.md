@@ -379,6 +379,17 @@ candidate value and call `setSelectionSize()`/`setBusSize()` so serialized prope
 application and direct property edits produce the same bus topology. Keep this invariant:
 properties, buses, and behavior must agree even when no GUI exists.
 
+`ComponentCategory` controls catalog grouping; it does not define a module interface. A
+component that represents a public subcircuit boundary must additionally set
+`ComponentMetadata::portRole` to `PortRole::Input` or `PortRole::Output`. Keep the default
+`PortRole::None` for ordinary components, including sources such as constants. This core
+metadata is intentionally distinct from the UI-only `ItemCategory` flags on graphical items.
+`Circuit::getInputPorts()` and `Circuit::getOutputPorts()` use those boundary components as
+the named circuit interface. Names come from the component `name` property. Each direction
+independently falls back to the topological circuit interface, with deterministic names,
+when it has no declared boundary components. `Circuit::getInputs()` and `getOutputs()` expose
+the corresponding buses.
+
 ### 2. Register native construction
 
 Include the type and add `registerComponent<ExampleComponent>(registry)` in

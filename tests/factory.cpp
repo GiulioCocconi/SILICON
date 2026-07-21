@@ -1,23 +1,24 @@
 /*
   Copyright (c) 2026. Giulio Cocconi
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+   You should have received a copy of the GNU General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-*/
+ */
 
 #include "tests.hpp"
 
+#include <core/io.hpp>
 #include <core/serialization/component_registration.hpp>
 #include <core/serialization/component_registry.hpp>
 
@@ -87,6 +88,15 @@ TEST_F(FactoryTest, RegistryMetadataComesFromComponentObject)
     EXPECT_EQ(registryMetadata.displayName, objectMetadata.displayName) << typeName;
     EXPECT_EQ(registryMetadata.description, objectMetadata.description) << typeName;
     EXPECT_EQ(registryMetadata.category, objectMetadata.category) << typeName;
+    EXPECT_EQ(registryMetadata.portRole, objectMetadata.portRole) << typeName;
   }
 }
 
+TEST_F(FactoryTest, OnlyBoundaryIoComponentsDeclarePortRoles)
+{
+  EXPECT_EQ(registry.metadata(DummyInputComponent::Type).portRole, PortRole::Input);
+  EXPECT_EQ(registry.metadata(DummyBusInputComponent::Type).portRole, PortRole::Input);
+  EXPECT_EQ(registry.metadata(DummyOutputComponent::Type).portRole, PortRole::Output);
+  EXPECT_EQ(registry.metadata(DummyBusOutputComponent::Type).portRole, PortRole::Output);
+  EXPECT_EQ(registry.metadata(ConstantComponent::Type).portRole, PortRole::None);
+}
