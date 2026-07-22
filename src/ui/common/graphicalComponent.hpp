@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2026. Giulio Cocconi
+  Copyright (c) 2026. Giulio Cocconi
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -23,6 +23,7 @@
 #include <ui/common/diagramScene/diagramScene.hpp>
 #include <ui/common/enums.hpp>
 #include <ui/common/graphicalItem.hpp>
+#include <ui/common/portGeometry.hpp>
 
 #include <QPoint>
 #include <QRect>
@@ -30,13 +31,6 @@
 using PortPair = std::pair<QString, QPoint>;
 
 class GUIComponentFactory;
-
-enum class PortSide {
-  LEFT,
-  RIGHT,
-  UP,
-  DOWN,
-};
 
 /**
  * @class Port
@@ -251,6 +245,12 @@ public:
   [[nodiscard]] virtual nlohmann::ordered_json serialize() const;
 
   /**
+   * @brief Loads subclass-specific serialized state.
+   * @param j JSON object previously produced by serialize()
+   */
+  virtual void loadSerializedState(const nlohmann::json& j);
+
+  /**
    * @brief Deserializes a component from JSON using the factory.
    * @param j JSON object
    * @param factory Component factory for creating instances
@@ -264,13 +264,11 @@ private:
    * @brief Scans image for first non-transparent pixel.
    *
    * @param image Image to scan
+   * @param side
    * @param initialPoint Starting point
-   * @param coordinate True for X, false for Y
-   * @param direction True for increasing, false for decreasing
    * @return First non-transparent point
    */
-  QPoint scanImage(const QImage& image, const QPoint& initialPoint, bool coordinate,
-                   bool direction) const;
+  QPoint scanImage(const QImage& image, PortSide side, QPoint initialPoint) const;
 
   /** @brief The visual shape item */
   QGraphicsItem* itemShape = nullptr;

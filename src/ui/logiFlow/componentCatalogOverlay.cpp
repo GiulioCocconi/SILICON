@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2026. Giulio Cocconi
+  Copyright (c) 2026. Giulio Cocconi
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -43,6 +43,9 @@
 #include <ui/common/componentSearchMatcher.hpp>
 #include <ui/common/diagramScene/diagramScene.hpp>
 #include <ui/logiFlow/components/graphicalLogicComponent.hpp>
+#include <ui/logiFlow/components/subcircuit/graphicalSubcircuit.hpp>
+#include <ui/logiFlow/components/subcircuit/metadata.hpp>
+#include <core/projectDocument.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
 
 namespace {
@@ -52,9 +55,15 @@ constexpr int CatalogCategoryRowHeight         = 32;
 constexpr int CatalogMinimumComponentRowHeight = 32;
 constexpr int CatalogNameColumnPadding         = 28;
 
-QPixmap componentPreviewPixmap(const std::string& typeName)
+QPixmap componentPreviewPixmap(const ComponentCatalogOverlay::CatalogRow& rowData)
 {
-  auto         component = GUIComponentFactory::instance().create(typeName);
+  auto         component = GUIComponentFactory::instance().create(rowData.guiType);
+  if (!rowData.initialProperties.empty()) {
+    if (auto* logicComponent = dynamic_cast<GraphicalLogicComponent*>(component.get())) {
+      for (const auto& [key, value] : rowData.initialProperties)
+        logicComponent->applyProperty(key, value);
+    }
+  }
   const QRectF bounds    = component->sceneBoundingRect();
   const QSize  size(
       static_cast<int>(std::ceil(bounds.width())) + 2 * CatalogPreviewPadding,
@@ -77,8 +86,11 @@ QPixmap componentPreviewPixmap(const std::string& typeName)
   return pixmap;
 }
 
-std::vector<ComponentCatalogOverlay::CatalogRow> componentCatalogRows()
+std::vector<ComponentCatalogOverlay::CatalogRow> componentCatalogRows(
+    const bool editingSubcircuit)
 {
+  Q_UNUSED(editingSubcircuit);
+
   const auto& guiFactory  = GUIComponentFactory::instance();
   const auto& coreFactory = ComponentRegistry::instance();
 
@@ -87,7 +99,10 @@ std::vector<ComponentCatalogOverlay::CatalogRow> componentCatalogRows()
     const auto& entryMetadata = guiFactory.metadata(guiType);
 
     if (!entryMetadata.coreType.empty() && coreFactory.hasType(entryMetadata.coreType)) {
-      catalogRows.push_back({guiType, coreFactory.metadata(entryMetadata.coreType)});
+      catalogRows.push_back(
+          {.guiType = guiType,
+           .metadata = coreFactory.metadata(entryMetadata.coreType),
+           .initialProperties = {}});
       continue;
     }
 
@@ -95,7 +110,28 @@ std::vector<ComponentCatalogOverlay::CatalogRow> componentCatalogRows()
     auto* logicComponent =
         dynamic_cast<GraphicalLogicComponent*>(graphicalComponent.get());
     if (logicComponent && logicComponent->getComponent())
-      catalogRows.push_back({guiType, logicComponent->getComponent()->metadata()});
+      catalogRows.push_back(
+          {.guiType = guiType,
+           .metadata = logicComponent->getComponent()->metadata(),
+           .initialProperties = {}});
+  }
+
+  for (const auto& document :
+       silicon::project::DocumentStore::active().documents(
+           silicon::project::DocumentKind::Subcircuit)) {
+    if (!subcircuitHasGraphicalMetadata(document.sceneJson()))
+      continue;
+
+    const auto slug = document.subcircuitSlug().value_or(std::string{});
+    PropertyMap initialProperties;
+    initialProperties.emplace(std::string("slug"),
+                              PropertyValue(slug));
+    catalogRows.push_back(
+        {.guiType = std::string(SubcircuitComponent::Type),
+         .metadata = {.displayName = slug,
+                      .description = "Project subcircuit",
+                      .category    = ComponentCategory::Subcircuits},
+         .initialProperties = std::move(initialProperties)});
   }
 
   std::ranges::sort(catalogRows, [](const auto& lhs, const auto& rhs) {
@@ -151,14 +187,14 @@ ComponentCatalogOverlay::ComponentCatalogOverlay(DiagramScene* scene, QWidget* p
       activateRow(item->row());
   });
 
-  catalogRows = componentCatalogRows();
+  catalogRows = componentCatalogRows(diagramScene && diagramScene->isSubcircuitDocumentMode());
   rebuildRows();
   hide();
 }
 
 void ComponentCatalogOverlay::open()
 {
-  catalogRows = componentCatalogRows();
+  catalogRows = componentCatalogRows(diagramScene && diagramScene->isSubcircuitDocumentMode());
   QSignalBlocker blocker(searchInput);
   searchInput->clear();
   blocker.unblock();
@@ -243,7 +279,7 @@ void ComponentCatalogOverlay::addComponentRow(const CatalogRow& rowData)
   const int row = table->rowCount();
   table->insertRow(row);
 
-  QPixmap previewPixmap = componentPreviewPixmap(rowData.guiType);
+  QPixmap previewPixmap = componentPreviewPixmap(rowData);
   auto*   preview       = new QLabel(table);
   preview->setFixedSize(previewPixmap.size());
   preview->setAlignment(Qt::AlignCenter);
@@ -254,11 +290,15 @@ void ComponentCatalogOverlay::addComponentRow(const CatalogRow& rowData)
 
   auto* name = new QTableWidgetItem(QString::fromStdString(rowData.metadata.displayName));
   name->setData(Qt::UserRole, QString::fromStdString(rowData.guiType));
+  name->setData(Qt::UserRole + 1,
+                static_cast<int>(&rowData - catalogRows.data()));
   table->setItem(row, 1, name);
 
   auto* description =
       new QTableWidgetItem(QString::fromStdString(rowData.metadata.description));
   description->setData(Qt::UserRole, QString::fromStdString(rowData.guiType));
+  description->setData(Qt::UserRole + 1,
+                       static_cast<int>(&rowData - catalogRows.data()));
   table->setItem(row, 2, description);
 }
 
@@ -277,10 +317,16 @@ void ComponentCatalogOverlay::activateRow(const int row)
   if (typeName.isEmpty())
     return;
 
+  const int catalogIndex = item->data(Qt::UserRole + 1).toInt();
+  const PropertyMap initialProperties =
+      catalogIndex >= 0 && catalogIndex < static_cast<int>(catalogRows.size())
+          ? catalogRows[static_cast<size_t>(catalogIndex)].initialProperties
+          : PropertyMap{};
+
   if (diagramScene->getInteractionMode() != DiagramScene::InteractionMode::NORMAL_MODE)
     diagramScene->setInteractionMode(DiagramScene::InteractionMode::NORMAL_MODE);
 
-  diagramScene->placeComponent(typeName.toStdString(), false);
+  diagramScene->placeComponent(typeName.toStdString(), false, initialProperties);
   hide();
 
   if (!diagramScene->views().empty())

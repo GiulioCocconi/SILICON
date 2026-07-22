@@ -1,6 +1,19 @@
 /*
- Copyright (c) 2026. Giulio Cocconi
- ...
+  Copyright (c) 2026. Giulio Cocconi
+
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
  */
 
 #include "tests.hpp"
@@ -230,6 +243,111 @@ TEST(ProjectFileTest, RejectsNestedCircuitEntry)
 
   EXPECT_THROW(readProjectFileIgnoringResult(path), std::runtime_error);
 }
+
+TEST(ProjectFileTest, WritesAndReadsMixedCircuitAndSubcircuitDocuments)
+{
+  const auto path = tempProjectPath("mixed_documents");
+  FileCleanup cleanup{path};
+  const std::string mainJson = R"({"circuit":{"name":"Main"}})";
+  const std::string subJson  = R"({"circuit":{"name":"Adder"}})";
+
+  silicon::project::ProjectFile projectFile{
+      .metadata = {.formatVersion = silicon::project::ProjectFormatVersion,
+                   .siliconVersion = SILICON_VERSION,
+                   .creationDate = "2026-01-02T03:04:05Z",
+                   .lastModify = "2026-01-02T03:05:06Z"},
+      .project = {.name = "Mixed",
+                  .mainCircuit =
+                      std::string(silicon::project::DefaultMainCircuitPath),
+                  .description = ""},
+      .documents = {{std::string(silicon::project::DefaultMainCircuitPath),
+                     mainJson},
+                    {"subcircuits/adder.json", subJson}},
+      .mainCircuitJson = mainJson};
+
+  silicon::project::writeProjectFile(path, projectFile);
+  EXPECT_EQ(readZipEntry(path, "subcircuits/adder.json"), subJson);
+
+  const auto loaded = silicon::project::readProjectFile(path);
+  ASSERT_EQ(loaded.documents.size(), 2);
+  EXPECT_EQ(loaded.documents[0].kind(), silicon::project::DocumentKind::Circuit);
+  EXPECT_EQ(loaded.documents[1].kind(),
+            silicon::project::DocumentKind::Subcircuit);
+  EXPECT_FALSE(loaded.documents[1].coreCircuitJson());
+  EXPECT_EQ(loaded.mainCircuitJson, mainJson);
+}
+
+TEST(ProjectFileTest, RejectsNestedSubcircuitPathBeforeCreatingArchive)
+{
+  const auto path = tempProjectPath("nested_subcircuit");
+  FileCleanup cleanup{path};
+  silicon::project::ProjectFile projectFile{
+      .metadata = silicon::project::metadataForNewFile(),
+      .project = {.name = "Invalid",
+                  .mainCircuit =
+                      std::string(silicon::project::DefaultMainCircuitPath),
+                  .description = ""},
+      .documents = {{std::string(silicon::project::DefaultMainCircuitPath), "{}"}},
+      .mainCircuitJson = "{}"};
+
+  EXPECT_THROW(
+      projectFile.documents.emplace_back("subcircuits/nested/adder.json", "{}"),
+      std::invalid_argument);
+}
+
+TEST(ProjectFileTest, RejectsNestedSubcircuitArchiveEntry)
+{
+  const auto path = tempProjectPath("nested_subcircuit_entry");
+  FileCleanup cleanup{path};
+
+  writeZip(path, {{"mimetype", std::string(silicon::project::ProjectMimeType)},
+                  {"metadata.json", validMetadata().dump(2)},
+                  {"project.json", validProject().dump(2)},
+                  {std::string(silicon::project::DefaultMainCircuitPath), "{}"},
+                  {"subcircuits/nested/adder.json", "{}"}});
+
+  EXPECT_THROW(readProjectFileIgnoringResult(path), std::invalid_argument);
+}
+
+TEST(ProjectFileTest, RejectsDuplicateDocumentPathsBeforeCreatingArchive)
+{
+  const auto path = tempProjectPath("duplicate_document_paths");
+  FileCleanup cleanup{path};
+  silicon::project::ProjectFile projectFile{
+      .metadata = silicon::project::metadataForNewFile(),
+      .project = {.name = "Invalid",
+                  .mainCircuit =
+                      std::string(silicon::project::DefaultMainCircuitPath),
+                  .description = ""},
+      .documents = {{std::string(silicon::project::DefaultMainCircuitPath), "{}"},
+                    {std::string(silicon::project::DefaultMainCircuitPath), "{}"}},
+      .mainCircuitJson = "{}"};
+
+  EXPECT_THROW(silicon::project::writeProjectFile(path, projectFile),
+               std::runtime_error);
+  EXPECT_FALSE(std::filesystem::exists(path));
+}
+
+TEST(ProjectFileTest, RejectsDuplicateSubcircuitSlugsBeforeCreatingArchive)
+{
+  const auto path = tempProjectPath("duplicate_subcircuit_slugs");
+  FileCleanup cleanup{path};
+  silicon::project::ProjectFile projectFile{
+      .metadata = silicon::project::metadataForNewFile(),
+      .project = {.name = "Invalid",
+                  .mainCircuit =
+                      std::string(silicon::project::DefaultMainCircuitPath),
+                  .description = ""},
+      .documents = {{std::string(silicon::project::DefaultMainCircuitPath), "{}"},
+                    {"subcircuits/adder.json", "{}"},
+                    {"subcircuits/adder.json", "{}"}},
+      .mainCircuitJson = "{}"};
+
+  EXPECT_THROW(silicon::project::writeProjectFile(path, projectFile),
+               std::runtime_error);
+  EXPECT_FALSE(std::filesystem::exists(path));
+}
+
 TEST(ProjectFileTest, RejectsWrongMimetype)
 {
   const auto path = tempProjectPath("wrong_mimetype");

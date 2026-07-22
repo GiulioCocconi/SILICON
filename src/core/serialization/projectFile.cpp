@@ -1,6 +1,19 @@
 /*
- Copyright (c) 2026. Giulio Cocconi
- ...
+  Copyright (c) 2026. Giulio Cocconi
+
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
  */
 
 #include "projectFile.hpp"
@@ -159,7 +172,8 @@ namespace {
     }
   }
 
-  [[nodiscard]] std::vector<std::string> circuitEntries(zip_t* archive)
+  [[nodiscard]] std::vector<std::string> documentEntries(
+      zip_t* archive, const std::string_view directory)
   {
     std::vector<std::string> entries;
 
@@ -170,9 +184,9 @@ namespace {
     for (zip_uint64_t index = 0; index < static_cast<zip_uint64_t>(count); ++index) {
       if (const char* name = zip_get_name(archive, index, ZIP_FL_ENC_UTF_8)) {
         const std::string_view entryName{name};
-        // Circuit entries are intentionally discovered from the archive rather
+        // Documents are intentionally discovered from the archive rather
         // than trusting project.json; validation compares both views below.
-        if (entryName.starts_with("circuits/") && entryName.ends_with(".json"))
+        if (entryName.starts_with(directory) && entryName.ends_with(".json"))
           entries.emplace_back(entryName);
       }
     }
@@ -204,6 +218,26 @@ namespace {
     if (!seen.contains(std::string(mainCircuit)))
       throw std::runtime_error(
           "project.json.mainCircuit does not match an archive circuit entry");
+  }
+
+  void validateDocuments(const std::string_view mainCircuit,
+                         const std::vector<Document>& documents)
+  {
+    std::vector<std::string> circuits;
+    std::unordered_set<std::string> paths;
+    std::unordered_set<std::string> subcircuitSlugs;
+    for (const auto& document : documents) {
+      if (!paths.insert(document.path()).second)
+        throw std::runtime_error("Project archive contains duplicate document entries");
+      if (document.kind() == DocumentKind::Circuit) {
+        circuits.push_back(document.path());
+      } else {
+        const auto slug = document.subcircuitSlug();
+        if (!slug || !subcircuitSlugs.insert(*slug).second)
+          throw std::runtime_error("Project archive contains duplicate subcircuit slugs");
+      }
+    }
+    validateCircuitPaths(mainCircuit, circuits);
   }
 
   [[nodiscard]] ProjectMetadata parseMetadata(const nlohmann::json& metadataJson)
@@ -298,14 +332,17 @@ ProjectFile readProjectFile(const std::filesystem::path& path)
   auto metadata = parseMetadata(metadataJson);
   auto project  = parseProjectInfo(projectJson);
 
-  const auto circuitPaths = circuitEntries(archive.get());
+  const auto circuitPaths    = documentEntries(archive.get(), "circuits/");
+  const auto subcircuitPaths = documentEntries(archive.get(), "subcircuits/");
   validateCircuitPaths(project.mainCircuit, circuitPaths);
 
-  auto documents = circuitPaths
-                  | std::views::transform([&](const std::string& path) {
-                      return Document(path, readEntry(archive.get(), path.c_str()));
-                    })
-                  | std::ranges::to<std::vector>();
+  std::vector<Document> documents;
+  documents.reserve(circuitPaths.size() + subcircuitPaths.size());
+  for (const auto& path : circuitPaths)
+    documents.emplace_back(path, readEntry(archive.get(), path.c_str()));
+  for (const auto& path : subcircuitPaths)
+    documents.emplace_back(path, readEntry(archive.get(), path.c_str()));
+  validateDocuments(project.mainCircuit, documents);
 
   auto mainCircuitIt =
       std::ranges::find(documents, project.mainCircuit, &Document::path);
@@ -331,15 +368,7 @@ void writeProjectFile(const std::filesystem::path& path, const ProjectFile& proj
                            projectFile.mainCircuitJson);
   }
 
-  auto circuitPaths = documents
-                      | std::views::filter([](const Document& document) {
-                          return document.kind() == DocumentKind::Circuit;
-                        })
-                      | std::views::transform(&Document::path)
-                      | std::ranges::to<std::vector>();
-  validateCircuitPaths(projectFile.project.mainCircuit, circuitPaths);
-  if (circuitPaths.size() != documents.size())
-    throw std::runtime_error("Project archive contains an invalid circuit JSON entry");
+  validateDocuments(projectFile.project.mainCircuit, documents);
 
   int       errorCode = 0;
   UniqueZip archive(

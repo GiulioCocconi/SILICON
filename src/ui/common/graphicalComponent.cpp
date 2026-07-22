@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2025. Giulio Cocconi
+  Copyright (c) 2026. Giulio Cocconi
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -201,25 +201,28 @@ void GraphicalComponent::clearPorts()
   deletePorts(outputPorts);
 }
 
-QPoint GraphicalComponent::scanImage(const QImage& image, const QPoint& initialPoint,
-                                     const bool coordinate, const bool direction) const
+QPoint GraphicalComponent::scanImage(const QImage& image, const PortSide side,
+                                     const QPoint initialPoint) const
 {
   if (!this->scanShape) {
     return initialPoint;
   }
 
-  const int initialCoord = coordinate ? initialPoint.x() : initialPoint.y();
+  const bool horizontal = side == PortSide::LEFT || side == PortSide::RIGHT;
+  const int  direction  = (side == PortSide::LEFT || side == PortSide::UP) ? 1 : -1;
+
+  const int initialCoord = horizontal ? initialPoint.x() : initialPoint.y();
 
   const QPoint topLeft     = image.rect().topLeft();
   const QPoint bottomRight = image.rect().bottomRight();
 
-  const int leftUp    = coordinate ? topLeft.x() : topLeft.y();
-  const int rightDown = coordinate ? bottomRight.x() : bottomRight.y();
+  const int leftUp    = horizontal ? topLeft.x() : topLeft.y();
+  const int rightDown = horizontal ? bottomRight.x() : bottomRight.y();
 
-  for (qreal coord = initialCoord; direction ? coord <= rightDown : coord >= leftUp;
-       coord += direction ? 1 : -1) {
+  for (qreal coord = initialCoord; (direction > 0) ? coord <= rightDown : coord >= leftUp;
+       coord += direction) {
     auto p =
-        coordinate ? QPoint(coord, initialPoint.y()) : QPoint(initialPoint.x(), coord);
+        horizontal ? QPoint(coord, initialPoint.y()) : QPoint(initialPoint.x(), coord);
 
     if (qAlpha(image.pixel(p)) != 0) {
       return p;
@@ -256,42 +259,16 @@ void GraphicalComponent::setPortLine(Port* port)
     itemShape->paint(&painter, &options, nullptr);
   }
 
-  // Get image coordinates
-  const auto topLeftX     = shapeRect.topLeft().x();
-  const auto topLeftY     = shapeRect.topLeft().y();
-  const auto bottomRightX = shapeRect.bottomRight().x();
-  const auto bottomRightY = shapeRect.bottomRight().y();
-
-  // Get port position
-  const auto portPos = port->getPosition();
-  const auto portX   = portPos.x();
-  const auto portY   = portPos.y();
-
-  // Find the projection of the port on the shape
-  QPoint   projectionOnShape{};
-  PortSide portSide = PortSide::RIGHT;
-
-  // Left side
-  if (portX < topLeftX) {
-    projectionOnShape = scanImage(image, QPoint(topLeftX, portY), true, true);
-    portSide          = PortSide::LEFT;
-  }
-  // Right side
-  else if (portX > bottomRightX) {
-    projectionOnShape = scanImage(image, QPoint(bottomRightX, portY), true, false);
-    portSide          = PortSide::RIGHT;
-  }
-  // Up side
-  else if (portY < topLeftY) {
-    projectionOnShape = scanImage(image, QPoint(portX, topLeftY), false, true);
-    portSide          = PortSide::UP;
-  }
-  // Down side
-  else if (portY > bottomRightY) {
-    projectionOnShape = scanImage(image, QPoint(portX, bottomRightY), false, false);
-    portSide          = PortSide::DOWN;
-  } else
+  const auto portPos  = port->getPosition();
+  const auto portRect = shapeRect.toRect();
+  // nearestPortSide also handles interior points for editor drag sanitization,
+  // but component ports must already satisfy the exterior-position invariant.
+  if (!isPortPositionOutside(portPos, portRect))
     throw std::logic_error("setPortLine: port position is not outside the shape");
+
+  const auto [portSide, naiveProjection] = nearestPortSide(portPos, portRect);
+
+  const QPoint projectionOnShape = scanImage(image, portSide, naiveProjection);
 
   // Create the line from port position to the projection
   port->side = portSide;
@@ -461,9 +438,7 @@ QRectF Port::collisionRect() const
 }
 
 std::string GraphicalComponent::getTypeName() const
-{
-  return "Unknown";
-}
+{ return "Unknown"; }
 
 nlohmann::ordered_json GraphicalComponent::serialize() const
 {
@@ -471,6 +446,9 @@ nlohmann::ordered_json GraphicalComponent::serialize() const
           {"position", {{"x", pos().x()}, {"y", pos().y()}}},
           {"rotation", static_cast<int>(rotation())}};
 }
+
+void GraphicalComponent::loadSerializedState(const nlohmann::json& j)
+{ Q_UNUSED(j); }
 
 std::unique_ptr<GraphicalComponent>
 GraphicalComponent::deserialize(const nlohmann::json& j, GUIComponentFactory& factory)
@@ -495,6 +473,7 @@ GraphicalComponent::deserialize(const nlohmann::json& j, GUIComponentFactory& fa
     component->setUiId(j["uiId"].get<uint64_t>());
 
   component->setRotation(j.value("rotation", 0.0));
+  component->loadSerializedState(j);
 
   return component;
 }

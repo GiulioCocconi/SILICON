@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2026. Giulio Cocconi
+  Copyright (c) 2026. Giulio Cocconi
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -37,7 +37,7 @@
 #include <core/component.hpp>
 #include <core/siliconFst.hpp>
 #include <core/siliconWaveform.hpp>
-#include <core/simulator.hpp>
+#include <core/simulationSession.hpp>
 
 class Bus;
 class DiagramScene;
@@ -188,8 +188,8 @@ private:
   /** @brief Host scene that owns the graphical items and Qt signals */
   DiagramScene& scene;
 
-  /** @brief Runtime simulator active only during simulation mode */
-  std::unique_ptr<Simulator> simulator;
+  /** @brief Runtime simulation session active only during simulation mode */
+  std::unique_ptr<silicon::simulation::SimulationSession> simulator;
 
   /** @brief Optional output file used for live FST tracing */
   std::optional<std::string> fstTraceFile;

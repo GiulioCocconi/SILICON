@@ -25,6 +25,7 @@
 #include <utility>
 
 #include <core/serialization/component_registry.hpp>
+#include <core/serialization/projectFile.hpp>
 #include <ui/common/diagramScene/diagramScene.hpp>
 #include <ui/logiFlow/logiFlowWindow.hpp>
 #include <ui/logiFlow/components/graphicalLogicComponent.hpp>
@@ -47,21 +48,26 @@ LogiFlowWindow* sceneWindow(DiagramScene* scene)
   return qobject_cast<LogiFlowWindow*>(scene->views().first()->window());
 }
 
-std::string activeCircuitPath(DiagramScene* scene)
+std::string activeDocumentPath(DiagramScene* scene)
 {
-  if (auto* window = sceneWindow(scene))
+  if (auto* window = sceneWindow(scene)) {
+    const auto subcircuitSlug = window->activeProjectSubcircuitSlug();
+    if (!subcircuitSlug.empty())
+      return silicon::project::subcircuitPathForSlug(subcircuitSlug);
+
     return window->activeProjectCircuitPath();
+  }
 
   return {};
 }
 
-bool activateCircuit(DiagramScene* scene, const std::string& circuitPath)
+bool activateDocument(DiagramScene* scene, const std::string& documentPath)
 {
-  if (circuitPath.empty())
+  if (documentPath.empty())
     return true;
 
   if (auto* window = sceneWindow(scene))
-    return window->activateProjectCircuit(circuitPath);
+    return window->activateProjectDocument(documentPath);
 
   return false;
 }
@@ -104,14 +110,14 @@ void MoveItemCommand::addItemMove(GraphicalItem* item, const QPointF& oldPos,
   // Commands store scene + uiId instead of raw item pointers so undo survives
   // delete/recreate cycles triggered by selection-level commands.
   auto* scene = itemScene(item);
-  if (circuitPath.empty())
-    circuitPath = activeCircuitPath(scene);
+  if (documentPath.empty())
+    documentPath = activeDocumentPath(scene);
   moves.push_back({scene, item->getUiId(), oldPos, newPos});
 }
 
 void MoveItemCommand::undo()
 {
-  if (!moves.empty() && !activateCircuit(moves.front().scene, circuitPath))
+  if (!moves.empty() && !activateDocument(moves.front().scene, documentPath))
     return;
 
   for (const auto& move : moves) {
@@ -130,7 +136,7 @@ void MoveItemCommand::redo()
     return;
   }
 
-  if (!moves.empty() && !activateCircuit(moves.front().scene, circuitPath))
+  if (!moves.empty() && !activateDocument(moves.front().scene, documentPath))
     return;
 
   for (const auto& move : moves) {
@@ -149,7 +155,7 @@ MoveWirePointCommand::MoveWirePointCommand(GraphicalWireSegment* segment,
                                            const QPointF& newPos, QUndoCommand* parent)
   : QUndoCommand(parent),
     scene(itemScene(segment)),
-    circuitPath(activeCircuitPath(scene)),
+    documentPath(activeDocumentPath(scene)),
     uiId(segment ? segment->getUiId() : 0),
     pointIndex(pointIndex),
     oldPos(oldPos),
@@ -160,7 +166,7 @@ MoveWirePointCommand::MoveWirePointCommand(GraphicalWireSegment* segment,
 
 void MoveWirePointCommand::undo()
 {
-  if (!activateCircuit(scene, circuitPath))
+  if (!activateDocument(scene, documentPath))
     return;
 
   if (auto* segment = findWireSegment(scene, uiId)) {
@@ -182,7 +188,7 @@ void MoveWirePointCommand::redo()
     return;
   }
 
-  if (!activateCircuit(scene, circuitPath))
+  if (!activateDocument(scene, documentPath))
     return;
 
   if (auto* segment = findWireSegment(scene, uiId)) {
@@ -204,7 +210,7 @@ RotateItemCommand::RotateItemCommand(GraphicalComponent* component,
                                      QUndoCommand* parent)
   : QUndoCommand(parent),
     scene(itemScene(component)),
-    circuitPath(activeCircuitPath(scene)),
+    documentPath(activeDocumentPath(scene)),
     uiId(component ? component->getUiId() : 0),
     oldRotation(oldRotation),
     newRotation(newRotation)
@@ -214,7 +220,7 @@ RotateItemCommand::RotateItemCommand(GraphicalComponent* component,
 
 void RotateItemCommand::undo()
 {
-  if (!activateCircuit(scene, circuitPath))
+  if (!activateDocument(scene, documentPath))
     return;
 
   if (auto* component = findComponent(scene, uiId)) {
@@ -231,7 +237,7 @@ void RotateItemCommand::redo()
     return;
   }
 
-  if (!activateCircuit(scene, circuitPath))
+  if (!activateDocument(scene, documentPath))
     return;
 
   if (auto* component = findComponent(scene, uiId)) {
@@ -257,21 +263,26 @@ void ModifyPropertyCommand::addPropertyChange(GraphicalLogicComponent* component
     return;
 
   auto* scene = itemScene(component);
-  if (circuitPath.empty())
-    circuitPath = activeCircuitPath(scene);
+  if (documentPath.empty())
+    documentPath = activeDocumentPath(scene);
   changes.push_back({scene, component->getUiId(), oldValue, newValue});
 }
 
 void ModifyPropertyCommand::apply(const bool useNewValue)
 {
-  if (!changes.empty() && !activateCircuit(changes.front().scene, circuitPath))
+  if (!changes.empty() && !activateDocument(changes.front().scene, documentPath))
     return;
 
+  bool applied = false;
   for (const auto& change : changes) {
     if (auto* component = findLogicComponent(change.scene, change.uiId)) {
       component->applyProperty(key, useNewValue ? change.newValue : change.oldValue);
+      applied = true;
     }
   }
+
+  if (applied && changes.front().scene)
+    changes.front().scene->updateSceneAfterEdit();
 }
 
 void ModifyPropertyCommand::undo()
@@ -293,7 +304,7 @@ SceneSelectionCommand::SceneSelectionCommand(DiagramScene*         scene,
                                              QUndoCommand*         parent)
   : QUndoCommand(parent),
     scene(scene),
-    circuitPath(activeCircuitPath(scene)),
+    documentPath(activeDocumentPath(scene)),
     bsonPayload(encodePayload(payload)),
     operation(operation),
     skipInitialRedo(skipInitialRedo)
@@ -332,7 +343,7 @@ void SceneSelectionCommand::undo()
   if (!scene)
     return;
 
-  if (!activateCircuit(scene, circuitPath))
+  if (!activateDocument(scene, documentPath))
     return;
 
   if (scene->getInteractionMode() != InteractionMode::NORMAL_MODE)
@@ -360,7 +371,7 @@ void SceneSelectionCommand::redo()
     return;
   }
 
-  if (!activateCircuit(scene, circuitPath))
+  if (!activateDocument(scene, documentPath))
     return;
 
   if (scene->getInteractionMode() != InteractionMode::NORMAL_MODE)
@@ -378,3 +389,18 @@ void SceneSelectionCommand::redo()
 
   scene->removeSelection(selectionPayload);
 }
+MetadataEditCommand::MetadataEditCommand(QString text, std::string oldValue,
+                                         std::string newValue, ApplyFn apply,
+                                         QUndoCommand* parent)
+  : QUndoCommand(std::move(text), parent),
+    oldValue(std::move(oldValue)),
+    newValue(std::move(newValue)),
+    apply(std::move(apply))
+{
+}
+
+void MetadataEditCommand::undo()
+{ apply(oldValue); }
+
+void MetadataEditCommand::redo()
+{ apply(newValue); }

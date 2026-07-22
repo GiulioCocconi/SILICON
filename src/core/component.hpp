@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2026. Giulio Cocconi
+  Copyright (c) 2026. Giulio Cocconi
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -43,6 +43,7 @@ enum class ComponentCategory {
   Arithmetic,
   FlipFlops,
   Register,
+  Subcircuits,
   Inputs,
   Outputs,
   Utils,

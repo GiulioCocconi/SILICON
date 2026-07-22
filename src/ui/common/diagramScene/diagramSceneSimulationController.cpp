@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2026. Giulio Cocconi
+  Copyright (c) 2026. Giulio Cocconi
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -33,6 +33,7 @@
 #include <utils/ranges_wrapper.hpp>
 
 #include <core/circuit.hpp>
+#include <core/simulationSession.hpp>
 #include <core/simulator.hpp>
 #include <logging/logger.hpp>
 #include <ui/common/diagramScene/diagramScene.hpp>
@@ -63,8 +64,8 @@ std::string componentNameOr(const Component_ptr& component, const std::string& f
 }
 
 Simulator::RunResult
-settleInteractiveSimulation(Simulator&                          simulator,
-                            const Simulator::CancellationCheck& isCancelled)
+settleInteractiveSimulation(silicon::simulation::SimulationSession& simulator,
+                            const Simulator::CancellationCheck&     isCancelled)
 {
   const auto result = simulator.runUntilIdle(isCancelled);
   if (result != Simulator::RunResult::Completed)
@@ -145,7 +146,8 @@ bool DiagramSceneSimulationController::enterSimulationMode()
       return isJobCancellationRequested();
     };
 
-    simulator = std::make_unique<Simulator>(circuit, 0, false, nullptr, isCancelled);
+    simulator =
+        std::make_unique<silicon::simulation::SimulationSession>(circuit, isCancelled);
     configureSimulatorTrace(trace, traceFile);
     return settleInteractiveSimulation(*simulator, isCancelled);
   });
@@ -253,6 +255,8 @@ void DiagramSceneSimulationController::handleTopologyChanged()
     scene.setInteractionMode(InteractionMode::NORMAL_MODE);
     return;
   }
+  if (simulator)
+    simulator->rebuild();
   refreshGraphicalOutputs();
   refreshTraceConfiguration();
   scene.update();
@@ -330,7 +334,8 @@ void DiagramSceneSimulationController::simulateEditedWaveform(
       return isJobCancellationRequested();
     };
 
-    simulator = std::make_unique<Simulator>(circuit, 0, false, nullptr, isCancelled);
+    simulator =
+        std::make_unique<silicon::simulation::SimulationSession>(circuit, isCancelled);
     configureSimulatorTrace(trace, traceFile);
 
     return simulator->simulateWaveform(duration, inputSnapshots, inputDrivers,

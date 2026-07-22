@@ -1,19 +1,20 @@
 /*
-  Copyright (C) 2026 Giulio Cocconi
+  Copyright (c) 2026. Giulio Cocconi
 
-  This program is free software: you can redistribute it and/or modify
-  it under the terms of the GNU General Public License as published by
-  the Free Software Foundation, either version 3 of the License, or
-  (at your option) any later version.
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
 
-  This program is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License for more details.
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
 
-  You should have received a copy of the GNU General Public License
-  along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+   You should have received a copy of the GNU General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+ */
 
 #include "simulator.hpp"
 
@@ -149,17 +150,23 @@ Simulator::Simulator(std::shared_ptr<Circuit> c, uint64_t initialSimulationTime,
   }
 
   topologyListenerId = circuit->addTopologyListener([this]() { recompile(); });
-  recompile();
+  try {
+    recompile();
 
-  // Construction can be expensive for large circuits, so it participates in the same
-  // cooperative cancellation contract as later runs.
-  const SimulationContext initialContext{true, {}};
-  if (!evaluateExecutionPlan(executionPlan, initialContext, isCancelled))
-    return;
-  emitTraceSnapshot();
+    // Construction can be expensive for large circuits, so it participates in the
+    // same cooperative cancellation contract as later runs.
+    const SimulationContext initialContext{true, {}};
+    if (!evaluateExecutionPlan(executionPlan, initialContext, isCancelled))
+      return;
+    emitTraceSnapshot();
 
-  if (initialSimulationTime != 0)
-    static_cast<void>(run(initialSimulationTime, std::move(isCancelled)));
+    if (initialSimulationTime != 0)
+      static_cast<void>(run(initialSimulationTime, std::move(isCancelled)));
+  } catch (...) {
+    circuit->removeTopologyListener(topologyListenerId);
+    topologyListenerId = 0;
+    throw;
+  }
 }
 
 Simulator::~Simulator()

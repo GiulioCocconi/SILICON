@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2025. Giulio Cocconi
+  Copyright (c) 2026. Giulio Cocconi
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -122,7 +122,7 @@ public:
    * @param key The property name
    * @param value The new property value
    */
-  void applyProperty(std::string_view key, const PropertyValue& value);
+  virtual void applyProperty(std::string_view key, const PropertyValue& value);
 
   /**
    * @brief Sets the associated logical component.
