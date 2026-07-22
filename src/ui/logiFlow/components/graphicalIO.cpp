@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2026. Giulio Cocconi
+  Copyright (c) 2026. Giulio Cocconi
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -27,7 +27,6 @@
 #include <QPointer>
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <limits>
 #include <stdexcept>
@@ -49,8 +48,6 @@ constexpr std::string_view PortOrientationDown     = "DOWN";
 constexpr std::string_view PortOrientationLeft     = "LEFT";
 constexpr std::string_view PortOrientationRight    = "RIGHT";
 constexpr std::string_view DefaultPortOrientation  = PortOrientationDown;
-constexpr std::array<std::string_view, 4> PortOrientationValues = {
-    PortOrientationUp, PortOrientationDown, PortOrientationLeft, PortOrientationRight};
 
 // Re-use static fonts to prevent allocations
 const QFont& getWidthFont()
@@ -233,16 +230,6 @@ QRectF busIoNamedBounds(QGraphicsItem* itemShape, const QString& name,
   return fallbackRect.united(busIoNameRect(shape->boundingRect(), name, nameBelow));
 }
 
-StringPropertyOptions makePortOrientationOptions()
-{
-  StringPropertyOptions options;
-  options.reserve(PortOrientationValues.size());
-  for (const std::string_view value : PortOrientationValues) {
-    options.emplace_back(value);
-  }
-  return options;
-}
-
 IoPortOrientation parsePortOrientation(const std::string_view orientation)
 {
   if (orientation == PortOrientationUp)
@@ -392,18 +379,6 @@ void GraphicalIO::setComponent(const Component_ptr& component)
 // --- Graphical Input Single
 // -------------------------------------------------------------
 
-DummyInputComponent::DummyInputComponent(Bus bus, std::string name)
-  : Component({}, {std::move(bus)})
-{
-  defineProperty("name", std::move(name));
-  defineStringListProperty(std::string(PortOrientationProperty),
-                           std::string(DefaultPortOrientation),
-                           makePortOrientationOptions());
-  defineProperty("startValue", 0, [](const PropertyValue& value) {
-    return std::clamp(std::get<int>(value), 0, 1);
-  });
-}
-
 GraphicalInput::GraphicalInput(QGraphicsItem* parent)
   : GraphicalIO(ItemCategory::Input, std::make_shared<DummyInputComponent>(Bus(1), "in"),
                 new QGraphicsSvgItem(":/other_components/input_off.svg"), parent)
@@ -487,35 +462,9 @@ State GraphicalInput::getState() const
 
 // --- Graphical Bus Input ---------------------------------------------------------------
 
-DummyBusInputComponent::DummyBusInputComponent(Bus bus, std::string name)
-  : Component({}, {std::move(bus)})
-{
-  defineProperty("name", std::move(name));
-  defineStringListProperty(std::string(PortOrientationProperty),
-                           std::string(DefaultPortOrientation),
-                           makePortOrientationOptions());
-  defineProperty(
-      "size", static_cast<int>(outputs[0].size()),
-      [this](const PropertyValue& value) { return setSize(std::get<int>(value)); });
-  defineProperty("startValue", 0, [this](const PropertyValue& value) {
-    const auto maxValue = static_cast<int>(
-        silicon::maxValueForBusWidth(outputs.empty() ? 1 : outputs[0].size()));
-    return std::clamp(std::get<int>(value), 0, maxValue);
-  });
-}
-
-int DummyBusInputComponent::setSize(const int newSize)
-{
-  const int normalizedSize = normalizedBusSize(newSize);
-  Bus       resizedBus     = outputs.empty() ? Bus(normalizedSize) : outputs[0];
-
-  resizedBus.setSize(static_cast<unsigned short>(normalizedSize));
-  setOutput(0, resizedBus);
-  return normalizedSize;
-}
-
 GraphicalBusInput::GraphicalBusInput(QGraphicsItem* parent)
-  : GraphicalIO(ItemCategory::Input, std::make_shared<DummyBusInputComponent>(),
+  : GraphicalIO(ItemCategory::Input,
+                std::make_shared<DummyBusInputComponent>(Bus(8), "bus_in"),
                 new BusIoShape(BusIoKind::Input, 8), parent)
 {
   isEditable = false;
@@ -745,41 +694,11 @@ QRectF GraphicalOutputSingle::boundingRect() const
 
 // --- Dummy Output Component ------------------------------------------------------------
 
-DummyOutputComponent::DummyOutputComponent(Bus bus, std::string name)
-  : Component({std::move(bus)}, {})
-{
-  defineProperty("name", std::move(name));
-  defineStringListProperty(std::string(PortOrientationProperty),
-                           std::string(DefaultPortOrientation),
-                           makePortOrientationOptions());
-}
-
 // --- Graphical Bus Output --------------------------------------------------------------
 
-DummyBusOutputComponent::DummyBusOutputComponent(Bus bus, std::string name)
-  : Component({std::move(bus)}, {})
-{
-  defineProperty("name", std::move(name));
-  defineStringListProperty(std::string(PortOrientationProperty),
-                           std::string(DefaultPortOrientation),
-                           makePortOrientationOptions());
-  defineProperty(
-      "size", static_cast<int>(inputs[0].size()),
-      [this](const PropertyValue& value) { return setSize(std::get<int>(value)); });
-}
-
-int DummyBusOutputComponent::setSize(const int newSize)
-{
-  const int normalizedSize = normalizedBusSize(newSize);
-  Bus       resizedBus     = inputs.empty() ? Bus(normalizedSize) : inputs[0];
-
-  resizedBus.setSize(static_cast<unsigned short>(normalizedSize));
-  setInput(0, resizedBus);
-  return normalizedSize;
-}
-
 GraphicalBusOutput::GraphicalBusOutput(QGraphicsItem* parent)
-  : GraphicalIO(ItemCategory::Output, std::make_shared<DummyBusOutputComponent>(),
+  : GraphicalIO(ItemCategory::Output,
+                std::make_shared<DummyBusOutputComponent>(Bus(8), "bus_out"),
                 new BusIoShape(BusIoKind::Output, 8), parent)
 {
   isEditable = false;

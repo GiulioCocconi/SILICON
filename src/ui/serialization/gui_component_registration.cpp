@@ -20,6 +20,7 @@
 
 #include <core/flipflops.hpp>
 #include <core/gates.hpp>
+#include <core/io.hpp>
 #include <core/register.hpp>
 #include <extraComponents/arithmetic.hpp>
 #include <extraComponents/multiplexer.hpp>
@@ -40,8 +41,9 @@ void registerAllGUIComponents(GUIComponentFactory& factory)
   auto reg = [&factory](std::string name, auto factoryFunc) {
     factory.registerType(std::move(name), std::move(factoryFunc));
   };
-  auto regGuiOnly = [&factory](std::string name, auto factoryFunc) {
-    factory.registerType(std::move(name), std::move(factoryFunc), {.coreType = {}});
+  auto regMapped = [&factory](std::string name, std::string coreType, auto factoryFunc) {
+    factory.registerType(std::move(name), std::move(factoryFunc),
+                         {.coreType = std::move(coreType)});
   };
 
   reg(std::string(AndGate::Type),
@@ -63,16 +65,18 @@ void registerAllGUIComponents(GUIComponentFactory& factory)
   reg(std::string(JKFlipFlop::Type),
       [](QGraphicsItem* p) { return std::make_unique<GraphicalJKFlipFlop>(p); });
 
-  regGuiOnly(std::string(GraphicalInput::ComponentType),
-             [](QGraphicsItem* p) { return std::make_unique<GraphicalInput>(p); });
-  regGuiOnly(std::string(GraphicalOutputSingle::ComponentType),
-             [](QGraphicsItem* p) {
-               return std::make_unique<GraphicalOutputSingle>(p);
-             });
-  regGuiOnly(std::string(GraphicalBusInput::ComponentType),
-             [](QGraphicsItem* p) { return std::make_unique<GraphicalBusInput>(p); });
-  regGuiOnly(std::string(GraphicalBusOutput::ComponentType),
-             [](QGraphicsItem* p) { return std::make_unique<GraphicalBusOutput>(p); });
+  regMapped(std::string(GraphicalInput::ComponentType),
+            std::string(DummyInputComponent::Type),
+            [](QGraphicsItem* p) { return std::make_unique<GraphicalInput>(p); });
+  regMapped(std::string(GraphicalOutputSingle::ComponentType),
+            std::string(DummyOutputComponent::Type),
+            [](QGraphicsItem* p) { return std::make_unique<GraphicalOutputSingle>(p); });
+  regMapped(std::string(GraphicalBusInput::ComponentType),
+            std::string(DummyBusInputComponent::Type),
+            [](QGraphicsItem* p) { return std::make_unique<GraphicalBusInput>(p); });
+  regMapped(std::string(GraphicalBusOutput::ComponentType),
+            std::string(DummyBusOutputComponent::Type),
+            [](QGraphicsItem* p) { return std::make_unique<GraphicalBusOutput>(p); });
 
   reg(std::string(WireSplitter::Type),
       [](QGraphicsItem* p) { return std::make_unique<GraphicalWireSplitter>(p); });

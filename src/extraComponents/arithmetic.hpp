@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2026. Giulio Cocconi
+  Copyright (c) 2026. Giulio Cocconi
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -40,7 +40,7 @@ public:
    * @brief Returns the component type name.
    * @return Type identifier
    */
-  std::string_view typeName() const override { return Type; }
+  std::string_view  typeName() const override { return Type; }
   ComponentMetadata metadata() const override
   {
     return {"Half Adder", "Adds two one-bit inputs and outputs sum and carry.",
@@ -79,6 +79,7 @@ public:
    * @param sim Simulator used to drive output wires
    */
   void simulate(class Simulator& sim) override;
+  void serializeYosys(silicon::yosys::SerializationContext& context) const override;
 };
 
 /**
@@ -97,7 +98,7 @@ public:
    * @brief Returns the component type name.
    * @return Type identifier
    */
-  std::string_view typeName() const override { return Type; }
+  std::string_view  typeName() const override { return Type; }
   ComponentMetadata metadata() const override
   {
     return {"Full Adder",
@@ -140,6 +141,7 @@ public:
    * @param sim Simulator used to drive output wires
    */
   void simulate(Simulator& sim) override;
+  void serializeYosys(silicon::yosys::SerializationContext& context) const override;
 };
 
 /**
@@ -159,7 +161,7 @@ public:
    * @brief Returns the component type name.
    * @return Type identifier
    */
-  std::string_view typeName() const override { return Type; }
+  std::string_view  typeName() const override { return Type; }
   ComponentMetadata metadata() const override
   {
     return {"N-bit Adder", "Adds two fixed-width buses and outputs sum and carry.",
@@ -198,6 +200,7 @@ public:
    * @param sim Simulator used to drive output wires
    */
   void simulate(Simulator& sim) override;
+  void serializeYosys(silicon::yosys::SerializationContext& context) const override;
 
   /**
    * @brief Resizes both inputs, the sum output, and the carry output.

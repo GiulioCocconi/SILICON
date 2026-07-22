@@ -62,6 +62,7 @@ include(cmake/resources.cmake)
 set(COMMON_SOURCE_FILES
         ${src_dir}/utils/num_formatting.cpp
         ${src_dir}/core/wire.cpp
+        ${src_dir}/core/io.cpp
         ${src_dir}/core/gates.cpp
         ${src_dir}/core/flipflops.cpp
         ${src_dir}/core/register.cpp
@@ -75,6 +76,9 @@ set(COMMON_SOURCE_FILES
         ${src_dir}/core/simulator.cpp
         ${src_dir}/core/serialization/component_registry.cpp
         ${src_dir}/core/serialization/component_registration.cpp
+        ${src_dir}/core/serialization/yosys.cpp
+        ${src_dir}/core/serialization/yosys_deserialization.cpp
+        ${src_dir}/core/serialization/yosys_components.cpp
         ${src_dir}/core/projectDependencyGraph.cpp
         ${src_dir}/core/fstTraceWriter.cpp
         ${src_dir}/core/siliconWaveform.cpp
@@ -283,6 +287,20 @@ endif ()
 
 if (SILICON_BUILD_BENCHMARKS AND NOT EMSCRIPTEN)
     add_subdirectory("${CMAKE_SOURCE_DIR}/benchmarks")
+endif ()
+
+if (NOT EMSCRIPTEN)
+    find_program(SILICON_YOSYS_EXECUTABLE yosys)
+    if (SILICON_YOSYS_EXECUTABLE AND EXISTS "${CMAKE_SOURCE_DIR}/tools/yosys_roundtrip.cpp")
+        add_executable(yosys_roundtrip tools/yosys_roundtrip.cpp)
+        target_link_libraries(yosys_roundtrip PRIVATE silicon_core)
+        target_compile_definitions(yosys_roundtrip PRIVATE
+                SILICON_YOSYS_EXECUTABLE="${SILICON_YOSYS_EXECUTABLE}")
+        set_target_properties(yosys_roundtrip PROPERTIES
+                AUTOMOC OFF
+                AUTOUIC OFF
+                AUTORCC OFF)
+    endif ()
 endif ()
 
 install(TARGETS SILICON

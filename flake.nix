@@ -35,7 +35,6 @@ outputs = { self, nixpkgs, flake-utils }:
           ddd
           valgrind
           surelog
-          yosys
           opencode
           doxygen
 	  codex
@@ -56,6 +55,8 @@ outputs = { self, nixpkgs, flake-utils }:
         nativeInputs = with pkgs; [
           cmake
           ninja
+          # Required by the Yosys JSON import validation test.
+          yosys
         ];
 
         bun = pkgs.buildPackages.bun;

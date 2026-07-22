@@ -53,43 +53,14 @@ struct PendingWireSegment {
   std::vector<QPointF> points;
 };
 
-ComponentRegistry registryWithIoComponents(const ComponentRegistry& coreRegistry)
-{
-  ComponentRegistry mergedRegistry = coreRegistry;
-
-  if (!mergedRegistry.hasType("DummyInputComponent")) {
-    mergedRegistry.registerType(
-        "DummyInputComponent",
-        [] { return std::make_shared<DummyInputComponent>(Bus(1), "in"); });
-  }
-  if (!mergedRegistry.hasType("DummyOutputComponent")) {
-    mergedRegistry.registerType(
-        "DummyOutputComponent",
-        [] { return std::make_shared<DummyOutputComponent>(Bus(1), "out"); });
-  }
-  if (!mergedRegistry.hasType("DummyBusInputComponent")) {
-    mergedRegistry.registerType(
-        "DummyBusInputComponent",
-        [] { return std::make_shared<DummyBusInputComponent>(Bus(8), "bus_in"); });
-  }
-  if (!mergedRegistry.hasType("DummyBusOutputComponent")) {
-    mergedRegistry.registerType(
-        "DummyBusOutputComponent",
-        [] { return std::make_shared<DummyBusOutputComponent>(Bus(8), "bus_out"); });
-  }
-
-  return mergedRegistry;
-}
-
 std::shared_ptr<Circuit> deserializeCircuitPayload(const nlohmann::json&    payload,
                                                    const ComponentRegistry& coreRegistry)
 {
   if (!payload.contains("circuit"))
     return nullptr;
 
-  ComponentRegistry mergedRegistry = registryWithIoComponents(coreRegistry);
   return std::make_shared<Circuit>(
-      Circuit::deserialize(payload["circuit"].dump(), mergedRegistry));
+      Circuit::deserialize(payload["circuit"].dump(), coreRegistry));
 }
 
 void attachCoreComponent(GraphicalComponent* component, const nlohmann::json& compJson,

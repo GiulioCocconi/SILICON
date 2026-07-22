@@ -1,19 +1,20 @@
 /*
-  Copyright (C) 2026 Giulio Cocconi
+  Copyright (c) 2026. Giulio Cocconi
 
-  This program is free software: you can redistribute it and/or modify
-  it under the terms of the GNU General Public License as published by
-  the Free Software Foundation, either version 3 of the License, or
-  (at your option) any later version.
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
 
-  This program is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License for more details.
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
 
-  You should have received a copy of the GNU General Public License
-  along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+   You should have received a copy of the GNU General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+ */
 
 #pragma once
 
@@ -26,16 +27,16 @@
 
 class Register : public Component {
 public:
-  static constexpr std::string_view Type = "Register";
+  static constexpr std::string_view Type         = "Register";
   static constexpr std::string_view ParallelType = "Parallel";
   static constexpr std::string_view SerialType   = "Serial";
 
   enum class Inputs : unsigned int {
-    Data  = 0,
-    Clock = 1,
+    Data   = 0,
+    Clock  = 1,
     Enable = 2,
-    Clear = 3,
-    Load = 4,
+    Clear  = 3,
+    Load   = 4,
   };
 
   enum class Outputs : unsigned int {
@@ -45,7 +46,7 @@ public:
   Register();
   Register(Bus data, Wire_ptr clock, Wire_ptr enable, Wire_ptr clear, Bus output);
 
-  std::string_view typeName() const override { return Type; }
+  std::string_view  typeName() const override { return Type; }
   ComponentMetadata metadata() const override
   {
     return {"Register", "Stores and shifts data while enabled on a positive clock edge.",
@@ -59,6 +60,7 @@ public:
   std::string setOutputType(std::string outputType);
 
   void simulate(Simulator& sim, const SimulationContext& context) override;
+  void serializeYosys(silicon::yosys::SerializationContext& context) const override;
 
 private:
   void initializeProperties();

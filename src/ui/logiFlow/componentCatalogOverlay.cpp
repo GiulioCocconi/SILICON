@@ -97,23 +97,9 @@ std::vector<ComponentCatalogOverlay::CatalogRow> componentCatalogRows(
   std::vector<ComponentCatalogOverlay::CatalogRow> catalogRows;
   for (const std::string& guiType : guiFactory.availableTypes()) {
     const auto& entryMetadata = guiFactory.metadata(guiType);
-
-    if (!entryMetadata.coreType.empty() && coreFactory.hasType(entryMetadata.coreType)) {
-      catalogRows.push_back(
-          {.guiType = guiType,
-           .metadata = coreFactory.metadata(entryMetadata.coreType),
-           .initialProperties = {}});
-      continue;
-    }
-
-    auto  graphicalComponent = guiFactory.create(guiType);
-    auto* logicComponent =
-        dynamic_cast<GraphicalLogicComponent*>(graphicalComponent.get());
-    if (logicComponent && logicComponent->getComponent())
-      catalogRows.push_back(
-          {.guiType = guiType,
-           .metadata = logicComponent->getComponent()->metadata(),
-           .initialProperties = {}});
+    catalogRows.push_back({.guiType  = guiType,
+                           .metadata = coreFactory.metadata(entryMetadata.coreType),
+                           .initialProperties = {}});
   }
 
   for (const auto& document :
