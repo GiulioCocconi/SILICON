@@ -1,18 +1,19 @@
 /*
- Copyright (c) 2026. Giulio Cocconi
+  Copyright (c) 2026. Giulio Cocconi
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
    the Free Software Foundation, either version 3 of the License, or
    (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
    GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+   You should have received a copy of the GNU General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
  */
 
 #include "circuit.hpp"
@@ -34,6 +35,35 @@
 namespace {
 
 const Logger circuitLog("circuit");
+
+[[nodiscard]] bool hasRegistryDefinedInterface(const std::string_view type)
+{
+  return type == "Subcircuit";
+}
+
+[[nodiscard]] Bus reconcileBus(const Bus& expectedBus, const Bus& serializedBus)
+{
+  if (expectedBus.size() == serializedBus.size())
+    return serializedBus;
+
+  auto wires = static_cast<std::vector<Wire_ptr>>(expectedBus);
+  const auto width = std::min(expectedBus.size(), serializedBus.size());
+  for (std::size_t bit = 0; bit < width; ++bit)
+    wires[bit] = serializedBus[static_cast<unsigned short>(bit)];
+  return Bus(std::move(wires));
+}
+
+[[nodiscard]] std::vector<Bus>
+reconcileBuses(std::vector<Bus> expectedBuses, const std::vector<Bus>& serializedBuses)
+{
+  for (std::size_t busIndex = 0;
+       busIndex < expectedBuses.size() && busIndex < serializedBuses.size();
+       ++busIndex) {
+    expectedBuses[busIndex] =
+        reconcileBus(expectedBuses[busIndex], serializedBuses[busIndex]);
+  }
+  return expectedBuses;
+}
 }
 
 // --- Topology Observers & Live Editing -------------------------------------------------
@@ -712,7 +742,7 @@ Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry
 
         auto& wire = wireMap[w_id];
         if (!wire) {
-          wire = std::make_shared<Wire>();
+          wire = std::make_shared<Wire>(w_id, State::UNKNOWN);
         }
         wires.push_back(wire);
       }
@@ -736,6 +766,7 @@ Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry
         throw std::runtime_error(
             std::format("Failed to create unknown component type: {}", type));
       }
+      const bool reconcileInterface = hasRegistryDefinedInterface(type);
 
       if (auto props_it = compJson.find("properties");
           props_it != compJson.end() && props_it->is_object()) {
@@ -760,12 +791,16 @@ Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry
       if (auto in_it = compJson.find("inputs");
           in_it != compJson.end() && in_it->is_array()) {
         auto inputs = deserializeBusList(*in_it);
+        if (reconcileInterface)
+          inputs = reconcileBuses(cPtr->getInputs(), inputs);
         cPtr->setInputs(inputs);
       }
 
       if (auto out_it = compJson.find("outputs");
           out_it != compJson.end() && out_it->is_array()) {
         auto outputs = deserializeBusList(*out_it);
+        if (reconcileInterface)
+          outputs = reconcileBuses(cPtr->getOutputs(), outputs);
         cPtr->setOutputs(outputs);
       }
 

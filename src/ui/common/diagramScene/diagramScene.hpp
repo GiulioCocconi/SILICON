@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2026. Giulio Cocconi
+  Copyright (c) 2026. Giulio Cocconi
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -43,6 +43,7 @@
 #include <nlohmann/json.hpp>
 
 #include <core/circuit.hpp>
+#include <core/component.hpp>
 #include <core/siliconWaveform.hpp>
 
 #include <ui/common/componentSearchBox.hpp>
@@ -165,6 +166,15 @@ public:
   void placeComponent(std::string_view typeName, bool showSearchBox);
 
   /**
+   * @brief Begins placing a component and applies initial core properties first.
+   * @param typeName The component type name
+   * @param showSearchBox Whether entering placement mode should show quick search
+   * @param initialProperties Properties to apply to the associated logic component
+   */
+  void placeComponent(std::string_view typeName, bool showSearchBox,
+                      const PropertyMap& initialProperties);
+
+  /**
    * @brief Snaps a point to the grid.
    * @param point The point to snap
    * @return Snapped point
@@ -194,6 +204,12 @@ public:
    * @brief Returns whether simulation-mode IO clicks are currently allowed.
    */
   [[nodiscard]] bool areIoInteractionsEnabled() const { return ioInteractionsEnabled; }
+
+  /** @brief Marks whether the scene is currently editing a subcircuit document. */
+  void setSubcircuitDocumentMode(bool enabled) { subcircuitDocumentMode = enabled; }
+
+  /** @brief Returns true when subcircuit-only graphical tools may be placed. */
+  [[nodiscard]] bool isSubcircuitDocumentMode() const { return subcircuitDocumentMode; }
 
   /**
    * @brief Serializes the full editor scene to JSON.
@@ -438,6 +454,9 @@ private:
   /** @brief Whether simulation-mode IO clicks may mutate input state. */
   bool ioInteractionsEnabled = true;
 
+  /** @brief Whether this scene currently represents a subcircuit document. */
+  bool subcircuitDocumentMode = false;
+
   /** @brief Component being placed (shadow) */
   GraphicalComponent* componentToBeDrawn = nullptr;
 
@@ -455,6 +474,9 @@ private:
 
   /** @brief Last placed component type for repeat placement */
   std::string lastPlacedComponentType;
+
+  /** @brief Initial properties used when repeating placement of the last type. */
+  PropertyMap lastPlacedComponentProperties;
 
   /** @brief Underlying logic circuit model */
   std::shared_ptr<Circuit> circuit;

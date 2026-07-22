@@ -1,19 +1,20 @@
 /*
-  Copyright (C) 2026 Giulio Cocconi
+  Copyright (c) 2026. Giulio Cocconi
 
-  This program is free software: you can redistribute it and/or modify
-  it under the terms of the GNU General Public License as published by
-  the Free Software Foundation, either version 3 of the License, or
-  (at your option) any later version.
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
 
-  This program is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License for more details.
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
 
-  You should have received a copy of the GNU General Public License
-  along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+   You should have received a copy of the GNU General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+ */
 
 #pragma once
 #include <atomic>
@@ -62,6 +63,7 @@ private:
 public:
   Wire();
   explicit Wire(State s);
+  Wire(uint64_t id, State s);
 
   /**
    * @brief Copies a wire while preserving its existing identifier and authorization.
@@ -86,6 +88,15 @@ public:
   [[nodiscard]] uint64_t getId() const { return id; }
 
   void forceSetCurrentState(State newState);
+
+  /**
+   * @brief Clears the component currently authorized to drive this wire.
+   *
+   * Runtime elaboration uses this when a source-level root wire is intentionally
+   * shared with newly cloned runtime components. The next runtime driver then claims
+   * authorization through the normal state-update path.
+   */
+  void clearAuthorizedComponent();
 
   /**
    * @brief Forces the wire state without authorization check.

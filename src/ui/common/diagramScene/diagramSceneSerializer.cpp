@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2026. Giulio Cocconi
+  Copyright (c) 2026. Giulio Cocconi
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -340,16 +340,18 @@ std::string DiagramSceneSerializer::serialize() const
   const auto&            compToVertexMap  = activeCircuit->getComponentToVertex();
 
   for (auto* item : scene.items()) {
-    if (auto* comp =
-            category_cast<GraphicalLogicComponent>(item, ItemCategory::LogicComponent)) {
+    if (auto* comp = category_cast<GraphicalComponent>(item, ItemCategory::Component)) {
       auto compJson = comp->serialize();
       compJson.erase("uiId");
       compJson["type"] = comp->getTypeName();
 
-      if (auto component = comp->getComponent()) {
-        if (auto it = compToVertexMap.find(component.get());
-            it != compToVertexMap.end()) {
-          compJson["vertexId"] = static_cast<int>(it->second);
+      if (auto* logicComp =
+              category_cast<GraphicalLogicComponent>(comp, ItemCategory::LogicComponent)) {
+        if (auto component = logicComp->getComponent()) {
+          if (auto it = compToVertexMap.find(component.get());
+              it != compToVertexMap.end()) {
+            compJson["vertexId"] = static_cast<int>(it->second);
+          }
         }
       }
       visualComponents.push_back(std::move(compJson));

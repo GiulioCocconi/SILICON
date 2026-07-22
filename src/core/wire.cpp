@@ -1,19 +1,20 @@
 /*
-  Copyright (C) 2026 Giulio Cocconi
+  Copyright (c) 2026. Giulio Cocconi
 
-  This program is free software: you can redistribute it and/or modify
-  it under the terms of the GNU General Public License as published by
-  the Free Software Foundation, either version 3 of the License, or
-  (at your option) any later version.
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
 
-  This program is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License for more details.
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
 
-  You should have received a copy of the GNU General Public License
-  along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+   You should have received a copy of the GNU General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+ */
 
 #include "wire.hpp"
 
@@ -143,6 +144,13 @@ Wire::Wire(State s)
   this->currentState = s;
 }
 
+Wire::Wire(const uint64_t id, const State s) : currentState(s), id(id)
+{
+  auto next = nextId.load(std::memory_order_relaxed);
+  while (next <= id
+         && !nextId.compare_exchange_weak(next, id + 1, std::memory_order_relaxed)) {}
+}
+
 Wire::Wire(const Wire& other)
   : currentState(other.getCurrentState()),
     authorizedComponent(other.authorizedComponent),
@@ -173,6 +181,11 @@ State Wire::getCurrentState() const
 void Wire::forceSetCurrentState(const State newState)
 {
   this->currentState.store(newState, std::memory_order_relaxed);
+}
+
+void Wire::clearAuthorizedComponent()
+{
+  this->authorizedComponent.reset();
 }
 
 void Wire::forceSetCurrentState(const State              newState,

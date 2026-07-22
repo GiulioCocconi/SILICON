@@ -65,12 +65,17 @@ set(COMMON_SOURCE_FILES
         ${src_dir}/core/gates.cpp
         ${src_dir}/core/flipflops.cpp
         ${src_dir}/core/register.cpp
+        ${src_dir}/core/subcircuit.cpp
+        ${src_dir}/core/subcircuitDefinition.cpp
+        ${src_dir}/core/elaboration.cpp
+        ${src_dir}/core/simulationSession.cpp
         ${src_dir}/core/component.cpp
         ${src_dir}/core/circuit.cpp
         ${src_dir}/core/projectDocument.cpp
         ${src_dir}/core/simulator.cpp
         ${src_dir}/core/serialization/component_registry.cpp
         ${src_dir}/core/serialization/component_registration.cpp
+        ${src_dir}/core/projectDependencyGraph.cpp
         ${src_dir}/core/fstTraceWriter.cpp
         ${src_dir}/core/siliconWaveform.cpp
         ${src_dir}/core/siliconFst.cpp
@@ -110,6 +115,10 @@ set(UI_SOURCE_FILES
         ${src_dir}/ui/logiFlow/components/graphicalGates.cpp
         ${src_dir}/ui/logiFlow/components/graphicalFlipFlops.cpp
         ${src_dir}/ui/logiFlow/components/graphicalRegister.cpp
+        ${src_dir}/ui/logiFlow/components/subcircuit/componentShapeEditor.cpp
+        ${src_dir}/ui/logiFlow/components/subcircuit/graphicalSubcircuit.cpp
+        ${src_dir}/ui/logiFlow/components/subcircuit/metadata.cpp
+        ${src_dir}/ui/logiFlow/components/subcircuit/utils.cpp
         ${src_dir}/ui/logiFlow/components/graphicalArithmetic.cpp
         ${src_dir}/ui/logiFlow/components/graphicalMultiplexer.cpp
         ${src_dir}/ui/logiFlow/components/graphicalUtils.cpp

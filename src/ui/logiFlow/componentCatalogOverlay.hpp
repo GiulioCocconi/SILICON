@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2026. Giulio Cocconi
+  Copyright (c) 2026. Giulio Cocconi
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -25,6 +25,7 @@
 #include <QWidget>
 
 #include <core/serialization/component_registry.hpp>
+#include <core/component.hpp>
 
 class DiagramScene;
 class QLineEdit;
@@ -35,6 +36,7 @@ public:
   struct CatalogRow {
     std::string                          guiType;
     ComponentRegistry::ComponentMetadata metadata;
+    PropertyMap                          initialProperties;
   };
 
   explicit ComponentCatalogOverlay(DiagramScene* scene, QWidget* parent = nullptr);

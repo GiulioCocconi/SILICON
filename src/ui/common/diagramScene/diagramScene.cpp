@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2026. Giulio Cocconi
+  Copyright (c) 2026. Giulio Cocconi
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -57,6 +57,16 @@ DiagramScene::DiagramScene(QObject* parent) : QGraphicsScene(parent)
   wireManager.setTopologyChangedCallback(
       [this]() { simulationController->handleTopologyChanged(); });
 }
+
+namespace {
+
+std::vector<std::string> componentTypesForScene(const DiagramScene& scene)
+{
+  Q_UNUSED(scene);
+  return GUIComponentFactory::instance().availableTypes();
+}
+
+}  // namespace
 
 QPoint DiagramScene::snapToGrid(const QPointF point)
 {
@@ -281,7 +291,7 @@ void DiagramScene::mousePressEvent(QGraphicsSceneMouseEvent* mouseEvent)
                                         SceneSelectionCommand::Operation::Add, true));
         }
 
-        placeComponent(lastPlacedComponentType);
+        placeComponent(lastPlacedComponentType, true, lastPlacedComponentProperties);
         if (!componentToBeDrawn)
           throw std::logic_error(
               "componentToBeDrawn should not be null after placeComponent succeeds");
@@ -374,6 +384,7 @@ void DiagramScene::clearComponentShadow()
 
 void DiagramScene::showCSB(const QPointF pos)
 {
+  csb->setCompletionList(componentTypesForScene(*this));
   csb->clear();
   csb->setPos(pos);
   addItem(csb);
@@ -499,12 +510,27 @@ void DiagramScene::placeComponent(std::string_view typeName)
 
 void DiagramScene::placeComponent(std::string_view typeName, const bool showSearchBox)
 {
+  placeComponent(typeName, showSearchBox, {});
+}
+
+void DiagramScene::placeComponent(std::string_view typeName, const bool showSearchBox,
+                                  const PropertyMap& initialProperties)
+{
   if (componentToBeDrawn)
     throw std::logic_error("placeComponent: previous component not yet placed");
 
   componentToBeDrawn      = GUIComponentFactory::instance().create(typeName).release();
   lastPlacedComponentType = typeName;
+  lastPlacedComponentProperties = initialProperties;
   suppressNextComponentSearch = !showSearchBox;
+
+  if (!initialProperties.empty()) {
+    if (auto* logicComponent = category_cast<GraphicalLogicComponent>(
+            componentToBeDrawn, ItemCategory::LogicComponent)) {
+      for (const auto& [key, value] : initialProperties)
+        logicComponent->applyProperty(key, value);
+    }
+  }
 
   // TODO: IMPLEMENT COMPONENT SHADOW TO BE SHOWN WHILE DRAGGING
   setInteractionMode(InteractionMode::COMPONENT_PLACING_MODE);

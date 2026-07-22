@@ -21,6 +21,7 @@
 #include <QByteArray>
 #include <QPointF>
 #include <QUndoCommand>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -33,6 +34,21 @@ class GraphicalItem;
 class GraphicalComponent;
 class GraphicalLogicComponent;
 class DiagramScene;
+
+class MetadataEditCommand : public QUndoCommand {
+public:
+  using ApplyFn = std::function<void(const std::string&)>;
+
+  MetadataEditCommand(QString text, std::string oldValue, std::string newValue,
+                      ApplyFn apply, QUndoCommand* parent = nullptr);
+  void undo() override;
+  void redo() override;
+
+private:
+  std::string oldValue;
+  std::string newValue;
+  ApplyFn     apply;
+};
 
 class MoveItemCommand : public QUndoCommand {
 public:
@@ -54,7 +70,7 @@ private:
     QPointF       newPos;
   };
   std::vector<ItemMove> moves;
-  std::string           circuitPath;
+  std::string           documentPath;
   bool                  skipInitialRedo = true;
 };
 
@@ -69,7 +85,7 @@ public:
 
 private:
   DiagramScene* scene;
-  std::string   circuitPath;
+  std::string   documentPath;
   uint64_t      uiId;
   size_t        pointIndex;
   QPointF       oldPos;
@@ -87,7 +103,7 @@ public:
 
 private:
   DiagramScene* scene;
-  std::string   circuitPath;
+  std::string   documentPath;
   uint64_t      uiId;
   qreal         oldRotation;
   qreal         newRotation;
@@ -116,7 +132,7 @@ private:
   void apply(bool useNewValue);
 
   std::string                 key;
-  std::string                 circuitPath;
+  std::string                 documentPath;
   std::vector<PropertyChange> changes;
 };
 
@@ -138,7 +154,7 @@ private:
   static QPointF               payloadOrigin(const nlohmann::json& payload);
 
   DiagramScene* scene;
-  std::string   circuitPath;
+  std::string   documentPath;
   QByteArray    bsonPayload;
   Operation     operation;
   bool          skipInitialRedo;

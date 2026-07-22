@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2026. Giulio Cocconi
+  Copyright (c) 2026. Giulio Cocconi
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -46,12 +46,14 @@ class QPoint;
 class QResizeEvent;
 class QToolBar;
 class QTreeWidget;
+class QTreeWidgetItem;
 class QUndoStack;
 class LogSideView;
 struct ShortcutSetting;
 class WaveformViewer;
 
 #include <core/serialization/projectFile.hpp>
+#include <core/projectDependencyGraph.hpp>
 
 #ifdef __EMSCRIPTEN__
   #include <emscripten/html5.h>
@@ -94,6 +96,8 @@ public:
    * active circuit has been recorded yet.
    */
   [[nodiscard]] std::string  activeProjectCircuitPath() const;
+  [[nodiscard]] std::string  activeProjectSubcircuitSlug() const;
+  bool activateProjectDocument(const std::string& documentPath);
 
   /**
    * @brief Switches the editor to a circuit in the active project.
@@ -193,6 +197,7 @@ private slots:
 
   /** @brief Opens the component catalog overlay above the diagram view. */
   void showComponentCatalog();
+  void editActiveSubcircuitShape();
 
   /** @brief Cancels any active scene interaction and returns to normal editing. */
   void cancelCurrentInteraction();
@@ -223,6 +228,8 @@ private slots:
 
   /** @brief Deletes the selected circuit from the current project when allowed. */
   void deleteSelectedCircuit();
+  void createSubcircuit();
+  void deleteSelectedSubcircuit();
 
   /** @brief Rebuilds the property dock for the current selection or active circuit. */
   void updatePropertyDock();
@@ -245,6 +252,7 @@ private:
 
   /** @brief Repositions and resizes the component catalog overlay. */
   void updateComponentCatalogGeometry();
+  void updateSubcircuitShapeAction();
 
   /**
    * @brief Updates the current project filename and window title.
@@ -324,6 +332,11 @@ private:
    * @return Pretty-printed JSON scene document
    */
   [[nodiscard]] std::string emptyCircuitSceneJson(const std::string& name) const;
+  [[nodiscard]] std::string emptySubcircuitSceneJson(const std::string& name) const;
+  void createDocument(silicon::project::DocumentKind kind);
+  void deleteSelectedDocument();
+  [[nodiscard]] QTreeWidgetItem*
+  projectDocumentSectionItem(silicon::project::DocumentKind kind) const;
 
   /**
    * @brief Checks whether the current project contains a circuit path.
@@ -464,6 +477,7 @@ private:
 
   /** @brief Opens the component catalog overlay. */
   QAction* openComponentCatalogAct = nullptr;
+  QAction* editSubcircuitShapeAct = nullptr;
 
   /** @brief Activates component placing mode. */
   QAction* setComponentPlacingModeAct = nullptr;
@@ -488,6 +502,7 @@ private:
 
   /** @brief Project-relative path of the circuit loaded in the diagram scene. */
   std::string                                      activeDocumentPath;
+  silicon::project::ProjectDependencyGraph          dependencyGraph;
 
   /** @brief Lazily shown application about dialog. */
   AboutDialog* aboutDialog = nullptr;

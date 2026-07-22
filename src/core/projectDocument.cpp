@@ -1,6 +1,19 @@
 /*
- Copyright (c) 2026. Giulio Cocconi
- ...
+  Copyright (c) 2026. Giulio Cocconi
+
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
  */
 
 #include "projectDocument.hpp"
@@ -108,33 +121,36 @@ void DocumentStore::setDocuments(std::vector<Document> documents)
 
 void DocumentStore::upsertDocument(Document document)
 {
+  const auto path = document.path();
   if (auto index = indexOf(document.path())) {
     documents_[*index] = std::move(document);
-    listeners_.notify(documents_[*index].path());
+    listeners_.notify(path);
     return;
   }
   documents_.push_back(std::move(document));
-  listeners_.notify(documents_.back().path());
+  listeners_.notify(path);
 }
 
 void DocumentStore::insertDocument(Document document, const std::size_t index)
 {
+  const auto path = document.path();
   if (contains(document.path()))
     throw std::invalid_argument(
         std::format("Duplicate project document path: {}", document.path()));
   const auto offset = std::min(index, documents_.size());
-  auto       it     = documents_.insert(documents_.begin() + offset, std::move(document));
-  listeners_.notify(it->path());
+  documents_.insert(documents_.begin() + offset, std::move(document));
+  listeners_.notify(path);
 }
 
 void DocumentStore::removeDocument(const std::string_view documentPath)
 {
+  const auto path = std::string(documentPath);
   const auto oldSize = documents_.size();
   std::erase_if(documents_, [&](const Document& document) {
     return document.path() == documentPath;
   });
   if (documents_.size() != oldSize)
-    listeners_.notify(documentPath);
+    listeners_.notify(path);
 }
 
 void DocumentStore::clear()
