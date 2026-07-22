@@ -40,6 +40,7 @@ public:
   }
 
   void simulate(Simulator& sim) override;
+  void serializeYosys(silicon::yosys::SerializationContext& context) const override;
 
   void reloadFromRegistry();
 

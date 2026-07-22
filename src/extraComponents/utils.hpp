@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2026. Giulio Cocconi
+  Copyright (c) 2026. Giulio Cocconi
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -13,7 +13,8 @@
 
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+
+ */
 
 #pragma once
 
@@ -29,7 +30,7 @@ private:
 public:
   static constexpr std::string_view Type = "WireSplitter";
   std::string_view                  typeName() const override { return Type; }
-  ComponentMetadata metadata() const override
+  ComponentMetadata                 metadata() const override
   {
     return {"Wire Splitter", "Splits a bus into individual output bits.",
             ComponentCategory::Utils};
@@ -41,6 +42,7 @@ public:
   int setSize(int newSize);
 
   void simulate(class Simulator& sim) override;
+  void serializeYosys(silicon::yosys::SerializationContext& context) const override;
 };
 
 class WireMerger : public Component {
@@ -50,7 +52,7 @@ private:
 public:
   static constexpr std::string_view Type = "WireMerger";
   std::string_view                  typeName() const override { return Type; }
-  ComponentMetadata metadata() const override
+  ComponentMetadata                 metadata() const override
   {
     return {"Wire Merger", "Merges individual input bits into a bus.",
             ComponentCategory::Utils};
@@ -62,4 +64,5 @@ public:
   int setSize(int newSize);
 
   void simulate(class Simulator& sim) override;
+  void serializeYosys(silicon::yosys::SerializationContext& context) const override;
 };

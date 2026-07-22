@@ -21,6 +21,7 @@
 #include <core/component.hpp>
 #include <core/flipflops.hpp>
 #include <core/gates.hpp>
+#include <core/io.hpp>
 #include <core/register.hpp>
 #include <core/subcircuit.hpp>
 #include <extraComponents/arithmetic.hpp>
@@ -42,6 +43,12 @@ void registerAllComponents(ComponentRegistry& registry)
   registerComponent<NandGate>(registry);
   registerComponent<NorGate>(registry);
   registerComponent<XorGate>(registry);
+
+  registerComponent<ConstantComponent>(registry);
+  registerComponent<DummyInputComponent>(registry);
+  registerComponent<DummyBusInputComponent>(registry);
+  registerComponent<DummyOutputComponent>(registry);
+  registerComponent<DummyBusOutputComponent>(registry);
 
   registerComponent<DFlipFlop>(registry);
   registerComponent<EFlipFlop>(registry);

@@ -24,6 +24,7 @@
 
 #include <core/component.hpp>
 #include <core/serialization/component_registry.hpp>
+#include <core/serialization/yosys.hpp>
 
 #include <logging/logger.hpp>
 
@@ -46,25 +47,24 @@ const Logger circuitLog("circuit");
   if (expectedBus.size() == serializedBus.size())
     return serializedBus;
 
-  auto wires = static_cast<std::vector<Wire_ptr>>(expectedBus);
+  auto       wires = static_cast<std::vector<Wire_ptr>>(expectedBus);
   const auto width = std::min(expectedBus.size(), serializedBus.size());
   for (std::size_t bit = 0; bit < width; ++bit)
     wires[bit] = serializedBus[static_cast<unsigned short>(bit)];
   return Bus(std::move(wires));
 }
 
-[[nodiscard]] std::vector<Bus>
-reconcileBuses(std::vector<Bus> expectedBuses, const std::vector<Bus>& serializedBuses)
+[[nodiscard]] std::vector<Bus> reconcileBuses(std::vector<Bus>        expectedBuses,
+                                              const std::vector<Bus>& serializedBuses)
 {
   for (std::size_t busIndex = 0;
-       busIndex < expectedBuses.size() && busIndex < serializedBuses.size();
-       ++busIndex) {
+       busIndex < expectedBuses.size() && busIndex < serializedBuses.size(); ++busIndex) {
     expectedBuses[busIndex] =
         reconcileBus(expectedBuses[busIndex], serializedBuses[busIndex]);
   }
   return expectedBuses;
 }
-}
+}  // namespace
 
 // --- Topology Observers & Live Editing -------------------------------------------------
 
@@ -655,7 +655,7 @@ Circuit::LevelMap Circuit::getLevelMap() const
 
       // the topological sort guarantees that the pred level has already been processed
       const auto predLevel = vertexLevels[pred];
-      maxLevel = std::max(maxLevel, predLevel + 1);
+      maxLevel             = std::max(maxLevel, predLevel + 1);
     }
 
     // Cache this vertex's level
@@ -712,6 +712,17 @@ std::string Circuit::serialize() const
   }
 
   return j.dump(2);
+}
+
+std::string Circuit::getYosysJson() const
+{
+  return silicon::yosys::serialize(*this);
+}
+
+Circuit Circuit::deserializeYosys(const std::string_view                json,
+                                  const std::optional<std::string_view> moduleName)
+{
+  return silicon::yosys::deserialize(json, moduleName);
 }
 
 Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry& reg)

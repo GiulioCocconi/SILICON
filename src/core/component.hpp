@@ -36,6 +36,9 @@
 #include <utils/transparent_string.hpp>
 
 class Simulator;
+namespace silicon::yosys {
+class SerializationContext;
+}
 
 enum class ComponentCategory {
   Gates,
@@ -49,10 +52,13 @@ enum class ComponentCategory {
   Utils,
 };
 
+enum class PortRole { None, Input, Output };
+
 struct ComponentMetadata {
   std::string       displayName;
   std::string       description;
   ComponentCategory category;
+  PortRole          portRole = PortRole::None;
 };
 
 /**
@@ -534,6 +540,14 @@ public:
    * @return Display name, description, and category for UI catalogs.
    */
   [[nodiscard]] virtual ComponentMetadata metadata() const;
+
+  /**
+   * @brief Lower this component into native Yosys netlist cells.
+   *
+   * Third-party components that do not override this method fail export with a
+   * descriptive error instead of silently producing an incomplete netlist.
+   */
+  virtual void serializeYosys(silicon::yosys::SerializationContext& context) const;
 
   // --- IO Observer Pattern ---
 

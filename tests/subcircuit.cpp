@@ -17,6 +17,7 @@
  */
 
 #include "tests.hpp"
+#include "subcircuitFixtures.hpp"
 
 #include <cstdint>
 #include <format>
@@ -42,26 +43,6 @@
 #include <nlohmann/json.hpp>
 
 namespace {
-
-std::string andSubcircuitDocument()
-{
-  return R"({
-    "circuit": {
-      "version": "0.1.0",
-      "name": "and_subcircuit",
-      "description": "",
-      "components": [
-        {
-          "id": 0,
-          "type": "AndGate",
-          "properties": {"delay": 0, "bitwise": false, "size": 1},
-          "inputs": [[1], [2]],
-          "outputs": [[3]]
-        }
-      ]
-    }
-  })";
-}
 
 std::string graphicalAndSubcircuitDocument()
 {

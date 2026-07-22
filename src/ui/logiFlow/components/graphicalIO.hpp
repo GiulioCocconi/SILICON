@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2026. Giulio Cocconi
+  Copyright (c) 2026. Giulio Cocconi
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -14,7 +14,7 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-*/
+ */
 
 #pragma once
 
@@ -24,6 +24,7 @@
 #include <QString>
 
 #include <core/component.hpp>
+#include <core/io.hpp>
 #include <core/wire.hpp>
 
 #include <string_view>
@@ -171,36 +172,6 @@ private:
 };
 
 /**
- * @class DummyInputComponent
- * @brief The logic backend for a single-bit GUI input.
- *
- * Acts as the bridge between the GraphicalInput UI and the Simulation engine.
- */
-class DummyInputComponent : public Component {
-public:
-  static constexpr std::string_view Type = "DummyInputComponent";
-
-  DummyInputComponent(Bus bus, std::string name);
-
-  /**
-   * @brief Forces the output wire to a specific logic level.
-   * @param value 1 for HIGH, 0 for LOW.
-   */
-  void setState(int value)
-  {
-    this->outputs[0].forceSetCurrentValue(value, weak_from_this());
-  }
-
-  std::string_view typeName() const override { return Type; }
-  ComponentMetadata metadata() const override
-  {
-    return {"Input", "Provides a user-toggleable one-bit signal.",
-            ComponentCategory::Inputs};
-  }
-  void             simulate(Simulator& sim) override {}
-};
-
-/**
  * @class GraphicalBusInput
  * @brief Represents a multi-bit user-editable data bus input in the UI.
  */
@@ -250,41 +221,6 @@ private:
   void   propagateCurrentValue();
   void   installPropertyCallbacks();
   QRectF boundingRect() const override;
-};
-
-/**
- * @class DummyBusInputComponent
- * @brief The logic backend for a multi-bit GUI bus input.
- */
-class DummyBusInputComponent : public Component {
-public:
-  static constexpr std::string_view Type = "DummyBusInputComponent";
-
-  explicit DummyBusInputComponent(Bus bus = Bus(8), std::string name = "bus_in");
-
-  /**
-   * @brief Adjusts the width of the output bus.
-   * @param newSize The new bit-width.
-   * @return The normalized/clamped actual size applied.
-   */
-  int setSize(int newSize);
-
-  /**
-   * @brief Pushes a value to the bus wires.
-   * @param value The raw numerical value to output.
-   */
-  void setState(unsigned int value)
-  {
-    this->outputs[0].forceSetCurrentValue(value, weak_from_this());
-  }
-
-  std::string_view typeName() const override { return Type; }
-  ComponentMetadata metadata() const override
-  {
-    return {"Bus Input", "Provides an editable multi-bit bus value.",
-            ComponentCategory::Inputs};
-  }
-  void             simulate(Simulator& sim) override {}
 };
 
 /**
@@ -338,29 +274,6 @@ private:
 };
 
 /**
- * @class DummyOutputComponent
- * @brief The logic backend for a single-bit GUI output.
- *
- * The graphical output reads this component's input after simulation completes.
- * @note simulate() intentionally performs no UI work so this component remains safe to
- * execute on a background simulation worker.
- */
-class DummyOutputComponent : public Component {
-public:
-  static constexpr std::string_view Type = "DummyOutputComponent";
-
-  DummyOutputComponent(Bus bus, std::string name);
-
-  std::string_view typeName() const override { return Type; }
-  ComponentMetadata metadata() const override
-  {
-    return {"Output", "Displays the current state of a one-bit signal.",
-            ComponentCategory::Outputs};
-  }
-  void             simulate(Simulator& sim) override {}
-};
-
-/**
  * @class GraphicalBusOutput
  * @brief Represents a multi-bit data bus display output in the UI.
  */
@@ -398,34 +311,4 @@ public:
 private:
   void   installPropertyCallbacks();
   QRectF boundingRect() const override;
-};
-
-/**
- * @class DummyBusOutputComponent
- * @brief The logic backend for a multi-bit GUI bus output display.
- *
- * @note simulate() intentionally performs no UI work; GraphicalBusOutput refreshes from
- * the input bus on the GUI thread after simulation completes.
- */
-class DummyBusOutputComponent : public Component {
-public:
-  static constexpr std::string_view Type = "DummyBusOutputComponent";
-
-  explicit DummyBusOutputComponent(Bus bus = Bus(8), std::string name = "bus_out");
-
-  /**
-   * @brief Adjusts the width of the input bus constraint.
-   * @param newSize The new bit-width.
-   * @return The normalized/clamped actual size applied.
-   */
-  int setSize(int newSize);
-
-  std::string_view typeName() const override { return Type; }
-  ComponentMetadata metadata() const override
-  {
-    return {"Bus Output", "Displays the current value of a multi-bit bus.",
-            ComponentCategory::Outputs};
-  }
-
-  void simulate(Simulator& sim) override {}
 };

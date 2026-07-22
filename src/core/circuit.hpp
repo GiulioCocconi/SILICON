@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2026. Giulio Cocconi
+  Copyright (c) 2026. Giulio Cocconi
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -20,6 +20,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -349,7 +350,6 @@ public:
    */
   [[nodiscard]] Circuit getForwardSubgraph(const Bus& sourceInput) const;
 
-
   /**
    * @brief Gets the underlying circuit graph
    * @return Reference to the Boost graph
@@ -367,7 +367,8 @@ public:
    */
   [[nodiscard]] std::vector<SimulationBlock> splitCyclic() const;
 
-  using LevelMap = std::map<Component_weakPtr, unsigned int, std::owner_less<Component_weakPtr>>;
+  using LevelMap =
+      std::map<Component_weakPtr, unsigned int, std::owner_less<Component_weakPtr>>;
 
   /** @brief Get a levelized map between the components and their level number */
   [[nodiscard]] Circuit::LevelMap getLevelMap() const;
@@ -397,6 +398,19 @@ public:
    * @return JSON string representation of the logical circuit model
    */
   [[nodiscard]] std::string serialize() const;
+
+  /**
+   * @brief Serializes this circuit as a native Yosys JSON netlist.
+   *
+   * Components are lowered to standard Yosys internal cells and subcircuits are
+   * emitted as hierarchical modules. Simulation-only timing values are omitted.
+   */
+  [[nodiscard]] std::string getYosysJson() const;
+
+  /** @brief Deserializes one supported module from a Yosys write_json document. */
+  [[nodiscard]] static Circuit
+  deserializeYosys(std::string_view                json,
+                   std::optional<std::string_view> moduleName = std::nullopt);
 
   /**
    * @brief Deserializes the core circuit model from a JSON string.

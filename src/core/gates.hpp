@@ -1,19 +1,20 @@
 /*
-  Copyright (C) 2026 Giulio Cocconi
+  Copyright (c) 2026. Giulio Cocconi
 
-  This program is free software: you can redistribute it and/or modify
-  it under the terms of the GNU General Public License as published by
-  the Free Software Foundation, either version 3 of the License, or
-  (at your option) any later version.
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
 
-  This program is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License for more details.
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
 
-  You should have received a copy of the GNU General Public License
-  along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+   You should have received a copy of the GNU General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+ */
 
 #pragma once
 #include <array>
@@ -75,7 +76,7 @@ class AndGate : public Gate {
 public:
   static constexpr std::string_view Type = "AndGate";
   std::string_view                  typeName() const override { return Type; }
-  ComponentMetadata metadata() const override
+  ComponentMetadata                 metadata() const override
   {
     return {"AND Gate", "Outputs HIGH only when every input is HIGH.",
             ComponentCategory::Gates};
@@ -84,13 +85,14 @@ public:
   AndGate() = default;
   AndGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output);
   void simulate(Simulator& sim) override;
+  void serializeYosys(silicon::yosys::SerializationContext& context) const override;
 };
 
 class OrGate : public Gate {
 public:
   static constexpr std::string_view Type = "OrGate";
   std::string_view                  typeName() const override { return Type; }
-  ComponentMetadata metadata() const override
+  ComponentMetadata                 metadata() const override
   {
     return {"OR Gate", "Outputs HIGH when at least one input is HIGH.",
             ComponentCategory::Gates};
@@ -99,13 +101,14 @@ public:
   OrGate() = default;
   OrGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output);
   void simulate(Simulator& sim) override;
+  void serializeYosys(silicon::yosys::SerializationContext& context) const override;
 };
 
 class NotGate : public Gate {
 public:
   static constexpr std::string_view Type = "NotGate";
   std::string_view                  typeName() const override { return Type; }
-  ComponentMetadata metadata() const override
+  ComponentMetadata                 metadata() const override
   {
     return {"NOT Gate", "Inverts a single input signal.", ComponentCategory::Gates};
   }
@@ -113,13 +116,14 @@ public:
   NotGate() = default;
   NotGate(Wire_ptr input, Wire_ptr output);
   void simulate(Simulator& sim) override;
+  void serializeYosys(silicon::yosys::SerializationContext& context) const override;
 };
 
 class NandGate : public Gate {
 public:
   static constexpr std::string_view Type = "NandGate";
   std::string_view                  typeName() const override { return Type; }
-  ComponentMetadata metadata() const override
+  ComponentMetadata                 metadata() const override
   {
     return {"NAND Gate", "Outputs the inverse of an AND operation.",
             ComponentCategory::Gates};
@@ -128,13 +132,14 @@ public:
   NandGate() = default;
   NandGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output);
   void simulate(Simulator& sim) override;
+  void serializeYosys(silicon::yosys::SerializationContext& context) const override;
 };
 
 class NorGate : public Gate {
 public:
   static constexpr std::string_view Type = "NorGate";
   std::string_view                  typeName() const override { return Type; }
-  ComponentMetadata metadata() const override
+  ComponentMetadata                 metadata() const override
   {
     return {"NOR Gate", "Outputs the inverse of an OR operation.",
             ComponentCategory::Gates};
@@ -143,13 +148,14 @@ public:
   NorGate() = default;
   NorGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output);
   void simulate(Simulator& sim) override;
+  void serializeYosys(silicon::yosys::SerializationContext& context) const override;
 };
 
 class XorGate : public Gate {
 public:
   static constexpr std::string_view Type = "XorGate";
   std::string_view                  typeName() const override { return Type; }
-  ComponentMetadata metadata() const override
+  ComponentMetadata                 metadata() const override
   {
     return {"XOR Gate", "Outputs HIGH when exactly one input is HIGH.",
             ComponentCategory::Gates};
@@ -158,4 +164,5 @@ public:
   XorGate() = default;
   XorGate(const std::array<Wire_ptr, 2>& inputs, Wire_ptr output);
   void simulate(Simulator& sim) override;
+  void serializeYosys(silicon::yosys::SerializationContext& context) const override;
 };
