@@ -29,7 +29,17 @@ module _silicon_map_dff #(
       SILICON_DFF #(.CLK_POLARITY(CLK_POLARITY))
         _TECHMAP_REPLACE_ (.D(D), .CLK(CLK), .Q(Q), .QN(qn));
     end else begin
-      wire _TECHMAP_FAIL_ = 1;
+      // Keep vector storage intact so importing lowered Verilog can recover a
+      // native parallel-in/parallel-out Register instead of WIDTH scalar DFFs.
+      wire pipo_clk;
+      if (CLK_POLARITY) begin
+        assign pipo_clk = CLK;
+      end else begin
+        assign pipo_clk = ~CLK;
+      end
+      SILICON_PIPO #(.WIDTH(WIDTH), .CLK_POLARITY(1),
+                    .EN_POLARITY(1), .CLR_POLARITY(1))
+        _TECHMAP_REPLACE_ (.DATA(D), .CLK(pipo_clk), .EN(1'b1), .CLR(1'b0), .OUT(Q));
     end
   endgenerate
 endmodule
@@ -45,6 +55,91 @@ module _silicon_map_dffe #(
       wire qn;
       SILICON_DFFE #(.CLK_POLARITY(CLK_POLARITY), .EN_POLARITY(EN_POLARITY))
         _TECHMAP_REPLACE_ (.D(D), .EN(EN), .CLK(CLK), .Q(Q), .QN(qn));
+    end else begin
+      // Normalize controls before passing them to the active-high PIPO ABI.
+      wire pipo_clk;
+      wire pipo_en;
+      if (CLK_POLARITY) begin
+        assign pipo_clk = CLK;
+      end else begin
+        assign pipo_clk = ~CLK;
+      end
+      if (EN_POLARITY) begin
+        assign pipo_en = EN;
+      end else begin
+        assign pipo_en = ~EN;
+      end
+      SILICON_PIPO #(.WIDTH(WIDTH), .CLK_POLARITY(1), .EN_POLARITY(1),
+                    .CLR_POLARITY(1))
+        _TECHMAP_REPLACE_ (.DATA(D), .CLK(pipo_clk), .EN(pipo_en), .CLR(1'b0), .OUT(Q));
+    end
+  endgenerate
+endmodule
+
+// PIPO has one shared active-high asynchronous clear, matching $adff exactly
+// when its reset value is zero.
+(* techmap_celltype = "$adff" *)
+module _silicon_map_adff #(
+    parameter WIDTH = 1,
+    parameter CLK_POLARITY = 1,
+    parameter ARST_POLARITY = 1,
+    parameter [WIDTH-1:0] ARST_VALUE = 0
+) (input CLK, input ARST, input [WIDTH-1:0] D, output [WIDTH-1:0] Q);
+  generate
+    if (WIDTH > 1 && ARST_VALUE == {WIDTH{1'b0}}) begin
+      wire pipo_clk;
+      wire pipo_clr;
+      if (CLK_POLARITY) begin
+        assign pipo_clk = CLK;
+      end else begin
+        assign pipo_clk = ~CLK;
+      end
+      if (ARST_POLARITY) begin
+        assign pipo_clr = ARST;
+      end else begin
+        assign pipo_clr = ~ARST;
+      end
+      SILICON_PIPO #(.WIDTH(WIDTH), .CLK_POLARITY(1), .EN_POLARITY(1),
+                    .CLR_POLARITY(1))
+        _TECHMAP_REPLACE_ (.DATA(D), .CLK(pipo_clk), .EN(1'b1), .CLR(pipo_clr), .OUT(Q));
+    end else begin
+      wire _TECHMAP_FAIL_ = 1;
+    end
+  endgenerate
+endmodule
+
+// PIPO also represents $adffe when reset and enable are both shared.
+(* techmap_celltype = "$adffe" *)
+module _silicon_map_adffe #(
+    parameter WIDTH = 1,
+    parameter CLK_POLARITY = 1,
+    parameter EN_POLARITY = 1,
+    parameter ARST_POLARITY = 1,
+    parameter [WIDTH-1:0] ARST_VALUE = 0
+) (input CLK, input EN, input ARST, input [WIDTH-1:0] D, output [WIDTH-1:0] Q);
+  generate
+    if (WIDTH > 1 && ARST_VALUE == {WIDTH{1'b0}}) begin
+      wire pipo_clk;
+      wire pipo_en;
+      wire pipo_clr;
+      if (CLK_POLARITY) begin
+        assign pipo_clk = CLK;
+      end else begin
+        assign pipo_clk = ~CLK;
+      end
+      if (EN_POLARITY) begin
+        assign pipo_en = EN;
+      end else begin
+        assign pipo_en = ~EN;
+      end
+      if (ARST_POLARITY) begin
+        assign pipo_clr = ARST;
+      end else begin
+        assign pipo_clr = ~ARST;
+      end
+      SILICON_PIPO #(.WIDTH(WIDTH), .CLK_POLARITY(1), .EN_POLARITY(1),
+                    .CLR_POLARITY(1))
+        _TECHMAP_REPLACE_ (.DATA(D), .CLK(pipo_clk), .EN(pipo_en), .CLR(pipo_clr), .OUT(Q));
     end else begin
       wire _TECHMAP_FAIL_ = 1;
     end
@@ -73,7 +168,15 @@ module _silicon_map_dffsr #(
           .CLR_POLARITY(CLR_POLARITY)
       ) _TECHMAP_REPLACE_ (.D(D), .CLK(CLK), .SET(SET), .CLR(CLR), .Q(Q), .QN(qn));
     end else begin
-      wire _TECHMAP_FAIL_ = 1;
+      genvar i;
+      for (i = 0; i < WIDTH; i = i + 1) begin: bits
+        wire qn;
+        SILICON_DFFSR #(
+            .CLK_POLARITY(CLK_POLARITY),
+            .SET_POLARITY(SET_POLARITY),
+            .CLR_POLARITY(CLR_POLARITY)
+        ) dffsr (.D(D[i]), .CLK(CLK), .SET(SET[i]), .CLR(CLR[i]), .Q(Q[i]), .QN(qn));
+      end
     end
   endgenerate
 endmodule
@@ -105,7 +208,18 @@ module _silicon_map_dffsre #(
           .D(D), .EN(EN), .CLK(CLK), .SET(SET), .CLR(CLR), .Q(Q), .QN(qn)
       );
     end else begin
-      wire _TECHMAP_FAIL_ = 1;
+      genvar i;
+      for (i = 0; i < WIDTH; i = i + 1) begin: bits
+        wire qn;
+        SILICON_DFFSRE #(
+            .CLK_POLARITY(CLK_POLARITY),
+            .EN_POLARITY(EN_POLARITY),
+            .SET_POLARITY(SET_POLARITY),
+            .CLR_POLARITY(CLR_POLARITY)
+        ) dffsre (
+            .D(D[i]), .EN(EN), .CLK(CLK), .SET(SET[i]), .CLR(CLR[i]), .Q(Q[i]), .QN(qn)
+        );
+      end
     end
   endgenerate
 endmodule

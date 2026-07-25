@@ -19,6 +19,7 @@
 #include "yosys.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <format>
 #include <map>
 #include <ranges>
@@ -58,6 +59,38 @@ namespace {
     return std::format("{}_{}", input ? "input" : "output", index);
   }
 
+  [[nodiscard]] std::string identifierPart(const std::string_view value)
+  {
+    std::string result;
+    result.reserve(value.size());
+    for (const char character : value) {
+      const bool valid = (character >= 'a' && character <= 'z')
+                         || (character >= 'A' && character <= 'Z')
+                         || (character >= '0' && character <= '9') || character == '_';
+      if (valid)
+        result += character;
+      else if (result.empty() || result.back() != '_')
+        result += '_';
+    }
+    if (result.empty())
+      return "component";
+    if (result.front() >= '0' && result.front() <= '9')
+      result.insert(0, "component_");
+    return result;
+  }
+
+  [[nodiscard]] std::string readableCellType(std::string type)
+  {
+    if (type.starts_with("SILICON_"))
+      type.erase(0, std::string_view("SILICON_").size());
+    while (!type.empty() && type.front() == '$')
+      type.erase(type.begin());
+    std::ranges::transform(type, type.begin(), [](const unsigned char character) {
+      return static_cast<char>(std::tolower(character));
+    });
+    return identifierPart(type);
+  }
+
 }  // namespace
 
 struct SerializationContext::Impl {
@@ -66,6 +99,7 @@ struct SerializationContext::Impl {
   std::map<std::uint64_t, int> wireSignals;
   std::set<std::string>        portNames;
   std::set<std::string>        cellNames;
+  std::set<std::string>        netNames;
   int                          nextSignal = 2;
   VertexDescriptor             vertex     = 0;
   std::string                  componentType;
@@ -137,11 +171,43 @@ namespace {
         component->serializeYosys(context);
       }
 
-      for (const auto& [wireId, signal] : impl.wireSignals) {
-        const auto name          = std::format("$wire${}", wireId);
-        module["netnames"][name] = Json{{"hide_name", 1},
-                                        {"bits", Json::array({signal})},
-                                        {"attributes", Json::object()}};
+      // When a cell directly drives a module output, name the instance after that
+      // public signal. This is more useful in generated HDL than a graph vertex.
+      Json                  renamedCells = Json::object();
+      std::set<std::string> renamedCellNames;
+      for (const auto& [cellName, cell] : module["cells"].items()) {
+        std::string readableName = cellName;
+        for (const auto& [portName, port] : module["ports"].items()) {
+          for (const auto& [cellPort, direction] : cell.at("port_directions").items()) {
+            if (direction == "output"
+                && cell.at("connections").at(cellPort) == port.at("bits")) {
+              readableName =
+                  std::format("{}_{}", identifierPart(portName),
+                              readableCellType(cell.at("type").get<std::string>()));
+              break;
+            }
+          }
+          if (readableName != cellName)
+            break;
+        }
+        const auto baseName = readableName;
+        for (std::size_t index = 2; !renamedCellNames.insert(readableName).second;
+             ++index)
+          readableName = std::format("{}_{}", baseName, index);
+        renamedCells[readableName] = cell;
+      }
+      module["cells"] = std::move(renamedCells);
+
+      // A component output that is also a module port should use the shorter port
+      // name. Keeping both public aliases makes write_verilog emit a redundant wire
+      // and assignment.
+      for (const auto& [portName, port] : module["ports"].items()) {
+        for (auto net = module["netnames"].begin(); net != module["netnames"].end();) {
+          if (net.key() != portName && net.value().at("bits") == port.at("bits"))
+            net = module["netnames"].erase(net);
+          else
+            ++net;
+        }
       }
 
       modules[moduleName] = std::move(module);
@@ -252,18 +318,37 @@ void SerializationContext::addCell(const std::string_view suffix,
                                    const std::string_view type, Json parameters,
                                    Json portDirections, Json connections)
 {
-  std::string name = std::format("$silicon${}${}${}", impl.vertex, impl.componentType,
-                                 suffix.empty() ? "" : "$" + std::string(suffix));
+  const bool isConstant =
+      type == "$pos" && connections.contains("A")
+      && std::ranges::all_of(connections.at("A"),
+                             [](const Json& bit) { return bit.is_string(); });
+  const auto baseName =
+      std::format("{}_{}", identifierPart(impl.componentType), impl.vertex);
+  std::string name =
+      suffix.empty() ? baseName : std::format("{}_{}", baseName, identifierPart(suffix));
+  if (isConstant)
+    name = "$" + name;
   if (!impl.cellNames.insert(name).second) {
     for (std::size_t index = 2;; ++index) {
-      auto candidate = std::format("{}${}", name, index);
+      auto candidate = std::format("{}_{}", name, index);
       if (impl.cellNames.insert(candidate).second) {
         name = std::move(candidate);
         break;
       }
     }
   }
-  (*impl.module)["cells"][name] = Json{{"hide_name", 1},
+
+  for (const auto& [port, direction] : portDirections.items()) {
+    if (isConstant || direction != "output" || !connections.contains(port))
+      continue;
+    std::string netName = std::format("{}_{}", baseName, identifierPart(port));
+    for (std::size_t index = 2; !impl.netNames.insert(netName).second; ++index)
+      netName = std::format("{}_{}_{}", baseName, identifierPart(port), index);
+    (*impl.module)["netnames"][netName] = Json{
+        {"hide_name", 0}, {"bits", connections.at(port)}, {"attributes", Json::object()}};
+  }
+
+  (*impl.module)["cells"][name] = Json{{"hide_name", isConstant ? 1 : 0},
                                        {"type", type},
                                        {"parameters", std::move(parameters)},
                                        {"attributes", Json::object()},
@@ -276,7 +361,8 @@ void SerializationContext::addPort(std::string name, const std::string_view dire
 {
   if (direction != "input" && direction != "output" && direction != "inout")
     throw std::invalid_argument("Invalid Yosys port direction");
-  name                          = impl.uniquePortName(std::move(name), direction);
+  name = impl.uniquePortName(std::move(name), direction);
+  impl.netNames.insert(name);
   const Json portBits           = bits(bus);
   (*impl.module)["ports"][name] = Json{{"direction", direction}, {"bits", portBits}};
   (*impl.module)["netnames"][name] =

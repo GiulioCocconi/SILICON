@@ -72,8 +72,8 @@ struct ScriptResult {
  * @brief Mutable module-building interface passed to component serializers.
  *
  * Components use this context to translate their logical behavior into native
- * Yosys cells. Signal numbering, deterministic naming, netnames, and recursive
- * module construction remain owned by the circuit-level serializer.
+ * Yosys cells. Signal numbering, port netnames, and recursive module construction
+ * remain owned by the circuit-level serializer.
  */
 class SerializationContext {
 public:

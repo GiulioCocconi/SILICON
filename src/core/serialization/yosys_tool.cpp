@@ -395,7 +395,10 @@ std::string exportVerilog(const Circuit& circuit, const ToolOptions& options)
   (void)runScript(std::format("read_verilog -lib {}\n"
                               "read_json {}\n"
                               "hierarchy -check -auto-top\n"
-                              "write_verilog -noattr {}\n",
+                              "opt_expr t:$pos\n"
+                              "opt_clean -purge\n"
+                              "rename -unescape\n"
+                              "write_verilog -noattr -norename -decimal {}\n",
                               quotePath(library.blackBoxes), quotePath(jsonPath),
                               quotePath(verilogPath)),
                   options);

@@ -995,6 +995,63 @@ TEST(YosysToolTest, MapsVerilogToSiliconTechnologyCells)
     )",
                         "top"),
             std::multiset<std::string>{"SILICON_DFFE"});
+  EXPECT_EQ(mappedTypes(R"(
+      module top(input [3:0] d, input en, input clk, output reg [3:0] q);
+        always @(posedge clk) if (en) q <= d;
+      endmodule
+    )",
+                        "top"),
+            (std::multiset<std::string>{"$pos", "SILICON_PIPO"}));
+  EXPECT_EQ(mappedTypes(R"(
+      module top(input [3:0] d, input clk, output reg [3:0] q);
+        always @(negedge clk) q <= d;
+      endmodule
+    )",
+                        "top"),
+            (std::multiset<std::string>{"$not", "$pos", "$pos", "SILICON_PIPO"}));
+  EXPECT_EQ(mappedTypes(R"(
+      module top(input [3:0] d, input en, input clk, output reg [3:0] q);
+        always @(posedge clk) if (!en) q <= d;
+      endmodule
+    )",
+                        "top"),
+            (std::multiset<std::string>{"$not", "$pos", "SILICON_PIPO"}));
+  EXPECT_EQ(mappedTypes(R"(
+      module top(input [3:0] d, input clear, input clk, output reg [3:0] q);
+        always @(posedge clk or posedge clear)
+          if (clear) q <= 4'b0;
+          else q <= d;
+      endmodule
+    )",
+                        "top"),
+            (std::multiset<std::string>{"$pos", "SILICON_PIPO"}));
+  EXPECT_EQ(mappedTypes(R"(
+      module top(input [3:0] d, input clear, input clk, output reg [3:0] q);
+        always @(posedge clk or negedge clear)
+          if (!clear) q <= 4'b0;
+          else q <= d;
+      endmodule
+    )",
+                        "top"),
+            (std::multiset<std::string>{"$not", "$pos", "SILICON_PIPO"}));
+  EXPECT_EQ(mappedTypes(R"(
+      module top(input [3:0] d, input en, input clear, input clk, output reg [3:0] q);
+        always @(posedge clk or posedge clear)
+          if (clear) q <= 4'b0;
+          else if (en) q <= d;
+      endmodule
+    )",
+                        "top"),
+            std::multiset<std::string>{"SILICON_PIPO"});
+  EXPECT_EQ(mappedTypes(R"(
+      module top(input [3:0] d, input en, input clear, input clk, output reg [3:0] q);
+        always @(posedge clk or negedge clear)
+          if (!clear) q <= 4'b0;
+          else if (!en) q <= d;
+      endmodule
+    )",
+                        "top"),
+            (std::multiset<std::string>{"$not", "$not", "SILICON_PIPO"}));
   const auto asyncTypes = mappedTypes(R"(
       module top(input d, input clk, input set, input clear, output reg q);
         always @(posedge clk or posedge set or posedge clear)
@@ -1129,6 +1186,9 @@ TEST(YosysToolTest, CustomCellStructuralVerilogRoundTrips)
   const Circuit circuit = circuitWithBoundaryPorts(component);
   const auto    verilog = silicon::yosys::exportVerilog(circuit);
   EXPECT_NE(verilog.find("SILICON_FULL_ADDER"), std::string::npos);
+  EXPECT_NE(verilog.find("_full_adder"), std::string::npos);
+  EXPECT_EQ(verilog.find("_auto_"), std::string::npos);
+  EXPECT_EQ(verilog.find("$silicon"), std::string::npos);
 
   const Circuit restored = silicon::yosys::importVerilog(verilog, "top");
   EXPECT_TRUE(componentTypes(restored).contains("FullAdder"));
@@ -1222,10 +1282,31 @@ TEST(YosysToolTest, ExportsParseableStructuralVerilog)
 
   const auto verilog = silicon::yosys::exportVerilog(circuit);
   EXPECT_NE(verilog.find("module top"), std::string::npos);
+  EXPECT_EQ(verilog.find("_auto_"), std::string::npos);
+  EXPECT_EQ(verilog.find("$silicon"), std::string::npos);
   EXPECT_NO_THROW({
     const Circuit reparsed = silicon::yosys::importVerilog(verilog, "top");
     EXPECT_TRUE(componentTypes(reparsed).contains("AndGate"));
   });
+}
+
+TEST(YosysToolTest, ImportsVectorDffAsRegister)
+{
+  constexpr std::string_view source = R"(
+    module top(input clk, input [3:0] d, output reg [3:0] q);
+      always @(posedge clk) q <= d;
+    endmodule
+  )";
+
+  const Circuit imported = silicon::yosys::importVerilog(source, "top");
+  const auto    reg      = findComponent<Register>(imported);
+  ASSERT_TRUE(reg);
+  EXPECT_EQ(reg->getPropertyValue<int>("size"), 4);
+  EXPECT_EQ(reg->getPropertyValue<std::string>("inputType"),
+            std::optional<std::string>(Register::ParallelType));
+  EXPECT_EQ(reg->getPropertyValue<std::string>("outputType"),
+            std::optional<std::string>(Register::ParallelType));
+
 }
 
 TEST(YosysToolTest, VerilogCircuitVerilogRoundTripPreservesBehavior)
@@ -1237,6 +1318,8 @@ TEST(YosysToolTest, VerilogCircuitVerilogRoundTripPreservesBehavior)
   )";
   const auto                 firstCircuit = silicon::yosys::importVerilog(source, "top");
   const auto roundTrippedVerilog          = silicon::yosys::exportVerilog(firstCircuit);
+  EXPECT_EQ(roundTrippedVerilog.find("_auto_"), std::string::npos);
+  EXPECT_EQ(roundTrippedVerilog.find("$silicon"), std::string::npos);
 
   const auto evaluate = [](Circuit circuit, const std::uint64_t inputValue) {
     auto sharedCircuit = std::make_shared<Circuit>(std::move(circuit));
