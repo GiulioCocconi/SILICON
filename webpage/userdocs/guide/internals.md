@@ -222,8 +222,8 @@ Three layers have deliberately different jobs:
   but does not promise the original high-level component identity.
 
 On export, one Silicon `Circuit` becomes a module. Named input/output components become
-module ports and netnames; shared wires receive module-local numeric signal IDs; and each
-component's `serializeYosys()` writes through a
+module ports and port netnames; shared wires receive module-local numeric signal IDs
+without redundant scalar aliases; and each component's `serializeYosys()` writes through a
 `silicon::yosys::SerializationContext`. Parameter strings use Yosys' MSB-first binary
 encoding, while connection arrays follow SILICON's LSB-first bus order. Simulation-only
 propagation delays are intentionally omitted.
@@ -295,11 +295,13 @@ later optimization pass is allowed to decompose `SILICON_*` cells. Conversely, e
 arbitrary Verilog cannot always be raised back to a particular native component; only
 the documented deterministic mappings make that promise.
 
-Verilog export first loads the black-box interfaces, then uses `read_json` and
-`write_verilog -noattr`. The result is structural Verilog containing parameterized
-`SILICON_*` instances, not inlined behavioural models. Loading `silicon_cells_bb.v` makes
-that output parseable by Yosys; loading `silicon_cells_sim.v` instead supplies standalone
-simulation behaviour.
+Verilog export first loads the black-box interfaces, then uses `read_json`, derives
+descriptive names for internal signals, sanitizes escaped identifiers, and writes
+attribute-free Verilog without renaming those signals to numeric temporaries. Parameters
+use decimal notation where possible. The result is structural Verilog containing
+parameterized `SILICON_*` instances, not inlined behavioural models. Loading
+`silicon_cells_bb.v` makes that output parseable by Yosys; loading
+`silicon_cells_sim.v` instead supplies standalone simulation behaviour.
 
 Resource lookup checks an explicit `ToolOptions::technologyLibraryDirectory` override,
 then compile-time build-tree and configured installation locations, followed by paths
