@@ -176,7 +176,14 @@ std::string delayedNotSubcircuitDocument()
         }
       ]
     }
-  })";
+})";
+}
+
+std::string hdlNotSubcircuitDocument()
+{
+  auto document   = nlohmann::json::parse(delayedNotSubcircuitDocument());
+  document["hdl"] = {{"type", "verilog"}, {"path", "hdl/hdl_not.v"}};
+  return document.dump();
 }
 
 std::string doubleNotSubcircuitDocument()
@@ -789,6 +796,56 @@ TEST_F(SubcircuitTest, UsesPreparedCoreCircuitJsonForGraphicalSubcircuitDocument
   ASSERT_EQ(component->getOutputs().size(), 1);
   EXPECT_EQ(component->getInputs()[0].size(), 8);
   EXPECT_EQ(component->getOutputs()[0].size(), 8);
+}
+
+TEST_F(SubcircuitTest, ElaboratesGraphicalAndHdlBackedSubcircuitsIdentically)
+{
+  silicon::project::DocumentStore::active().upsertDocument(
+      subcircuitDocument(
+          "graphical_and", graphicalAndSubcircuitDocument(),
+          silicon::subcircuits::extractCoreCircuitJson(andSubcircuitDocument())));
+  silicon::project::DocumentStore::active().upsertDocument(
+      subcircuitDocument(
+          "hdl_not", hdlNotSubcircuitDocument(),
+          silicon::subcircuits::extractCoreCircuitJson(delayedNotSubcircuitDocument())));
+
+  auto graphical = std::make_shared<SubcircuitComponent>();
+  auto hdl       = std::make_shared<SubcircuitComponent>();
+  graphical->setPropertyValue("slug", std::string("graphical_and"));
+  hdl->setPropertyValue("slug", std::string("hdl_not"));
+
+  auto graphicalInputA = std::make_shared<Wire>();
+  auto graphicalInputB = std::make_shared<Wire>();
+  auto graphicalOutput = std::make_shared<Wire>();
+  auto hdlInput         = std::make_shared<Wire>();
+  auto hdlOutput        = std::make_shared<Wire>();
+  graphical->setInput(0, Bus{graphicalInputA});
+  graphical->setInput(1, Bus{graphicalInputB});
+  graphical->setOutput(0, Bus{graphicalOutput});
+  hdl->setInput(0, Bus{hdlInput});
+  hdl->setOutput(0, Bus{hdlOutput});
+
+  auto source = std::make_shared<Circuit>(Component_set{graphical, hdl}, false);
+  silicon::elaboration::CircuitElaborator elaborator(ComponentRegistry::instance());
+  auto runtime = elaborator.elaborate(*source);
+
+  std::size_t andCount = 0;
+  std::size_t notCount = 0;
+  for (const auto& [component, _vertex] : runtime->getComponentToVertex()) {
+    EXPECT_NE(component->typeName(), SubcircuitComponent::Type);
+    andCount += component->typeName() == AndGate::Type;
+    notCount += component->typeName() == NotGate::Type;
+  }
+  EXPECT_EQ(andCount, 1);
+  EXPECT_EQ(notCount, 1);
+
+  silicon::simulation::SimulationSession session(source);
+  EXPECT_EQ(session.setBus(Bus{graphicalInputA}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(session.setBus(Bus{graphicalInputB}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(session.setBus(Bus{hdlInput}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(session.runUntilIdle(), Simulator::RunResult::Completed);
+  EXPECT_EQ(graphicalOutput->getCurrentState(), State::HIGH);
+  EXPECT_EQ(hdlOutput->getCurrentState(), State::HIGH);
 }
 
 TEST_F(SubcircuitTest, CircuitUsesPortRoleDeclaredInterface)

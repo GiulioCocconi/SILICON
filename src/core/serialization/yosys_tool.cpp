@@ -27,12 +27,23 @@
 #include <future>
 #include <iterator>
 #include <memory>
+#include <optional>
+#include <ranges>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <system_error>
 #include <vector>
 
 #include <core/circuit.hpp>
+#include <logging/logger.hpp>
+
+namespace {
+
+const Logger yosysLog("yosys");
+
+}  // namespace
 
 #ifdef __EMSCRIPTEN__
 
@@ -42,9 +53,10 @@ ScriptResult runScript(const std::string_view script, const ToolOptions& options
 {
   (void)script;
   (void)options;
+  yosysLog.error("External execution is unavailable in Emscripten builds");
   throw std::runtime_error(
       "Yosys platform-availability phase failed: external execution is unavailable "
-      "when compiled for Emscripten");
+      "when compiled for Emscripten. See the 'yosys' logs for details.");
 }
 
 Circuit importVerilog(const std::string_view source, const std::string_view topModule,
@@ -265,11 +277,171 @@ namespace {
     return true;
   }
 
-  [[nodiscard]] std::string capturedDiagnostics(const ScriptResult& result)
+  [[nodiscard]] std::string_view trim(const std::string_view value)
   {
-    return std::format("\nstdout:\n{}\nstderr:\n{}",
-                       result.standardOutput.empty() ? "<empty>" : result.standardOutput,
-                       result.standardError.empty() ? "<empty>" : result.standardError);
+    const auto first = value.find_first_not_of(" \t\r");
+    if (first == std::string_view::npos)
+      return {};
+    const auto last = value.find_last_not_of(" \t\r");
+    return value.substr(first, last - first + 1);
+  }
+
+  struct PortDeclaration {
+    std::string name;
+    std::string ansi;
+  };
+
+  [[nodiscard]] std::optional<PortDeclaration>
+  parsePortDeclaration(const std::string_view line)
+  {
+    const auto value = trim(line);
+    for (const std::string_view direction : {"input", "output", "inout"}) {
+      const auto prefix = std::format("{} ", direction);
+      if (!value.starts_with(prefix) || !value.ends_with(';'))
+        continue;
+
+      const auto body = trim(value.substr(prefix.size(), value.size() - prefix.size() - 1));
+      const auto separator = body.find_last_of(" \t");
+      const auto name =
+          separator == std::string_view::npos ? body : trim(body.substr(separator + 1));
+      if (!isVerilogIdentifier(name))
+        return std::nullopt;
+      return PortDeclaration{std::string(name),
+                             std::format("{} {}", direction, body)};
+    }
+    return std::nullopt;
+  }
+
+  [[nodiscard]] std::optional<std::string>
+  parseWireDeclarationName(const std::string_view line)
+  {
+    constexpr std::string_view prefix = "wire ";
+    const auto                 value  = trim(line);
+    if (!value.starts_with(prefix) || !value.ends_with(';'))
+      return std::nullopt;
+
+    const auto body = trim(value.substr(prefix.size(), value.size() - prefix.size() - 1));
+    const auto separator = body.find_last_of(" \t");
+    const auto name =
+        separator == std::string_view::npos ? body : trim(body.substr(separator + 1));
+    if (!isVerilogIdentifier(name))
+      return std::nullopt;
+    return std::string(name);
+  }
+
+  [[nodiscard]] std::vector<std::string> splitLines(const std::string_view source)
+  {
+    std::vector<std::string> lines;
+    for (std::size_t begin = 0; begin < source.size();) {
+      const auto end = source.find('\n', begin);
+      if (end == std::string_view::npos) {
+        lines.emplace_back(source.substr(begin));
+        break;
+      }
+      lines.emplace_back(source.substr(begin, end - begin));
+      begin = end + 1;
+    }
+    return lines;
+  }
+
+  /**
+   * Convert the predictable non-ANSI declarations emitted by write_verilog into one
+   * ANSI module header. A module is left untouched unless every listed port has one
+   * unambiguous direction declaration, preventing a partial rewrite of unfamiliar
+   * Yosys output. Only matching port wires are removed; internal nets are preserved.
+   */
+  [[nodiscard]] std::string useAnsiPortDeclarations(const std::string_view source)
+  {
+    auto              lines   = splitLines(source);
+    std::vector<bool> removed(lines.size(), false);
+    for (std::size_t moduleLine = 0; moduleLine < lines.size(); ++moduleLine) {
+      const auto header = trim(lines[moduleLine]);
+      if (!header.starts_with("module ") || !header.ends_with(");"))
+        continue;
+
+      const auto open = header.find('(');
+      if (open == std::string_view::npos)
+        continue;
+      const auto portList = header.substr(open + 1, header.size() - open - 3);
+
+      std::vector<std::string> ports;
+      for (std::size_t begin = 0; begin <= portList.size();) {
+        const auto end  = portList.find(',', begin);
+        const auto port = trim(portList.substr(
+            begin, end == std::string_view::npos ? portList.size() - begin : end - begin));
+        if (!isVerilogIdentifier(port)) {
+          ports.clear();
+          break;
+        }
+        ports.emplace_back(port);
+        if (end == std::string_view::npos)
+          break;
+        begin = end + 1;
+      }
+      if (ports.empty())
+        continue;
+
+      std::size_t endModule = moduleLine + 1;
+      while (endModule < lines.size() && trim(lines[endModule]) != "endmodule")
+        ++endModule;
+      if (endModule == lines.size())
+        continue;
+
+      std::unordered_map<std::string, std::string> declarations;
+      std::unordered_set<std::size_t>              removableLines;
+      for (std::size_t line = moduleLine + 1; line < endModule; ++line) {
+        if (const auto declaration = parsePortDeclaration(lines[line])) {
+          declarations[declaration->name] = declaration->ansi;
+          removableLines.insert(line);
+        }
+      }
+      if (declarations.size() != ports.size())
+        continue;
+      if (std::ranges::any_of(ports, [&declarations](const auto& port) {
+            return !declarations.contains(port);
+          }))
+        continue;
+
+      for (std::size_t line = moduleLine + 1; line < endModule; ++line) {
+        if (const auto wire = parseWireDeclarationName(lines[line]);
+            wire && declarations.contains(*wire))
+          removableLines.insert(line);
+      }
+
+      std::string ansiHeader = lines[moduleLine].substr(
+          0, lines[moduleLine].find('(') + 1);
+      for (std::size_t port = 0; port < ports.size(); ++port) {
+        if (port != 0)
+          ansiHeader += ", ";
+        ansiHeader += declarations.at(ports[port]);
+      }
+      lines[moduleLine] = ansiHeader + ");";
+      for (const auto line : removableLines)
+        removed[line] = true;
+      moduleLine = endModule;
+    }
+
+    std::string result;
+    for (std::size_t line = 0; line < lines.size(); ++line) {
+      if (removed[line])
+        continue;
+      result += lines[line];
+      result += '\n';
+    }
+    return result;
+  }
+
+  void logCapturedOutput(const ScriptResult& result, const bool failed)
+  {
+    if (!result.standardOutput.empty())
+      yosysLog.info(std::format("stdout:\n{}", result.standardOutput));
+    if (!result.standardError.empty()) {
+      const auto message = std::format("stderr:\n{}", result.standardError);
+      if (failed)
+        yosysLog.error(message);
+      else
+        yosysLog.warning(message);
+    }
   }
 
 }  // namespace
@@ -287,15 +459,18 @@ ScriptResult runScript(const std::string_view script, const ToolOptions& options
 	      || !std::filesystem::is_regular_file(status)) {
       throw std::runtime_error(std::format(
           "Yosys executable-validation phase failed: configured executable '{}' is "
-          "missing or invalid",
+          "missing or invalid. See the 'yosys' logs for details.",
           options.executable->string()));
     }
     executable = *options.executable;
   } else {
     executable = process::search_path("yosys").string();
-    if (executable.empty())
+    if (executable.empty()) {
+      yosysLog.error("Executable 'yosys' was not found on PATH");
       throw std::runtime_error(
-          "Yosys executable-discovery phase failed: 'yosys' was not found on PATH");
+          "Yosys executable-discovery phase failed: 'yosys' was not found on PATH. "
+          "See the 'yosys' logs for details.");
+    }
   }
 
   boost::asio::io_context         ioContext;
@@ -307,10 +482,10 @@ ScriptResult runScript(const std::string_view script, const ToolOptions& options
         executable.string(), process::args({"-Q", "-p", std::string(script)}),
         process::std_out > standardOutput, process::std_err > standardError, ioContext);
   } catch (const std::exception& error) {
+    yosysLog.error(std::format("Process creation failed for '{}': {}",
+                               executable.string(), error.what()));
     throw std::runtime_error(
-        std::format("Yosys process-creation phase failed for '{}': {}\nstdout:\n<empty>\n"
-                    "stderr:\n<empty>",
-                    executable.string(), error.what()));
+        "Yosys process-creation phase failed. See the 'yosys' logs for details.");
   }
 
   try {
@@ -323,27 +498,29 @@ ScriptResult runScript(const std::string_view script, const ToolOptions& options
       child->wait();
     } catch (const std::exception&) {
     }
-    throw std::runtime_error(std::format(
-        "Yosys output-capture phase failed: {}\nstdout:\n<unavailable>\nstderr:\n"
-        "<unavailable>",
-        error.what()));
+    yosysLog.error(std::format("Output capture failed: {}", error.what()));
+    throw std::runtime_error(
+        "Yosys output-capture phase failed. See the 'yosys' logs for details.");
   }
 
   ScriptResult result;
   try {
     result = {standardOutput.get(), standardError.get()};
   } catch (const std::exception& error) {
-    throw std::runtime_error(std::format(
-        "Yosys output-capture phase failed after exit status {}: {}\nstdout:\n"
-        "<unavailable>\nstderr:\n<unavailable>",
-        child->exit_code(), error.what()));
+    yosysLog.error(std::format("Output capture failed after exit status {}: {}",
+                               child->exit_code(), error.what()));
+    throw std::runtime_error(
+        "Yosys output-capture phase failed. See the 'yosys' logs for details.");
   }
 
   const int exitStatus = child->exit_code();
+  logCapturedOutput(result, exitStatus != 0);
   if (exitStatus != 0) {
-    throw std::runtime_error(
-        std::format("Yosys script-execution phase failed with exit status {}{}",
-                    exitStatus, capturedDiagnostics(result)));
+    yosysLog.error(std::format("Command failed with exit status {}", exitStatus));
+    throw std::runtime_error(std::format(
+        "Yosys script-execution phase failed with exit status {}. See the 'yosys' "
+        "logs for command output.",
+        exitStatus));
   }
   return result;
 }
@@ -398,11 +575,13 @@ std::string exportVerilog(const Circuit& circuit, const ToolOptions& options)
                               "opt_expr t:$pos\n"
                               "opt_clean -purge\n"
                               "rename -unescape\n"
+			      "opt\n"
                               "write_verilog -noattr -norename -decimal {}\n",
                               quotePath(library.blackBoxes), quotePath(jsonPath),
                               quotePath(verilogPath)),
                   options);
-  return readFile(verilogPath, "Verilog-export output-reading phase");
+  return useAnsiPortDeclarations(
+      readFile(verilogPath, "Verilog-export output-reading phase"));
 }
 
 }  // namespace silicon::yosys

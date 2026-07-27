@@ -25,12 +25,14 @@
 #include <unordered_set>
 #include <utility>
 
+#include <nlohmann/json.hpp>
+
 namespace silicon::project {
 namespace {
 
   std::optional<DocumentKind> classifyFlatJsonPath(const std::string_view path,
                                                    const std::string_view prefix,
-                                                   const DocumentKind kind)
+                                                   const DocumentKind     kind)
   {
     constexpr std::string_view suffix = ".json";
     if (!path.starts_with(prefix) || !path.ends_with(suffix)
@@ -45,7 +47,8 @@ namespace {
   void requireValidPath(const std::string_view path)
   {
     if (!classifyDocumentPath(path))
-      throw std::invalid_argument("Document path must reference a valid project JSON entry");
+      throw std::invalid_argument(
+          "Document path must reference a valid project JSON entry");
   }
 
 }  // namespace
@@ -63,38 +66,109 @@ std::optional<std::string> subcircuitSlugForPath(const std::string_view path)
     return std::nullopt;
   constexpr std::string_view prefix = "subcircuits/";
   constexpr std::string_view suffix = ".json";
-  return std::string(path.substr(prefix.size(), path.size() - prefix.size()
-                                                   - suffix.size()));
+  return std::string(
+      path.substr(prefix.size(), path.size() - prefix.size() - suffix.size()));
 }
 
 std::string subcircuitPathForSlug(const std::string_view slug)
-{ return std::format("subcircuits/{}.json", slug); }
+{
+  return std::format("subcircuits/{}.json", slug);
+}
+
+bool isValidProjectAssetPath(const std::string_view path)
+{
+  if (path.empty() || path.front() == '/' || path.back() == '/' || path.contains('\\')
+      || path == "mimetype" || path == "metadata.json" || path == "project.json"
+      || classifyDocumentPath(path)) {
+    return false;
+  }
+  if (std::ranges::any_of(path, [](const unsigned char character) {
+        return character < 0x20 || character == 0x7f;
+      })) {
+    return false;
+  }
+
+  std::size_t segmentStart = 0;
+  while (segmentStart < path.size()) {
+    const auto separator = path.find('/', segmentStart);
+    const auto segment   = path.substr(segmentStart, separator == std::string_view::npos
+                                                         ? path.size() - segmentStart
+                                                         : separator - segmentStart);
+    if (segment.empty() || segment == "." || segment == "..")
+      return false;
+    if (separator == std::string_view::npos)
+      break;
+    segmentStart = separator + 1;
+  }
+  return true;
+}
+
+std::optional<HdlDescriptor> parseHdlDescriptor(const std::string_view sceneJson)
+{
+  nlohmann::json json;
+  try {
+    json = nlohmann::json::parse(sceneJson);
+  } catch (const nlohmann::json::parse_error&) {
+    throw std::runtime_error("Subcircuit document is not valid JSON");
+  }
+
+  const auto hdl = json.find("hdl");
+  if (hdl == json.end())
+    return std::nullopt;
+  if (!hdl->is_object())
+    throw std::runtime_error("Subcircuit hdl must be an object");
+  if (hdl->size() != 2 || !hdl->contains("type") || !hdl->contains("path")
+      || !(*hdl)["type"].is_string() || !(*hdl)["path"].is_string()) {
+    throw std::runtime_error(
+        "Subcircuit hdl must contain only string fields 'type' and 'path'");
+  }
+
+  HdlDescriptor result{.type = (*hdl)["type"].get<std::string>(),
+                       .path = (*hdl)["path"].get<std::string>()};
+  if (result.type != "verilog")
+    throw std::runtime_error(
+        std::format("Unsupported subcircuit HDL type '{}'", result.type));
+  if (!isValidProjectAssetPath(result.path))
+    throw std::runtime_error("Subcircuit hdl.path must be a normalized project-relative "
+                             "asset path");
+  return result;
+}
 
 Document::Document(std::string path, std::string sceneJson,
                    std::optional<std::string> coreCircuitJson)
-    : path_(std::move(path)),
-      sceneJson_(std::move(sceneJson)),
-      coreCircuitJson_(std::move(coreCircuitJson))
+  : path_(std::move(path)),
+    sceneJson_(std::move(sceneJson)),
+    coreCircuitJson_(std::move(coreCircuitJson))
 {
   requireValidPath(path_);
 }
 
 const std::string& Document::path() const
-{ return path_; }
+{
+  return path_;
+}
 
 const std::string& Document::sceneJson() const
-{ return sceneJson_; }
+{
+  return sceneJson_;
+}
 
 const std::optional<std::string>& Document::coreCircuitJson() const
-{ return coreCircuitJson_; }
+{
+  return coreCircuitJson_;
+}
 
 DocumentKind Document::kind() const
-{ return *classifyDocumentPath(path_); }
+{
+  return *classifyDocumentPath(path_);
+}
 
 std::optional<std::string> Document::subcircuitSlug() const
-{ return subcircuitSlugForPath(path_); }
+{
+  return subcircuitSlugForPath(path_);
+}
 
-void Document::setSceneJson(std::string sceneJson,
+void Document::setSceneJson(std::string                sceneJson,
                             std::optional<std::string> coreCircuitJson)
 {
   sceneJson_       = std::move(sceneJson);
@@ -144,7 +218,7 @@ void DocumentStore::insertDocument(Document document, const std::size_t index)
 
 void DocumentStore::removeDocument(const std::string_view documentPath)
 {
-  const auto path = std::string(documentPath);
+  const auto path    = std::string(documentPath);
   const auto oldSize = documents_.size();
   std::erase_if(documents_, [&](const Document& document) {
     return document.path() == documentPath;
@@ -166,10 +240,14 @@ const Document* DocumentStore::find(const std::string_view documentPath) const
 }
 
 bool DocumentStore::contains(const std::string_view documentPath) const
-{ return find(documentPath) != nullptr; }
+{
+  return find(documentPath) != nullptr;
+}
 
 std::vector<Document> DocumentStore::documents() const
-{ return documents_; }
+{
+  return documents_;
+}
 
 std::vector<Document> DocumentStore::documents(const DocumentKind kind) const
 {
@@ -179,8 +257,8 @@ std::vector<Document> DocumentStore::documents(const DocumentKind kind) const
          | std::ranges::to<std::vector>();
 }
 
-std::optional<std::size_t> DocumentStore::indexOf(
-    const std::string_view documentPath) const
+std::optional<std::size_t>
+DocumentStore::indexOf(const std::string_view documentPath) const
 {
   const auto it = std::ranges::find(documents_, documentPath, &Document::path);
   if (it == documents_.end())
@@ -189,9 +267,13 @@ std::optional<std::size_t> DocumentStore::indexOf(
 }
 
 std::uint64_t DocumentStore::addListener(Listener listener)
-{ return listeners_.add(std::move(listener)); }
+{
+  return listeners_.add(std::move(listener));
+}
 
 void DocumentStore::removeListener(const std::uint64_t id)
-{ listeners_.remove(id); }
+{
+  listeners_.remove(id);
+}
 
 }  // namespace silicon::project

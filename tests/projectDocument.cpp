@@ -25,8 +25,7 @@ TEST(ProjectDocumentTest, ClassifiesCanonicalFlatPaths)
   EXPECT_FALSE(silicon::project::classifyDocumentPath(""));
   EXPECT_FALSE(silicon::project::classifyDocumentPath("circuits/nested/main.json"));
   EXPECT_FALSE(silicon::project::classifyDocumentPath("circuits/main.txt"));
-  EXPECT_EQ(silicon::project::subcircuitSlugForPath("subcircuits/adder.json"),
-            "adder");
+  EXPECT_EQ(silicon::project::subcircuitSlugForPath("subcircuits/adder.json"), "adder");
   EXPECT_FALSE(silicon::project::subcircuitSlugForPath("circuits/adder.json"));
 }
 
@@ -40,6 +39,34 @@ TEST(ProjectDocumentTest, SceneReplacementClearsOrReplacesPreparedCoreJson)
   document.setSceneJson("newer", "new prepared");
   ASSERT_TRUE(document.coreCircuitJson());
   EXPECT_EQ(*document.coreCircuitJson(), "new prepared");
+}
+
+TEST(ProjectDocumentTest, ParsesOptionalVerilogHdlDescriptor)
+{
+  EXPECT_FALSE(silicon::project::parseHdlDescriptor(R"({"circuit":{}})"));
+  EXPECT_EQ(silicon::project::parseHdlDescriptor(
+                R"({"hdl":{"type":"verilog","path":"hdl/adder.v"}})"),
+            (silicon::project::HdlDescriptor{.type = "verilog", .path = "hdl/adder.v"}));
+}
+
+TEST(ProjectDocumentTest, RejectsInvalidHdlDescriptorsAndAssetPaths)
+{
+  EXPECT_TRUE(silicon::project::isValidProjectAssetPath("hdl/adder.v"));
+  EXPECT_FALSE(silicon::project::isValidProjectAssetPath("../adder.v"));
+  EXPECT_FALSE(silicon::project::isValidProjectAssetPath("/hdl/adder.v"));
+  EXPECT_FALSE(silicon::project::isValidProjectAssetPath("circuits/adder.json"));
+  EXPECT_FALSE(silicon::project::isValidProjectAssetPath(
+      std::string_view("hdl/a\0b.v", 9)));
+
+  EXPECT_THROW((void)silicon::project::parseHdlDescriptor(
+                   R"({"hdl":{"type":"vhdl","path":"hdl/adder.vhd"}})"),
+               std::runtime_error);
+  EXPECT_THROW((void)silicon::project::parseHdlDescriptor(
+                   R"({"hdl":{"type":"verilog","path":"../adder.v"}})"),
+               std::runtime_error);
+  EXPECT_THROW((void)silicon::project::parseHdlDescriptor(
+                   R"({"hdl":{"type":"verilog","path":"hdl/adder.v","module":"adder"}})"),
+               std::runtime_error);
 }
 
 TEST(ProjectDocumentStoreTest, PreservesOrderAcrossMixedKindsAndUpserts)
@@ -67,26 +94,25 @@ TEST(ProjectDocumentStoreTest, PreservesOrderAcrossMixedKindsAndUpserts)
 TEST(ProjectDocumentStoreTest, RejectsDuplicatePaths)
 {
   DocumentStore store;
-  EXPECT_THROW(store.setDocuments({{"circuits/main.json", "one"},
-                                   {"circuits/main.json", "two"}}),
-               std::invalid_argument);
+  EXPECT_THROW(
+      store.setDocuments({{"circuits/main.json", "one"}, {"circuits/main.json", "two"}}),
+      std::invalid_argument);
 }
 
 TEST(ProjectDocumentStoreTest, NotificationsUseSnapshotAndCanonicalPaths)
 {
-  DocumentStore store;
+  DocumentStore            store;
   std::vector<std::string> notifications;
-  std::uint64_t selfRemovingId = 0;
-  std::uint64_t addedId        = 0;
+  std::uint64_t            selfRemovingId = 0;
+  std::uint64_t            addedId        = 0;
 
   selfRemovingId = store.addListener([&](const std::string_view path) {
     notifications.emplace_back(path);
     store.removeListener(selfRemovingId);
     if (addedId == 0) {
-      addedId = store.addListener(
-          [&](const std::string_view nextPath) {
-            notifications.emplace_back("late:" + std::string(nextPath));
-          });
+      addedId = store.addListener([&](const std::string_view nextPath) {
+        notifications.emplace_back("late:" + std::string(nextPath));
+      });
     }
   });
 
@@ -94,7 +120,6 @@ TEST(ProjectDocumentStoreTest, NotificationsUseSnapshotAndCanonicalPaths)
   EXPECT_EQ(notifications, (std::vector<std::string>{"circuits/main.json"}));
 
   store.clear();
-  EXPECT_EQ(notifications,
-            (std::vector<std::string>{"circuits/main.json", "late:"}));
+  EXPECT_EQ(notifications, (std::vector<std::string>{"circuits/main.json", "late:"}));
   store.removeListener(addedId);
 }

@@ -92,8 +92,10 @@ example.sil
 ├── circuits/
 │   ├── main.json
 │   └── controller.json
-└── subcircuits/
-    └── adder.json
+├── subcircuits/
+│   └── adder.json
+└── hdl/
+    └── adder.v
 ```
 
 `metadata.json` contains the archive `formatVersion`, the Silicon version that wrote the
@@ -137,17 +139,46 @@ component. Subcircuit documents may also carry graphical boundary/shape metadata
 separation lets simulation and native circuit deserialization remain independent of Qt
 scene data.
 
-A `Document` can additionally hold prepared core-circuit JSON for a graphical
-subcircuit. That payload is a runtime view used by definition loading and elaboration;
-it is rebuilt by the UI from the scene JSON and is never written as another archive
-entry. Replacing a scene clears any older prepared payload unless a replacement is
-supplied at the same time, preventing stale logical data from surviving an edit.
+An HDL-backed subcircuit additionally carries exactly one optional descriptor:
+
+```json
+{
+  "hdl": {
+    "type": "verilog",
+    "path": "hdl/adder.v"
+  }
+}
+```
+
+The type is currently restricted to `verilog`; SystemVerilog mode is not enabled. The
+path is normalized and relative to the archive root, and the referenced source is stored
+as a `ProjectAsset` rather than embedded in the scene. Every descriptor must reference an
+existing asset, and one asset cannot be shared by multiple subcircuits. The HDL source's
+top module name is the subcircuit slug derived from its document path.
+
+Converting a graphical subcircuit to HDL writes its generated source under `hdl/`, clears
+the graphical implementation, and cannot currently be reversed. Editable code mode and
+compiled mode are still distinct: editing hides the circuit and disables simulation;
+leaving it runs Yosys, replaces the scene's cached core topology, makes the source
+read-only, and re-enables simulation. A compile failure leaves code mode active. Saving
+or switching documents also compiles pending HDL first, so invalid source blocks the
+operation instead of committing a stale core circuit.
+
+A `Document` can additionally hold prepared core-circuit JSON for a subcircuit. For a
+graphical document the UI derives it from the scene; for an HDL-backed document Yosys
+lowers the source into the same core `Circuit` representation before it is stored. That
+payload is the implementation used by definition loading and elaboration and is never
+written as another archive entry. Replacing a scene clears any older prepared payload
+unless a replacement is supplied at the same time, preventing stale logical data from
+surviving an edit.
 
 Subcircuit placeholders resolve their slug to a canonical path and query the active
 project `DocumentStore`. Definition loading returns a core `SubcircuitDefinition`
 containing the implementation circuit and its interface. Subcircuit interfaces use
 named `CircuitPort` values, keeping each port name attached to its bus for elaboration
 and hierarchical Yosys export rather than maintaining parallel name arrays.
+Elaboration never reads the HDL descriptor or invokes Yosys, so graphical and HDL-backed
+subcircuits are indistinguishable once their core implementations have been prepared.
 
 Compatibility is deliberately strict. The archive reader currently accepts only the
 current `metadata.json.formatVersion`, and native core circuit JSON must report the
@@ -222,11 +253,14 @@ Three layers have deliberately different jobs:
   but does not promise the original high-level component identity.
 
 On export, one Silicon `Circuit` becomes a module. Named input/output components become
-module ports and port netnames; shared wires receive module-local numeric signal IDs
-without redundant scalar aliases; and each component's `serializeYosys()` writes through a
+module ports and port netnames; shared wires receive module-local numeric signal IDs;
+and each component's `serializeYosys()` writes through a
 `silicon::yosys::SerializationContext`. Parameter strings use Yosys' MSB-first binary
 encoding, while connection arrays follow SILICON's LSB-first bus order. Simulation-only
-propagation delays are intentionally omitted.
+propagation delays are intentionally omitted. The final source uses ANSI-style module
+headers, removes Yosys' redundant `wire` redeclarations for ports, and retains genuine
+internal or shared nets. Two-input NAND and NOR gates use fused cells so expressions such
+as `assign q = ~(set | nq);` do not expose a temporary OR-to-inverter wire.
 
 ### Technology-cell ABI
 
@@ -298,10 +332,16 @@ the documented deterministic mappings make that promise.
 Verilog export first loads the black-box interfaces, then uses `read_json`, derives
 descriptive names for internal signals, sanitizes escaped identifiers, and writes
 attribute-free Verilog without renaming those signals to numeric temporaries. Parameters
-use decimal notation where possible. The result is structural Verilog containing
+use decimal notation where possible. A guarded post-processing step folds complete port
+declarations into ANSI module headers; it leaves a module untouched if the emitted
+declarations do not match the header exactly. The result is structural Verilog containing
 parameterized `SILICON_*` instances, not inlined behavioural models. Loading
 `silicon_cells_bb.v` makes that output parseable by Yosys; loading
 `silicon_cells_sim.v` instead supplies standalone simulation behaviour.
+
+Every external invocation sends captured standard output and standard error to the
+`yosys` logger. User-facing failures identify the failed phase and direct the user to
+those logs, keeping command transcripts available without duplicating them in dialogs.
 
 Resource lookup checks an explicit `ToolOptions::technologyLibraryDirectory` override,
 then compile-time build-tree and configured installation locations, followed by paths

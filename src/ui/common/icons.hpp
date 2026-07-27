@@ -74,6 +74,7 @@ private:
         {"circle-power", "circle-power"},
         {"circuit-board", "circuit-board"},
         {"clock", "clock"},
+        {"code", "code"},
         {"container", "container"},
         {"cpu", "cpu"},
         {"file-cog", "file-cog"},

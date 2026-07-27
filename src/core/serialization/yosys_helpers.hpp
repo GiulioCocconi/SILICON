@@ -83,6 +83,24 @@ inline void emitBinary(SerializationContext& context, const std::string_view suf
                   Json{{"A", lhs}, {"B", rhs}, {"Y", output}});
 }
 
+inline void emitFineBinary(SerializationContext& context,
+                           const std::string_view suffix,
+                           const std::string_view type, const Json& lhs,
+                           const Json& rhs, const Json& output)
+{
+  if (lhs.size() != rhs.size() || lhs.size() != output.size())
+    throw std::runtime_error("Cannot export fine binary cell with mismatched widths");
+
+  for (std::size_t bit = 0; bit < output.size(); ++bit) {
+    context.addCell(
+        std::format("{}_{}", suffix, bit), type, Json::object(),
+        directions({{"A", "input"}, {"B", "input"}, {"Y", "output"}}),
+        Json{{"A", Json::array({lhs.at(bit)})},
+             {"B", Json::array({rhs.at(bit)})},
+             {"Y", Json::array({output.at(bit)})}});
+  }
+}
+
 /**
  * Yosys binary logic cells have two inputs. Silicon gates may have any number, so
  * fold their inputs through temporary vectors and optionally invert the final value.
@@ -103,6 +121,18 @@ inline void emitGateFold(SerializationContext& context, const Component& compone
           std::format("Cannot export '{}': input {} width does not match output width",
                       component.typeName(), index));
     }
+  }
+
+  // Fine NAND/NOR cells let write_verilog emit a single expression such as
+  // `assign y = ~(a | b)` instead of exposing the otherwise meaningless net
+  // between a coarse binary operation and a separate inverter.
+  if (invert && inputs.size() == 2) {
+    const auto fineType =
+        operation == "$and" ? std::string_view{"$_NAND_"} : std::string_view{"$_NOR_"};
+    emitFineBinary(context, operation == "$and" ? "nand" : "nor", fineType,
+                   context.bits(inputs[0]), context.bits(inputs[1]),
+                   context.bits(output));
+    return;
   }
 
   Json accumulator = context.bits(inputs.front());

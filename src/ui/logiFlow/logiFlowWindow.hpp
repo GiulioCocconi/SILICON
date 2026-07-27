@@ -25,8 +25,8 @@
 #include <vector>
 
 #include <QMainWindow>
-#include <QString>
 #include <QSpinBox>
+#include <QString>
 #include <QVector>
 
 class AboutDialog;
@@ -40,10 +40,13 @@ class QByteArray;
 class QDialog;
 class QDockWidget;
 class QEvent;
+class QCloseEvent;
 class QMenu;
 class QObject;
 class QPoint;
+class QPlainTextEdit;
 class QResizeEvent;
+class QStackedWidget;
 class QToolBar;
 class QTreeWidget;
 class QTreeWidgetItem;
@@ -52,8 +55,8 @@ class LogSideView;
 struct ShortcutSetting;
 class WaveformViewer;
 
-#include <core/serialization/projectFile.hpp>
 #include <core/projectDependencyGraph.hpp>
+#include <core/serialization/projectFile.hpp>
 
 #ifdef __EMSCRIPTEN__
   #include <emscripten/html5.h>
@@ -84,7 +87,7 @@ public:
   ~LogiFlowWindow() override;
 
   /** @brief Returns the undo stack used by diagram and project commands. */
-  [[nodiscard]] QUndoStack*  getUndoStack() const { return this->undoStack; }
+  [[nodiscard]] QUndoStack* getUndoStack() const { return this->undoStack; }
 
   /** @brief Returns the dock widget view that displays application log output. */
   [[nodiscard]] LogSideView* getLogSideView() const { return this->logSideView; }
@@ -95,16 +98,16 @@ public:
    * Falls back to the project's configured main circuit path when no explicit
    * active circuit has been recorded yet.
    */
-  [[nodiscard]] std::string  activeProjectCircuitPath() const;
-  [[nodiscard]] std::string  activeProjectSubcircuitSlug() const;
-  bool activateProjectDocument(const std::string& documentPath);
+  [[nodiscard]] std::string activeProjectCircuitPath() const;
+  [[nodiscard]] std::string activeProjectSubcircuitSlug() const;
+  bool                      activateProjectDocument(const std::string& documentPath);
 
   /**
    * @brief Switches the editor to a circuit in the active project.
    * @param circuitPath Project-relative path of the circuit JSON entry
    * @return True when the circuit exists and is active after the call
    */
-  bool                       activateProjectCircuit(const std::string& circuitPath);
+  bool activateProjectCircuit(const std::string& circuitPath);
 
 protected:
 #ifndef QT_NO_CONTEXTMENU
@@ -128,6 +131,7 @@ protected:
    * @param event Qt resize event
    */
   void resizeEvent(QResizeEvent* event) override;
+  void closeEvent(QCloseEvent* event) override;
 
 private slots:
   /** @brief Resets the editor to a new unsaved project. */
@@ -198,6 +202,14 @@ private slots:
   /** @brief Opens the component catalog overlay above the diagram view. */
   void showComponentCatalog();
   void editActiveSubcircuitShape();
+  /**
+   * @brief Enters editable HDL mode or compiles the active HDL-backed subcircuit.
+   *
+   * Converting a graphical subcircuit to HDL is irreversible. Once it is HDL-backed,
+   * enabling this action makes its source editable and disables simulation; disabling
+   * it asks Yosys to rebuild the cached core circuit before simulation is re-enabled.
+   */
+  void toggleHdlCodeMode(bool enabled);
 
   /** @brief Cancels any active scene interaction and returns to normal editing. */
   void cancelCurrentInteraction();
@@ -251,8 +263,27 @@ private:
   void applyStoredSettings();
 
   /** @brief Repositions and resizes the component catalog overlay. */
-  void updateComponentCatalogGeometry();
-  void updateSubcircuitShapeAction();
+  void                                          updateComponentCatalogGeometry();
+  void                                          updateSubcircuitShapeAction();
+  /** @brief Synchronizes toolbar and simulation actions with the active HDL state. */
+  void                                          updateHdlActions();
+  /** @brief Loads the active subcircuit's project asset into the HDL editor. */
+  void                                          showActiveHdlDocument();
+  /**
+   * @brief Compiles edited Verilog, replaces the prepared core circuit, and makes the
+   * source read-only. The editor remains writable when compilation fails.
+   */
+  void                                          compileActiveHdl();
+  /**
+   * @brief Irreversibly replaces graphical implementation data with an HDL descriptor
+   * and a generated `hdl/<slug>.v` project asset.
+   */
+  void                                          convertActiveSubcircuitToHdl();
+  /** @brief Returns whether the active subcircuit scene contains an HDL descriptor. */
+  [[nodiscard]] bool                            activeDocumentHasHdl() const;
+  [[nodiscard]] silicon::project::ProjectAsset* projectAsset(std::string_view path);
+  [[nodiscard]] const silicon::project::ProjectAsset*
+  projectAsset(std::string_view path) const;
 
   /**
    * @brief Updates the current project filename and window title.
@@ -315,7 +346,7 @@ private:
    * @param switchToPath Circuit path to activate after insertion, or empty to keep
    *                     the current one
    */
-  void insertDocument(silicon::project::Document document,
+  void insertDocument(silicon::project::Document    document,
                       std::optional<std::ptrdiff_t> insertAt, bool activate);
 
   /**
@@ -323,8 +354,8 @@ private:
    * @param requestedName Human-readable circuit name entered by the user
    * @return A non-conflicting path under the project circuits directory
    */
-  [[nodiscard]] std::string uniqueDocumentPath(
-      silicon::project::DocumentKind kind, const QString& requestedName) const;
+  [[nodiscard]] std::string uniqueDocumentPath(silicon::project::DocumentKind kind,
+                                               const QString& requestedName) const;
 
   /**
    * @brief Creates an empty serialized scene for a new circuit.
@@ -333,8 +364,8 @@ private:
    */
   [[nodiscard]] std::string emptyCircuitSceneJson(const std::string& name) const;
   [[nodiscard]] std::string emptySubcircuitSceneJson(const std::string& name) const;
-  void createDocument(silicon::project::DocumentKind kind);
-  void deleteSelectedDocument();
+  void                      createDocument(silicon::project::DocumentKind kind);
+  void                      deleteSelectedDocument();
   [[nodiscard]] QTreeWidgetItem*
   projectDocumentSectionItem(silicon::project::DocumentKind kind) const;
 
@@ -364,14 +395,14 @@ private:
    * @brief Handles a browser Escape key press for overlays and active interactions.
    * @return True when Escape was consumed
    */
-  bool           handleWasmEscapeKey();
+  bool handleWasmEscapeKey();
 #endif
 
   /**
    * @brief Serializes the current selection and stores it on the system clipboard.
    * @return True when a non-empty selection was copied successfully
    */
-  bool                     copySelectionToClipboard();
+  bool copySelectionToClipboard();
 
   /** @brief Builds the editable shortcut table shown in the settings dialog. */
   QVector<ShortcutSetting> shortcutSettings() const;
@@ -392,13 +423,13 @@ private:
   QTreeWidget* projectTree = nullptr;
 
   /** @brief Floating window that hosts the waveform viewer. */
-  QDialog*            waveformWindow = nullptr;
+  QDialog* waveformWindow = nullptr;
 
   /** @brief Widget used to inspect simulation waveforms. */
-  WaveformViewer*     waveformViewer = nullptr;
+  WaveformViewer* waveformViewer = nullptr;
 
   /** @brief Widget that displays captured application log lines. */
-  LogSideView*        logSideView = nullptr;
+  LogSideView* logSideView = nullptr;
 
   /** @brief Adapter that forwards Boost.Log output into the Qt log side view. */
   GraphicalLogStream* graphicalLogStream = nullptr;
@@ -407,7 +438,11 @@ private:
   DiagramScene* diagramScene = nullptr;
 
   /** @brief Graphics view used to render and navigate the diagram scene. */
-  DiagramView*  diagramView = nullptr;
+  DiagramView*    diagramView = nullptr;
+  /** @brief Selects between the graphical circuit view and the HDL source editor. */
+  QStackedWidget* editorStack = nullptr;
+  /** @brief Line-numbered source editor; writable only while HDL code mode is active. */
+  QPlainTextEdit* hdlEditor   = nullptr;
 
   /** @brief Floating searchable component catalog, shown over the diagram viewport. */
   ComponentCatalogOverlay* componentCatalogOverlay = nullptr;
@@ -477,16 +512,17 @@ private:
 
   /** @brief Opens the component catalog overlay. */
   QAction* openComponentCatalogAct = nullptr;
-  QAction* editSubcircuitShapeAct = nullptr;
+  QAction* editSubcircuitShapeAct  = nullptr;
+  QAction* toggleHdlCodeModeAct    = nullptr;
 
   /** @brief Activates component placing mode. */
   QAction* setComponentPlacingModeAct = nullptr;
 
   /** @brief Undo action created from the shared undo stack. */
-  QAction*    undoAct = nullptr;
+  QAction* undoAct = nullptr;
 
   /** @brief Redo action created from the shared undo stack. */
-  QAction*    redoAct = nullptr;
+  QAction* redoAct = nullptr;
 
   /** @brief Undo stack shared by diagram and project operations. */
   QUndoStack* undoStack = nullptr;
@@ -498,11 +534,14 @@ private:
   std::optional<silicon::project::ProjectMetadata> currentProjectMetadata;
 
   /** @brief Optional persisted project information for the current project. */
-  std::optional<silicon::project::ProjectInfo>     currentProjectInfo;
+  std::optional<silicon::project::ProjectInfo> currentProjectInfo;
 
   /** @brief Project-relative path of the circuit loaded in the diagram scene. */
-  std::string                                      activeDocumentPath;
-  silicon::project::ProjectDependencyGraph          dependencyGraph;
+  std::string                                 activeDocumentPath;
+  std::vector<silicon::project::ProjectAsset> projectAssets;
+  /** @brief True only while an HDL-backed subcircuit source is editable. */
+  bool                                        hdlCodeMode = false;
+  silicon::project::ProjectDependencyGraph    dependencyGraph;
 
   /** @brief Lazily shown application about dialog. */
   AboutDialog* aboutDialog = nullptr;
@@ -529,7 +568,7 @@ public:
    * @param mixed True when selected items do not share a single value
    * @param placeholder Placeholder text to show while mixed
    */
-  void               setMixed(bool mixed, const QString& placeholder = QString());
+  void setMixed(bool mixed, const QString& placeholder = QString());
 
   /** @brief Returns whether the spin box is currently in mixed-value mode. */
   [[nodiscard]] bool isMixed() const;
