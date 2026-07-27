@@ -18,6 +18,7 @@
 
 #pragma once
 
+#include <initializer_list>
 #include <memory>
 #include <optional>
 #include <string>
@@ -48,12 +49,12 @@ class QPlainTextEdit;
 class QResizeEvent;
 class QStackedWidget;
 class QToolBar;
-class QTreeWidget;
 class QTreeWidgetItem;
 class QUndoStack;
 class LogSideView;
 struct ShortcutSetting;
 class WaveformViewer;
+class ProjectTree;
 
 #include <core/projectDependencyGraph.hpp>
 #include <core/serialization/projectFile.hpp>
@@ -263,22 +264,22 @@ private:
   void applyStoredSettings();
 
   /** @brief Repositions and resizes the component catalog overlay. */
-  void                                          updateComponentCatalogGeometry();
-  void                                          updateSubcircuitShapeAction();
+  void updateComponentCatalogGeometry();
+  void updateSubcircuitShapeAction();
   /** @brief Synchronizes toolbar and simulation actions with the active HDL state. */
-  void                                          updateHdlActions();
+  void updateHdlActions();
   /** @brief Loads the active subcircuit's project asset into the HDL editor. */
-  void                                          showActiveHdlDocument();
+  void showActiveHdlDocument();
   /**
    * @brief Compiles edited Verilog, replaces the prepared core circuit, and makes the
    * source read-only. The editor remains writable when compilation fails.
    */
-  void                                          compileActiveHdl();
+  void compileActiveHdl();
   /**
    * @brief Irreversibly replaces graphical implementation data with an HDL descriptor
    * and a generated `hdl/<slug>.v` project asset.
    */
-  void                                          convertActiveSubcircuitToHdl();
+  void convertActiveSubcircuitToHdl();
   /** @brief Returns whether the active subcircuit scene contains an HDL descriptor. */
   [[nodiscard]] bool                            activeDocumentHasHdl() const;
   [[nodiscard]] silicon::project::ProjectAsset* projectAsset(std::string_view path);
@@ -407,6 +408,15 @@ private:
   /** @brief Builds the editable shortcut table shown in the settings dialog. */
   QVector<ShortcutSetting> shortcutSettings() const;
 
+  [[nodiscard]] static std::string defaultMainCircuitPath();
+  [[nodiscard]] static silicon::project::Document defaultCircuitDocument();
+  [[nodiscard]] static silicon::project::ProjectInfo
+  defaultProjectInfo(const QString& currentFileName);
+  [[nodiscard]] std::string projectMainCircuitPath() const;
+  static void               ensureProjectDocuments();
+  static void setActionsEnabled(std::initializer_list<QAction*> actions, bool enabled);
+  void        syncWasmShortcutCapture();
+
   /** @brief Main toolbar containing edit, mode, and simulation actions. */
   QToolBar* toolBar = nullptr;
 
@@ -420,7 +430,7 @@ private:
   QDockWidget* logDock = nullptr;
 
   /** @brief Tree widget listing project metadata and circuit files. */
-  QTreeWidget* projectTree = nullptr;
+  ProjectTree* projectTree = nullptr;
 
   /** @brief Floating window that hosts the waveform viewer. */
   QDialog* waveformWindow = nullptr;
@@ -438,11 +448,11 @@ private:
   DiagramScene* diagramScene = nullptr;
 
   /** @brief Graphics view used to render and navigate the diagram scene. */
-  DiagramView*    diagramView = nullptr;
+  DiagramView* diagramView = nullptr;
   /** @brief Selects between the graphical circuit view and the HDL source editor. */
   QStackedWidget* editorStack = nullptr;
   /** @brief Line-numbered source editor; writable only while HDL code mode is active. */
-  QPlainTextEdit* hdlEditor   = nullptr;
+  QPlainTextEdit* hdlEditor = nullptr;
 
   /** @brief Floating searchable component catalog, shown over the diagram viewport. */
   ComponentCatalogOverlay* componentCatalogOverlay = nullptr;
@@ -540,8 +550,8 @@ private:
   std::string                                 activeDocumentPath;
   std::vector<silicon::project::ProjectAsset> projectAssets;
   /** @brief True only while an HDL-backed subcircuit source is editable. */
-  bool                                        hdlCodeMode = false;
-  silicon::project::ProjectDependencyGraph    dependencyGraph;
+  bool                                     hdlCodeMode = false;
+  silicon::project::ProjectDependencyGraph dependencyGraph;
 
   /** @brief Lazily shown application about dialog. */
   AboutDialog* aboutDialog = nullptr;

@@ -130,6 +130,12 @@ set(UI_SOURCE_FILES
         ${src_dir}/ui/logiFlow/components/graphicalUtils.cpp
         ${src_dir}/ui/logiFlow/componentCatalogOverlay.cpp
         ${src_dir}/ui/logiFlow/hdlCodeEditor.cpp
+        ${src_dir}/ui/logiFlow/metadataDescriptionEdit.cpp
+        ${src_dir}/ui/logiFlow/projectTree.cpp
+        ${src_dir}/ui/logiFlow/logiFlowWindowActions.cpp
+        ${src_dir}/ui/logiFlow/logiFlowWindowFile.cpp
+        ${src_dir}/ui/logiFlow/logiFlowWindowProject.cpp
+        ${src_dir}/ui/logiFlow/logiFlowWindowProperties.cpp
         ${src_dir}/ui/logiFlow/logiFlowWindow.cpp
         ${src_dir}/ui/serialization/gui_component_factory.cpp
         ${src_dir}/ui/serialization/gui_component_registration.cpp)
