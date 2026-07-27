@@ -32,6 +32,7 @@
 #include <ranges>
 #include <set>
 #include <string>
+#include <vector>
 
 #include <core/circuit.hpp>
 #include <core/flipflops.hpp>
@@ -45,9 +46,35 @@
 #include <extraComponents/arithmetic.hpp>
 #include <extraComponents/multiplexer.hpp>
 #include <extraComponents/utils.hpp>
+#include <logging/logger.hpp>
 #include <nlohmann/json.hpp>
 
 namespace {
+
+class YosysLogCapture {
+public:
+  YosysLogCapture()
+    : handle(Logger::addCallbackSink([this](const LogMessage& message) {
+        if (message.category == "yosys")
+          messages.push_back(message);
+      }))
+  {
+  }
+
+  ~YosysLogCapture() { Logger::removeSink(handle); }
+
+  [[nodiscard]] std::string text() const
+  {
+    std::string result;
+    for (const auto& message : messages)
+      result += message.message + '\n';
+    return result;
+  }
+
+private:
+  std::vector<LogMessage> messages;
+  Logger::SinkHandle      handle;
+};
 
 #if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
 class PathEnvironmentGuard {
@@ -880,8 +907,7 @@ TEST(YosysToolTest, ReportsProcessCreationFailure)
   std::filesystem::remove(path);
 
   EXPECT_NE(message.find("process-creation phase"), std::string::npos);
-  EXPECT_NE(message.find("stdout:"), std::string::npos);
-  EXPECT_NE(message.find("stderr:"), std::string::npos);
+  EXPECT_NE(message.find("'yosys' logs"), std::string::npos);
 }
 
 TEST(YosysToolTest, ReportsPathDiscoveryFailure)
@@ -904,6 +930,7 @@ TEST(YosysToolTest, ReportsPathDiscoveryFailure)
 #ifdef SILICON_TEST_YOSYS_EXECUTABLE
 TEST(YosysToolTest, RunsScriptsWithPathDiscoveryAndExplicitSelection)
 {
+  YosysLogCapture logCapture;
   const auto discovered = silicon::yosys::runScript("help echo");
   EXPECT_FALSE(discovered.standardOutput.empty());
 
@@ -913,21 +940,29 @@ TEST(YosysToolTest, RunsScriptsWithPathDiscoveryAndExplicitSelection)
   const auto explicitResult = silicon::yosys::runScript("help echo", explicitOptions);
   EXPECT_FALSE(explicitResult.standardOutput.empty());
   EXPECT_EQ(explicitResult.standardError, discovered.standardError);
+  EXPECT_NE(logCapture.text().find("stdout:"), std::string::npos);
 }
 
-TEST(YosysToolTest, ReportsExitStatusAndCapturedDiagnostics)
+TEST(YosysToolTest, LogsCapturedDiagnosticsAndReferencesLogs)
 {
+  YosysLogCapture logCapture;
+  std::string     message;
   try {
     (void)silicon::yosys::runScript("this_command_does_not_exist");
-    FAIL() << "Expected an invalid Yosys script to fail";
   } catch (const std::runtime_error& error) {
-    const std::string message(error.what());
-    EXPECT_NE(message.find("script-execution phase"), std::string::npos);
-    EXPECT_NE(message.find("exit status"), std::string::npos);
-    EXPECT_NE(message.find("stdout:"), std::string::npos);
-    EXPECT_NE(message.find("stderr:"), std::string::npos);
-    EXPECT_NE(message.find("this_command_does_not_exist"), std::string::npos);
+    message = error.what();
   }
+
+  EXPECT_NE(message.find("script-execution phase"), std::string::npos);
+  EXPECT_NE(message.find("exit status"), std::string::npos);
+  EXPECT_NE(message.find("'yosys' logs"), std::string::npos);
+  EXPECT_EQ(message.find("stdout:"), std::string::npos);
+  EXPECT_EQ(message.find("stderr:"), std::string::npos);
+
+  const auto logs = logCapture.text();
+  EXPECT_NE(logs.find("stderr:"), std::string::npos);
+  EXPECT_NE(logs.find("this_command_does_not_exist"), std::string::npos);
+  EXPECT_NE(logs.find("Command failed with exit status"), std::string::npos);
 }
 
 TEST(YosysToolTest, ImportsCombinationalVerilogAndFlattensHelpers)
@@ -1281,13 +1316,43 @@ TEST(YosysToolTest, ExportsParseableStructuralVerilog)
   circuit.setName("top");
 
   const auto verilog = silicon::yosys::exportVerilog(circuit);
-  EXPECT_NE(verilog.find("module top"), std::string::npos);
+  EXPECT_NE(verilog.find("module top(input a, input b, output y);"),
+            std::string::npos);
+  EXPECT_EQ(verilog.find("\n  input a;"), std::string::npos);
+  EXPECT_EQ(verilog.find("\n  wire a;"), std::string::npos);
+  EXPECT_EQ(verilog.find("\n  output y;"), std::string::npos);
+  EXPECT_EQ(verilog.find("\n  wire y;"), std::string::npos);
   EXPECT_EQ(verilog.find("_auto_"), std::string::npos);
   EXPECT_EQ(verilog.find("$silicon"), std::string::npos);
   EXPECT_NO_THROW({
     const Circuit reparsed = silicon::yosys::importVerilog(verilog, "top");
     EXPECT_TRUE(componentTypes(reparsed).contains("AndGate"));
   });
+}
+
+TEST(YosysToolTest, ExportsTwoInputNorWithoutIntermediateNets)
+{
+  auto set   = std::make_shared<Wire>();
+  auto reset = std::make_shared<Wire>();
+  auto q     = std::make_shared<Wire>();
+  auto nq    = std::make_shared<Wire>();
+  Circuit circuit(
+      Component_set{
+          std::make_shared<DummyInputComponent>(Bus{set}, "set"),
+          std::make_shared<DummyInputComponent>(Bus{reset}, "reset"),
+          std::make_shared<NorGate>(std::vector<Wire_ptr>{set, q}, nq),
+          std::make_shared<NorGate>(std::vector<Wire_ptr>{nq, reset}, q),
+          std::make_shared<DummyOutputComponent>(Bus{q}, "q"),
+          std::make_shared<DummyOutputComponent>(Bus{nq}, "nq"),
+      },
+      false);
+  circuit.setName("sr_latch");
+
+  const auto verilog = silicon::yosys::exportVerilog(circuit);
+  EXPECT_NE(verilog.find("assign nq = ~("), std::string::npos);
+  EXPECT_NE(verilog.find("assign q = ~("), std::string::npos);
+  EXPECT_EQ(verilog.find("NorGate_"), std::string::npos);
+  EXPECT_NO_THROW((void)silicon::yosys::importVerilog(verilog, "sr_latch"));
 }
 
 TEST(YosysToolTest, ImportsVectorDffAsRegister)

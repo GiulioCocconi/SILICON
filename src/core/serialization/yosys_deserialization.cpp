@@ -544,6 +544,19 @@ namespace {
       connectAndAdd(std::move(gate), {a, b}, {y});
     }
 
+    template <typename GateType> void importFineBinaryGate(const Cell& cell)
+    {
+      cell.requireSchema(std::array<std::string_view, 0>{},
+                         std::array<std::string_view, 3>{"A", "B", "Y"});
+      const Bus a = cell.consumer("A", 1);
+      const Bus b = cell.consumer("B", 1);
+      const Bus y = cell.driver("Y", 1);
+
+      auto gate = std::make_shared<GateType>(
+          std::vector<Wire_ptr>{a[0], b[0]}, y[0]);
+      addWithZeroDelay(std::move(gate));
+    }
+
     void importNot(const Cell& cell)
     {
       const auto [a, y] = equalWidthUnary(cell, "$not");
@@ -922,6 +935,8 @@ namespace {
               {"$or", &Importer::importBinaryGate<OrGate>},
               {"$xor", &Importer::importBinaryGate<XorGate>},
               {"$not", &Importer::importNot},
+              {"$_NAND_", &Importer::importFineBinaryGate<NandGate>},
+              {"$_NOR_", &Importer::importFineBinaryGate<NorGate>},
               {"$pos", &Importer::importPos},
               {"$add", &Importer::importAdd},
               {"$mux", &Importer::importMux},

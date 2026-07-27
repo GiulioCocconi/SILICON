@@ -172,8 +172,8 @@ namespace {
     }
   }
 
-  [[nodiscard]] std::vector<std::string> documentEntries(
-      zip_t* archive, const std::string_view directory)
+  [[nodiscard]] std::vector<std::string> documentEntries(zip_t*                 archive,
+                                                         const std::string_view directory)
   {
     std::vector<std::string> entries;
 
@@ -197,6 +197,33 @@ namespace {
     return entries;
   }
 
+  [[nodiscard]] std::vector<std::string> assetEntries(zip_t* archive)
+  {
+    std::vector<std::string>        entries;
+    std::unordered_set<std::string> seen;
+    const zip_int64_t               count = zip_get_num_entries(archive, 0);
+    if (count < 0)
+      throw std::runtime_error("Cannot inspect project archive entries");
+
+    for (zip_uint64_t index = 0; index < static_cast<zip_uint64_t>(count); ++index) {
+      const char* name = zip_get_name(archive, index, ZIP_FL_ENC_UTF_8);
+      if (!name)
+        continue;
+      const std::string entryName{name};
+      if (entryName == "mimetype" || entryName == MetadataPath || entryName == ProjectPath
+          || classifyDocumentPath(entryName) || entryName.ends_with('/')) {
+        continue;
+      }
+      if (!isValidProjectAssetPath(entryName))
+        throw std::runtime_error("Project archive contains an invalid asset path");
+      if (!seen.insert(entryName).second)
+        throw std::runtime_error("Project archive contains duplicate asset entries");
+      entries.push_back(entryName);
+    }
+    std::ranges::sort(entries);
+    return entries;
+  }
+
   void validateCircuitPaths(const std::string_view          mainCircuit,
                             const std::vector<std::string>& circuits)
   {
@@ -210,7 +237,8 @@ namespace {
     std::unordered_set<std::string> seen;
     for (const auto& circuit : circuits) {
       if (classifyDocumentPath(circuit) != DocumentKind::Circuit)
-        throw std::runtime_error("Project archive contains an invalid circuit JSON entry");
+        throw std::runtime_error(
+            "Project archive contains an invalid circuit JSON entry");
       if (!seen.insert(circuit).second)
         throw std::runtime_error("Project archive contains duplicate circuit entries");
     }
@@ -220,10 +248,10 @@ namespace {
           "project.json.mainCircuit does not match an archive circuit entry");
   }
 
-  void validateDocuments(const std::string_view mainCircuit,
+  void validateDocuments(const std::string_view       mainCircuit,
                          const std::vector<Document>& documents)
   {
-    std::vector<std::string> circuits;
+    std::vector<std::string>        circuits;
     std::unordered_set<std::string> paths;
     std::unordered_set<std::string> subcircuitSlugs;
     for (const auto& document : documents) {
@@ -238,6 +266,35 @@ namespace {
       }
     }
     validateCircuitPaths(mainCircuit, circuits);
+  }
+
+  void validateAssets(const std::vector<Document>&     documents,
+                      const std::vector<ProjectAsset>& assets)
+  {
+    std::unordered_set<std::string> paths;
+    for (const auto& asset : assets) {
+      if (!isValidProjectAssetPath(asset.path))
+        throw std::runtime_error("Project contains an invalid asset path");
+      if (!paths.insert(asset.path).second)
+        throw std::runtime_error("Project contains duplicate asset paths");
+    }
+
+    std::unordered_set<std::string> referencedPaths;
+    for (const auto& document : documents) {
+      if (document.kind() != DocumentKind::Subcircuit)
+        continue;
+      const auto hdl = parseHdlDescriptor(document.sceneJson());
+      if (hdl) {
+        if (!paths.contains(hdl->path)) {
+          throw std::runtime_error(
+              std::format("Subcircuit HDL asset '{}' is missing", hdl->path));
+        }
+        if (!referencedPaths.insert(hdl->path).second) {
+          throw std::runtime_error(std::format(
+              "Subcircuit HDL asset '{}' is referenced more than once", hdl->path));
+        }
+      }
+    }
   }
 
   [[nodiscard]] ProjectMetadata parseMetadata(const nlohmann::json& metadataJson)
@@ -344,8 +401,12 @@ ProjectFile readProjectFile(const std::filesystem::path& path)
     documents.emplace_back(path, readEntry(archive.get(), path.c_str()));
   validateDocuments(project.mainCircuit, documents);
 
-  auto mainCircuitIt =
-      std::ranges::find(documents, project.mainCircuit, &Document::path);
+  std::vector<ProjectAsset> assets;
+  for (const auto& path : assetEntries(archive.get()))
+    assets.push_back({path, readEntry(archive.get(), path.c_str())});
+  validateAssets(documents, assets);
+
+  auto mainCircuitIt = std::ranges::find(documents, project.mainCircuit, &Document::path);
   if (mainCircuitIt == documents.end())
     throw std::runtime_error(
         "project.json.mainCircuit does not match an archive circuit entry");
@@ -354,21 +415,24 @@ ProjectFile readProjectFile(const std::filesystem::path& path)
   return ProjectFile{.metadata        = std::move(metadata),
                      .project         = std::move(project),
                      .documents       = std::move(documents),
+                     .assets          = std::move(assets),
                      .mainCircuitJson = std::move(mainCircuitJson)};
 }
 
 void writeProjectFile(const std::filesystem::path& path, const ProjectFile& projectFile)
 {
   auto documents = projectFile.documents;
-  if (std::ranges::none_of(documents, [](const Document& document) {
-        return document.kind() == DocumentKind::Circuit;
-      })
+  if (std::ranges::none_of(documents,
+                           [](const Document& document) {
+                             return document.kind() == DocumentKind::Circuit;
+                           })
       && !projectFile.mainCircuitJson.empty()) {
     documents.emplace_back(std::string(DefaultMainCircuitPath),
                            projectFile.mainCircuitJson);
   }
 
   validateDocuments(projectFile.project.mainCircuit, documents);
+  validateAssets(documents, projectFile.assets);
 
   int       errorCode = 0;
   UniqueZip archive(
@@ -394,6 +458,8 @@ void writeProjectFile(const std::filesystem::path& path, const ProjectFile& proj
             : std::string_view(circuit.sceneJson());
     addEntry(archive.get(), circuit.path().c_str(), sceneJson);
   }
+  for (const auto& asset : projectFile.assets)
+    addEntry(archive.get(), asset.path.c_str(), asset.contents);
 
   if (zip_close(archive.get()) != 0)
     throw std::runtime_error("Cannot finalize Silicon project archive");

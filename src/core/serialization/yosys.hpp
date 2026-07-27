@@ -60,11 +60,25 @@ struct ScriptResult {
 [[nodiscard]] ScriptResult runScript(std::string_view   script,
                                      const ToolOptions& options = {});
 
-/** @brief Lower one Verilog-2005 source string into a flattened Silicon circuit. */
+/**
+ * @brief Lower one Verilog-2005 source string into a flattened Silicon circuit.
+ *
+ * @p topModule must be a simple Verilog identifier and selects the source module that
+ * defines the subcircuit interface. SystemVerilog mode is not currently enabled.
+ * Captured Yosys output is written through the `yosys` logger; failures refer callers
+ * to those logs instead of embedding an arbitrarily large tool transcript.
+ */
 [[nodiscard]] Circuit importVerilog(std::string_view source, std::string_view topModule,
                                     const ToolOptions& options = {});
 
-/** @brief Convert a Silicon circuit to structural Verilog using external Yosys. */
+/**
+ * @brief Convert a Silicon circuit to structural Verilog using external Yosys.
+ *
+ * The Yosys result is normalized to ANSI-style module port declarations. Redundant
+ * `wire` declarations for those ports are removed, while genuine internal and shared
+ * nets remain explicit. Two-input NAND and NOR gates use fused Yosys cells so their
+ * generated expressions do not expose a meaningless operation-to-inverter net.
+ */
 [[nodiscard]] std::string exportVerilog(const Circuit&     circuit,
                                         const ToolOptions& options = {});
 

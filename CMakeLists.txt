@@ -129,6 +129,7 @@ set(UI_SOURCE_FILES
         ${src_dir}/ui/logiFlow/components/graphicalMultiplexer.cpp
         ${src_dir}/ui/logiFlow/components/graphicalUtils.cpp
         ${src_dir}/ui/logiFlow/componentCatalogOverlay.cpp
+        ${src_dir}/ui/logiFlow/hdlCodeEditor.cpp
         ${src_dir}/ui/logiFlow/logiFlowWindow.cpp
         ${src_dir}/ui/serialization/gui_component_factory.cpp
         ${src_dir}/ui/serialization/gui_component_registration.cpp)

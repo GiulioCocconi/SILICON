@@ -74,6 +74,15 @@ struct ProjectInfo {
   std::string description;
 };
 
+struct ProjectAsset {
+  /// Normalized path of the non-document ZIP entry, relative to the archive root.
+  std::string path;
+  /// Exact bytes stored in the project archive (currently represented as a string).
+  std::string contents;
+
+  bool operator==(const ProjectAsset&) const = default;
+};
+
 /**
  * @brief In-memory representation of a `.sil` project archive.
  *
@@ -85,6 +94,14 @@ struct ProjectFile {
   ProjectInfo     project;
   /// Authoritative ordered collection of project documents.
   std::vector<Document> documents;
+  /**
+   * Non-document files stored at project-relative archive paths.
+   *
+   * HDL-backed subcircuits reference one of these assets from their scene-level
+   * HdlDescriptor. Archive validation requires every such reference to exist and
+   * prevents two subcircuits from owning the same HDL source asset.
+   */
+  std::vector<ProjectAsset> assets;
   /// Compatibility mirror of the document referenced by project.mainCircuit.
   /// This is derived data and is never an independent document store.
   std::string mainCircuitJson;
