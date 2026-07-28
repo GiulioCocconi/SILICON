@@ -44,6 +44,14 @@ public:
   int type() const override { return SiliconTypes::E_FLIP_FLOP; }
 };
 
+class GraphicalDLatch : public GraphicalFlipFlop {
+  Q_OBJECT
+public:
+  explicit GraphicalDLatch(QGraphicsItem* parent = nullptr);
+
+  int type() const override { return SiliconTypes::D_LATCH; }
+};
+
 class GraphicalJKFlipFlop : public GraphicalFlipFlop {
   Q_OBJECT
 public:

@@ -52,6 +52,7 @@ void registerAllComponents(ComponentRegistry& registry)
 
   registerComponent<DFlipFlop>(registry);
   registerComponent<EFlipFlop>(registry);
+  registerComponent<DLatch>(registry);
   registerComponent<JKFlipFlop>(registry);
   registerComponent<Register>(registry);
   registerComponent<SubcircuitComponent>(registry);

@@ -335,6 +335,23 @@ void EFlipFlop::serializeYosys(SerializationContext& context) const
           "dffe");
 }
 
+void DLatch::serializeYosys(SerializationContext& context) const
+{
+  requireBusCounts(*this, 2, 2);
+  const auto& d      = requireScalarBus(*this, true, 0);
+  const auto& enable = requireScalarBus(*this, true, 1);
+  const auto& q      = requireScalarBus(*this, false, 0);
+  const auto& qn     = requireScalarBus(*this, false, 1);
+  context.addCell(
+      "dlatch", silicon::yosys::cells::Dlatch,
+      Json{{"EN_POLARITY", SerializationContext::parameter(1, 1)}},
+      directions({{"D", "input"}, {"EN", "input"}, {"Q", "output"}, {"QN", "output"}}),
+      Json{{"D", context.bits(d)},
+           {"EN", context.bits(enable)},
+           {"Q", context.bits(q)},
+           {"QN", context.bits(qn)}});
+}
+
 void JKFlipFlop::serializeYosys(SerializationContext& context) const
 {
   requireBusCounts(*this, 5, 2);

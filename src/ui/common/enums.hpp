@@ -102,6 +102,7 @@ enum SiliconTypes {
   DECODER,
   REGISTER,
   SUBCIRCUIT,
+  D_LATCH,
 
   LOGIFLOW_END,
 };

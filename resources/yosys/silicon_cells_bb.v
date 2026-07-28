@@ -46,6 +46,17 @@ module SILICON_DFFE #(
 endmodule
 
 (* blackbox *)
+module SILICON_DLATCH #(
+    parameter EN_POLARITY = 1
+) (
+    input D,
+    input EN,
+    output Q,
+    output QN
+);
+endmodule
+
+(* blackbox *)
 module SILICON_DFFSR #(
     parameter CLK_POLARITY = 1,
     parameter SET_POLARITY = 1,
