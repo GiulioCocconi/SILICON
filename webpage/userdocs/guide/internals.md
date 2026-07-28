@@ -269,6 +269,7 @@ not depend on graphical shapes. The initial ABI is:
 
 | Cell | Ports | Parameters | Exact native component |
 | --- | --- | --- | --- |
+| `SILICON_DLATCH` | `D`, `EN`, `Q`, `QN` | `EN_POLARITY` | active-high scalar `DLatch` |
 | `SILICON_DFF` | `D`, `CLK`, `Q`, `QN` | `CLK_POLARITY` | `DFlipFlop` without async controls |
 | `SILICON_DFFE` | `D`, `EN`, `CLK`, `Q`, `QN` | `CLK_POLARITY`, `EN_POLARITY` | `EFlipFlop` without async controls |
 | `SILICON_DFFSR` | `D`, `CLK`, `SET`, `CLR`, `Q`, `QN` | `CLK_POLARITY`, `SET_POLARITY`, `CLR_POLARITY` | `DFlipFlop` with async controls |
@@ -279,11 +280,13 @@ not depend on graphical shapes. The initial ABI is:
 | `SILICON_ADDER` | `A`, `B`, `SUM`, `COUT` | `WIDTH`, `A_SIGNED`, `B_SIGNED` | unsigned `AdderNBits` |
 | `SILICON_REGISTER` | `DATA`, `CLK`, `EN`, `CLR`, `LOAD`, `OUT` | `WIDTH`, parallel/serial mode flags, and control polarities | all four native `Register` modes |
 
-Native flip-flop set, clear, and enable controls are active high; clocks may use either
-edge. Clear and set are asynchronous, clear-only means zero, set-only means one, and a
-simultaneous or indeterminate set/clear condition produces `UNKNOWN`. `QN` always
-complements `Q`, including becoming unknown with it. Register clear has priority over
-enable and clock, shifting moves toward bit zero, and PISO load has priority over shift.
+The native latch is scalar, is transparent while its active-high enable is asserted, and
+holds its stored state while enable is low. Native flip-flop set, clear, and enable
+controls are active high; clocks may use either edge. Clear and set are asynchronous,
+clear-only means zero, set-only means one, and a simultaneous or indeterminate set/clear
+condition produces `UNKNOWN`. `QN` always complements `Q`, including becoming unknown
+with it. Register clear has priority over enable and clock, shifting moves toward bit
+zero, and PISO load has priority over shift.
 Arithmetic cells are unsigned; `SUM` has `WIDTH` bits and `COUT` is the discarded carry
 bit. `silicon_cells_sim.v` implements the same rules for external simulation, while
 `silicon_cells_bb.v` prevents synthesis from inlining those models.
@@ -301,20 +304,57 @@ Import of generic JSON remains pattern based. The compatibility importer:
 - maps ports to named scalar or bus input/output components;
 - interns numeric net bits as shared `Wire` objects and turns supported literals into
   constant components;
+- raises groups of unsigned `$eq` cells that compare one selector against distinct
+  constants into a single native `Decoder`, preserving their result wires as sparse
+  decoder outputs;
 - recognizes a strict set of cell types and validates required ports, widths, parameters,
   polarity, signedness, and single-driver rules; and
 - reconstructs the closest native component or component network, including properties
   such as bus size, selection width, trigger edge, and zero imported delay.
+
+#### Raising equality banks into decoders
+
+Yosys lowers a Verilog `case` selector into `$eq` cells whose one-bit results control a
+`$mux` or `$pmux` network. Importing every comparison as gates would obscure the original
+decode structure, so SILICON performs a cell-grouping prepass before generic cell
+dispatch. For example:
+
+```text
+$eq(selector, 4'b0001) ── select_1
+$eq(selector, 4'b0110) ── select_6
+$eq(selector, 4'b1101) ── select_13
+```
+
+becomes one native four-to-sixteen `Decoder`. Its enable input is tied HIGH, its
+selection input uses the shared `selector` bus, and outputs 1, 6, and 13 reuse the
+original `$eq` result wires. Unmatched decoder outputs receive internal wires, allowing
+sparse `case` values without inventing extra comparisons. The mux cells that consume
+the result wires are then imported normally as native `Multiplexer` components.
+
+A group is eligible only when:
+
+- at least two `$eq` cells use the identical selector connection;
+- exactly one operand of each comparison is a fully defined binary constant;
+- operands are unsigned, equally wide, and no wider than the native decoder's 15-bit
+  selection limit;
+- every comparison has a one-bit result; and
+- constants are distinct within the group.
+
+The constant may appear on either side of `$eq`; connection arrays are decoded in
+Yosys' least-significant-bit-first order. Eligible comparisons are marked as consumed so
+they are not dispatched again, and the native decoder uses zero delay to preserve
+imported netlist timing. Ineligible or isolated `$eq` cells remain in generic dispatch
+and are rejected while standalone equality comparison is unsupported.
 
 ### External Verilog pipelines
 
 Verilog import reads `silicon_cells_bb.v` as a library, elaborates and flattens the
 selected user top, preserves word-level arithmetic, extracts recognizable half/full
 adder cones, applies `silicon_techmap.v`, and writes JSON. The map covers supported
-scalar `$dff`, `$dffe`, `$dffsr`, and `$dffsre` shapes, equal-width unsigned `$add`, and
-the `$fa` cells produced by `extract_fa`. A constant-zero carry input identifies a half
-adder; otherwise the extracted cell becomes a full adder. Unmatched cells continue to
-the generic importer.
+scalar active-high `$dlatch`, `$dff`, `$dffe`, `$dffsr`, and `$dffsre` shapes,
+equal-width unsigned `$add`, and the `$fa` cells produced by `extract_fa`. A constant-zero
+carry input identifies a half adder; otherwise the extracted cell becomes a full adder.
+Unmatched cells continue to the generic importer.
 
 Positive- and negative-edge D storage, enabled D storage, supported asynchronous
 set/reset forms, equal-width unsigned addition, and extracted half/full adders therefore
@@ -334,8 +374,13 @@ descriptive names for internal signals, sanitizes escaped identifiers, and write
 attribute-free Verilog without renaming those signals to numeric temporaries. Parameters
 use decimal notation where possible. A guarded post-processing step folds complete port
 declarations into ANSI module headers; it leaves a module untouched if the emitted
-declarations do not match the header exactly. The result is structural Verilog containing
-parameterized `SILICON_*` instances, not inlined behavioural models. Loading
+declarations do not match the header exactly. When `yosys-config` is available at build
+time, SILICON also builds and packages the `silicon_bmux_case` Yosys plugin. The export
+script loads this plugin to raise `$bmux` cells into combinational RTLIL switch processes,
+which the Verilog backend emits as readable `case` statements.
+
+The remaining result is structural Verilog containing parameterized `SILICON_*`
+instances, not inlined behavioural models. Loading
 `silicon_cells_bb.v` makes that output parseable by Yosys; loading
 `silicon_cells_sim.v` instead supplies standalone simulation behaviour.
 
