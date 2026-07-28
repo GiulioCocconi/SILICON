@@ -1555,12 +1555,36 @@ TEST(YosysToolTest, ExportsParseableStructuralVerilog)
   });
 }
 
+TEST(YosysToolTest, ExportsWideMuxAsCaseStatement)
+{
+  auto mux = std::make_shared<Multiplexer>(Bus(4), Bus(2), std::make_shared<Wire>());
+  mux->setProperty("busSize", 4);
+  mux->setProperty("selectionSize", 2);
+  Circuit circuit = circuitWithBoundaryPorts(mux);
+
+  const auto verilog = silicon::yosys::exportVerilog(circuit);
+#ifdef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
+  EXPECT_NE(verilog.find("output reg [3:0] output_0"), std::string::npos);
+  EXPECT_NE(verilog.find("case (input_4)"), std::string::npos);
+  EXPECT_NE(verilog.find("2'h0:"), std::string::npos);
+  EXPECT_NE(verilog.find("output_0 = input_0"), std::string::npos);
+  EXPECT_NE(verilog.find("default:"), std::string::npos);
+  EXPECT_EQ(verilog.find("$auto$verilog_backend"), std::string::npos);
+#else
+  EXPECT_NE(verilog.find("$auto$bmuxmap"), std::string::npos);
+#endif
+#ifdef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
+  EXPECT_EQ(verilog.find("$auto$bmuxmap"), std::string::npos);
+#endif
+  EXPECT_NO_THROW((void)silicon::yosys::importVerilog(verilog, "top"));
+}
+
 TEST(YosysToolTest, ExportsTwoInputNorWithoutIntermediateNets)
 {
-  auto set   = std::make_shared<Wire>();
-  auto reset = std::make_shared<Wire>();
-  auto q     = std::make_shared<Wire>();
-  auto nq    = std::make_shared<Wire>();
+  auto    set   = std::make_shared<Wire>();
+  auto    reset = std::make_shared<Wire>();
+  auto    q     = std::make_shared<Wire>();
+  auto    nq    = std::make_shared<Wire>();
   Circuit circuit(
       Component_set{
           std::make_shared<DummyInputComponent>(Bus{set}, "set"),

@@ -31,9 +31,9 @@
 #include <ranges>
 #include <stdexcept>
 #include <string>
+#include <system_error>
 #include <unordered_map>
 #include <unordered_set>
-#include <system_error>
 #include <vector>
 
 #include <core/circuit.hpp>
@@ -321,23 +321,23 @@ namespace {
       if (!value.starts_with(prefix) || !value.ends_with(';'))
         continue;
 
-      const auto body = trim(value.substr(prefix.size(), value.size() - prefix.size() - 1));
+      const auto body =
+          trim(value.substr(prefix.size(), value.size() - prefix.size() - 1));
       const auto separator = body.find_last_of(" \t");
       const auto name =
           separator == std::string_view::npos ? body : trim(body.substr(separator + 1));
       if (!isVerilogIdentifier(name))
         return std::nullopt;
-      return PortDeclaration{std::string(name),
-                             std::format("{} {}", direction, body)};
+      return PortDeclaration{std::string(name), std::format("{} {}", direction, body)};
     }
     return std::nullopt;
   }
 
   [[nodiscard]] std::optional<std::string>
-  parseWireDeclarationName(const std::string_view line)
+  parseNetDeclarationName(const std::string_view line, const std::string_view kind)
   {
-    constexpr std::string_view prefix = "wire ";
-    const auto                 value  = trim(line);
+    const auto prefix = std::format("{} ", kind);
+    const auto value  = trim(line);
     if (!value.starts_with(prefix) || !value.ends_with(';'))
       return std::nullopt;
 
@@ -365,6 +365,49 @@ namespace {
     return lines;
   }
 
+  [[nodiscard]] std::string cleanProcessVerilog(const std::string_view source)
+  {
+    auto                            lines = splitLines(source);
+    std::unordered_set<std::string> backendGuards;
+    std::vector<bool>               removed(lines.size(), false);
+
+    for (std::size_t line = 0; line < lines.size(); ++line) {
+      const auto value = trim(lines[line]);
+      if (!value.starts_with("reg \\$auto$verilog_backend.cc:")
+          || value.find(":dump_module$") == std::string_view::npos)
+        continue;
+
+      const auto begin = value.find('\\');
+      const auto end   = value.find_first_of(" \t", begin);
+      if (begin != std::string_view::npos && end != std::string_view::npos) {
+        backendGuards.emplace(value.substr(begin, end - begin));
+        removed[line] = true;
+      }
+    }
+
+    for (std::size_t line = 0; line < lines.size(); ++line) {
+      for (const auto& guard : backendGuards) {
+        if (lines[line].find("if (" + guard + " ) begin end") != std::string::npos) {
+          removed[line] = true;
+          break;
+        }
+      }
+
+      const auto casePosition = lines[line].find("casez (");
+      if (casePosition != std::string::npos)
+        lines[line].replace(casePosition, std::string_view("casez").size(), "case");
+    }
+
+    std::string result;
+    for (std::size_t line = 0; line < lines.size(); ++line) {
+      if (removed[line])
+        continue;
+      result += lines[line];
+      result += '\n';
+    }
+    return result;
+  }
+
   /**
    * Convert the predictable non-ANSI declarations emitted by write_verilog into one
    * ANSI module header. A module is left untouched unless every listed port has one
@@ -373,7 +416,7 @@ namespace {
    */
   [[nodiscard]] std::string useAnsiPortDeclarations(const std::string_view source)
   {
-    auto              lines   = splitLines(source);
+    auto              lines = splitLines(source);
     std::vector<bool> removed(lines.size(), false);
     for (std::size_t moduleLine = 0; moduleLine < lines.size(); ++moduleLine) {
       const auto header = trim(lines[moduleLine]);
@@ -388,8 +431,9 @@ namespace {
       std::vector<std::string> ports;
       for (std::size_t begin = 0; begin <= portList.size();) {
         const auto end  = portList.find(',', begin);
-        const auto port = trim(portList.substr(
-            begin, end == std::string_view::npos ? portList.size() - begin : end - begin));
+        const auto port = trim(portList.substr(begin, end == std::string_view::npos
+                                                          ? portList.size() - begin
+                                                          : end - begin));
         if (!isVerilogIdentifier(port)) {
           ports.clear();
           break;
@@ -424,13 +468,19 @@ namespace {
         continue;
 
       for (std::size_t line = moduleLine + 1; line < endModule; ++line) {
-        if (const auto wire = parseWireDeclarationName(lines[line]);
+        if (const auto wire = parseNetDeclarationName(lines[line], "wire");
             wire && declarations.contains(*wire))
           removableLines.insert(line);
+        if (const auto reg = parseNetDeclarationName(lines[line], "reg");
+            reg && declarations.contains(*reg)
+            && declarations.at(*reg).starts_with("output ")) {
+          declarations.at(*reg).insert(std::string_view("output ").size(), "reg ");
+          removableLines.insert(line);
+        }
       }
 
-      std::string ansiHeader = lines[moduleLine].substr(
-          0, lines[moduleLine].find('(') + 1);
+      std::string ansiHeader =
+          lines[moduleLine].substr(0, lines[moduleLine].find('(') + 1);
       for (std::size_t port = 0; port < ports.size(); ++port) {
         if (port != 0)
           ansiHeader += ", ";
@@ -599,19 +649,25 @@ std::string exportVerilog(const Circuit& circuit, const ToolOptions& options)
   const auto         verilogPath = workspace.path() / "design.v";
   writeFile(jsonPath, serialize(circuit), "Verilog-export input-writing phase");
 
+  const auto plugin = verilogPlugin();
+  const auto muxExport =
+      plugin ? std::format("plugin -i {}\nsilicon_bmux_case\n", quotePath(*plugin))
+             : std::string();
+
   (void)runScript(std::format("read_verilog -lib {}\n"
                               "read_json {}\n"
                               "hierarchy -check -auto-top\n"
                               "opt_expr t:$pos\n"
                               "opt_clean -purge\n"
                               "rename -unescape\n"
-			      "opt\n"
+                              "opt\n"
+                              "{}"
                               "write_verilog -noattr -norename -decimal {}\n",
                               quotePath(library.blackBoxes), quotePath(jsonPath),
-                              quotePath(verilogPath)),
+                              muxExport, quotePath(verilogPath)),
                   options);
   return useAnsiPortDeclarations(
-      readFile(verilogPath, "Verilog-export output-reading phase"));
+      cleanProcessVerilog(readFile(verilogPath, "Verilog-export output-reading phase")));
 }
 
 }  // namespace silicon::yosys
