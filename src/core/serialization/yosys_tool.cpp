@@ -258,6 +258,27 @@ namespace {
         candidates[0].string(), candidates[1].string()));
   }
 
+  [[nodiscard]] std::optional<std::filesystem::path> verilogPlugin()
+  {
+    std::vector<std::filesystem::path> candidates;
+  #if defined(SILICON_YOSYS_BUILD_PLUGIN) && defined(SILICON_YOSYS_INSTALL_PLUGIN) \
+      && defined(SILICON_YOSYS_INSTALL_RELATIVE_PLUGIN)
+    candidates = {std::filesystem::path(SILICON_YOSYS_BUILD_PLUGIN),
+                  std::filesystem::path(SILICON_YOSYS_INSTALL_PLUGIN)};
+    if (const auto executable = runningExecutable()) {
+      candidates.push_back(
+          (executable->parent_path() / ".." / SILICON_YOSYS_INSTALL_RELATIVE_PLUGIN)
+              .lexically_normal());
+    }
+  #endif
+    for (const auto& candidate : candidates) {
+      std::error_code error;
+      if (std::filesystem::is_regular_file(candidate, error) && !error)
+        return candidate;
+    }
+    return std::nullopt;
+  }
+
   [[nodiscard]] bool isVerilogIdentifier(const std::string_view identifier)
   {
     if (identifier.empty())
@@ -541,21 +562,30 @@ Circuit importVerilog(const std::string_view source, const std::string_view topM
   const auto         jsonPath   = workspace.path() / "design.json";
   writeFile(sourcePath, source, "Verilog-import input-writing phase");
 
-  (void)runScript(std::format("read_verilog -lib {}\n"
+  const auto plugin = verilogPlugin();
+  const auto pluginLoad =
+      plugin ? std::format("plugin -i {}\n", quotePath(*plugin)) : std::string();
+  const auto muxImport = plugin ? std::string("silicon_pmux_bmux\n") : std::string();
+
+  (void)runScript(std::format("{}"
+                              "read_verilog -lib {}\n"
                               "read_verilog {}\n"
                               "hierarchy -check -top {}\n"
                               "proc\n"
+                              "{}"
+                              "pmuxtree\n"
                               "flatten\n"
                               "delete t:$scopeinfo\n"
                               "opt\n"
-                              "simplemap t:$and t:$or t:$xor t:$not\n"
+                              "simplemap t:$and t:$or t:$xor t:$not t:$reduce_and "
+                              "t:$reduce_or t:$reduce_xor\n"
                               "extract_fa\n"
                               "techmap -map {}\n"
                               "opt_clean\n"
                               "write_json {}\n",
-                              quotePath(library.blackBoxes), quotePath(sourcePath),
-                              topModule, quotePath(library.technologyMap),
-                              quotePath(jsonPath)),
+                              pluginLoad, quotePath(library.blackBoxes),
+                              quotePath(sourcePath), topModule, muxImport,
+                              quotePath(library.technologyMap), quotePath(jsonPath)),
                   options);
   return deserialize(readFile(jsonPath, "Verilog-import output-reading phase"),
                      topModule);

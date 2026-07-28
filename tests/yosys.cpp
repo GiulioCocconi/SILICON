@@ -587,6 +587,61 @@ TEST(YosysTest, ImportsGeneralCombinationalNetlistWithConstants)
   EXPECT_EQ(outputComponent->inputBuses()[0].getCurrentValue(), 2U);
 }
 
+TEST(YosysTest, RaisesSharedConstantEqualityComparisonsToDecoder)
+{
+  using silicon::yosys::Json;
+  using silicon::yosys::SerializationContext;
+
+  const Json eqParameters{
+      {"A_SIGNED", SerializationContext::parameter(0, 1)},
+      {"B_SIGNED", SerializationContext::parameter(0, 1)},
+      {"A_WIDTH", SerializationContext::parameter(3)},
+      {"B_WIDTH", SerializationContext::parameter(3)},
+      {"Y_WIDTH", SerializationContext::parameter(1)},
+  };
+  const auto eqCell = [&eqParameters](Json constant, const int output) {
+    return Json{{"type", "$eq"},
+                {"parameters", eqParameters},
+                {"connections",
+                 {{"A", Json::array({2, 3, 4})},
+                  {"B", std::move(constant)},
+                  {"Y", Json::array({output})}}}};
+  };
+  const Json design{
+      {"modules",
+       {{"top",
+         {{"attributes", Json::object()},
+          {"ports",
+           {{"select", {{"direction", "input"}, {"bits", Json::array({2, 3, 4})}}},
+            {"matches", {{"direction", "output"}, {"bits", Json::array({5, 6})}}}}},
+          {"cells",
+           {{"match_one", eqCell(Json::array({"1", "0", "0"}), 5)},
+            {"match_six", eqCell(Json::array({"0", "1", "1"}), 6)}}},
+          {"netnames", Json::object()}}}}}};
+
+  auto circuit = std::make_shared<Circuit>(silicon::yosys::deserialize(design.dump()));
+  auto decoder = findComponent<Decoder>(*circuit);
+  ASSERT_TRUE(decoder);
+  EXPECT_EQ(decoder->getPropertyValue<int>("selectionSize"), 3);
+  EXPECT_EQ(componentTypes(*circuit).count("Decoder"), 1);
+
+  Simulator simulator(circuit);
+  ASSERT_EQ(simulator.setBus(decoder->inputBuses()[1], 1),
+            Simulator::RunResult::Completed);
+  EXPECT_EQ(decoder->outputBuses()[0][1]->getCurrentState(), State::HIGH);
+  EXPECT_EQ(decoder->outputBuses()[0][6]->getCurrentState(), State::LOW);
+
+  ASSERT_EQ(simulator.setBus(decoder->inputBuses()[1], 6),
+            Simulator::RunResult::Completed);
+  EXPECT_EQ(decoder->outputBuses()[0][1]->getCurrentState(), State::LOW);
+  EXPECT_EQ(decoder->outputBuses()[0][6]->getCurrentState(), State::HIGH);
+
+  ASSERT_EQ(simulator.setBus(decoder->inputBuses()[1], 3),
+            Simulator::RunResult::Completed);
+  EXPECT_EQ(decoder->outputBuses()[0][1]->getCurrentState(), State::LOW);
+  EXPECT_EQ(decoder->outputBuses()[0][6]->getCurrentState(), State::LOW);
+}
+
 TEST(YosysTest, ConnectionReaderEnforcesRolesWidthsAndDriverOwnership)
 {
   using silicon::yosys::Json;
@@ -1019,6 +1074,33 @@ TEST(YosysToolTest, ImportsCombinationalVerilogAndFlattensHelpers)
                std::runtime_error);
 }
 
+TEST(YosysToolTest, LowersPriorityMuxCellsBeforeImport)
+{
+  constexpr std::string_view source = R"(
+    module top(
+      input [1:0] fallback,
+      input [1:0] lane0,
+      input [1:0] lane1,
+      input [1:0] lane2,
+      input [2:0] select,
+      output reg [1:0] y
+    );
+      always @* begin
+        y = fallback;
+        (* parallel_case *)
+        casez (select)
+          3'b??1: y = lane0;
+          3'b?1?: y = lane1;
+          3'b1??: y = lane2;
+        endcase
+      end
+    endmodule
+  )";
+
+  const Circuit circuit = silicon::yosys::importVerilog(source, "top");
+  EXPECT_GT(componentTypes(circuit).count("Multiplexer"), 0);
+}
+
 TEST(YosysToolTest, ImportsSequentialVerilog)
 {
   constexpr std::string_view source  = R"(
@@ -1029,6 +1111,66 @@ TEST(YosysToolTest, ImportsSequentialVerilog)
   )";
   const Circuit              circuit = silicon::yosys::importVerilog(source, "storage");
   EXPECT_TRUE(componentTypes(circuit).contains("DFlipFlop"));
+}
+
+TEST(YosysToolTest, RaisesCaseDecoderAndImportsItsMuxTree)
+{
+  constexpr std::string_view source = R"(
+    module top(
+      input [7:0] a,
+      input [7:0] b,
+      input [3:0] select,
+      output reg [7:0] y
+    );
+      always @* begin
+        case (select)
+          4'h1: y = a;
+          4'h6: y = b;
+          4'hd: y = a ^ b;
+          default: y = 8'h00;
+        endcase
+      end
+    endmodule
+  )";
+
+  const Circuit circuit = silicon::yosys::importVerilog(source, "top");
+  EXPECT_EQ(componentTypes(circuit).count("Decoder"), 1);
+  EXPECT_GT(componentTypes(circuit).count("Multiplexer"), 0);
+}
+
+TEST(YosysToolTest, FoldsExhaustiveCaseIntoOneWideMultiplexer)
+{
+  constexpr std::string_view source = R"(
+    module mux(
+      input [3:0] bus_1,
+      input [3:0] bus_2,
+      input [3:0] bus_3,
+      input [3:0] bus_4,
+      input [1:0] bus_in,
+      output reg [3:0] bus_out
+    );
+      always @* begin
+        case (bus_in)
+          2'h0: bus_out = bus_1;
+          2'h1: bus_out = bus_2;
+          2'h2: bus_out = bus_3;
+          2'h3: bus_out = bus_4;
+          default: bus_out = 4'hx;
+        endcase
+      end
+    endmodule
+  )";
+
+  const Circuit circuit = silicon::yosys::importVerilog(source, "mux");
+  EXPECT_EQ(componentTypes(circuit).count("Multiplexer"), 1);
+  EXPECT_EQ(componentTypes(circuit).count("Decoder"), 0);
+  EXPECT_EQ(componentTypes(circuit).count("OrGate"), 0);
+
+  const auto mux = findComponent<Multiplexer>(circuit);
+  ASSERT_TRUE(mux);
+  EXPECT_EQ(mux->getPropertyValue<int>("selectionSize"), 2);
+  EXPECT_EQ(mux->getPropertyValue<int>("busSize"), 4);
+  EXPECT_EQ(mux->inputBuses().size(), 5);
 }
 
 TEST(YosysTest, ImportsScalarActiveHighNativeDlatch)
