@@ -72,12 +72,14 @@ struct ScriptResult {
                                     const ToolOptions& options = {});
 
 /**
- * @brief Convert a Silicon circuit to structural Verilog using external Yosys.
+ * @brief Convert a Silicon circuit to readable Verilog using external Yosys.
  *
  * The Yosys result is normalized to ANSI-style module port declarations. Redundant
  * `wire` declarations for those ports are removed, while genuine internal and shared
  * nets remain explicit. Two-input NAND and NOR gates use fused Yosys cells so their
  * generated expressions do not expose a meaningless operation-to-inverter net.
+ * When the SILICON Yosys plugin is available, wide muxes are raised to combinational
+ * processes so the backend emits readable case statements.
  */
 [[nodiscard]] std::string exportVerilog(const Circuit&     circuit,
                                         const ToolOptions& options = {});

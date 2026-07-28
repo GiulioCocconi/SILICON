@@ -221,6 +221,29 @@ add_library(silicon_core STATIC
 
 target_compile_options(silicon_core PRIVATE -Werror)
 
+if (NOT EMSCRIPTEN)
+    find_program(SILICON_YOSYS_CONFIG_EXECUTABLE yosys-config)
+    if (SILICON_YOSYS_CONFIG_EXECUTABLE)
+        set(SILICON_YOSYS_PLUGIN_OUTPUT
+                "${CMAKE_CURRENT_BINARY_DIR}/yosys/silicon_bmux_case${CMAKE_SHARED_LIBRARY_SUFFIX}")
+        add_custom_command(
+                OUTPUT "${SILICON_YOSYS_PLUGIN_OUTPUT}"
+                COMMAND "${CMAKE_COMMAND}" -E make_directory
+                        "${CMAKE_CURRENT_BINARY_DIR}/yosys"
+                COMMAND "${SILICON_YOSYS_CONFIG_EXECUTABLE}" --build
+                        "${SILICON_YOSYS_PLUGIN_OUTPUT}"
+                        "${CMAKE_SOURCE_DIR}/tools/yosys/silicon_bmux_case.cpp"
+                DEPENDS "${CMAKE_SOURCE_DIR}/tools/yosys/silicon_bmux_case.cpp"
+                VERBATIM)
+        add_custom_target(silicon_yosys_plugin ALL
+                DEPENDS "${SILICON_YOSYS_PLUGIN_OUTPUT}")
+        add_dependencies(silicon_core silicon_yosys_plugin)
+    else ()
+        message(WARNING
+                "yosys-config was not found; the SILICON mux-case plugin will not be built")
+    endif ()
+endif ()
+
 file(TO_CMAKE_PATH "${yosys_resources_dir}" SILICON_YOSYS_BUILD_RESOURCE_DIR)
 file(TO_CMAKE_PATH "${CMAKE_INSTALL_FULL_DATADIR}/silicon/yosys"
         SILICON_YOSYS_INSTALL_RESOURCE_DIR)
@@ -230,6 +253,21 @@ target_compile_definitions(silicon_core PRIVATE
         SILICON_YOSYS_BUILD_RESOURCE_DIR="${SILICON_YOSYS_BUILD_RESOURCE_DIR}"
         SILICON_YOSYS_INSTALL_RESOURCE_DIR="${SILICON_YOSYS_INSTALL_RESOURCE_DIR}"
         SILICON_YOSYS_INSTALL_RELATIVE_RESOURCE_DIR="${SILICON_YOSYS_INSTALL_RELATIVE_RESOURCE_DIR}")
+
+if (NOT EMSCRIPTEN AND SILICON_YOSYS_CONFIG_EXECUTABLE)
+    file(TO_CMAKE_PATH "${SILICON_YOSYS_PLUGIN_OUTPUT}"
+            SILICON_YOSYS_BUILD_PLUGIN)
+    file(TO_CMAKE_PATH
+            "${CMAKE_INSTALL_FULL_LIBDIR}/silicon/yosys/silicon_bmux_case${CMAKE_SHARED_LIBRARY_SUFFIX}"
+            SILICON_YOSYS_INSTALL_PLUGIN)
+    file(TO_CMAKE_PATH
+            "${CMAKE_INSTALL_LIBDIR}/silicon/yosys/silicon_bmux_case${CMAKE_SHARED_LIBRARY_SUFFIX}"
+            SILICON_YOSYS_INSTALL_RELATIVE_PLUGIN)
+    target_compile_definitions(silicon_core PRIVATE
+            SILICON_YOSYS_BUILD_PLUGIN="${SILICON_YOSYS_BUILD_PLUGIN}"
+            SILICON_YOSYS_INSTALL_PLUGIN="${SILICON_YOSYS_INSTALL_PLUGIN}"
+            SILICON_YOSYS_INSTALL_RELATIVE_PLUGIN="${SILICON_YOSYS_INSTALL_RELATIVE_PLUGIN}")
+endif ()
 
 target_link_libraries(silicon_core
         PUBLIC
@@ -339,3 +377,8 @@ install(TARGETS SILICON
 
 install(DIRECTORY "${yosys_resources_dir}/"
         DESTINATION "${CMAKE_INSTALL_DATADIR}/silicon/yosys")
+
+if (NOT EMSCRIPTEN AND SILICON_YOSYS_CONFIG_EXECUTABLE)
+    install(FILES "${SILICON_YOSYS_PLUGIN_OUTPUT}"
+            DESTINATION "${CMAKE_INSTALL_LIBDIR}/silicon/yosys")
+endif ()
