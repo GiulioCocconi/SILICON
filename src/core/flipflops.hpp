@@ -284,6 +284,58 @@ protected:
 };
 
 /**
+ * @class DLatch
+ * @brief Active-high, level-sensitive D latch.
+ *
+ * The latch is transparent while Enable is HIGH and retains its stored state while
+ * Enable is LOW. Unknown Enable drives an unknown stored state.
+ * Input order: D, Enable. Output order: Q, not-Q.
+ */
+class DLatch : public Component {
+public:
+  /** @brief Serialization/type-registry identifier. */
+  static constexpr std::string_view Type = "DLatch";
+
+  std::string_view  typeName() const override { return Type; }
+  ComponentMetadata metadata() const override
+  {
+    return {"D Latch", "Follows D while enable is HIGH and holds while disabled.",
+            ComponentCategory::FlipFlops};
+  }
+
+  /** @brief Input bus indices for DLatch. */
+  enum class Inputs : unsigned int {
+    /** @brief Data input followed while the latch is transparent. */
+    D = 0,
+    /** @brief Active-high transparency enable. */
+    Enable = 1,
+  };
+
+  /** @brief Constructs an unconnected D latch. */
+  DLatch();
+
+  /**
+   * @brief Constructs a connected D latch.
+   * @param d Data input
+   * @param enable Active-high transparency enable
+   * @param q Q output
+   * @param notQ Complement output
+   */
+  DLatch(Wire_ptr d, Wire_ptr enable, Wire_ptr q, Wire_ptr notQ);
+
+  void               simulate(Simulator& sim, const SimulationContext& context) override;
+  [[nodiscard]] bool usesStagedSequentialOutputs() const override { return true; }
+  void serializeYosys(silicon::yosys::SerializationContext& context) const override;
+
+private:
+  void initializeProperties();
+  void driveOutput(Simulator& sim, State newState);
+
+  State    state            = State::UNKNOWN;
+  uint64_t propagationDelay = 0;
+};
+
+/**
  * @class JKFlipFlop
  * @brief JK flip-flop.
  *

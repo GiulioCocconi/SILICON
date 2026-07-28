@@ -283,6 +283,12 @@ TEST(YosysTest, LowersCombinationalComponents)
 
 TEST(YosysTest, LowersSequentialComponents)
 {
+  auto latch =
+      std::make_shared<DLatch>(std::make_shared<Wire>(), std::make_shared<Wire>(),
+                               std::make_shared<Wire>(), std::make_shared<Wire>());
+  EXPECT_EQ(cellTypes(onlyModule(exportComponent(latch))),
+            std::multiset<std::string>{"SILICON_DLATCH"});
+
   auto dff = std::make_shared<DFlipFlop>(
       std::make_shared<Wire>(), std::make_shared<Wire>(), nullptr, nullptr,
       std::make_shared<Wire>(), std::make_shared<Wire>());
@@ -310,6 +316,15 @@ TEST(YosysTest, CustomTechnologyCellsRoundTripToNativeComponents)
   const auto roundTrip = [](const Component_ptr& component) {
     return silicon::yosys::deserialize(exportComponent(component).dump());
   };
+
+  auto latch =
+      std::make_shared<DLatch>(std::make_shared<Wire>(), std::make_shared<Wire>(),
+                               std::make_shared<Wire>(), std::make_shared<Wire>());
+  const auto  latchDesign = exportComponent(latch);
+  const auto& latchCell   = onlyCell(latchDesign);
+  EXPECT_EQ(latchCell.at("type"), "SILICON_DLATCH");
+  EXPECT_EQ(latchCell.at("parameters").at("EN_POLARITY"), "1");
+  EXPECT_TRUE(findComponent<DLatch>(roundTrip(latch)));
 
   auto dff = std::make_shared<DFlipFlop>(
       std::make_shared<Wire>(), std::make_shared<Wire>(), nullptr, nullptr,
@@ -445,6 +460,14 @@ TEST(YosysTest, RejectsMalformedCustomTechnologyCells)
   onlyModule(unsupportedPolarity)["cells"].begin().value()["parameters"]["SET_POLARITY"] =
       "0";
   reject(unsupportedPolarity);
+
+  auto latch =
+      std::make_shared<DLatch>(std::make_shared<Wire>(), std::make_shared<Wire>(),
+                               std::make_shared<Wire>(), std::make_shared<Wire>());
+  auto unsupportedLatchPolarity = exportComponent(latch);
+  onlyModule(unsupportedLatchPolarity)["cells"].begin().value()["parameters"]
+                                                               ["EN_POLARITY"] = "0";
+  reject(unsupportedLatchPolarity);
 
   auto  duplicateDriver = exportComponent(component);
   auto& duplicateConnections =
@@ -629,6 +652,9 @@ TEST(YosysTest, ImportsEveryCellShapeEmittedBySilicon)
   components.push_back(std::make_shared<EFlipFlop>(
       std::make_shared<Wire>(), std::make_shared<Wire>(), std::make_shared<Wire>(),
       nullptr, nullptr, std::make_shared<Wire>(), std::make_shared<Wire>()));
+  components.push_back(
+      std::make_shared<DLatch>(std::make_shared<Wire>(), std::make_shared<Wire>(),
+                               std::make_shared<Wire>(), std::make_shared<Wire>()));
   components.push_back(std::make_shared<Register>(Bus(4), std::make_shared<Wire>(),
                                                   std::make_shared<Wire>(),
                                                   std::make_shared<Wire>(), Bus(4)));
@@ -781,6 +807,9 @@ TEST(YosysTest, YosysAcceptsEveryBuiltInLowering)
       std::make_shared<Wire>(), std::make_shared<Wire>(), std::make_shared<Wire>(),
       std::make_shared<Wire>(), std::make_shared<Wire>(), std::make_shared<Wire>(),
       std::make_shared<Wire>()));
+  components.push_back(
+      std::make_shared<DLatch>(std::make_shared<Wire>(), std::make_shared<Wire>(),
+                               std::make_shared<Wire>(), std::make_shared<Wire>()));
   components.push_back(std::make_shared<JKFlipFlop>(
       std::make_shared<Wire>(), std::make_shared<Wire>(), std::make_shared<Wire>(),
       std::make_shared<Wire>(), std::make_shared<Wire>(), std::make_shared<Wire>(),
@@ -1002,6 +1031,30 @@ TEST(YosysToolTest, ImportsSequentialVerilog)
   EXPECT_TRUE(componentTypes(circuit).contains("DFlipFlop"));
 }
 
+TEST(YosysTest, ImportsScalarActiveHighNativeDlatch)
+{
+  using silicon::yosys::SerializationContext;
+
+  auto latch =
+      std::make_shared<DLatch>(std::make_shared<Wire>(), std::make_shared<Wire>(),
+                               std::make_shared<Wire>(), std::make_shared<Wire>());
+  auto  design                = exportComponent(latch);
+  auto& cell                  = onlyModule(design)["cells"].begin().value();
+  cell["type"]                = "$dlatch";
+  cell["parameters"]["WIDTH"] = SerializationContext::parameter(1);
+  cell["connections"].erase("QN");
+  cell["port_directions"].erase("QN");
+
+  EXPECT_TRUE(findComponent<DLatch>(silicon::yosys::deserialize(design.dump())));
+
+  cell["parameters"]["EN_POLARITY"] = SerializationContext::parameter(0, 1);
+  EXPECT_THROW((void)silicon::yosys::deserialize(design.dump()), std::runtime_error);
+
+  cell["parameters"]["EN_POLARITY"] = SerializationContext::parameter(1, 1);
+  cell["parameters"]["WIDTH"]       = SerializationContext::parameter(2);
+  EXPECT_THROW((void)silicon::yosys::deserialize(design.dump()), std::runtime_error);
+}
+
 TEST(YosysToolTest, MapsVerilogToSiliconTechnologyCells)
 {
   const auto mappedTypes = [](const std::string_view source, const std::string_view top) {
@@ -1009,6 +1062,13 @@ TEST(YosysToolTest, MapsVerilogToSiliconTechnologyCells)
         silicon::yosys::importVerilog(source, top).getYosysJson())));
   };
 
+  EXPECT_EQ(mappedTypes(R"(
+      module top(input d, input en, output reg q);
+        always @* if (en) q <= d;
+      endmodule
+    )",
+                        "top"),
+            std::multiset<std::string>{"SILICON_DLATCH"});
   EXPECT_EQ(mappedTypes(R"(
       module top(input d, input clk, output reg q);
         always @(posedge clk) q <= d;
@@ -1133,6 +1193,29 @@ TEST(YosysToolTest, MapsVerilogToSiliconTechnologyCells)
 
 TEST(YosysToolTest, ImportedTechnologyCellsPreserveRepresentativeBehavior)
 {
+  constexpr std::string_view latchSource = R"(
+    module top(input d, input en, output reg q);
+      always @* if (en) q <= d;
+    endmodule
+  )";
+  auto                       latchCircuit =
+      std::make_shared<Circuit>(silicon::yosys::importVerilog(latchSource, "top"));
+  auto latch = findComponent<DLatch>(*latchCircuit);
+  ASSERT_TRUE(latch);
+  Simulator latchSimulator(latchCircuit);
+  EXPECT_EQ(latchSimulator.setBus(latch->inputBuses()[0], 1),
+            Simulator::RunResult::Completed);
+  EXPECT_EQ(latch->outputBuses()[0][0]->getCurrentState(), State::UNKNOWN);
+  EXPECT_EQ(latchSimulator.setBus(latch->inputBuses()[1], 1),
+            Simulator::RunResult::Completed);
+  EXPECT_EQ(latch->outputBuses()[0][0]->getCurrentState(), State::HIGH);
+  EXPECT_EQ(latch->outputBuses()[1][0]->getCurrentState(), State::LOW);
+  EXPECT_EQ(latchSimulator.setBus(latch->inputBuses()[1], 0),
+            Simulator::RunResult::Completed);
+  EXPECT_EQ(latchSimulator.setBus(latch->inputBuses()[0], 0),
+            Simulator::RunResult::Completed);
+  EXPECT_EQ(latch->outputBuses()[0][0]->getCurrentState(), State::HIGH);
+
   const auto simulateDff = [](const std::string_view edge) {
     const auto source = std::format(
         R"(

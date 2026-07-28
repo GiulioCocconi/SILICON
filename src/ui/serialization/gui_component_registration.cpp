@@ -62,6 +62,8 @@ void registerAllGUIComponents(GUIComponentFactory& factory)
       [](QGraphicsItem* p) { return std::make_unique<GraphicalDFlipFlop>(p); });
   reg(std::string(EFlipFlop::Type),
       [](QGraphicsItem* p) { return std::make_unique<GraphicalEFlipFlop>(p); });
+  reg(std::string(DLatch::Type),
+      [](QGraphicsItem* p) { return std::make_unique<GraphicalDLatch>(p); });
   reg(std::string(JKFlipFlop::Type),
       [](QGraphicsItem* p) { return std::make_unique<GraphicalJKFlipFlop>(p); });
 

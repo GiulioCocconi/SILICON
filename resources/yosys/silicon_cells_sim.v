@@ -53,6 +53,18 @@ module SILICON_DFFE #(
   endgenerate
 endmodule
 
+module SILICON_DLATCH #(
+    parameter EN_POLARITY = 1
+) (
+    input D, input EN, output reg Q, output QN
+);
+  assign QN = ~Q;
+  always @* begin
+    if (EN === EN_POLARITY) Q <= D;
+    else if (EN !== !EN_POLARITY) Q <= 1'bx;
+  end
+endmodule
+
 module SILICON_DFFSR #(
     parameter CLK_POLARITY = 1,
     parameter SET_POLARITY = 1,

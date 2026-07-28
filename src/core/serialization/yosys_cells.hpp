@@ -24,6 +24,7 @@ namespace silicon::yosys::cells {
 
 inline constexpr std::string_view Dff       = "SILICON_DFF";
 inline constexpr std::string_view Dffe      = "SILICON_DFFE";
+inline constexpr std::string_view Dlatch    = "SILICON_DLATCH";
 inline constexpr std::string_view Dffsr     = "SILICON_DFFSR";
 inline constexpr std::string_view Dffsre    = "SILICON_DFFSRE";
 inline constexpr std::string_view Jkff      = "SILICON_JKFF";

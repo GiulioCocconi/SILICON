@@ -275,6 +275,59 @@ bool EFlipFlop::isTimingSensitiveInput(const unsigned int inputIndex) const
   return inputIndex == busIndex(Inputs::D) || inputIndex == busIndex(Inputs::Enable);
 }
 
+DLatch::DLatch()
+{
+  initializeProperties();
+}
+
+DLatch::DLatch(Wire_ptr d, Wire_ptr enable, Wire_ptr q, Wire_ptr notQ)
+  : Component({{std::move(d)}, {std::move(enable)}}, {{std::move(q)}, {std::move(notQ)}})
+{
+  initializeProperties();
+}
+
+void DLatch::simulate(Simulator& sim, const SimulationContext& context)
+{
+  if (context.initialEvaluation)
+    state = State::UNKNOWN;
+
+  const State enable = inputState(Inputs::Enable);
+  if (enable == State::LOW) {
+    driveOutput(sim, state);
+    return;
+  }
+
+  if (enable == State::HIGH) {
+    driveOutput(sim, silicon::wire::normalizeBinaryOrUnknown(inputState(Inputs::D)));
+    return;
+  }
+
+  driveOutput(sim, State::UNKNOWN);
+}
+
+void DLatch::initializeProperties()
+{
+  defineProperty("propagationDelay", 5);
+  setPropertyCallback("propagationDelay", [this](const PropertyValue& value) {
+    const PropertyValue validated = requireNonNegative("propagationDelay", value);
+    propagationDelay              = static_cast<uint64_t>(std::get<int>(validated));
+    return validated;
+  });
+}
+
+void DLatch::driveOutput(Simulator& sim, State newState)
+{
+  if (outputBusSize(0) == 0 || outputBusSize(1) == 0)
+    return;
+
+  newState = silicon::wire::normalizeBinaryOrUnknown(newState);
+  state    = newState;
+
+  sim.updateWire(outputWire(0), newState, propagationDelay, weak_from_this());
+  sim.updateWire(outputWire(1), newState == State::UNKNOWN ? State::UNKNOWN : !newState,
+                 propagationDelay, weak_from_this());
+}
+
 JKFlipFlop::JKFlipFlop(Wire_ptr j, Wire_ptr k, Wire_ptr clock, Wire_ptr clear,
                        Wire_ptr preset, Wire_ptr q, Wire_ptr notQ)
   : FlipFlop({{std::move(j)},

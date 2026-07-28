@@ -534,6 +534,83 @@ TEST(FlipFlopTest, EFlipFlopHonorsEnable)
   EXPECT_EQ(notQ->getCurrentState(), State::LOW);
 }
 
+TEST(FlipFlopTest, DLatchIsTransparentWhileEnabledAndHoldsWhileDisabled)
+{
+  auto d      = std::make_shared<Wire>(State::LOW);
+  auto enable = std::make_shared<Wire>(State::LOW);
+  auto q      = std::make_shared<Wire>(State::UNKNOWN);
+  auto notQ   = std::make_shared<Wire>(State::UNKNOWN);
+
+  auto latch = std::make_shared<DLatch>(d, enable, q, notQ);
+  latch->setProperty("propagationDelay", 0);
+
+  auto      circuit = std::make_shared<Circuit>(Component_set{latch});
+  Simulator simulator(circuit);
+
+  EXPECT_EQ(simulator.setBus(Bus{d}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(q->getCurrentState(), State::UNKNOWN);
+  EXPECT_EQ(notQ->getCurrentState(), State::UNKNOWN);
+
+  EXPECT_EQ(simulator.setBus(Bus{enable}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(q->getCurrentState(), State::HIGH);
+  EXPECT_EQ(notQ->getCurrentState(), State::LOW);
+
+  EXPECT_EQ(simulator.setBus(Bus{d}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(q->getCurrentState(), State::LOW);
+  EXPECT_EQ(notQ->getCurrentState(), State::HIGH);
+
+  EXPECT_EQ(simulator.setBus(Bus{enable}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{d}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(q->getCurrentState(), State::LOW);
+  EXPECT_EQ(notQ->getCurrentState(), State::HIGH);
+}
+
+TEST(FlipFlopTest, DLatchUnknownEnableInvalidatesStoredState)
+{
+  auto d      = std::make_shared<Wire>(State::HIGH);
+  auto enable = std::make_shared<Wire>(State::HIGH);
+  auto q      = std::make_shared<Wire>(State::UNKNOWN);
+  auto notQ   = std::make_shared<Wire>(State::UNKNOWN);
+
+  auto latch = std::make_shared<DLatch>(d, enable, q, notQ);
+  latch->setProperty("propagationDelay", 0);
+
+  auto      circuit = std::make_shared<Circuit>(Component_set{latch});
+  Simulator simulator(circuit);
+  ASSERT_EQ(simulator.runUntilIdle(), Simulator::RunResult::Completed);
+  ASSERT_EQ(q->getCurrentState(), State::HIGH);
+
+  enable->setCurrentState(State::UNKNOWN, {});
+  const std::array changedBuses{Bus{enable}};
+  latch->simulate(simulator,
+                  SimulationContext{false, changedBuses, {{enable->getId(), State::HIGH}}});
+  EXPECT_EQ(q->getCurrentState(), State::UNKNOWN);
+  EXPECT_EQ(notQ->getCurrentState(), State::UNKNOWN);
+}
+
+TEST(FlipFlopTest, DLatchPropagationDelayDefersTransparentUpdates)
+{
+  auto d      = std::make_shared<Wire>(State::HIGH);
+  auto enable = std::make_shared<Wire>(State::LOW);
+  auto q      = std::make_shared<Wire>(State::UNKNOWN);
+  auto notQ   = std::make_shared<Wire>(State::UNKNOWN);
+
+  auto latch = std::make_shared<DLatch>(d, enable, q, notQ);
+  EXPECT_EQ(latch->getPropertyValue<int>("propagationDelay"), 5);
+  EXPECT_THROW(latch->setProperty("propagationDelay", -1), std::invalid_argument);
+
+  auto      circuit = std::make_shared<Circuit>(Component_set{latch});
+  Simulator simulator(circuit);
+
+  EXPECT_EQ(simulator.setBus(Bus{enable}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(q->getCurrentState(), State::UNKNOWN);
+  EXPECT_EQ(simulator.run(4), Simulator::RunResult::Completed);
+  EXPECT_EQ(q->getCurrentState(), State::UNKNOWN);
+  EXPECT_EQ(simulator.run(1), Simulator::RunResult::Completed);
+  EXPECT_EQ(q->getCurrentState(), State::HIGH);
+  EXPECT_EQ(notQ->getCurrentState(), State::LOW);
+}
+
 TEST(FlipFlopTest, JKFlipFlopImplementsTruthTable)
 {
   auto j      = std::make_shared<Wire>(State::LOW);

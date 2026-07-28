@@ -39,6 +39,11 @@ std::shared_ptr<EFlipFlop> makeEFlipFlop()
                                      Wire_ptr{}, Wire_ptr{}, Wire_ptr{});
 }
 
+std::shared_ptr<DLatch> makeDLatch()
+{
+  return std::make_shared<DLatch>(Wire_ptr{}, Wire_ptr{}, Wire_ptr{}, Wire_ptr{});
+}
+
 std::shared_ptr<JKFlipFlop> makeJKFlipFlop()
 {
   return std::make_shared<JKFlipFlop>(Wire_ptr{}, Wire_ptr{}, Wire_ptr{}, Wire_ptr{},
@@ -91,6 +96,13 @@ GraphicalEFlipFlop::GraphicalEFlipFlop(QGraphicsItem* parent)
   setPorts({PortPair{"d", QPoint(-20, 20)}, PortPair{"en", QPoint(-20, 40)},
             PortPair{"clk", QPoint(-20, 60)}, PortPair{"clr", QPoint(40, -20)},
             PortPair{"pre", QPoint(40, 100)}},
+           {PortPair{"q", QPoint(100, 20)}, PortPair{"!q", QPoint(100, 60)}});
+}
+
+GraphicalDLatch::GraphicalDLatch(QGraphicsItem* parent)
+  : GraphicalFlipFlop(makeDLatch(), parent)
+{
+  setPorts({PortPair{"d", QPoint(-20, 20)}, PortPair{"en", QPoint(-20, 60)}},
            {PortPair{"q", QPoint(100, 20)}, PortPair{"!q", QPoint(100, 60)}});
 }
 

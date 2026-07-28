@@ -18,6 +18,22 @@
 
 // Mapping from supported Yosys cells to the stable SILICON technology-cell ABI.
 
+(* techmap_celltype = "$dlatch" *)
+module _silicon_map_dlatch #(
+    parameter WIDTH = 1,
+    parameter EN_POLARITY = 1
+) (input EN, input [WIDTH-1:0] D, output [WIDTH-1:0] Q);
+  generate
+    if (WIDTH == 1 && EN_POLARITY) begin
+      wire qn;
+      SILICON_DLATCH #(.EN_POLARITY(1))
+        _TECHMAP_REPLACE_ (.D(D), .EN(EN), .Q(Q), .QN(qn));
+    end else begin
+      wire _TECHMAP_FAIL_ = 1;
+    end
+  endgenerate
+endmodule
+
 (* techmap_celltype = "$dff" *)
 module _silicon_map_dff #(
     parameter WIDTH = 1,

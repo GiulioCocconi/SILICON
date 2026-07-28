@@ -709,6 +709,20 @@ namespace {
       addFlipFlop(std::move(dff), cell.flag("CLK_POLARITY"));
     }
 
+    void importDlatch(const Cell& cell)
+    {
+      cell.requireConnections({"EN", "D", "Q"});
+      if (cell.width("WIDTH") != 1)
+        fail(cell.where(), "only scalar D latch cells are supported");
+      if (!cell.flag("EN_POLARITY"))
+        fail(cell.where(), "only active-high EN is supported");
+
+      auto latch =
+          std::make_shared<DLatch>(cell.consumerBit("D"), cell.consumerBit("EN"),
+                                   cell.driverBit("Q"), std::make_shared<Wire>());
+      addWithZeroDelay(std::move(latch), "propagationDelay");
+    }
+
     void importAdffe(const Cell& cell)
     {
       cell.requireConnections({"CLK", "ARST", "EN", "D", "Q"});
@@ -822,6 +836,20 @@ namespace {
       addFlipFlop(std::move(flipFlop), cell.flag("CLK_POLARITY"));
     }
 
+    void importSiliconDlatch(const Cell& cell)
+    {
+      static constexpr auto parameters = std::to_array<std::string_view>({"EN_POLARITY"});
+      static constexpr auto connections =
+          std::to_array<std::string_view>({"D", "EN", "Q", "QN"});
+      cell.requireSchema(parameters, connections);
+      if (!cell.flag("EN_POLARITY"))
+        fail(cell.where(), "SILICON_DLATCH requires active-high EN");
+
+      auto latch = std::make_shared<DLatch>(cell.consumerBit("D"), cell.consumerBit("EN"),
+                                            cell.driverBit("Q"), cell.driverBit("QN"));
+      addWithZeroDelay(std::move(latch), "propagationDelay");
+    }
+
     void importSiliconHalfAdder(const Cell& cell)
     {
       static constexpr std::array<std::string_view, 0> parameters{};
@@ -921,6 +949,7 @@ namespace {
           std::to_array<std::pair<std::string_view, CellHandler>>({
               {cells::Dff, &Importer::importSiliconDff<false, false>},
               {cells::Dffe, &Importer::importSiliconDff<true, false>},
+              {cells::Dlatch, &Importer::importSiliconDlatch},
               {cells::Dffsr, &Importer::importSiliconDff<false, true>},
               {cells::Dffsre, &Importer::importSiliconDff<true, true>},
               {cells::Jkff, &Importer::importSiliconJkff},
@@ -945,6 +974,7 @@ namespace {
               {"$dff", &Importer::importDff},
               {"$dffsr", &Importer::importDffsr},
               {"$dffsre", &Importer::importDffsre},
+              {"$dlatch", &Importer::importDlatch},
               {"$adffe", &Importer::importAdffe},
           });
 
