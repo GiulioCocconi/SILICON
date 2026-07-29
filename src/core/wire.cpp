@@ -247,10 +247,7 @@ void Bus::setSize(const unsigned short size)
 
 Bus::Bus(std::vector<Wire_ptr> busData)
 {
-  this->busData = busData;
-  for (Wire_ptr& w : this->busData)
-    if (!w)
-      w = std::make_shared<Wire>(State::UNKNOWN);
+  this->busData = std::move(busData);
 }
 
 Bus::Bus(std::initializer_list<Wire_ptr> initList)

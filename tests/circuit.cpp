@@ -706,6 +706,31 @@ TEST(CircuitTest, SerializeWireIdsAreValid)
   }
 }
 
+TEST(CircuitTest, ClearWiresLeavesDisconnectedPortsWithoutAllocatingWireIds)
+{
+  auto a = std::make_shared<Wire>();
+  auto o = std::make_shared<Wire>();
+  auto g = std::make_shared<NotGate>(a, o);
+
+  g->clearWires();
+  Circuit first(g, false);
+  auto    firstJson = nlohmann::json::parse(first.serialize());
+
+  g->clearWires();
+  Circuit second(g, false);
+  auto    secondJson = nlohmann::json::parse(second.serialize());
+
+  ASSERT_EQ(firstJson["components"].size(), 1);
+  ASSERT_EQ(secondJson["components"].size(), 1);
+  EXPECT_EQ(firstJson["components"][0]["inputs"][0][0], nullptr);
+  EXPECT_EQ(firstJson["components"][0]["outputs"][0][0], nullptr);
+  EXPECT_EQ(secondJson["components"][0]["inputs"][0][0], nullptr);
+  EXPECT_EQ(secondJson["components"][0]["outputs"][0][0], nullptr);
+  EXPECT_EQ(firstJson["components"][0]["inputs"], secondJson["components"][0]["inputs"]);
+  EXPECT_EQ(firstJson["components"][0]["outputs"],
+            secondJson["components"][0]["outputs"]);
+}
+
 TEST(CircuitTest, SerializeComplexCircuit)
 {
   auto i1  = std::make_shared<Wire>();
