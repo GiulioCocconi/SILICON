@@ -28,14 +28,16 @@
 #include <string_view>
 #include <vector>
 
+namespace SILICON::core {
+
 class Component;
 using Component_ptr = std::shared_ptr<Component>;
 
 class ComponentRegistry {
 public:
   using Factory = std::function<Component_ptr()>;
-  using ComponentCategory = ::ComponentCategory;
-  using ComponentMetadata = ::ComponentMetadata;
+  using ComponentCategory = SILICON::core::ComponentCategory;
+  using ComponentMetadata = SILICON::core::ComponentMetadata;
 
   ComponentRegistry();
   static ComponentRegistry  empty();
@@ -56,3 +58,5 @@ private:
 };
 
 std::string_view componentCategoryName(ComponentCategory category);
+
+}  // namespace SILICON::core

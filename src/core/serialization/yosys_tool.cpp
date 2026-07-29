@@ -39,15 +39,32 @@
 #include <core/circuit.hpp>
 #include <logging/logger.hpp>
 
+#ifndef __EMSCRIPTEN__
+  #include <boost/asio/io_context.hpp>
+  #include <boost/process/v1/args.hpp>
+  #include <boost/process/v1/async.hpp>
+  #include <boost/process/v1/child.hpp>
+  #include <boost/process/v1/io.hpp>
+  #include <boost/process/v1/search_path.hpp>
+
+  #if defined(_WIN32)
+    #include <windows.h>
+  #elif defined(__APPLE__)
+    #include <mach-o/dyld.h>
+  #endif
+#endif
+
+namespace SILICON::yosys {
+
+using namespace SILICON::core;
+
 namespace {
 
-const Logger yosysLog("yosys");
+const SILICON::logging::Logger yosysLog("yosys");
 
 }  // namespace
 
 #ifdef __EMSCRIPTEN__
-
-namespace silicon::yosys {
 
 ScriptResult runScript(const std::string_view script, const ToolOptions& options)
 {
@@ -75,24 +92,8 @@ std::string exportVerilog(const Circuit& circuit, const ToolOptions& options)
   throw std::logic_error("Unreachable after unavailable Yosys execution");
 }
 
-}  // namespace silicon::yosys
-
 #else
 
-  #include <boost/asio/io_context.hpp>
-  #include <boost/process/v1/args.hpp>
-  #include <boost/process/v1/async.hpp>
-  #include <boost/process/v1/child.hpp>
-  #include <boost/process/v1/io.hpp>
-  #include <boost/process/v1/search_path.hpp>
-
-  #if defined(_WIN32)
-    #include <windows.h>
-  #elif defined(__APPLE__)
-    #include <mach-o/dyld.h>
-  #endif
-
-namespace silicon::yosys {
 namespace {
 
   class TemporaryWorkspace {
@@ -670,6 +671,6 @@ std::string exportVerilog(const Circuit& circuit, const ToolOptions& options)
       cleanProcessVerilog(readFile(verilogPath, "Verilog-export output-reading phase")));
 }
 
-}  // namespace silicon::yosys
-
 #endif
+
+}  // namespace SILICON::yosys

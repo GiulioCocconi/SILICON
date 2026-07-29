@@ -18,6 +18,8 @@
 #include "tests.hpp"
 #include <fstapi.h>
 
+using namespace SILICON::core;
+
 TEST(FstLibTest, IO)
 {
   fstWriterContext* writer = fstWriterCreate("out.fst", 1);

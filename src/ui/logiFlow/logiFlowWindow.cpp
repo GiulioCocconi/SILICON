@@ -107,7 +107,12 @@
 #include <ui/logiFlow/hdlCodeEditor.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
 
-const Logger uiLog("ui");
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+
+const SILICON::logging::Logger uiLog("ui");
 
 LogiFlowWindow::~LogiFlowWindow()
 {
@@ -242,3 +247,6 @@ LogiFlowWindow::LogiFlowWindow()
 
   uiLog.info("Qt logging sideview initialized");
 }
+
+}  // namespace ui
+}  // namespace SILICON

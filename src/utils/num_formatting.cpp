@@ -24,6 +24,8 @@
 #include <limits>
 #include <sstream>
 
+namespace SILICON::core {
+
 namespace {
 
 std::string trimmed(std::string_view text)
@@ -146,8 +148,6 @@ std::string groupedBase(std::string_view rawBits, int groupSize, std::string_vie
 
 }  // namespace
 
-namespace silicon {
-
 unsigned int maxValueForBusWidth(const std::size_t width)
 {
   if (width >= std::numeric_limits<unsigned int>::digits)
@@ -214,4 +214,4 @@ std::string formatRawBits(std::string_view rawBits, const NumberFormat format)
   return uppercaseRaw(rawBits);
 }
 
-}  // namespace silicon
+}  // namespace SILICON::core

@@ -15,7 +15,7 @@
 
 #include <core/callbackRegistry.hpp>
 
-namespace silicon::project {
+namespace SILICON::project {
 
 enum class DocumentKind { Circuit, Subcircuit };
 
@@ -92,7 +92,7 @@ public:
 
 private:
   std::vector<Document>              documents_;
-  CallbackRegistry<std::string_view> listeners_;
+  SILICON::core::CallbackRegistry<std::string_view> listeners_;
 };
 
-}  // namespace silicon::project
+}  // namespace SILICON::project

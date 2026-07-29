@@ -36,6 +36,11 @@
 
 #include <utility>
 
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+
 void registerAllGUIComponents(GUIComponentFactory& factory)
 {
   auto reg = [&factory](std::string name, auto factoryFunc) {
@@ -102,3 +107,6 @@ void registerAllGUIComponents(GUIComponentFactory& factory)
   reg(std::string(SubcircuitComponent::Type),
       [](QGraphicsItem* p) { return std::make_unique<GraphicalSubcircuitComponent>(p); });
 }
+
+}  // namespace ui
+}  // namespace SILICON

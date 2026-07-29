@@ -26,6 +26,8 @@
 #include <string_view>
 #include <vector>
 
+namespace SILICON::core {
+
 class ActiveKeyGuard {
 public:
   ActiveKeyGuard(std::vector<std::string>& stack, std::string key,
@@ -56,3 +58,5 @@ private:
   std::vector<std::string>& stack;
   bool                      pushed = false;
 };
+
+}  // namespace SILICON::core

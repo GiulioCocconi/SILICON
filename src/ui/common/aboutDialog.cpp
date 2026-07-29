@@ -23,6 +23,10 @@
 #include <QPushButton>
 #include <QStringBuilder>
 
+
+namespace SILICON {
+namespace ui {
+
 AboutDialog::AboutDialog(const QString& title, QWidget* parent) : QDialog(parent)
 {
   setWindowTitle(QString("About %1").arg(title));
@@ -104,3 +108,6 @@ void AboutDialog::loadLicenses()
     }
   }
 }
+
+}  // namespace ui
+}  // namespace SILICON

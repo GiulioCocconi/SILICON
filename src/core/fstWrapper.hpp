@@ -28,6 +28,8 @@
 
 #include <fstapi.h>
 
+namespace SILICON::waveform::fst {
+
 // --- Shared types ----------------------------------------------------------------------
 
 /**
@@ -64,17 +66,17 @@ struct WriterDeleter {
 };
 
 // =======================================================================================
-// FstReader
+// Reader
 // =======================================================================================
 
 /**
- * @class FstReader
+ * @class Reader
  * @brief High-level zero-overhead wrapper around libfst reader APIs.
  *
- * The existence of an FstReader instance guarantees that the FST file
+ * The existence of an Reader instance guarantees that the FST file
  * is successfully opened and the underlying reader context is valid.
  */
-class FstReader final {
+class Reader final {
 public:
   /**
    * @brief Decoded enum table extracted from libfst.
@@ -162,22 +164,22 @@ public:
    * This constructor establishes the class invariant that a successfully
    * constructed object always owns a valid reader context.
    */
-  explicit FstReader(std::string_view fileName);
+  explicit Reader(std::string_view fileName);
 
-  ~FstReader() = default;
+  ~Reader() = default;
 
   /**
    * Copying is forbidden because the underlying libfst context is a unique
    * ownership resource.
    */
-  FstReader(const FstReader&)            = delete;
-  FstReader& operator=(const FstReader&) = delete;
+  Reader(const Reader&)            = delete;
+  Reader& operator=(const Reader&) = delete;
 
   /**
    * Moving is safe because ownership transfers cleanly through unique_ptr.
    */
-  FstReader(FstReader&&) noexcept            = default;
-  FstReader& operator=(FstReader&&) noexcept = default;
+  Reader(Reader&&) noexcept            = default;
+  Reader& operator=(Reader&&) noexcept = default;
 
   [[nodiscard]] const std::string& getFileName() const { return fn; }
 
@@ -388,11 +390,11 @@ private:
 };
 
 // =======================================================================================
-// FstDataWriter
+// DataWriter
 // =======================================================================================
 
 /**
- * @class FstDataWriter
+ * @class DataWriter
  *
  * @brief Stateful writer for waveform value emission.
  *
@@ -400,17 +402,17 @@ private:
  * completed.
  *
  * That sequencing guarantee is enforced at the type level through the
- * FstHierarchyBuilder -> FstDataWriter transition.
+ * HierarchyBuilder -> DataWriter transition.
  */
-class FstDataWriter final {
+class DataWriter final {
 public:
-  FstDataWriter(const FstDataWriter&)            = delete;
-  FstDataWriter& operator=(const FstDataWriter&) = delete;
+  DataWriter(const DataWriter&)            = delete;
+  DataWriter& operator=(const DataWriter&) = delete;
 
-  FstDataWriter(FstDataWriter&&) noexcept            = default;
-  FstDataWriter& operator=(FstDataWriter&&) noexcept = default;
+  DataWriter(DataWriter&&) noexcept            = default;
+  DataWriter& operator=(DataWriter&&) noexcept = default;
 
-  ~FstDataWriter() = default;
+  ~DataWriter() = default;
 
   /**
    * @brief Advances simulation time.
@@ -483,13 +485,13 @@ public:
 
 private:
   /**
-   * Only FstHierarchyBuilder may construct a writer.
+   * Only HierarchyBuilder may construct a writer.
    *
    * This enforces the intended typestate transition.
    */
-  friend class FstHierarchyBuilder;
+  friend class HierarchyBuilder;
 
-  explicit FstDataWriter(std::unique_ptr<fstWriterContext, WriterDeleter> ctx)
+  explicit DataWriter(std::unique_ptr<fstWriterContext, WriterDeleter> ctx)
     : context(std::move(ctx))
   {
   }
@@ -498,11 +500,11 @@ private:
 };
 
 // =======================================================================================
-// FstHierarchyBuilder
+// HierarchyBuilder
 // =======================================================================================
 
 /**
- * @class FstHierarchyBuilder
+ * @class HierarchyBuilder
  *
  * @brief Typestate phase for static topology construction.
  *
@@ -513,20 +515,20 @@ private:
  *   - create variables
  *   - configure enums
  *
- * Once hierarchy definition is complete, ownership transitions into FstDataWriter through
+ * Once hierarchy definition is complete, ownership transitions into DataWriter through
  * finish().
  */
-class FstHierarchyBuilder final {
+class HierarchyBuilder final {
 public:
-  explicit FstHierarchyBuilder(std::string_view fileName, int use_compressed_hier = 1);
+  explicit HierarchyBuilder(std::string_view fileName, int use_compressed_hier = 1);
 
-  ~FstHierarchyBuilder() = default;
+  ~HierarchyBuilder() = default;
 
-  FstHierarchyBuilder(const FstHierarchyBuilder&)            = delete;
-  FstHierarchyBuilder& operator=(const FstHierarchyBuilder&) = delete;
+  HierarchyBuilder(const HierarchyBuilder&)            = delete;
+  HierarchyBuilder& operator=(const HierarchyBuilder&) = delete;
 
-  FstHierarchyBuilder(FstHierarchyBuilder&&) noexcept            = default;
-  FstHierarchyBuilder& operator=(FstHierarchyBuilder&&) noexcept = default;
+  HierarchyBuilder(HierarchyBuilder&&) noexcept            = default;
+  HierarchyBuilder& operator=(HierarchyBuilder&&) noexcept = default;
 
   // --- Global Writer Configuration -----------------------------------------------------
 
@@ -626,7 +628,7 @@ public:
    * The && qualifier prevents calling finish() on lvalues accidentally.
    * Users must explicitly acknowledge consumption via std::move().
    */
-  FstDataWriter finish() &&;
+  DataWriter finish() &&;
 
 private:
   std::string fn;
@@ -636,3 +638,5 @@ private:
    */
   std::unique_ptr<fstWriterContext, WriterDeleter> context;
 };
+
+}  // namespace SILICON::waveform::fst

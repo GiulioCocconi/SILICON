@@ -23,6 +23,10 @@
 class QUndoStack;
 class QWidget;
 
+
+namespace SILICON {
+namespace ui {
+
 /**
  * @brief Opens the modal editor for a project subcircuit's graphical shape.
  * @param slug Project-local subcircuit slug to edit.
@@ -31,3 +35,6 @@ class QWidget;
  */
 void editGraphicalSubcircuitShape(const std::string& slug, QUndoStack* undoStack,
                                   QWidget* parent = nullptr);
+
+}  // namespace ui
+}  // namespace SILICON

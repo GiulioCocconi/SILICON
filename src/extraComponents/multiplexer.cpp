@@ -22,6 +22,9 @@
 
 #include <core/simulator.hpp>
 
+namespace SILICON::extra {
+using namespace SILICON::core;
+
 namespace {
 constexpr int MaxSelectionSize = 15;
 
@@ -350,7 +353,7 @@ int Multiplexer::setBusSize(const int busSize)
   return busSize;
 }
 
-void Multiplexer::simulate(Simulator& sim)
+void Multiplexer::simulate(SILICON::simulation::Simulator& sim)
 {
   if (outputBuses().empty() || outputBusSize(Outputs::Out) == 0)
     return;
@@ -487,7 +490,7 @@ int Demultiplexer::setBusSize(const int busSize)
   return busSize;
 }
 
-void Demultiplexer::simulate(Simulator& sim)
+void Demultiplexer::simulate(SILICON::simulation::Simulator& sim)
 {
   if (outputBuses().empty())
     return;
@@ -631,7 +634,7 @@ int Decoder::setSelectionSize(const int selectionSize)
   return selectionSize;
 }
 
-void Decoder::simulate(Simulator& sim)
+void Decoder::simulate(SILICON::simulation::Simulator& sim)
 {
   if (outputBusSize(Outputs::Out) == 0)
     return;
@@ -692,3 +695,5 @@ void Decoder::simulate(Simulator& sim)
     sim.updateWire(outputWire(Outputs::Out, bit), outputState, delay, weak_from_this());
   }
 }
+
+}  // namespace SILICON::extra

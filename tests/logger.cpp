@@ -5,6 +5,9 @@
 
 #include <logging/logger.hpp>
 
+using namespace SILICON::core;
+using namespace SILICON::logging;
+
 TEST(LoggerTests, InitializeAndShutdownAreSafe)
 {
   EXPECT_NO_THROW(Logger::initialize());

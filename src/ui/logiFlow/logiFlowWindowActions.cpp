@@ -109,9 +109,14 @@
 #include <ui/logiFlow/projectTree.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
 
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+
 namespace {
 
-const Logger uiLog("ui");
+const SILICON::logging::Logger uiLog("ui");
 
 QAction* makeAction(QObject* parent, const QIcon& icon, const QString& text,
                     const QString& statusTip = {})
@@ -400,15 +405,17 @@ void LogiFlowWindow::applyStoredSettings()
   SiliconSettings            settings("LogiFlow", this);
   const CommonSettingsValues values = readCommonSettings(settings);
 
-  Simulator::setMaxSimulationSteps(static_cast<uint64_t>(values.maxSimulationSteps));
-  Simulator::setMaxTransitionsPerDeltaCycle(values.maxTransitionsPerDeltaCycle);
+  SILICON::simulation::Simulator::setMaxSimulationSteps(
+      static_cast<uint64_t>(values.maxSimulationSteps));
+  SILICON::simulation::Simulator::setMaxTransitionsPerDeltaCycle(
+      values.maxTransitionsPerDeltaCycle);
 
   ThemeEngine::apply(*qApp, themeModeFromText(values.theme));
 
   const auto shortcuts = shortcutSettings();
   for (const ShortcutSetting& shortcut : shortcuts) {
     shortcut.action->setShortcut(
-        SiliconSetting::value(settings, shortcut.setting).value<QKeySequence>());
+        SILICON::ui::settings::value(settings, shortcut.setting).value<QKeySequence>());
 #ifdef __EMSCRIPTEN__
     shortcut.action->setShortcutContext(Qt::ApplicationShortcut);
     if (!actions().contains(shortcut.action))
@@ -482,7 +489,7 @@ void LogiFlowWindow::createWaveformWindow()
   const auto layout = new QVBoxLayout(waveformWindow);
   layout->setContentsMargins(0, 0, 0, 0);
 
-  waveformViewer = new WaveformViewer(waveformWindow);
+  waveformViewer = new waveform::Viewer(waveformWindow);
   layout->addWidget(waveformViewer);
 
   connect(waveformWindow, &QDialog::finished, this, [this] {
@@ -491,15 +498,15 @@ void LogiFlowWindow::createWaveformWindow()
     waveformViewer->setEditMode(false);
   });
   connect(diagramScene, &DiagramScene::waveformTraceReset, waveformViewer,
-          &WaveformViewer::resetTrace);
+          &waveform::Viewer::resetTrace);
   connect(diagramScene, &DiagramScene::waveformTraceSnapshot, waveformViewer,
-          &WaveformViewer::appendSnapshot);
+          &waveform::Viewer::appendSnapshot);
   connect(diagramScene, &DiagramScene::waveformTraceSnapshots, waveformViewer,
-          &WaveformViewer::appendSnapshots);
+          &waveform::Viewer::appendSnapshots);
   connect(
-      waveformViewer, &WaveformViewer::editModeChanged, this,
+      waveformViewer, &waveform::Viewer::editModeChanged, this,
       [this](const bool enabled) { diagramScene->setIoInteractionsEnabled(!enabled); });
-  connect(waveformViewer, &WaveformViewer::editTraceCommitted, diagramScene,
+  connect(waveformViewer, &waveform::Viewer::editTraceCommitted, diagramScene,
           &DiagramScene::simulateEditedWaveform);
 }
 
@@ -507,34 +514,34 @@ void LogiFlowWindow::updateSubcircuitShapeAction()
 {
   if (!editSubcircuitShapeAct)
     return;
-  const bool active = silicon::project::classifyDocumentPath(activeDocumentPath)
-                      == silicon::project::DocumentKind::Subcircuit;
+  const bool active = SILICON::project::classifyDocumentPath(activeDocumentPath)
+                      == SILICON::project::DocumentKind::Subcircuit;
   editSubcircuitShapeAct->setVisible(active);
   editSubcircuitShapeAct->setEnabled(active);
   updateHdlActions();
 }
 
-silicon::project::ProjectAsset* LogiFlowWindow::projectAsset(const std::string_view path)
+SILICON::project::ProjectAsset* LogiFlowWindow::projectAsset(const std::string_view path)
 {
   const auto it =
-      std::ranges::find(projectAssets, path, &silicon::project::ProjectAsset::path);
+      std::ranges::find(projectAssets, path, &SILICON::project::ProjectAsset::path);
   return it == projectAssets.end() ? nullptr : &*it;
 }
 
-const silicon::project::ProjectAsset*
+const SILICON::project::ProjectAsset*
 LogiFlowWindow::projectAsset(const std::string_view path) const
 {
   const auto it =
-      std::ranges::find(projectAssets, path, &silicon::project::ProjectAsset::path);
+      std::ranges::find(projectAssets, path, &SILICON::project::ProjectAsset::path);
   return it == projectAssets.end() ? nullptr : &*it;
 }
 
 bool LogiFlowWindow::activeDocumentHasHdl() const
 {
   const auto* document =
-      silicon::project::DocumentStore::active().find(activeDocumentPath);
-  return document && document->kind() == silicon::project::DocumentKind::Subcircuit
-         && silicon::project::parseHdlDescriptor(document->sceneJson()).has_value();
+      SILICON::project::DocumentStore::active().find(activeDocumentPath);
+  return document && document->kind() == SILICON::project::DocumentKind::Subcircuit
+         && SILICON::project::parseHdlDescriptor(document->sceneJson()).has_value();
 }
 
 void LogiFlowWindow::updateHdlActions()
@@ -542,8 +549,8 @@ void LogiFlowWindow::updateHdlActions()
   if (!toggleHdlCodeModeAct)
     return;
 
-  const bool subcircuit = silicon::project::classifyDocumentPath(activeDocumentPath)
-                          == silicon::project::DocumentKind::Subcircuit;
+  const bool subcircuit = SILICON::project::classifyDocumentPath(activeDocumentPath)
+                          == SILICON::project::DocumentKind::Subcircuit;
   const bool hdl = subcircuit && activeDocumentHasHdl();
 
   toggleHdlCodeModeAct->setVisible(subcircuit);
@@ -577,10 +584,10 @@ void LogiFlowWindow::updateHdlActions()
 void LogiFlowWindow::showActiveHdlDocument()
 {
   const auto* document =
-      silicon::project::DocumentStore::active().find(activeDocumentPath);
+      SILICON::project::DocumentStore::active().find(activeDocumentPath);
   if (!document)
     throw std::runtime_error("Active subcircuit document is missing");
-  const auto descriptor = silicon::project::parseHdlDescriptor(document->sceneJson());
+  const auto descriptor = SILICON::project::parseHdlDescriptor(document->sceneJson());
   if (!descriptor)
     throw std::runtime_error("Active subcircuit has no HDL descriptor");
   const auto* asset = projectAsset(descriptor->path);
@@ -589,7 +596,7 @@ void LogiFlowWindow::showActiveHdlDocument()
         std::format("Subcircuit HDL asset '{}' is missing", descriptor->path));
 
   const auto coreJson = document->coreCircuitJson().value_or(
-      silicon::subcircuits::extractCoreCircuitJson(document->sceneJson()));
+      SILICON::core::extractCoreCircuitJson(document->sceneJson()));
   diagramScene->setCircuit(std::make_shared<Circuit>(
       Circuit::deserialize(coreJson, ComponentRegistry::instance())));
   hdlEditor->setPlainText(QString::fromStdString(asset->contents));
@@ -602,16 +609,16 @@ void LogiFlowWindow::showActiveHdlDocument()
 void LogiFlowWindow::compileActiveHdl()
 {
   const auto* existing =
-      silicon::project::DocumentStore::active().find(activeDocumentPath);
+      SILICON::project::DocumentStore::active().find(activeDocumentPath);
   if (!existing)
     throw std::runtime_error("Active subcircuit document is missing");
-  const auto descriptor = silicon::project::parseHdlDescriptor(existing->sceneJson());
+  const auto descriptor = SILICON::project::parseHdlDescriptor(existing->sceneJson());
   const auto slug       = existing->subcircuitSlug();
   if (!descriptor || !slug)
     throw std::runtime_error("Active document is not an HDL-backed subcircuit");
 
   auto circuit =
-      silicon::yosys::importVerilog(hdlEditor->toPlainText().toStdString(), *slug);
+      SILICON::yosys::importVerilog(hdlEditor->toPlainText().toStdString(), *slug);
   auto       json     = nlohmann::ordered_json::parse(existing->sceneJson());
   const auto fallback = parseGraphicalSubcircuitMetadata(existing->sceneJson())
                             .value_or(GraphicalSubcircuitMetadata{});
@@ -631,7 +638,7 @@ void LogiFlowWindow::compileActiveHdl()
 
   const auto source = hdlEditor->toPlainText().toStdString();
   dependencyGraph.replaceDocumentDependencies(activeDocumentPath, sceneJson);
-  silicon::project::DocumentStore::active().upsertDocument(
+  SILICON::project::DocumentStore::active().upsertDocument(
       preparedSubcircuitDocument(activeDocumentPath, std::move(sceneJson)));
   asset->contents = source;
   diagramScene->setCircuit(std::make_shared<Circuit>(std::move(circuit)));
@@ -651,18 +658,18 @@ void LogiFlowWindow::convertActiveSubcircuitToHdl()
 
   saveActiveDocumentPayload();
   const auto* existing =
-      silicon::project::DocumentStore::active().find(activeDocumentPath);
+      SILICON::project::DocumentStore::active().find(activeDocumentPath);
   if (!existing)
     throw std::runtime_error("Active subcircuit document is missing");
 
   auto circuit = Circuit::deserialize(
-      silicon::subcircuits::extractCoreCircuitJson(existing->sceneJson()),
+      SILICON::core::extractCoreCircuitJson(existing->sceneJson()),
       ComponentRegistry::instance());
   circuit.setName(slug);
-  const auto source = silicon::yosys::exportVerilog(circuit);
+  const auto source = SILICON::yosys::exportVerilog(circuit);
   // Re-import before committing the irreversible conversion. This also validates
   // that the slug is a supported top-module identifier.
-  (void)silicon::yosys::importVerilog(source, slug);
+  (void)SILICON::yosys::importVerilog(source, slug);
 
   const auto assetPath = std::format("hdl/{}.v", slug);
   if (projectAsset(assetPath))
@@ -675,7 +682,7 @@ void LogiFlowWindow::convertActiveSubcircuitToHdl()
   const auto sceneJson         = json.dump(2);
 
   dependencyGraph.replaceDocumentDependencies(activeDocumentPath, sceneJson);
-  silicon::project::DocumentStore::active().upsertDocument(
+  SILICON::project::DocumentStore::active().upsertDocument(
       preparedSubcircuitDocument(activeDocumentPath, sceneJson));
   projectAssets.push_back({assetPath, source});
 
@@ -717,7 +724,7 @@ void LogiFlowWindow::toggleHdlCodeMode(const bool enabled)
       editorStack->setCurrentWidget(hdlEditor);
     }
     updateHdlActions();
-    SiliconInputDialog::critical(
+    SILICON::ui::inputDialog::critical(
         this, tr("HDL Error"),
         tr("Failed to generate the subcircuit core:\n%1").arg(error.what()));
   }
@@ -732,9 +739,12 @@ void LogiFlowWindow::editActiveSubcircuitShape()
     saveActiveDocumentPayload();
     editGraphicalSubcircuitShape(slug, undoStack, this);
   } catch (const std::exception& e) {
-    SiliconInputDialog::warning(
+    SILICON::ui::inputDialog::warning(
         this, tr("Edit shape"),
         tr("Failed to save the active subcircuit before editing its shape:\n%1")
             .arg(e.what()));
   }
 }
+
+}  // namespace ui
+}  // namespace SILICON

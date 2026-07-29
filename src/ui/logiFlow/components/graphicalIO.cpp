@@ -32,6 +32,11 @@
 #include <stdexcept>
 #include <utility>
 
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+
 namespace {
 
 constexpr int              BusIoMinWidth     = 8 * DiagramScene::GRID_SIZE;
@@ -170,7 +175,7 @@ private:
     cachedWidthTextWidth = widthMetrics.horizontalAdvance(cachedWidthText);
 
     const QString largestKnown = QString::fromStdString(
-        silicon::formatFixedWidthHex(silicon::maxValueForBusWidth(busWidth), busWidth));
+        SILICON::core::formatFixedWidthHex(SILICON::core::maxValueForBusWidth(busWidth), busWidth));
     const QString unknownBits(static_cast<int>(std::min<unsigned int>(busWidth, 8)),
                               QLatin1Char('X'));
 
@@ -507,7 +512,7 @@ void GraphicalBusInput::installPropertyCallbacks()
         auto       component = boundComponent.lock();
         const auto outputs   = component ? component->getOutputs() : std::vector<Bus>{};
         const auto maxValue  = static_cast<int>(
-            silicon::maxValueForBusWidth(outputs.empty() ? 1 : outputs[0].size()));
+            SILICON::core::maxValueForBusWidth(outputs.empty() ? 1 : outputs[0].size()));
         const int clampedValue = std::clamp(std::get<int>(value), 0, maxValue);
         if (safeThis && safeThis->getComponent() == component)
           safeThis->setValue(static_cast<unsigned int>(clampedValue));
@@ -529,12 +534,12 @@ void GraphicalBusInput::setValue(const unsigned int value)
     return;
 
   const auto width = outputs[0].size();
-  currentValue     = value & silicon::maxValueForBusWidth(width);
+  currentValue     = value & SILICON::core::maxValueForBusWidth(width);
 
   if (auto* shape = getBusIoShape(getItemShape(), "GraphicalBusInput::setValue")) {
     shape->setBusWidth(static_cast<unsigned int>(width));
     shape->setValueText(
-        QString::fromStdString(silicon::formatFixedWidthHex(currentValue, width)));
+        QString::fromStdString(SILICON::core::formatFixedWidthHex(currentValue, width)));
   }
 
   if (!isInteractiveSimulation(this))
@@ -560,16 +565,16 @@ void GraphicalBusInput::editValue()
       QString("Set %1-bit bus value (decimal, 0x..., or 0b...)").arg(width);
 
   const QPointer<GraphicalBusInput> safeThis(this);
-  SiliconInputDialog::getText(
-      SiliconInputDialog::parentWidgetForGraphicsItem(this), "Bus Input", prompt,
-      QString::fromStdString(silicon::formatFixedWidthHex(currentValue, width)),
+  SILICON::ui::inputDialog::getText(
+      SILICON::ui::inputDialog::parentWidgetForGraphicsItem(this), "Bus Input", prompt,
+      QString::fromStdString(SILICON::core::formatFixedWidthHex(currentValue, width)),
       [safeThis, width](const QString& text) {
         if (!safeThis)
           return;
 
         unsigned int value = 0;
-        if (silicon::parseBusValue(text.toStdString(), value))
-          safeThis->setValue(std::min(value, silicon::maxValueForBusWidth(width)));
+        if (SILICON::core::parseBusValue(text.toStdString(), value))
+          safeThis->setValue(std::min(value, SILICON::core::maxValueForBusWidth(width)));
       });
 }
 
@@ -587,12 +592,12 @@ void GraphicalBusInput::applyStartValue()
     return;
 
   const auto width = outputs[0].size();
-  currentValue     = startValue & silicon::maxValueForBusWidth(width);
+  currentValue     = startValue & SILICON::core::maxValueForBusWidth(width);
 
   if (auto* shape = getBusIoShape(getItemShape(), "GraphicalBusInput::applyStartValue")) {
     shape->setBusWidth(static_cast<unsigned int>(width));
     shape->setValueText(
-        QString::fromStdString(silicon::formatFixedWidthHex(currentValue, width)));
+        QString::fromStdString(SILICON::core::formatFixedWidthHex(currentValue, width)));
   }
 
   propagateCurrentValue();
@@ -613,7 +618,7 @@ void GraphicalBusInput::refreshFromComponent()
           getBusIoShape(getItemShape(), "GraphicalBusInput::refreshFromComponent")) {
     shape->setBusWidth(static_cast<unsigned int>(width));
     shape->setValueText(
-        QString::fromStdString(silicon::formatFixedWidthHex(currentValue, width)));
+        QString::fromStdString(SILICON::core::formatFixedWidthHex(currentValue, width)));
   }
 }
 
@@ -766,7 +771,7 @@ void GraphicalBusOutput::setBusState(const Bus& bus)
       const unsigned int value = bus.getCurrentValue();
       shape->setDisplayState(value == 0 ? State::LOW : State::HIGH);
       shape->setValueText(
-          QString::fromStdString(silicon::formatFixedWidthHex(value, bus.size())));
+          QString::fromStdString(SILICON::core::formatFixedWidthHex(value, bus.size())));
     }
   }
 }
@@ -817,3 +822,6 @@ QRectF GraphicalBusOutput::boundingRect() const
   return busIoNamedBounds(getItemShape(), getComponentName(),
                           GraphicalLogicComponent::boundingRect(), isPortOrientationUp());
 }
+
+}  // namespace ui
+}  // namespace SILICON

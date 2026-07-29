@@ -30,7 +30,11 @@
 
 Q_DECLARE_METATYPE(std::filesystem::path)
 
-namespace SiliconSetting {
+
+namespace SILICON {
+namespace ui {
+
+namespace settings {
 inline constexpr auto LightTheme = "light";
 inline constexpr auto DarkTheme  = "dark";
 
@@ -68,16 +72,16 @@ inline const Definition MaxTransitionsPerDeltaCycle = {
  * @return The persisted value or the definition default.
  */
 [[nodiscard]] QVariant value(const QSettings& settings, const Definition& setting);
-}  // namespace SiliconSetting
+}  // namespace settings
 
 /**
  * @brief Snapshot of the common application settings used at runtime.
  */
 struct CommonSettingsValues {
-  QString theme              = SiliconSetting::Theme.defaultValue.toString();
-  int     maxSimulationSteps = SiliconSetting::MaxSimulationSteps.defaultValue.toInt();
+  QString theme              = SILICON::ui::settings::Theme.defaultValue.toString();
+  int     maxSimulationSteps = SILICON::ui::settings::MaxSimulationSteps.defaultValue.toInt();
   int     maxTransitionsPerDeltaCycle =
-      SiliconSetting::MaxTransitionsPerDeltaCycle.defaultValue.toInt();
+      SILICON::ui::settings::MaxTransitionsPerDeltaCycle.defaultValue.toInt();
 };
 
 /**
@@ -111,4 +115,7 @@ public:
  * @param value Persisted theme identifier.
  * @return Matching theme mode, defaulting to light for unknown values.
  */
-[[nodiscard]] SiliconTheme::Mode themeModeFromText(const QString& value);
+[[nodiscard]] SILICON::ui::theme::Mode themeModeFromText(const QString& value);
+
+}  // namespace ui
+}  // namespace SILICON

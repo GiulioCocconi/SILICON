@@ -27,6 +27,10 @@
 #include <string>
 #include <vector>
 
+using namespace SILICON::core;
+using namespace SILICON::waveform;
+using namespace SILICON::waveform::fst;
+
 namespace {
 
 struct FileCleanup {
@@ -38,12 +42,12 @@ struct FileCleanup {
 
 TEST(SiliconWaveformTest, AppendsAndReplacesLatestTimestamp)
 {
-  SiliconWaveformTrace trace;
-  resetWaveformTrace(trace, {{"a", 1}, {"bus", 4}}, 1);
+  Trace trace;
+  resetTrace(trace, {{"a", 1}, {"bus", 4}}, 1);
 
-  appendWaveformSnapshot(trace, 0, {"0", "0011"});
-  appendWaveformSnapshot(trace, 0, {"1", "0101"});
-  appendWaveformSnapshot(trace, 4, {"0", "1111"});
+  appendSnapshot(trace, 0, {"0", "0011"});
+  appendSnapshot(trace, 0, {"1", "0101"});
+  appendSnapshot(trace, 4, {"0", "1111"});
 
   ASSERT_EQ(trace.samples.size(), 2);
   EXPECT_EQ(trace.samples[0].time, 0);
@@ -54,15 +58,15 @@ TEST(SiliconWaveformTest, AppendsAndReplacesLatestTimestamp)
 
 TEST(SiliconWaveformTest, RebuildsAndAppliesEditIntervals)
 {
-  SiliconWaveformTrace trace;
-  resetWaveformTrace(trace, {{"in", 1}, {"bus", 4}, {"out", 1}}, 2);
+  Trace trace;
+  resetTrace(trace, {{"in", 1}, {"bus", 4}, {"out", 1}}, 2);
 
-  rebuildEditableWaveformTrace(trace, 10);
+  rebuildEditableTrace(trace, 10);
   ASSERT_EQ(trace.samples.size(), 2);
   EXPECT_EQ(trace.samples[0].values, (std::vector<std::string>{"0", "0000"}));
   EXPECT_EQ(trace.samples[1].time, 10);
 
-  applyWaveformEditInterval(trace, 10, 1, 2, 5, "1010");
+  applyEditInterval(trace, 10, 1, 2, 5, "1010");
 
   ASSERT_EQ(trace.samples.size(), 4);
   EXPECT_EQ(trace.samples[0].time, 0);
@@ -93,14 +97,14 @@ TEST(SiliconWaveformTest, WritesFstTrace)
   const std::string filename = "test_silicon_waveform.fst";
   FileCleanup       cleanup{filename};
 
-  SiliconWaveformTrace trace;
-  resetWaveformTrace(trace, {{"clk", 1}, {"data", 4}}, 1);
-  appendWaveformSnapshot(trace, 0, {"0", "0011"});
-  appendWaveformSnapshot(trace, 5, {"1", "1010"});
+  Trace trace;
+  resetTrace(trace, {{"clk", 1}, {"data", 4}}, 1);
+  appendSnapshot(trace, 0, {"0", "0011"});
+  appendSnapshot(trace, 5, {"1", "1010"});
 
-  writeFstTrace(filename, trace);
+  writeTrace(filename, trace);
 
-  FstReader  reader(filename);
+  Reader  reader(filename);
   const auto hierarchy = reader.buildHierarchyTree();
   ASSERT_EQ(hierarchy.name, "Waveform");
   ASSERT_EQ(hierarchy.vars.size(), 2);

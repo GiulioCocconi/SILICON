@@ -21,9 +21,11 @@
 #include <format>
 #include <stdexcept>
 
-// --- FstReader -------------------------------------------------------------------------
+namespace SILICON::waveform::fst {
 
-FstReader::FstReader(std::string_view fileName) : fn(fileName)
+// --- Reader -------------------------------------------------------------------------
+
+Reader::Reader(std::string_view fileName) : fn(fileName)
 {
   // Acquire raw libfst reader context.
   const std::string fileNameStorage(fileName);
@@ -36,7 +38,7 @@ FstReader::FstReader(std::string_view fileName) : fn(fileName)
   context.reset(raw_ctx);
 }
 
-std::string FstReader::getVersion() const
+std::string Reader::getVersion() const
 {
   assert(context);
 
@@ -44,7 +46,7 @@ std::string FstReader::getVersion() const
   return str ? std::string(str) : "";
 }
 
-std::string FstReader::getDate() const
+std::string Reader::getDate() const
 {
   assert(context);
 
@@ -53,7 +55,7 @@ std::string FstReader::getDate() const
   return str ? std::string(str) : "";
 }
 
-FstReader::FstScopeNode FstReader::buildHierarchyTree()
+Reader::FstScopeNode Reader::buildHierarchyTree()
 {
   assert(context);
 
@@ -94,7 +96,7 @@ FstReader::FstScopeNode FstReader::buildHierarchyTree()
   return std::move(stack.front());
 }
 
-FstReader::EnumTable FstReader::parseEnumTable(std::string_view enumString)
+Reader::EnumTable Reader::parseEnumTable(std::string_view enumString)
 {
   const std::string enumStringStorage(enumString);
   fstETab* etab = fstUtilityExtractEnumTableFromString(enumStringStorage.c_str());
@@ -116,9 +118,9 @@ FstReader::EnumTable FstReader::parseEnumTable(std::string_view enumString)
   return ret;
 }
 
-// --- FstHierarchyBuilder ---------------------------------------------------------------
+// --- HierarchyBuilder ---------------------------------------------------------------
 
-FstHierarchyBuilder::FstHierarchyBuilder(std::string_view fileName,
+HierarchyBuilder::HierarchyBuilder(std::string_view fileName,
                                          int              use_compressed_hier)
   : fn(fileName)
 {
@@ -132,7 +134,7 @@ FstHierarchyBuilder::FstHierarchyBuilder(std::string_view fileName,
   context.reset(raw_ctx);
 }
 
-void FstHierarchyBuilder::setScope(fstScopeType scope_type, std::string_view scope_name,
+void HierarchyBuilder::setScope(fstScopeType scope_type, std::string_view scope_name,
                                    std::string_view scope_comp)
 {
   assert(context);
@@ -141,7 +143,7 @@ void FstHierarchyBuilder::setScope(fstScopeType scope_type, std::string_view sco
   fstWriterSetScope(context.get(), scope_type, scopeName.c_str(), scopeComp.c_str());
 }
 
-fstHandle FstHierarchyBuilder::createVar(fstVarType var_type, fstVarDir var_dir,
+fstHandle HierarchyBuilder::createVar(fstVarType var_type, fstVarDir var_dir,
                                          uint32_t len, std::string_view name,
                                          fstHandle aliasHandle)
 {
@@ -152,7 +154,7 @@ fstHandle FstHierarchyBuilder::createVar(fstVarType var_type, fstVarDir var_dir,
                             aliasHandle);
 }
 
-fstEnumHandle FstHierarchyBuilder::createEnumTable(
+fstEnumHandle HierarchyBuilder::createEnumTable(
     std::string_view name, unsigned int min_valbits,
     const std::vector<std::pair<const std::string, const std::string>>& values)
 {
@@ -177,13 +179,15 @@ fstEnumHandle FstHierarchyBuilder::createEnumTable(
                                   min_valbits, literals.data(), vals.data());
 }
 
-FstDataWriter FstHierarchyBuilder::finish() &&
+DataWriter HierarchyBuilder::finish() &&
 {
   assert(context && "Builder already consumed!");
 
   // Transfer ownership of the configured writer context into the runtime waveform writer
   // phase.
-  FstDataWriter writer(std::move(context));
+  DataWriter writer(std::move(context));
 
   return writer;
 }
+
+}  // namespace SILICON::waveform::fst

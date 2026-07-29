@@ -20,6 +20,11 @@
 #include <core/flipflops.hpp>
 #include <ui/logiFlow/components/graphicalLogicComponent.hpp>
 
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+
 class GraphicalFlipFlop : public GraphicalLogicComponent {
   Q_OBJECT
 protected:
@@ -59,3 +64,6 @@ public:
 
   int type() const override { return SiliconTypes::JK_FLIP_FLOP; }
 };
+
+}  // namespace ui
+}  // namespace SILICON

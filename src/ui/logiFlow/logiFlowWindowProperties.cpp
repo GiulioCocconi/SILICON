@@ -109,12 +109,17 @@
 #include <ui/logiFlow/projectTree.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
 
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+
 namespace {
 
-const Logger uiLog("ui");
+const SILICON::logging::Logger uiLog("ui");
 
 std::pair<std::string, std::string>
-circuitMetadata(const silicon::project::Document& document)
+circuitMetadata(const SILICON::project::Document& document)
 {
   try {
     const auto scene = nlohmann::json::parse(document.sceneJson());
@@ -238,7 +243,7 @@ void LogiFlowWindow::updatePropertyDock()
           description = circuit->getDescription();
         }
       } else if (const auto* document =
-                     silicon::project::DocumentStore::active().find(circuitPath)) {
+                     SILICON::project::DocumentStore::active().find(circuitPath)) {
         std::tie(name, description) = circuitMetadata(*document);
       }
       nameEdit->setText(QString::fromStdString(name));
@@ -333,7 +338,7 @@ void LogiFlowWindow::updatePropertyDock()
         undoStack->push(command);
       }
     } catch (const std::exception& e) {
-      SiliconInputDialog::warning(this, tr("Invalid Property"), e.what());
+      SILICON::ui::inputDialog::warning(this, tr("Invalid Property"), e.what());
       QTimer::singleShot(0, this, &LogiFlowWindow::updatePropertyDock);
     }
   };
@@ -469,3 +474,6 @@ QString PropertySpinBox::textFromValue(int val) const
   }
   return QSpinBox::textFromValue(val);
 }
+
+}  // namespace ui
+}  // namespace SILICON

@@ -109,9 +109,14 @@
 #include <ui/logiFlow/projectTree.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
 
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+
 namespace {
 
-const Logger uiLog("ui");
+const SILICON::logging::Logger uiLog("ui");
 
 QString defaultProjectName(const QString& currentFileName)
 {
@@ -123,15 +128,15 @@ QString defaultProjectName(const QString& currentFileName)
 
 std::string LogiFlowWindow::defaultMainCircuitPath()
 {
-  return std::string(silicon::project::DefaultMainCircuitPath);
+  return std::string(SILICON::project::DefaultMainCircuitPath);
 }
 
-silicon::project::Document LogiFlowWindow::defaultCircuitDocument()
+SILICON::project::Document LogiFlowWindow::defaultCircuitDocument()
 {
   return {defaultMainCircuitPath(), ""};
 }
 
-silicon::project::ProjectInfo
+SILICON::project::ProjectInfo
 LogiFlowWindow::defaultProjectInfo(const QString& currentFileName)
 {
   return {.name        = defaultProjectName(currentFileName).toStdString(),
@@ -150,8 +155,8 @@ LogiFlowWindow::projectMainCircuitPath() const
 
 void LogiFlowWindow::ensureProjectDocuments()
 {
-  auto& store = silicon::project::DocumentStore::active();
-  if (store.documents(silicon::project::DocumentKind::Circuit).empty())
+  auto& store = SILICON::project::DocumentStore::active();
+  if (store.documents(SILICON::project::DocumentKind::Circuit).empty())
     store.upsertDocument(defaultCircuitDocument());
 }
 
@@ -169,8 +174,8 @@ void LogiFlowWindow::initializeProjectTree()
 std::string LogiFlowWindow::activeProjectCircuitPath() const
 {
   if (!activeDocumentPath.empty()
-      && silicon::project::classifyDocumentPath(activeDocumentPath)
-             == silicon::project::DocumentKind::Circuit)
+      && SILICON::project::classifyDocumentPath(activeDocumentPath)
+             == SILICON::project::DocumentKind::Circuit)
     return activeDocumentPath;
 
   return projectMainCircuitPath();
@@ -183,14 +188,14 @@ bool LogiFlowWindow::activateProjectCircuit(const std::string& circuitPath)
 
 std::string LogiFlowWindow::activeProjectSubcircuitSlug() const
 {
-  return silicon::project::subcircuitSlugForPath(activeDocumentPath)
+  return SILICON::project::subcircuitSlugForPath(activeDocumentPath)
       .value_or(std::string{});
 }
 
 bool LogiFlowWindow::activateProjectDocument(const std::string& documentPath)
 {
-  if (!silicon::project::classifyDocumentPath(documentPath)
-      || !silicon::project::DocumentStore::active().contains(documentPath))
+  if (!SILICON::project::classifyDocumentPath(documentPath)
+      || !SILICON::project::DocumentStore::active().contains(documentPath))
     return false;
   if (documentPath == activeDocumentPath) {
     selectProjectTreeDocument(documentPath);
@@ -207,7 +212,7 @@ std::shared_ptr<Circuit> LogiFlowWindow::activeCircuit()
 
 bool LogiFlowWindow::hasDocument(const std::string& path) const
 {
-  return silicon::project::DocumentStore::active().contains(path);
+  return SILICON::project::DocumentStore::active().contains(path);
 }
 
 std::string LogiFlowWindow::emptyCircuitSceneJson(const std::string& name) const
@@ -237,14 +242,14 @@ std::string LogiFlowWindow::emptySubcircuitSceneJson(const std::string& name) co
   return scene.dump(2);
 }
 
-std::string LogiFlowWindow::uniqueDocumentPath(const silicon::project::DocumentKind kind,
+std::string LogiFlowWindow::uniqueDocumentPath(const SILICON::project::DocumentKind kind,
                                                const QString& requestedName) const
 {
   const auto trimmed = requestedName.trimmed();
   const auto fallback =
-      kind == silicon::project::DocumentKind::Circuit ? "circuit" : "subcircuit";
+      kind == SILICON::project::DocumentKind::Circuit ? "circuit" : "subcircuit";
   const auto directory =
-      kind == silicon::project::DocumentKind::Circuit ? "circuits" : "subcircuits";
+      kind == SILICON::project::DocumentKind::Circuit ? "circuits" : "subcircuits";
   std::string slug = trimmed.isEmpty() ? fallback : trimmed.toStdString();
 
   for (char& ch : slug) {
@@ -263,7 +268,7 @@ std::string LogiFlowWindow::uniqueDocumentPath(const silicon::project::DocumentK
     slug            = slug.substr(first, last - first + 1);
   }
 
-  if (kind == silicon::project::DocumentKind::Subcircuit) {
+  if (kind == SILICON::project::DocumentKind::Subcircuit) {
     if (!slug.empty() && std::isdigit(static_cast<unsigned char>(slug.front())))
       slug.insert(slug.begin(), '_');
     std::ranges::replace(slug, '-', '_');
@@ -272,7 +277,7 @@ std::string LogiFlowWindow::uniqueDocumentPath(const silicon::project::DocumentK
   auto candidate = std::format("{}/{}.json", directory, slug);
   int  suffix    = 2;
   while (hasDocument(candidate)) {
-    candidate = kind == silicon::project::DocumentKind::Subcircuit
+    candidate = kind == SILICON::project::DocumentKind::Subcircuit
                     ? std::format("{}/{}_{}.json", directory, slug, suffix)
                     : std::format("{}/{}-{}.json", directory, slug, suffix);
     ++suffix;
@@ -292,13 +297,13 @@ void LogiFlowWindow::saveActiveDocumentPayload()
     return;
   }
 
-  auto&      store           = silicon::project::DocumentStore::active();
+  auto&      store           = SILICON::project::DocumentStore::active();
   auto       serializedScene = diagramScene->serialize();
-  const auto kind            = silicon::project::classifyDocumentPath(activeDocumentPath);
+  const auto kind            = SILICON::project::classifyDocumentPath(activeDocumentPath);
   if (!kind)
     throw std::runtime_error("Active project document path is invalid");
 
-  if (*kind == silicon::project::DocumentKind::Subcircuit) {
+  if (*kind == SILICON::project::DocumentKind::Subcircuit) {
     if (const auto* existing = store.find(activeDocumentPath)) {
       try {
         auto       newJson  = nlohmann::json::parse(serializedScene);
@@ -313,7 +318,7 @@ void LogiFlowWindow::saveActiveDocumentPayload()
   }
 
   dependencyGraph.replaceDocumentDependencies(activeDocumentPath, serializedScene);
-  if (*kind == silicon::project::DocumentKind::Subcircuit)
+  if (*kind == SILICON::project::DocumentKind::Subcircuit)
     store.upsertDocument(
         preparedSubcircuitDocument(activeDocumentPath, std::move(serializedScene)));
   else
@@ -328,8 +333,8 @@ void LogiFlowWindow::selectProjectTreeDocument(const std::string& path)
 
 bool LogiFlowWindow::switchToDocument(const std::string& path, const bool selectInTree)
 {
-  auto&      store = silicon::project::DocumentStore::active();
-  const auto kind  = silicon::project::classifyDocumentPath(path);
+  auto&      store = SILICON::project::DocumentStore::active();
+  const auto kind  = SILICON::project::classifyDocumentPath(path);
   if (path.empty() || !kind || !store.contains(path))
     return false;
 
@@ -350,9 +355,9 @@ bool LogiFlowWindow::switchToDocument(const std::string& path, const bool select
   try {
     saveActiveDocumentPayload();
   } catch (const std::exception& e) {
-    const auto noun = *kind == silicon::project::DocumentKind::Circuit ? tr("Circuit")
+    const auto noun = *kind == SILICON::project::DocumentKind::Circuit ? tr("Circuit")
                                                                        : tr("Subcircuit");
-    SiliconInputDialog::warning(
+    SILICON::ui::inputDialog::warning(
         this, tr("%1 Switch Error").arg(noun),
         tr("Failed to save the current document before switching:\n%1").arg(e.what()));
     return false;
@@ -366,11 +371,11 @@ bool LogiFlowWindow::switchToDocument(const std::string& path, const bool select
   try {
     diagramScene->clear(false, false);
     diagramScene->setSubcircuitDocumentMode(
-        *kind == silicon::project::DocumentKind::Subcircuit);
+        *kind == SILICON::project::DocumentKind::Subcircuit);
 
     activeDocumentPath = path;
     hdlCodeMode        = false;
-    if (silicon::project::parseHdlDescriptor(payload)) {
+    if (SILICON::project::parseHdlDescriptor(payload)) {
       showActiveHdlDocument();
     } else {
       auto& guiFactory   = GUIComponentFactory::instance();
@@ -380,9 +385,9 @@ bool LogiFlowWindow::switchToDocument(const std::string& path, const bool select
     }
     updateSubcircuitShapeAction();
   } catch (const std::exception& e) {
-    const auto noun = *kind == silicon::project::DocumentKind::Circuit ? tr("Circuit")
+    const auto noun = *kind == SILICON::project::DocumentKind::Circuit ? tr("Circuit")
                                                                        : tr("Subcircuit");
-    SiliconInputDialog::critical(
+    SILICON::ui::inputDialog::critical(
         this, tr("%1 Switch Error").arg(noun),
         tr("Failed to load the selected %1:\n%2").arg(noun.toLower(), e.what()));
     return false;
@@ -398,14 +403,14 @@ bool LogiFlowWindow::switchToDocument(const std::string& path, const bool select
 
 void LogiFlowWindow::removeDocument(const std::string& path)
 {
-  auto& store = silicon::project::DocumentStore::active();
+  auto& store = SILICON::project::DocumentStore::active();
   if (!store.contains(path))
     return;
 
-  std::optional<silicon::project::HdlDescriptor> hdl;
+  std::optional<SILICON::project::HdlDescriptor> hdl;
   if (const auto* document = store.find(path);
-      document && document->kind() == silicon::project::DocumentKind::Subcircuit) {
-    hdl = silicon::project::parseHdlDescriptor(document->sceneJson());
+      document && document->kind() == SILICON::project::DocumentKind::Subcircuit) {
+    hdl = SILICON::project::parseHdlDescriptor(document->sceneJson());
   }
 
   if (activeDocumentPath == path)
@@ -422,11 +427,11 @@ void LogiFlowWindow::removeDocument(const std::string& path)
   updatePropertyDock();
 }
 
-void LogiFlowWindow::insertDocument(silicon::project::Document          document,
+void LogiFlowWindow::insertDocument(SILICON::project::Document          document,
                                     const std::optional<std::ptrdiff_t> insertAt,
                                     const bool                          activate)
 {
-  auto&      store = silicon::project::DocumentStore::active();
+  auto&      store = SILICON::project::DocumentStore::active();
   const auto path  = document.path();
   if (store.contains(path))
     return;
@@ -458,9 +463,9 @@ void LogiFlowWindow::rebuildProjectTree()
 
   ensureProjectDocuments();
   const auto  project = currentProjectInfo.value_or(defaultProjectInfo(currentFileName));
-  const auto& store   = silicon::project::DocumentStore::active();
-  projectTree->rebuild(project, store.documents(silicon::project::DocumentKind::Circuit),
-                       store.documents(silicon::project::DocumentKind::Subcircuit),
+  const auto& store   = SILICON::project::DocumentStore::active();
+  projectTree->rebuild(project, store.documents(SILICON::project::DocumentKind::Circuit),
+                       store.documents(SILICON::project::DocumentKind::Subcircuit),
                        activeDocumentPath);
 }
 
@@ -469,14 +474,14 @@ void LogiFlowWindow::updateProjectTreeLabels()
   if (!projectTree)
     return;
   const auto  project = currentProjectInfo.value_or(defaultProjectInfo(currentFileName));
-  const auto& store   = silicon::project::DocumentStore::active();
+  const auto& store   = SILICON::project::DocumentStore::active();
   projectTree->updateLabels(project,
-                            store.documents(silicon::project::DocumentKind::Circuit),
-                            store.documents(silicon::project::DocumentKind::Subcircuit));
+                            store.documents(SILICON::project::DocumentKind::Circuit),
+                            store.documents(SILICON::project::DocumentKind::Subcircuit));
 }
 
 QTreeWidgetItem* LogiFlowWindow::projectDocumentSectionItem(
-    const silicon::project::DocumentKind kind) const
+    const SILICON::project::DocumentKind kind) const
 {
   return projectTree ? projectTree->sectionFor(kind) : nullptr;
 }
@@ -568,7 +573,7 @@ void LogiFlowWindow::closeEvent(QCloseEvent* event)
     QMainWindow::closeEvent(event);
   } catch (const std::exception& error) {
     event->ignore();
-    SiliconInputDialog::critical(
+    SILICON::ui::inputDialog::critical(
         this, tr("HDL Error"),
         tr("Compile the active HDL before closing the project:\n%1").arg(error.what()));
   }
@@ -583,3 +588,6 @@ void LogiFlowWindow::updateComponentCatalogGeometry()
 }
 
 /* ACTIONS IMPLEMENTATION */
+
+}  // namespace ui
+}  // namespace SILICON

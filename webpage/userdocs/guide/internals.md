@@ -5,11 +5,12 @@ advanced users and contributors, so it focuses on behavior, boundaries, and exte
 points rather than class-by-class API details. For the latter, use the
 <a href="/SILICON/internaldocs/">generated class and member reference</a>.
 
-## Simulator kernel model
+## Simulation kernel model
 
 Simulation does not run directly on the circuit being edited or serialized. A
-`SimulationSession` owns that **source circuit**, passes it through
-`CircuitElaborator`, and gives the resulting **runtime circuit** to `Simulator`.
+`simulation::Session` owns that **source circuit**, passes it through
+`simulation::CircuitElaborator`, and gives the resulting **runtime circuit** to
+`simulation::Simulator`.
 Primitive components are cloned. `SubcircuitComponent` instances are recursively
 replaced by their project definitions; parent interface wires are mapped to the
 definition's boundary wires and internal wires are cloned per instance. The elaborator
@@ -26,7 +27,8 @@ UI session rebuilds its elaborated runtime circuit.
 
 The kernel is event driven:
 
-1. A component reads its input buses and calls `Simulator::updateWire()` for its outputs.
+1. A component reads its input buses and calls `simulation::Simulator::updateWire()` for
+   its outputs.
 2. A zero-delay combinational update is applied immediately. A delayed update enters a
    time-ordered event queue at `currentTime + delay`.
 3. All valid events at one timestamp are applied as a batch, then only their combined
@@ -200,7 +202,7 @@ property becomes the signal name; unnamed signals receive deterministic names su
 the editable input group and the observed output group. Each signal definition also
 records its bus width.
 
-A `SiliconWaveformTrace` is a list of signal definitions plus timestamped snapshots.
+A `waveform::Trace` is a list of signal definitions plus timestamped snapshots.
 Each snapshot contains the encoded value of every registered bus. Appending another
 snapshot at the latest timestamp replaces the existing snapshot instead of creating a
 zero-width display interval. During a worker simulation, snapshots are collected into
@@ -439,7 +441,7 @@ Your type needs:
 - validation/property callbacks that reject invalid values and reshape core buses when a
   property changes topology; and
 - `simulate()` logic that reads component state and writes through
-  `Simulator::updateWire()`, including the component as the source and any intended
+  `simulation::Simulator::updateWire()`, including the component as the source and any intended
   propagation delay.
 
 The essential shape looks like this:
@@ -456,7 +458,7 @@ public:
   }
 
   ExampleComponent();
-  void simulate(Simulator& simulator) override;
+  void simulate(simulation::Simulator& engine) override;
   void serializeYosys(silicon::yosys::SerializationContext& context) const override;
 };
 ```

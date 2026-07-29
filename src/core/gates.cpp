@@ -22,6 +22,8 @@
 
 #include <core/simulator.hpp>
 
+namespace SILICON::core {
+
 namespace {
 uint64_t gateDelay(const Gate& gate)
 {
@@ -39,7 +41,7 @@ int gateWidth(const Gate& gate)
 }
 
 template <typename Reducer, typename Finalizer = std::identity>
-void simulateBitwiseGate(Gate& gate, Simulator& sim, State initialState,
+void simulateBitwiseGate(Gate& gate, SILICON::simulation::Simulator& sim, State initialState,
                          Reducer&& reducer, Finalizer&& finalizer = {})
 {
   const auto delay   = gateDelay(gate);
@@ -154,7 +156,7 @@ AndGate::AndGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output)
     throw std::invalid_argument("AndGate requires at least 2 inputs");
 }
 
-void AndGate::simulate(Simulator& sim)
+void AndGate::simulate(SILICON::simulation::Simulator& sim)
 {
   simulateBitwiseGate(*this, sim, State::HIGH,
                       [](const State lhs, const State rhs) { return lhs && rhs; });
@@ -167,7 +169,7 @@ OrGate::OrGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output)
     throw std::invalid_argument("OrGate requires at least 2 inputs");
 }
 
-void OrGate::simulate(Simulator& sim)
+void OrGate::simulate(SILICON::simulation::Simulator& sim)
 {
   simulateBitwiseGate(*this, sim, State::LOW,
                       [](const State lhs, const State rhs) { return lhs || rhs; });
@@ -178,7 +180,7 @@ NotGate::NotGate(Wire_ptr input, Wire_ptr output) : Gate({input}, output, false)
   setProperty("delay", 2);
 }
 
-void NotGate::simulate(Simulator& sim)
+void NotGate::simulate(SILICON::simulation::Simulator& sim)
 {
   State s = !Wire::safeGetCurrentState(inputs[0][0]);
   sim.updateWire(this->outputs[0][0], s, getPropertyValue<int>("delay").value_or(0),
@@ -193,7 +195,7 @@ NandGate::NandGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output)
   setProperty("delay", 6);
 }
 
-void NandGate::simulate(Simulator& sim)
+void NandGate::simulate(SILICON::simulation::Simulator& sim)
 {
   simulateBitwiseGate(
       *this, sim, State::HIGH,
@@ -209,7 +211,7 @@ NorGate::NorGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output)
   setProperty("delay", 6);
 }
 
-void NorGate::simulate(Simulator& sim)
+void NorGate::simulate(SILICON::simulation::Simulator& sim)
 {
   simulateBitwiseGate(
       *this, sim, State::LOW, [](const State lhs, const State rhs) { return lhs || rhs; },
@@ -222,7 +224,7 @@ XorGate::XorGate(const std::array<Wire_ptr, 2>& inputs, Wire_ptr output)
   setProperty("delay", 7);
 }
 
-void XorGate::simulate(Simulator& sim)
+void XorGate::simulate(SILICON::simulation::Simulator& sim)
 {
   const auto delay = gateDelay(*this);
   if (!gateBitwiseEnabled(*this)) {
@@ -238,3 +240,5 @@ void XorGate::simulate(Simulator& sim)
     sim.updateWire(this->outputs[0][bit], s, delay, weak_from_this());
   }
 }
+
+}  // namespace SILICON::core

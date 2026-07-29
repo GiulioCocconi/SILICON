@@ -34,6 +34,11 @@
 #include <ui/common/wireManager.hpp>
 #include <ui/logiFlow/logiFlowWindow.hpp>
 
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+
 // --- Graphical Wire --------------------------------------------------------------------
 
 GraphicalWire::GraphicalWire(unsigned int busSize)
@@ -395,7 +400,7 @@ bool GraphicalWireSegment::isPointOnPath(const QPointF point) const
     return val >= min_val - tolerance && val <= max_val + tolerance;
   };
 
-  for (const auto el : points | silicon::views::slide(2)) {
+  for (const auto el : points | SILICON::views::slide(2)) {
     // Map the sub-range elements to readable names immediately
     const auto& p1 = el[0];
     const auto& p2 = el[1];
@@ -608,3 +613,6 @@ nlohmann::ordered_json GraphicalWireSegment::serialize() const
 
   return j;
 }
+
+}  // namespace ui
+}  // namespace SILICON

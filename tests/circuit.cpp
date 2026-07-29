@@ -28,6 +28,11 @@
 #include <extraComponents/arithmetic.hpp>
 #include <nlohmann/json.hpp>
 
+using namespace SILICON::core;
+using namespace SILICON::extra;
+using namespace SILICON::simulation;
+using namespace SILICON::waveform;
+
 namespace {
 
 class StringListTestComponent : public Component {

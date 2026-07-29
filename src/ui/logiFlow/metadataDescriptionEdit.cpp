@@ -11,6 +11,10 @@
 
 #include <QFocusEvent>
 
+
+namespace SILICON {
+namespace ui {
+
 MetadataDescriptionEdit::MetadataDescriptionEdit(QWidget* parent) : QPlainTextEdit(parent)
 {
 }
@@ -22,3 +26,6 @@ void MetadataDescriptionEdit::focusOutEvent(QFocusEvent* event)
 
   QPlainTextEdit::focusOutEvent(event);
 }
+
+}  // namespace ui
+}  // namespace SILICON

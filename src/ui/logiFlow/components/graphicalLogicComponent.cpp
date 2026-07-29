@@ -20,6 +20,11 @@
 
 #include <stdexcept>
 
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+
 GraphicalLogicComponent::GraphicalLogicComponent(ItemCategory         category,
                                                  const Component_ptr& component,
                                                  QGraphicsItem*       shape,
@@ -136,3 +141,6 @@ void GraphicalLogicComponent::setPorts(const std::vector<PortPair>& busToPortInp
   GraphicalComponent::setPorts(busToPortInputs, busToPortOutputs);
   updatePortSizes();
 }
+
+}  // namespace ui
+}  // namespace SILICON

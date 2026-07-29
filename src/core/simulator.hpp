@@ -32,6 +32,12 @@
 #include <utility>
 #include <vector>
 
+namespace SILICON::simulation {
+
+using namespace SILICON::core;
+using namespace SILICON::waveform;
+using namespace SILICON::waveform::fst;
+
 /**
  * @brief Represents a timed event in the simulation.
  */
@@ -103,7 +109,7 @@ public:
    * @param wire Wire to inspect
    * @return RISE, FALL, UNKNOWN, or NO_CHANGE for this evaluation
    */
-  [[nodiscard]] static EdgeType edgeType(const SimulationContext& context,
+  [[nodiscard]] static EdgeType edgeType(const Context& context,
                                          const Wire_ptr&          wire);
 
   /**
@@ -118,7 +124,7 @@ public:
    */
   explicit Simulator(std::shared_ptr<Circuit> c, uint64_t initialSimulationTime = 0,
                      bool                              isInteractive = false,
-                     std::unique_ptr<SiliconFstWriter> fstWriter     = nullptr,
+                     std::unique_ptr<CircuitWriter> fstWriter     = nullptr,
                      CancellationCheck                 isCancelled   = {});
   /**
    * @brief Destructor - removes topology listener
@@ -164,7 +170,7 @@ public:
    * @return Completion, cancellation, or step-limit outcome
    */
   RunResult simulateWaveform(uint64_t                               duration,
-                             std::span<const SiliconWaveformSample> inputSnapshots,
+                             std::span<const Sample> inputSnapshots,
                              std::span<const WaveformInputDriver>   inputDrivers,
                              CancellationCheck                      isCancelled = {});
 
@@ -183,14 +189,14 @@ public:
    * snapshot for the current simulation time.
    */
   void enableFstTracing(std::string_view          fileName,
-                        SiliconFstWriter::Options options = {});
+                        CircuitWriter::Options options = {});
 
   /**
    * @brief Installs a caller-created FST writer.
    *
    * Ownership transfers to the simulator. Passing nullptr disables tracing.
    */
-  void setFstWriter(std::unique_ptr<SiliconFstWriter> writer);
+  void setFstWriter(std::unique_ptr<CircuitWriter> writer);
 
   /**
    * @brief Configures bus-level waveform snapshots emitted by the simulator.
@@ -198,7 +204,7 @@ public:
    * The same registered buses are used for UI waveform snapshots and optional FST
    * export, ensuring both observe exactly the same simulation timing.
    */
-  void setTraceBuses(std::vector<SiliconFstWriter::NamedBus> buses);
+  void setTraceBuses(std::vector<CircuitWriter::NamedBus> buses);
   void setTraceSink(TraceSink sink);
 
   /**
@@ -320,10 +326,10 @@ private:
   uint64_t currentTime = 0;
 
   /** @brief Optional waveform writer for simulation tracing */
-  std::unique_ptr<SiliconFstWriter> fstWriter;
+  std::unique_ptr<CircuitWriter> fstWriter;
 
   /** @brief Bus list observed by waveform tracing */
-  std::vector<SiliconFstWriter::NamedBus> traceBuses;
+  std::vector<CircuitWriter::NamedBus> traceBuses;
 
   /** @brief Optional callback for live waveform viewers */
   TraceSink traceSink;
@@ -372,21 +378,21 @@ private:
   compileExecutionPlan(std::span<const Circuit::SimulationBlock> blocks);
 
   [[nodiscard]] bool evaluateExecutionStep(const ExecutionStep&     step,
-                                           const SimulationContext& context,
+                                           const Context& context,
                                            const CancellationCheck& isCancelled = {});
 
   [[nodiscard]] bool evaluateExecutionPlan(std::span<const ExecutionStep> steps,
-                                           const SimulationContext&       context,
+                                           const Context&       context,
                                            const CancellationCheck& isCancelled = {});
 
   [[nodiscard]] bool
   evaluateExecutionStepIndices(std::span<const std::size_t> stepIndices,
-                               const SimulationContext&     context,
+                               const Context&     context,
                                const CancellationCheck&     isCancelled = {});
 
   [[nodiscard]] RunResult
   evaluateExecutionStepIndicesAndTrace(std::span<const std::size_t> stepIndices,
-                                       const SimulationContext&     context,
+                                       const Context&     context,
                                        const CancellationCheck&     isCancelled = {});
 
   [[nodiscard]] std::vector<std::size_t>
@@ -404,6 +410,8 @@ private:
    */
   [[nodiscard]] RunResult
   evaluateExecutionPlanAndTrace(std::span<const ExecutionStep> steps,
-                                const SimulationContext&       context,
+                                const Context&       context,
                                 const CancellationCheck&       isCancelled = {});
 };
+
+}  // namespace SILICON::simulation

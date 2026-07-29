@@ -25,7 +25,7 @@
 #include "libavoid/libavoid.h"
 #include "libavoid/qtgeomtypes.h"
 
-namespace silicon {
+namespace SILICON::core {
 
 namespace {
 
@@ -139,4 +139,4 @@ std::vector<QPointF> routeOrthogonalWire(const QPointF start, const QPointF end,
   return removeConsecutiveDuplicates(std::move(routedPoints));
 }
 
-}  // namespace silicon
+}  // namespace SILICON::core

@@ -28,6 +28,11 @@
 #include <QPoint>
 #include <QRect>
 
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+
 using PortPair = std::pair<QString, QPoint>;
 
 class GUIComponentFactory;
@@ -273,3 +278,6 @@ private:
   /** @brief The visual shape item */
   QGraphicsItem* itemShape = nullptr;
 };
+
+}  // namespace ui
+}  // namespace SILICON

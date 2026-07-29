@@ -42,6 +42,11 @@
 
 #include <nlohmann/json.hpp>
 
+using namespace SILICON::core;
+using namespace SILICON::project;
+using namespace SILICON::simulation;
+using namespace SILICON::waveform;
+
 namespace {
 
 std::string graphicalAndSubcircuitDocument()
@@ -313,19 +318,19 @@ class SubcircuitTest : public ::testing::Test {
 protected:
   void SetUp() override
   {
-    silicon::project::DocumentStore::active().clear();
+    SILICON::project::DocumentStore::active().clear();
     if (!ComponentRegistry::instance().hasType(SubcircuitComponent::Type))
       registerAllComponents(ComponentRegistry::instance());
   }
 
-  void TearDown() override { silicon::project::DocumentStore::active().clear(); }
+  void TearDown() override { SILICON::project::DocumentStore::active().clear(); }
 };
 
-silicon::project::Document subcircuitDocument(
+SILICON::project::Document subcircuitDocument(
     std::string slug, std::string sceneJson,
     std::optional<std::string> coreJson = std::nullopt)
 {
-  return {silicon::project::subcircuitPathForSlug(slug), std::move(sceneJson),
+  return {SILICON::project::subcircuitPathForSlug(slug), std::move(sceneJson),
           std::move(coreJson)};
 }
 
@@ -333,7 +338,7 @@ silicon::project::Document subcircuitDocument(
 
 TEST_F(SubcircuitTest, DeserializesSubcircuitSlugProperty)
 {
-  silicon::project::DocumentStore::active().upsertDocument(
+  SILICON::project::DocumentStore::active().upsertDocument(
       subcircuitDocument("and_gate", andSubcircuitDocument()));
 
   const auto json = R"({
@@ -362,10 +367,10 @@ TEST_F(SubcircuitTest, DeserializesSubcircuitSlugProperty)
 
 TEST_F(SubcircuitTest, DeserializesSubcircuitWithMissingSavedOutputs)
 {
-  silicon::project::DocumentStore::active().upsertDocument(
+  SILICON::project::DocumentStore::active().upsertDocument(
       subcircuitDocument(
           "graphical_and", graphicalAndSubcircuitDocument(),
-          silicon::subcircuits::extractCoreCircuitJson(andSubcircuitDocument())));
+          SILICON::core::extractCoreCircuitJson(andSubcircuitDocument())));
 
   const auto json = R"({
     "version": "0.1.0",
@@ -397,7 +402,7 @@ TEST_F(SubcircuitTest, DeserializesSubcircuitWithMissingSavedOutputs)
 
 TEST_F(SubcircuitTest, SimulatesCombinationalSubcircuit)
 {
-  silicon::project::DocumentStore::active().upsertDocument(
+  SILICON::project::DocumentStore::active().upsertDocument(
       subcircuitDocument("and_gate", andSubcircuitDocument()));
 
   auto component = std::make_shared<SubcircuitComponent>();
@@ -411,7 +416,7 @@ TEST_F(SubcircuitTest, SimulatesCombinationalSubcircuit)
   component->setOutput(0, Bus{output});
 
   auto circuit = std::make_shared<Circuit>(component, false);
-  silicon::simulation::SimulationSession simulator(circuit);
+  SILICON::simulation::Session simulator(circuit);
 
   EXPECT_EQ(simulator.setBus(Bus{inputA}, 1), Simulator::RunResult::Completed);
   EXPECT_EQ(simulator.setBus(Bus{inputB}, 1), Simulator::RunResult::Completed);
@@ -428,7 +433,7 @@ TEST_F(SubcircuitTest, ElaboratesPrimitiveCircuitWithoutHierarchy)
   auto gate   = std::make_shared<NotGate>(input, output);
   Circuit source(gate, false);
 
-  silicon::elaboration::CircuitElaborator elaborator(ComponentRegistry::instance());
+  SILICON::simulation::CircuitElaborator elaborator(ComponentRegistry::instance());
   auto runtime = elaborator.elaborate(source);
 
   ASSERT_EQ(source.getComponentToVertex().size(), 1);
@@ -442,7 +447,7 @@ TEST_F(SubcircuitTest, ElaboratesPrimitiveCircuitWithoutHierarchy)
 
 TEST_F(SubcircuitTest, RuntimeElaborationLeavesSavedCircuitUnchanged)
 {
-  silicon::project::DocumentStore::active().upsertDocument(
+  SILICON::project::DocumentStore::active().upsertDocument(
       subcircuitDocument("and_gate", andSubcircuitDocument()));
 
   const auto json = R"({
@@ -461,7 +466,7 @@ TEST_F(SubcircuitTest, RuntimeElaborationLeavesSavedCircuitUnchanged)
   })";
 
   auto circuit    = Circuit::deserialize(json, ComponentRegistry::instance());
-  silicon::elaboration::CircuitElaborator elaborator(ComponentRegistry::instance());
+  SILICON::simulation::CircuitElaborator elaborator(ComponentRegistry::instance());
   auto elaborated = elaborator.elaborate(circuit);
 
   const auto savedJson = nlohmann::json::parse(circuit.serialize());
@@ -475,7 +480,7 @@ TEST_F(SubcircuitTest, RuntimeElaborationLeavesSavedCircuitUnchanged)
 
 TEST_F(SubcircuitTest, RemapsTwoInstancesOfSameSubcircuitIndependently)
 {
-  silicon::project::DocumentStore::active().upsertDocument(
+  SILICON::project::DocumentStore::active().upsertDocument(
       subcircuitDocument("not_gate", delayedNotSubcircuitDocument()));
 
   const auto json = R"({
@@ -507,7 +512,7 @@ TEST_F(SubcircuitTest, RemapsTwoInstancesOfSameSubcircuitIndependently)
   auto secondInput  = circuit->getComponentByVertexId(1)->getInputs()[0];
   auto secondOutput = circuit->getComponentByVertexId(1)->getOutputs()[0][0];
 
-  silicon::simulation::SimulationSession simulator(circuit);
+  SILICON::simulation::Session simulator(circuit);
 
   EXPECT_EQ(simulator.setBus(firstInput, 0), Simulator::RunResult::Completed);
   EXPECT_EQ(simulator.setBus(secondInput, 1), Simulator::RunResult::Completed);
@@ -519,7 +524,7 @@ TEST_F(SubcircuitTest, RemapsTwoInstancesOfSameSubcircuitIndependently)
 
 TEST_F(SubcircuitTest, ClonesInternalWiresForEverySubcircuitInstance)
 {
-  silicon::project::DocumentStore::active().upsertDocument(
+  SILICON::project::DocumentStore::active().upsertDocument(
       subcircuitDocument("double_not", doubleNotSubcircuitDocument()));
 
   auto first  = std::make_shared<SubcircuitComponent>();
@@ -537,7 +542,7 @@ TEST_F(SubcircuitTest, ClonesInternalWiresForEverySubcircuitInstance)
   second->setOutput(0, Bus{secondOutput});
 
   Circuit source(Component_set{first, second}, false);
-  silicon::elaboration::CircuitElaborator elaborator(ComponentRegistry::instance());
+  SILICON::simulation::CircuitElaborator elaborator(ComponentRegistry::instance());
   auto    runtime    = elaborator.elaborate(source);
 
   const std::set<const Wire*> interfaceWires{firstInput.get(), firstOutput.get(),
@@ -563,9 +568,9 @@ TEST_F(SubcircuitTest, ClonesInternalWiresForEverySubcircuitInstance)
 
 TEST_F(SubcircuitTest, ElaboratesNestedSubcircuitsIntoParentSimulation)
 {
-  silicon::project::DocumentStore::active().upsertDocument(
+  SILICON::project::DocumentStore::active().upsertDocument(
       subcircuitDocument("and_gate", andSubcircuitDocument()));
-  silicon::project::DocumentStore::active().upsertDocument(
+  SILICON::project::DocumentStore::active().upsertDocument(
       subcircuitDocument("nested_and", nestedAndSubcircuitDocument()));
 
   auto component = std::make_shared<SubcircuitComponent>();
@@ -579,7 +584,7 @@ TEST_F(SubcircuitTest, ElaboratesNestedSubcircuitsIntoParentSimulation)
   component->setOutput(0, Bus{output});
 
   auto circuit = std::make_shared<Circuit>(component, false);
-  silicon::simulation::SimulationSession simulator(circuit);
+  SILICON::simulation::Session simulator(circuit);
 
   EXPECT_EQ(simulator.setBus(Bus{inputA}, 1), Simulator::RunResult::Completed);
   EXPECT_EQ(simulator.setBus(Bus{inputB}, 1), Simulator::RunResult::Completed);
@@ -588,7 +593,7 @@ TEST_F(SubcircuitTest, ElaboratesNestedSubcircuitsIntoParentSimulation)
 
 TEST_F(SubcircuitTest, DelayedGateInsideSubcircuitUsesParentEventQueue)
 {
-  silicon::project::DocumentStore::active().upsertDocument(
+  SILICON::project::DocumentStore::active().upsertDocument(
       subcircuitDocument("delayed_not", delayedNotSubcircuitDocument()));
 
   auto component = std::make_shared<SubcircuitComponent>();
@@ -600,7 +605,7 @@ TEST_F(SubcircuitTest, DelayedGateInsideSubcircuitUsesParentEventQueue)
   component->setOutput(0, Bus{output});
 
   auto circuit = std::make_shared<Circuit>(component, false);
-  silicon::simulation::SimulationSession simulator(circuit);
+  SILICON::simulation::Session simulator(circuit);
 
   EXPECT_EQ(simulator.setBus(Bus{input}, 0), Simulator::RunResult::Completed);
   EXPECT_NE(output->getCurrentState(), State::HIGH);
@@ -613,7 +618,7 @@ TEST_F(SubcircuitTest, DelayedGateInsideSubcircuitUsesParentEventQueue)
 
 TEST_F(SubcircuitTest, RejectsModuleInputBusCountMismatch)
 {
-  silicon::project::DocumentStore::active().upsertDocument(
+  SILICON::project::DocumentStore::active().upsertDocument(
       subcircuitDocument("and_gate", andSubcircuitDocument()));
 
   auto component = std::make_shared<SubcircuitComponent>();
@@ -622,7 +627,7 @@ TEST_F(SubcircuitTest, RejectsModuleInputBusCountMismatch)
   component->setInputs(mismatchedInputs);
 
   Circuit source(component, false);
-  silicon::elaboration::CircuitElaborator elaborator(ComponentRegistry::instance());
+  SILICON::simulation::CircuitElaborator elaborator(ComponentRegistry::instance());
 
   try {
     static_cast<void>(elaborator.elaborate(source));
@@ -636,7 +641,7 @@ TEST_F(SubcircuitTest, RejectsModuleInputBusCountMismatch)
 
 TEST_F(SubcircuitTest, RejectsModuleBusWidthMismatch)
 {
-  silicon::project::DocumentStore::active().upsertDocument(
+  SILICON::project::DocumentStore::active().upsertDocument(
       subcircuitDocument("bus_not", busNotCoreDocument()));
 
   auto component = std::make_shared<SubcircuitComponent>();
@@ -644,7 +649,7 @@ TEST_F(SubcircuitTest, RejectsModuleBusWidthMismatch)
   component->setInput(0, Bus(4));
 
   Circuit source(component, false);
-  silicon::elaboration::CircuitElaborator elaborator(ComponentRegistry::instance());
+  SILICON::simulation::CircuitElaborator elaborator(ComponentRegistry::instance());
 
   try {
     static_cast<void>(elaborator.elaborate(source));
@@ -658,7 +663,7 @@ TEST_F(SubcircuitTest, RejectsModuleBusWidthMismatch)
 
 TEST_F(SubcircuitTest, DirectSimulatorRejectsUnprocessedPlaceholder)
 {
-  silicon::project::DocumentStore::active().upsertDocument(
+  SILICON::project::DocumentStore::active().upsertDocument(
       subcircuitDocument("and_gate", andSubcircuitDocument()));
 
   auto component = std::make_shared<SubcircuitComponent>();
@@ -686,7 +691,7 @@ TEST_F(SubcircuitTest, ExplicitSessionRebuildResetsRuntimeAndRestoresTrace)
   gate->setPropertyValue("delay", 5);
 
   auto                                   source = std::make_shared<Circuit>(gate, false);
-  silicon::simulation::SimulationSession session(source);
+  SILICON::simulation::Session session(source);
 
   std::vector<std::pair<std::uint64_t, std::vector<std::string>>> snapshots;
   session.setTraceBuses({{"output", Bus{output}}});
@@ -723,13 +728,13 @@ TEST_F(SubcircuitTest, ExplicitSessionRebuildResetsRuntimeAndRestoresTrace)
 
 TEST_F(SubcircuitTest, FailedSessionRebuildKeepsPreviousRuntimeUsable)
 {
-  silicon::project::DocumentStore::active().upsertDocument(
+  SILICON::project::DocumentStore::active().upsertDocument(
       subcircuitDocument("and_gate", andSubcircuitDocument()));
 
   auto component = std::make_shared<SubcircuitComponent>();
   component->setPropertyValue("slug", std::string("and_gate"));
   auto source = std::make_shared<Circuit>(component, false);
-  silicon::simulation::SimulationSession session(source);
+  SILICON::simulation::Session session(source);
 
   EXPECT_EQ(session.run(1), Simulator::RunResult::Completed);
   std::vector<Bus> mismatchedInputs{Bus{std::make_shared<Wire>()}};
@@ -743,9 +748,9 @@ TEST_F(SubcircuitTest, FailedSessionRebuildKeepsPreviousRuntimeUsable)
 
 TEST_F(SubcircuitTest, RejectsRecursiveSubcircuitDependenciesDuringElaboration)
 {
-  silicon::project::DocumentStore::active().upsertDocument(
+  SILICON::project::DocumentStore::active().upsertDocument(
       subcircuitDocument("a", recursiveSubcircuitDocument("b")));
-  silicon::project::DocumentStore::active().upsertDocument(
+  SILICON::project::DocumentStore::active().upsertDocument(
       subcircuitDocument("b", recursiveSubcircuitDocument("a")));
 
   auto component = std::make_shared<SubcircuitComponent>();
@@ -762,7 +767,7 @@ TEST_F(SubcircuitTest, RejectsRecursiveSubcircuitDependenciesDuringElaboration)
 TEST_F(SubcircuitTest, ExtractCoreCircuitJsonUnwrapsCircuitObject)
 {
   const auto coreJson =
-      silicon::subcircuits::extractCoreCircuitJson(andSubcircuitDocument());
+      SILICON::core::extractCoreCircuitJson(andSubcircuitDocument());
 
   auto circuit = Circuit::deserialize(coreJson, ComponentRegistry::instance());
 
@@ -777,12 +782,12 @@ TEST_F(SubcircuitTest, ExtractCoreCircuitJsonUnwrapsCircuitObject)
 
 TEST_F(SubcircuitTest, UsesPreparedCoreCircuitJsonForGraphicalSubcircuitDocument)
 {
-  silicon::project::DocumentStore::active().upsertDocument(
+  SILICON::project::DocumentStore::active().upsertDocument(
       subcircuitDocument(
           "graphical_bus", graphicalBusSubcircuitDocument(),
-          silicon::subcircuits::extractCoreCircuitJson(busNotCoreDocument())));
+          SILICON::core::extractCoreCircuitJson(busNotCoreDocument())));
 
-  const auto definition = silicon::subcircuits::loadSubcircuitDefinition(
+  const auto definition = SILICON::core::loadSubcircuitDefinition(
       "graphical_bus", ComponentRegistry::instance());
   ASSERT_EQ(definition.inputs.size(), 1);
   ASSERT_EQ(definition.outputs.size(), 1);
@@ -800,14 +805,14 @@ TEST_F(SubcircuitTest, UsesPreparedCoreCircuitJsonForGraphicalSubcircuitDocument
 
 TEST_F(SubcircuitTest, ElaboratesGraphicalAndHdlBackedSubcircuitsIdentically)
 {
-  silicon::project::DocumentStore::active().upsertDocument(
+  SILICON::project::DocumentStore::active().upsertDocument(
       subcircuitDocument(
           "graphical_and", graphicalAndSubcircuitDocument(),
-          silicon::subcircuits::extractCoreCircuitJson(andSubcircuitDocument())));
-  silicon::project::DocumentStore::active().upsertDocument(
+          SILICON::core::extractCoreCircuitJson(andSubcircuitDocument())));
+  SILICON::project::DocumentStore::active().upsertDocument(
       subcircuitDocument(
           "hdl_not", hdlNotSubcircuitDocument(),
-          silicon::subcircuits::extractCoreCircuitJson(delayedNotSubcircuitDocument())));
+          SILICON::core::extractCoreCircuitJson(delayedNotSubcircuitDocument())));
 
   auto graphical = std::make_shared<SubcircuitComponent>();
   auto hdl       = std::make_shared<SubcircuitComponent>();
@@ -826,7 +831,7 @@ TEST_F(SubcircuitTest, ElaboratesGraphicalAndHdlBackedSubcircuitsIdentically)
   hdl->setOutput(0, Bus{hdlOutput});
 
   auto source = std::make_shared<Circuit>(Component_set{graphical, hdl}, false);
-  silicon::elaboration::CircuitElaborator elaborator(ComponentRegistry::instance());
+  SILICON::simulation::CircuitElaborator elaborator(ComponentRegistry::instance());
   auto runtime = elaborator.elaborate(*source);
 
   std::size_t andCount = 0;
@@ -839,7 +844,7 @@ TEST_F(SubcircuitTest, ElaboratesGraphicalAndHdlBackedSubcircuitsIdentically)
   EXPECT_EQ(andCount, 1);
   EXPECT_EQ(notCount, 1);
 
-  silicon::simulation::SimulationSession session(source);
+  SILICON::simulation::Session session(source);
   EXPECT_EQ(session.setBus(Bus{graphicalInputA}, 1), Simulator::RunResult::Completed);
   EXPECT_EQ(session.setBus(Bus{graphicalInputB}, 1), Simulator::RunResult::Completed);
   EXPECT_EQ(session.setBus(Bus{hdlInput}, 0), Simulator::RunResult::Completed);
@@ -851,7 +856,7 @@ TEST_F(SubcircuitTest, ElaboratesGraphicalAndHdlBackedSubcircuitsIdentically)
 TEST_F(SubcircuitTest, CircuitUsesPortRoleDeclaredInterface)
 {
   const auto circuit = Circuit::deserialize(
-      silicon::subcircuits::extractCoreCircuitJson(graphicalAndSubcircuitDocument()),
+      SILICON::core::extractCoreCircuitJson(graphicalAndSubcircuitDocument()),
       ComponentRegistry::instance());
 
   const auto inputs  = circuit.getInputPorts();
@@ -866,7 +871,7 @@ TEST_F(SubcircuitTest, CircuitUsesPortRoleDeclaredInterface)
 TEST_F(SubcircuitTest, CircuitUsesDeterministicTopologyFallbackPortNames)
 {
   const auto circuit = Circuit::deserialize(
-      silicon::subcircuits::extractCoreCircuitJson(andSubcircuitDocument()),
+      SILICON::core::extractCoreCircuitJson(andSubcircuitDocument()),
       ComponentRegistry::instance());
   const auto inputs  = circuit.getInputPorts();
   const auto outputs = circuit.getOutputPorts();
@@ -897,7 +902,7 @@ TEST_F(SubcircuitTest, CircuitPreservesDuplicateAndEmptyBoundaryNames)
 
 TEST_F(SubcircuitTest, UsesBoundaryComponentsForFeedbackOutputs)
 {
-  silicon::project::DocumentStore::active().upsertDocument(
+  SILICON::project::DocumentStore::active().upsertDocument(
       subcircuitDocument("feedback_latch", feedbackLatchCoreDocument()));
 
   auto component = std::make_shared<SubcircuitComponent>();
@@ -911,7 +916,7 @@ TEST_F(SubcircuitTest, UsesBoundaryComponentsForFeedbackOutputs)
 
 TEST_F(SubcircuitTest, SimulatesFeedbackSubcircuitWithBoundaryOutputs)
 {
-  silicon::project::DocumentStore::active().upsertDocument(
+  SILICON::project::DocumentStore::active().upsertDocument(
       subcircuitDocument("feedback_latch", feedbackLatchCoreDocument()));
 
   auto component = std::make_shared<SubcircuitComponent>();
@@ -927,7 +932,7 @@ TEST_F(SubcircuitTest, SimulatesFeedbackSubcircuitWithBoundaryOutputs)
   component->setOutput(1, Bus{notQ});
 
   auto circuit = std::make_shared<Circuit>(component, false);
-  silicon::simulation::SimulationSession simulator(circuit);
+  SILICON::simulation::Session simulator(circuit);
 
   EXPECT_EQ(q->getCurrentState(), State::HIGH);
   EXPECT_EQ(notQ->getCurrentState(), State::LOW);
@@ -940,10 +945,10 @@ TEST_F(SubcircuitTest, SimulatesFeedbackSubcircuitWithBoundaryOutputs)
 
 TEST_F(SubcircuitTest, SimulatesGraphicalSubcircuitDocument)
 {
-  silicon::project::DocumentStore::active().upsertDocument(
+  SILICON::project::DocumentStore::active().upsertDocument(
       subcircuitDocument(
           "graphical_and", graphicalAndSubcircuitDocument(),
-          silicon::subcircuits::extractCoreCircuitJson(andSubcircuitDocument())));
+          SILICON::core::extractCoreCircuitJson(andSubcircuitDocument())));
 
   auto component = std::make_shared<SubcircuitComponent>();
   component->setPropertyValue("slug", std::string("graphical_and"));
@@ -956,7 +961,7 @@ TEST_F(SubcircuitTest, SimulatesGraphicalSubcircuitDocument)
   component->setOutput(0, Bus{output});
 
   auto circuit = std::make_shared<Circuit>(component, false);
-  silicon::simulation::SimulationSession simulator(circuit);
+  SILICON::simulation::Session simulator(circuit);
 
   EXPECT_EQ(simulator.setBus(Bus{inputA}, 1), Simulator::RunResult::Completed);
   EXPECT_EQ(simulator.setBus(Bus{inputB}, 1), Simulator::RunResult::Completed);
@@ -977,7 +982,7 @@ TEST_F(SubcircuitTest, RejectsUnknownSlug)
 
 TEST_F(SubcircuitTest, DocumentStoreNotifiesSpecificAndGlobalChanges)
 {
-  auto&                    registry = silicon::project::DocumentStore::active();
+  auto&                    registry = SILICON::project::DocumentStore::active();
   std::vector<std::string> notifications;
   const auto listenerId = registry.addListener(
       [&notifications](const std::string_view path) {

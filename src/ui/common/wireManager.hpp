@@ -24,6 +24,10 @@
 
 #include <QPointF>
 
+
+namespace SILICON {
+namespace ui {
+
 class GraphicalWire;
 class GraphicalWireSegment;
 
@@ -144,3 +148,6 @@ private:
   // Returns true if a split occurred, false otherwise.
   bool evaluateWireSplits(GraphicalWire* wire);
 };
+
+}  // namespace ui
+}  // namespace SILICON

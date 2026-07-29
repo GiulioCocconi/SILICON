@@ -23,6 +23,10 @@
 
 #include <QStringList>
 
+
+namespace SILICON {
+namespace ui {
+
 namespace {
 
 int editDistance(QString lhs, QString rhs)
@@ -64,9 +68,10 @@ bool isFuzzyMatch(const QString& query, const QString& text, const int distance)
 
 }  // namespace
 
-std::vector<ComponentSearchMatcher::Match>
-ComponentSearchMatcher::rank(QStringList candidates, const QString& query,
-                             const bool includeNonMatches)
+namespace componentSearchMatcher {
+
+std::vector<Match> rank(QStringList candidates, const QString& query,
+                        const bool includeNonMatches)
 {
   const QString normalizedQuery = query.trimmed();
 
@@ -111,3 +116,8 @@ ComponentSearchMatcher::rank(QStringList candidates, const QString& query,
 
   return ranked;
 }
+
+}  // namespace componentSearchMatcher
+
+}  // namespace ui
+}  // namespace SILICON

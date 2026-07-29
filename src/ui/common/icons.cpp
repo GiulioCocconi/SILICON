@@ -23,6 +23,10 @@
 
 #include <ui/common/theme.hpp>
 
+
+namespace SILICON {
+namespace ui {
+
 namespace {
 
 QColor themedIconColor()
@@ -140,3 +144,6 @@ QString Icon::getPathFromCommonName(const QString& commonName)
   auto path = QString(":/icons/%1.svg").arg(it.value());
   return path;
 }
+
+}  // namespace ui
+}  // namespace SILICON

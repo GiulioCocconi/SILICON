@@ -32,6 +32,11 @@
 #include <core/wire.hpp>
 #include <ui/common/diagramScene/diagramScene.hpp>
 
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+
 /** @brief Default subcircuit rectangle size in persisted grid units. */
 inline constexpr int GraphicalSubcircuitDefaultSize = 8;
 
@@ -120,3 +125,6 @@ graphicalSubcircuitCoreCircuitJson(std::string_view sceneJson);
  */
 [[nodiscard]] nlohmann::ordered_json
 graphicalSubcircuitMetadataToJson(const GraphicalSubcircuitMetadata& metadata);
+
+}  // namespace ui
+}  // namespace SILICON

@@ -25,6 +25,8 @@
 #include <core/wireUtils.hpp>
 #include <logging/logger.hpp>
 
+namespace SILICON::core {
+
 namespace {
 
 PropertyValue requireNonNegative(const std::string_view name, const PropertyValue& value)
@@ -60,16 +62,16 @@ void FlipFlop::clearState()
   lastTimingInputChangeTime.reset();
 }
 
-void FlipFlop::simulate(Simulator& sim, const SimulationContext& context)
+void FlipFlop::simulate(SILICON::simulation::Simulator& sim, const SILICON::simulation::Context& context)
 {
   const State clock = inputState(clockIndex);
   const State clear =
-      silicon::wire::optionalControlStateOrInactive(inputs, clearIndex, State::LOW);
+      SILICON::wireUtils::optionalControlStateOrInactive(inputs, clearIndex, State::LOW);
   const State preset =
-      silicon::wire::optionalControlStateOrInactive(inputs, presetIndex, State::LOW);
+      SILICON::wireUtils::optionalControlStateOrInactive(inputs, presetIndex, State::LOW);
   const Wire_ptr clockWire = inputWire(clockIndex);
 
-  const auto clockEdge          = Simulator::edgeType(context, clockWire);
+  const auto clockEdge          = SILICON::simulation::Simulator::edgeType(context, clockWire);
   const auto previousClock      = context.previousState(clockWire);
   const bool selectedClockEdge  = clockEdge == edgeType;
   const auto currentTime        = sim.getCurrentTime();
@@ -100,7 +102,7 @@ void FlipFlop::simulate(Simulator& sim, const SimulationContext& context)
       driveOutput(sim, State::UNKNOWN);
     }
 
-    else if (clockEdge == Simulator::EdgeType::UNKNOWN && previousClock
+    else if (clockEdge == SILICON::simulation::Simulator::EdgeType::UNKNOWN && previousClock
              && mayHaveSelectedEdge(*previousClock, clock)) {
       // The clock transition is ambiguous (e.g., LOW -> UNKNOWN). We don't know if the
       // physical hardware would have triggered, so pessimistically invalidate the data.
@@ -164,18 +166,18 @@ void FlipFlop::initializeProperties()
     return validated;
   });
   setPropertyCallback("triggerEdge", [this](const PropertyValue& value) {
-    this->edgeType = std::get<std::string>(value) == "PET" ? Simulator::EdgeType::RISE
-                                                           : Simulator::EdgeType::FALL;
+    this->edgeType = std::get<std::string>(value) == "PET" ? SILICON::simulation::Simulator::EdgeType::RISE
+                                                           : SILICON::simulation::Simulator::EdgeType::FALL;
     return value;
   });
 }
 
-void FlipFlop::driveOutput(Simulator& sim, State newState)
+void FlipFlop::driveOutput(SILICON::simulation::Simulator& sim, State newState)
 {
   if (outputBusSize(0) == 0 || outputBusSize(1) == 0)
     return;
 
-  newState = silicon::wire::normalizeBinaryOrUnknown(newState);
+  newState = SILICON::wireUtils::normalizeBinaryOrUnknown(newState);
   state    = newState;
 
   sim.updateWire(outputWire(0), newState, propagationDelay, weak_from_this());
@@ -183,7 +185,7 @@ void FlipFlop::driveOutput(Simulator& sim, State newState)
                  propagationDelay, weak_from_this());
 }
 
-bool FlipFlop::hasTimingSensitiveInputChange(const SimulationContext& context) const
+bool FlipFlop::hasTimingSensitiveInputChange(const SILICON::simulation::Context& context) const
 {
   for (unsigned int inputIndex = 0; inputIndex < inputs.size(); ++inputIndex) {
     if (!isTimingSensitiveInput(inputIndex))
@@ -221,12 +223,12 @@ bool FlipFlop::violatesHoldTime(const uint64_t currentTime,
 bool FlipFlop::mayHaveSelectedEdge(const State previousClock,
                                    const State currentClock) const
 {
-  const bool  isPositiveEdge = edgeType == Simulator::EdgeType::RISE;
+  const bool  isPositiveEdge = edgeType == SILICON::simulation::Simulator::EdgeType::RISE;
   const State inactiveClock  = isPositiveEdge ? State::LOW : State::HIGH;
   const State activeClock    = isPositiveEdge ? State::HIGH : State::LOW;
 
-  return silicon::wire::mayBe(previousClock, inactiveClock)
-         && silicon::wire::mayBe(currentClock, activeClock);
+  return SILICON::wireUtils::mayBe(previousClock, inactiveClock)
+         && SILICON::wireUtils::mayBe(currentClock, activeClock);
 }
 
 DFlipFlop::DFlipFlop(Wire_ptr d, Wire_ptr clock, Wire_ptr clear, Wire_ptr preset,
@@ -240,7 +242,7 @@ DFlipFlop::DFlipFlop(Wire_ptr d, Wire_ptr clock, Wire_ptr clear, Wire_ptr preset
 
 State DFlipFlop::captureState() const
 {
-  return silicon::wire::normalizeBinaryOrUnknown(inputState(Inputs::D));
+  return SILICON::wireUtils::normalizeBinaryOrUnknown(inputState(Inputs::D));
 }
 
 bool DFlipFlop::isTimingSensitiveInput(const unsigned int inputIndex) const
@@ -266,7 +268,7 @@ State EFlipFlop::captureState() const
   if (enable == State::LOW)
     return latchedState();
   if (enable == State::HIGH)
-    return silicon::wire::normalizeBinaryOrUnknown(inputState(Inputs::D));
+    return SILICON::wireUtils::normalizeBinaryOrUnknown(inputState(Inputs::D));
   return State::UNKNOWN;
 }
 
@@ -286,7 +288,7 @@ DLatch::DLatch(Wire_ptr d, Wire_ptr enable, Wire_ptr q, Wire_ptr notQ)
   initializeProperties();
 }
 
-void DLatch::simulate(Simulator& sim, const SimulationContext& context)
+void DLatch::simulate(SILICON::simulation::Simulator& sim, const SILICON::simulation::Context& context)
 {
   if (context.initialEvaluation)
     state = State::UNKNOWN;
@@ -298,7 +300,7 @@ void DLatch::simulate(Simulator& sim, const SimulationContext& context)
   }
 
   if (enable == State::HIGH) {
-    driveOutput(sim, silicon::wire::normalizeBinaryOrUnknown(inputState(Inputs::D)));
+    driveOutput(sim, SILICON::wireUtils::normalizeBinaryOrUnknown(inputState(Inputs::D)));
     return;
   }
 
@@ -315,12 +317,12 @@ void DLatch::initializeProperties()
   });
 }
 
-void DLatch::driveOutput(Simulator& sim, State newState)
+void DLatch::driveOutput(SILICON::simulation::Simulator& sim, State newState)
 {
   if (outputBusSize(0) == 0 || outputBusSize(1) == 0)
     return;
 
-  newState = silicon::wire::normalizeBinaryOrUnknown(newState);
+  newState = SILICON::wireUtils::normalizeBinaryOrUnknown(newState);
   state    = newState;
 
   sim.updateWire(outputWire(0), newState, propagationDelay, weak_from_this());
@@ -353,7 +355,7 @@ State JKFlipFlop::captureState() const
   const State j = inputState(Inputs::J);
   const State k = inputState(Inputs::K);
 
-  if (!silicon::wire::isKnownBinary(j) || !silicon::wire::isKnownBinary(k))
+  if (!SILICON::wireUtils::isKnownBinary(j) || !SILICON::wireUtils::isKnownBinary(k))
     return State::UNKNOWN;
 
   if (j == State::LOW) {
@@ -364,10 +366,12 @@ State JKFlipFlop::captureState() const
     return State::HIGH;
 
   const State current = latchedState();
-  return silicon::wire::isKnownBinary(current) ? !current : State::UNKNOWN;
+  return SILICON::wireUtils::isKnownBinary(current) ? !current : State::UNKNOWN;
 }
 
 bool JKFlipFlop::isTimingSensitiveInput(const unsigned int inputIndex) const
 {
   return inputIndex == busIndex(Inputs::J) || inputIndex == busIndex(Inputs::K);
 }
+
+}  // namespace SILICON::core

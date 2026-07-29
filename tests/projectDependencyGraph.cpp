@@ -26,6 +26,9 @@
 #include <core/projectDependencyGraph.hpp>
 #include <nlohmann/json.hpp>
 
+using namespace SILICON::core;
+using namespace SILICON::project;
+
 namespace {
 
 std::string sceneWithSubcircuits(std::vector<std::string> slugs)
@@ -55,12 +58,12 @@ std::string emptyScene()
   return sceneWithSubcircuits({});
 }
 
-silicon::project::Document circuit(std::string path, std::string sceneJson)
+SILICON::project::Document circuit(std::string path, std::string sceneJson)
 {
   return {std::move(path), std::move(sceneJson)};
 }
 
-silicon::project::Document subcircuit(std::string slug, std::string sceneJson)
+SILICON::project::Document subcircuit(std::string slug, std::string sceneJson)
 {
   return {std::format("subcircuits/{}.json", slug), std::move(sceneJson)};
 }
@@ -80,7 +83,7 @@ void expectRuntimeErrorContaining(auto callback, const std::string& expected)
 
 TEST(ProjectDependencyGraphTest, ExtractsEdgesFromCircuitsAndSubcircuits)
 {
-  silicon::project::ProjectDependencyGraph graph;
+  SILICON::project::ProjectDependencyGraph graph;
   graph.rebuildFromProject(
       {circuit("circuits/main.json", sceneWithSubcircuits({"adder"})),
        subcircuit("adder", sceneWithSubcircuits({"half_adder"})),
@@ -94,7 +97,7 @@ TEST(ProjectDependencyGraphTest, ExtractsEdgesFromCircuitsAndSubcircuits)
 
 TEST(ProjectDependencyGraphTest, DuplicatePlacementsProduceOneDependency)
 {
-  silicon::project::ProjectDependencyGraph graph;
+  SILICON::project::ProjectDependencyGraph graph;
   graph.rebuildFromProject(
       {circuit("circuits/main.json", sceneWithSubcircuits({"adder", "adder"})),
        subcircuit("adder", emptyScene())});
@@ -105,7 +108,7 @@ TEST(ProjectDependencyGraphTest, DuplicatePlacementsProduceOneDependency)
 
 TEST(ProjectDependencyGraphTest, RejectsMissingSubcircuitTarget)
 {
-  silicon::project::ProjectDependencyGraph graph;
+  SILICON::project::ProjectDependencyGraph graph;
 
   EXPECT_THROW(
       graph.rebuildFromProject(
@@ -115,7 +118,7 @@ TEST(ProjectDependencyGraphTest, RejectsMissingSubcircuitTarget)
 
 TEST(ProjectDependencyGraphTest, DetectsDirectSelfCycle)
 {
-  silicon::project::ProjectDependencyGraph graph;
+  SILICON::project::ProjectDependencyGraph graph;
   graph.addDocument("subcircuits/adder.json");
 
   EXPECT_TRUE(graph.wouldIntroduceCycle("subcircuits/adder.json",
@@ -124,7 +127,7 @@ TEST(ProjectDependencyGraphTest, DetectsDirectSelfCycle)
 
 TEST(ProjectDependencyGraphTest, RejectsDirectSelfCycleWithSlugTrace)
 {
-  silicon::project::ProjectDependencyGraph graph;
+  SILICON::project::ProjectDependencyGraph graph;
   graph.addDocument("subcircuits/adder.json");
 
   expectRuntimeErrorContaining(
@@ -139,7 +142,7 @@ TEST(ProjectDependencyGraphTest, RejectsDirectSelfCycleWithSlugTrace)
 
 TEST(ProjectDependencyGraphTest, DetectsIndirectCycle)
 {
-  silicon::project::ProjectDependencyGraph graph;
+  SILICON::project::ProjectDependencyGraph graph;
   graph.rebuildFromProject({circuit("circuits/main.json", sceneWithSubcircuits({"cpu"})),
                             subcircuit("cpu", sceneWithSubcircuits({"alu"})),
                             subcircuit("alu", emptyScene())});
@@ -150,7 +153,7 @@ TEST(ProjectDependencyGraphTest, DetectsIndirectCycle)
 
 TEST(ProjectDependencyGraphTest, RejectsIndirectCycleWithSlugTrace)
 {
-  silicon::project::ProjectDependencyGraph graph;
+  SILICON::project::ProjectDependencyGraph graph;
   graph.rebuildFromProject({circuit("circuits/main.json", sceneWithSubcircuits({"cpu"})),
                             subcircuit("cpu", sceneWithSubcircuits({"alu"})),
                             subcircuit("alu", emptyScene())});
@@ -168,7 +171,7 @@ TEST(ProjectDependencyGraphTest, RejectsIndirectCycleWithSlugTrace)
 
 TEST(ProjectDependencyGraphTest, RebuildRejectsCyclicProject)
 {
-  silicon::project::ProjectDependencyGraph graph;
+  SILICON::project::ProjectDependencyGraph graph;
 
   EXPECT_THROW(graph.rebuildFromProject(
                    {circuit("circuits/main.json", sceneWithSubcircuits({"cpu"})),
@@ -179,7 +182,7 @@ TEST(ProjectDependencyGraphTest, RebuildRejectsCyclicProject)
 
 TEST(ProjectDependencyGraphTest, LooksUpDependentsForDeletionBlocking)
 {
-  silicon::project::ProjectDependencyGraph graph;
+  SILICON::project::ProjectDependencyGraph graph;
   graph.rebuildFromProject(
       {circuit("circuits/main.json", sceneWithSubcircuits({"alu"})),
        circuit("circuits/debug.json", sceneWithSubcircuits({"alu"})),

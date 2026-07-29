@@ -25,6 +25,8 @@
 #include <core/simulator.hpp>
 #include <core/wire.hpp>
 
+namespace SILICON::core {
+
 class Register : public Component {
 public:
   static constexpr std::string_view Type         = "Register";
@@ -59,15 +61,15 @@ public:
   std::string setInputType(std::string inputType);
   std::string setOutputType(std::string outputType);
 
-  void simulate(Simulator& sim, const SimulationContext& context) override;
-  void serializeYosys(silicon::yosys::SerializationContext& context) const override;
+  void simulate(SILICON::simulation::Simulator& sim, const SILICON::simulation::Context& context) override;
+  void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
 
 private:
   void initializeProperties();
   void reshapeBuses();
   void reshapeBuses(int size, const std::string& inputType,
                     const std::string& outputType);
-  void driveOutput(Simulator& sim);
+  void driveOutput(SILICON::simulation::Simulator& sim);
   void clearState();
 
   [[nodiscard]] int         configuredSize() const;
@@ -78,3 +80,5 @@ private:
 
   std::vector<State> state;
 };
+
+}  // namespace SILICON::core

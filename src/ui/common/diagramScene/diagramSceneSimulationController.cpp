@@ -42,11 +42,19 @@
 #include <ui/logiFlow/components/graphicalIO.hpp>
 #include <ui/logiFlow/components/graphicalLogicComponent.hpp>
 
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+using namespace SILICON::simulation;
+using namespace SILICON::waveform;
+using namespace SILICON::waveform::fst;
+
 namespace {
 
 constexpr ItemCategory InputCategory  = ItemCategory::IO | ItemCategory::Input;
 constexpr ItemCategory OutputCategory = ItemCategory::IO | ItemCategory::Output;
-const Logger           simulationUiLog("simulation-ui");
+const SILICON::logging::Logger           simulationUiLog("simulation-ui");
 
 std::string componentNameOr(const Component_ptr& component, const std::string& fallback)
 {
@@ -64,7 +72,7 @@ std::string componentNameOr(const Component_ptr& component, const std::string& f
 }
 
 Simulator::RunResult
-settleInteractiveSimulation(silicon::simulation::SimulationSession& simulator,
+settleInteractiveSimulation(SILICON::simulation::Session& simulator,
                             const Simulator::CancellationCheck&     isCancelled)
 {
   const auto result = simulator.runUntilIdle(isCancelled);
@@ -132,7 +140,7 @@ bool DiagramSceneSimulationController::enterSimulationMode()
   scene.setCircuit(std::make_shared<Circuit>(coreComps, false));
 
   auto trace = collectTraceConfiguration();
-  resetWaveformTrace(trace);
+  resetTrace(trace);
   const auto circuit   = scene.getCircuit();
   const auto traceFile = fstTraceFile;
 
@@ -147,7 +155,7 @@ bool DiagramSceneSimulationController::enterSimulationMode()
     };
 
     simulator =
-        std::make_unique<silicon::simulation::SimulationSession>(circuit, isCancelled);
+        std::make_unique<SILICON::simulation::Session>(circuit, isCancelled);
     configureSimulatorTrace(trace, traceFile);
     return settleInteractiveSimulation(*simulator, isCancelled);
   });
@@ -268,7 +276,7 @@ void DiagramSceneSimulationController::clearWaveformTrace()
 }
 
 void DiagramSceneSimulationController::simulateEditedWaveform(
-    const qulonglong duration, std::vector<SiliconWaveformSample> inputSnapshots)
+    const qulonglong duration, std::vector<Sample> inputSnapshots)
 {
   if (!isJobFinished())
     return;
@@ -320,7 +328,7 @@ void DiagramSceneSimulationController::simulateEditedWaveform(
 
   scene.setCircuit(std::make_shared<Circuit>(coreComps, false));
   auto trace = collectTraceConfiguration();
-  resetWaveformTrace(trace);
+  resetTrace(trace);
   const auto circuit   = scene.getCircuit();
   const auto traceFile = fstTraceFile;
 
@@ -335,7 +343,7 @@ void DiagramSceneSimulationController::simulateEditedWaveform(
     };
 
     simulator =
-        std::make_unique<silicon::simulation::SimulationSession>(circuit, isCancelled);
+        std::make_unique<SILICON::simulation::Session>(circuit, isCancelled);
     configureSimulatorTrace(trace, traceFile);
 
     return simulator->simulateWaveform(duration, inputSnapshots, inputDrivers,
@@ -349,7 +357,7 @@ void DiagramSceneSimulationController::refreshTraceConfiguration()
     return;
 
   auto trace = collectTraceConfiguration();
-  resetWaveformTrace(trace);
+  resetTrace(trace);
   configureSimulatorTrace(trace, fstTraceFile);
   if (!pendingWaveformSnapshots.isEmpty()) {
     // Trace configuration can emit an immediate snapshot outside a worker job.
@@ -358,7 +366,7 @@ void DiagramSceneSimulationController::refreshTraceConfiguration()
   }
 }
 
-void DiagramSceneSimulationController::resetWaveformTrace(const TraceConfiguration& trace)
+void DiagramSceneSimulationController::resetTrace(const TraceConfiguration& trace)
 {
   QStringList names;
   names.reserve(static_cast<qsizetype>(trace.buses.size()));
@@ -389,8 +397,8 @@ void DiagramSceneSimulationController::configureSimulatorTrace(
     return;
   }
 
-  simulator->setFstWriter(std::make_unique<SiliconFstWriter>(
-      *traceFile, trace.buses, SiliconFstWriter::Options{}));
+  simulator->setFstWriter(std::make_unique<CircuitWriter>(
+      *traceFile, trace.buses, CircuitWriter::Options{}));
 }
 
 void DiagramSceneSimulationController::startJob(std::function<Simulator::RunResult()> job)
@@ -585,7 +593,7 @@ DiagramSceneSimulationController::collectTraceConfiguration() const
   TraceConfiguration trace;
   trace.buses.reserve(inputs.size() + outputs.size());
 
-  for (const auto& [index, input] : inputs | silicon::views::enumerate) {
+  for (const auto& [index, input] : inputs | SILICON::views::enumerate) {
     const auto component = input->getComponent();
     if (component && !component->getOutputs().empty()) {
       trace.buses.emplace_back(
@@ -596,7 +604,7 @@ DiagramSceneSimulationController::collectTraceConfiguration() const
     }
   }
 
-  for (const auto& [index, output] : outputs | silicon::views::enumerate) {
+  for (const auto& [index, output] : outputs | SILICON::views::enumerate) {
     const auto component = output->getComponent();
     if (component && !component->getInputs().empty()) {
       trace.buses.emplace_back(
@@ -608,3 +616,6 @@ DiagramSceneSimulationController::collectTraceConfiguration() const
 
   return trace;
 }
+
+}  // namespace ui
+}  // namespace SILICON

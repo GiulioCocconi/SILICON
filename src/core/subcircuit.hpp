@@ -23,7 +23,7 @@
 #include <cstdint>
 #include <string_view>
 
-class Simulator;
+namespace SILICON::core {
 
 class SubcircuitComponent : public Component {
 public:
@@ -39,8 +39,8 @@ public:
             ComponentCategory::Subcircuits};
   }
 
-  void simulate(Simulator& sim) override;
-  void serializeYosys(silicon::yosys::SerializationContext& context) const override;
+  void simulate(SILICON::simulation::Simulator& sim) override;
+  void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
 
   void reloadFromRegistry();
 
@@ -50,3 +50,5 @@ private:
   void configureFromSlug(std::string_view slug);
   void clearResolvedCircuit();
 };
+
+}  // namespace SILICON::core

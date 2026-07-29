@@ -28,7 +28,7 @@
 
 #include <core/serialization/projectFile.hpp>
 
-namespace silicon::project {
+namespace SILICON::project {
 
 /**
  * @brief Runtime-only graph of project document containment dependencies.
@@ -220,4 +220,4 @@ private:
   void validateAcyclic() const;
 };
 
-}  // namespace silicon::project
+}  // namespace SILICON::project

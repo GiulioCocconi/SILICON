@@ -23,6 +23,8 @@
 
 #include <core/component.hpp>
 
+namespace SILICON::core {
+
 /** @brief Drives a one-bit constant used by imported hardware netlists. */
 class ConstantComponent : public Component {
 public:
@@ -38,9 +40,9 @@ public:
             ComponentCategory::Inputs};
   }
 
-  void simulate(Simulator& sim) override;
+  void simulate(SILICON::simulation::Simulator& sim) override;
   void serializeYosys(
-      silicon::yosys::SerializationContext& context) const override;
+      SILICON::yosys::SerializationContext& context) const override;
 };
 
 class BoundaryIoComponent : public Component {
@@ -50,7 +52,7 @@ protected:
 
 public:
   void serializeYosys(
-      silicon::yosys::SerializationContext& context) const override;
+      SILICON::yosys::SerializationContext& context) const override;
 };
 
 /** @brief Logical model behind the graphical single-bit input. */
@@ -69,7 +71,7 @@ public:
     return {"Input", "Provides a user-toggleable one-bit signal.",
             ComponentCategory::Inputs, PortRole::Input};
   }
-  void simulate(Simulator&) override {}
+  void simulate(SILICON::simulation::Simulator&) override {}
 };
 
 /** @brief Logical model behind the graphical bus input. */
@@ -92,7 +94,7 @@ public:
     return {"Bus Input", "Provides an editable multi-bit bus value.",
             ComponentCategory::Inputs, PortRole::Input};
   }
-  void simulate(Simulator&) override {}
+  void simulate(SILICON::simulation::Simulator&) override {}
 };
 
 /** @brief Logical model behind the graphical single-bit output. */
@@ -109,7 +111,7 @@ public:
     return {"Output", "Displays the current state of a one-bit signal.",
             ComponentCategory::Outputs, PortRole::Output};
   }
-  void simulate(Simulator&) override {}
+  void simulate(SILICON::simulation::Simulator&) override {}
 };
 
 /** @brief Logical model behind the graphical bus output. */
@@ -128,5 +130,7 @@ public:
     return {"Bus Output", "Displays the current value of a multi-bit bus.",
             ComponentCategory::Outputs, PortRole::Output};
   }
-  void simulate(Simulator&) override {}
+  void simulate(SILICON::simulation::Simulator&) override {}
 };
+
+}  // namespace SILICON::core

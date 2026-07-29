@@ -25,6 +25,8 @@
 #include <string>
 #include <vector>
 
+namespace SILICON::core {
+
 /* --- State values ---------------------------------------------------------------------
  * Each wire could hold one of four states. UNKNOWN can be HIGH or LOW, for example
  * HIGH || UNKNOWN == HIGH, cause (HIGH || HIGH) == (HIGH || LOW) == HIGH.
@@ -164,3 +166,5 @@ public:
   bool                 operator==(const Bus& other) const;
   std::strong_ordering operator<=>(const Bus& other) const;
 };
+
+}  // namespace SILICON::core

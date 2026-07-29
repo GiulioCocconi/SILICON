@@ -12,21 +12,24 @@
 
 #include <gtest/gtest.h>
 
-using silicon::project::Document;
-using silicon::project::DocumentKind;
-using silicon::project::DocumentStore;
+using namespace SILICON::core;
+using namespace SILICON::project;
+
+using SILICON::project::Document;
+using SILICON::project::DocumentKind;
+using SILICON::project::DocumentStore;
 
 TEST(ProjectDocumentTest, ClassifiesCanonicalFlatPaths)
 {
-  EXPECT_EQ(silicon::project::classifyDocumentPath("circuits/main.json"),
+  EXPECT_EQ(SILICON::project::classifyDocumentPath("circuits/main.json"),
             DocumentKind::Circuit);
-  EXPECT_EQ(silicon::project::classifyDocumentPath("subcircuits/adder.json"),
+  EXPECT_EQ(SILICON::project::classifyDocumentPath("subcircuits/adder.json"),
             DocumentKind::Subcircuit);
-  EXPECT_FALSE(silicon::project::classifyDocumentPath(""));
-  EXPECT_FALSE(silicon::project::classifyDocumentPath("circuits/nested/main.json"));
-  EXPECT_FALSE(silicon::project::classifyDocumentPath("circuits/main.txt"));
-  EXPECT_EQ(silicon::project::subcircuitSlugForPath("subcircuits/adder.json"), "adder");
-  EXPECT_FALSE(silicon::project::subcircuitSlugForPath("circuits/adder.json"));
+  EXPECT_FALSE(SILICON::project::classifyDocumentPath(""));
+  EXPECT_FALSE(SILICON::project::classifyDocumentPath("circuits/nested/main.json"));
+  EXPECT_FALSE(SILICON::project::classifyDocumentPath("circuits/main.txt"));
+  EXPECT_EQ(SILICON::project::subcircuitSlugForPath("subcircuits/adder.json"), "adder");
+  EXPECT_FALSE(SILICON::project::subcircuitSlugForPath("circuits/adder.json"));
 }
 
 TEST(ProjectDocumentTest, SceneReplacementClearsOrReplacesPreparedCoreJson)
@@ -43,28 +46,28 @@ TEST(ProjectDocumentTest, SceneReplacementClearsOrReplacesPreparedCoreJson)
 
 TEST(ProjectDocumentTest, ParsesOptionalVerilogHdlDescriptor)
 {
-  EXPECT_FALSE(silicon::project::parseHdlDescriptor(R"({"circuit":{}})"));
-  EXPECT_EQ(silicon::project::parseHdlDescriptor(
+  EXPECT_FALSE(SILICON::project::parseHdlDescriptor(R"({"circuit":{}})"));
+  EXPECT_EQ(SILICON::project::parseHdlDescriptor(
                 R"({"hdl":{"type":"verilog","path":"hdl/adder.v"}})"),
-            (silicon::project::HdlDescriptor{.type = "verilog", .path = "hdl/adder.v"}));
+            (SILICON::project::HdlDescriptor{.type = "verilog", .path = "hdl/adder.v"}));
 }
 
 TEST(ProjectDocumentTest, RejectsInvalidHdlDescriptorsAndAssetPaths)
 {
-  EXPECT_TRUE(silicon::project::isValidProjectAssetPath("hdl/adder.v"));
-  EXPECT_FALSE(silicon::project::isValidProjectAssetPath("../adder.v"));
-  EXPECT_FALSE(silicon::project::isValidProjectAssetPath("/hdl/adder.v"));
-  EXPECT_FALSE(silicon::project::isValidProjectAssetPath("circuits/adder.json"));
-  EXPECT_FALSE(silicon::project::isValidProjectAssetPath(
+  EXPECT_TRUE(SILICON::project::isValidProjectAssetPath("hdl/adder.v"));
+  EXPECT_FALSE(SILICON::project::isValidProjectAssetPath("../adder.v"));
+  EXPECT_FALSE(SILICON::project::isValidProjectAssetPath("/hdl/adder.v"));
+  EXPECT_FALSE(SILICON::project::isValidProjectAssetPath("circuits/adder.json"));
+  EXPECT_FALSE(SILICON::project::isValidProjectAssetPath(
       std::string_view("hdl/a\0b.v", 9)));
 
-  EXPECT_THROW((void)silicon::project::parseHdlDescriptor(
+  EXPECT_THROW((void)SILICON::project::parseHdlDescriptor(
                    R"({"hdl":{"type":"vhdl","path":"hdl/adder.vhd"}})"),
                std::runtime_error);
-  EXPECT_THROW((void)silicon::project::parseHdlDescriptor(
+  EXPECT_THROW((void)SILICON::project::parseHdlDescriptor(
                    R"({"hdl":{"type":"verilog","path":"../adder.v"}})"),
                std::runtime_error);
-  EXPECT_THROW((void)silicon::project::parseHdlDescriptor(
+  EXPECT_THROW((void)SILICON::project::parseHdlDescriptor(
                    R"({"hdl":{"type":"verilog","path":"hdl/adder.v","module":"adder"}})"),
                std::runtime_error);
 }

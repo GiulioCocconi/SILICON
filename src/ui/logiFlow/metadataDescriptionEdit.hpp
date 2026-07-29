@@ -16,6 +16,10 @@
 class QFocusEvent;
 class QWidget;
 
+
+namespace SILICON {
+namespace ui {
+
 /**
  * @brief Description editor that commits pending metadata when focus leaves it.
  *
@@ -31,3 +35,6 @@ public:
 protected:
   void focusOutEvent(QFocusEvent* event) override;
 };
+
+}  // namespace ui
+}  // namespace SILICON

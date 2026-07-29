@@ -30,6 +30,11 @@
 #include <core/component.hpp>
 #include <ui/common/graphicalWire.hpp>
 
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+
 class GraphicalItem;
 class GraphicalComponent;
 class GraphicalLogicComponent;
@@ -159,3 +164,6 @@ private:
   Operation     operation;
   bool          skipInitialRedo;
 };
+
+}  // namespace ui
+}  // namespace SILICON

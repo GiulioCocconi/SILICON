@@ -25,7 +25,13 @@
 
 #include <nlohmann/json.hpp>
 
-class ComponentRegistry;
+#include <core/serialization/component_registry.hpp>
+
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+
 class DiagramScene;
 class GraphicalItem;
 class GUIComponentFactory;
@@ -100,3 +106,6 @@ private:
   /** @brief Host scene whose items and lookup tables back serialization operations */
   DiagramScene& scene;
 };
+
+}  // namespace ui
+}  // namespace SILICON

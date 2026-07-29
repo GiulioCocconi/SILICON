@@ -23,6 +23,11 @@
 #include <QPainter>
 #include <QTextOption>
 
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+
 namespace {
 
 constexpr QRectF FlipFlopBodyRect(0.0, 0.0, 80.0, 80.0);
@@ -114,3 +119,6 @@ GraphicalJKFlipFlop::GraphicalJKFlipFlop(QGraphicsItem* parent)
             PortPair{"pre", QPoint(40, 100)}},
            {PortPair{"q", QPoint(100, 20)}, PortPair{"!q", QPoint(100, 60)}});
 }
+
+}  // namespace ui
+}  // namespace SILICON

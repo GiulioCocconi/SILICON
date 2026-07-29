@@ -12,7 +12,7 @@
 
 #include <core/projectDocument.hpp>
 
-namespace silicon::project {
+namespace SILICON::project {
 
 /**
  * @brief MIME marker stored in Silicon project archives.
@@ -136,4 +136,4 @@ void writeProjectFile(const std::filesystem::path& path, const ProjectFile& proj
  */
 [[nodiscard]] ProjectMetadata metadataForNewFile();
 
-}  // namespace silicon::project
+}  // namespace SILICON::project

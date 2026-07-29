@@ -31,6 +31,9 @@
 #include <ui/common/diagramScene/diagramScene.hpp>
 #include <ui/common/enums.hpp>
 
+
+namespace SILICON {
+namespace ui {
 class DiagramScene;
 class GraphicalComponent;
 class GraphicalWireSegment;
@@ -161,3 +164,6 @@ private:
   /** @brief Scene used for `uiId` registration bookkeeping during destruction */
   DiagramScene* owningScene = nullptr;
 };
+
+}  // namespace ui
+}  // namespace SILICON

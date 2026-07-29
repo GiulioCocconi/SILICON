@@ -23,6 +23,9 @@
 #include <core/component.hpp>
 #include <core/wire.hpp>
 
+namespace SILICON::extra {
+using namespace SILICON::core;
+
 class Multiplexer : public Component {
 public:
   static constexpr std::string_view Type = "Multiplexer";
@@ -49,8 +52,8 @@ public:
   int setSelectionSize(int selectionSize);
   int setBusSize(int busSize);
 
-  void simulate(Simulator& sim) override;
-  void serializeYosys(silicon::yosys::SerializationContext& context) const override;
+  void simulate(SILICON::simulation::Simulator& sim) override;
+  void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
 };
 
 class Demultiplexer : public Component {
@@ -80,8 +83,8 @@ public:
   int setSelectionSize(int selectionSize);
   int setBusSize(int busSize);
 
-  void simulate(Simulator& sim) override;
-  void serializeYosys(silicon::yosys::SerializationContext& context) const override;
+  void simulate(SILICON::simulation::Simulator& sim) override;
+  void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
 };
 
 class Decoder : public Component {
@@ -109,6 +112,8 @@ public:
 
   int setSelectionSize(int selectionSize);
 
-  void simulate(Simulator& sim) override;
-  void serializeYosys(silicon::yosys::SerializationContext& context) const override;
+  void simulate(SILICON::simulation::Simulator& sim) override;
+  void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
 };
+
+}  // namespace SILICON::extra

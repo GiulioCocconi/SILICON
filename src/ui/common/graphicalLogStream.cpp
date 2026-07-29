@@ -15,6 +15,10 @@
 #include <boost/log/trivial.hpp>
 #include <boost/make_shared.hpp>
 
+
+namespace SILICON {
+namespace ui {
+
 namespace logging = boost::log;
 namespace expr    = boost::log::expressions;
 
@@ -99,3 +103,6 @@ void GraphicalLogStream::detachFromBoostLog()
 
   sink.reset();
 }
+
+}  // namespace ui
+}  // namespace SILICON

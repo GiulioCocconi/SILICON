@@ -20,6 +20,12 @@
 #include <extraComponents/arithmetic.hpp>
 #include <ui/logiFlow/components/graphicalLogicComponent.hpp>
 
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+using namespace SILICON::extra;
+
 class GraphicalHalfAdder : public GraphicalLogicComponent {
   Q_OBJECT
 public:
@@ -43,3 +49,6 @@ public:
 
   int type() const override { return SiliconTypes::ADDER_N_BITS; }
 };
+
+}  // namespace ui
+}  // namespace SILICON

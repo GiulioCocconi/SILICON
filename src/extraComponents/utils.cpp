@@ -19,6 +19,9 @@
 
 #include <core/simulator.hpp>
 
+namespace SILICON::extra {
+using namespace SILICON::core;
+
 WireSplitter::WireSplitter()
 {
   initializeProperties();
@@ -63,7 +66,7 @@ int WireSplitter::setSize(int newSize)
   return newSize;
 }
 
-void WireSplitter::simulate(Simulator& sim)
+void WireSplitter::simulate(SILICON::simulation::Simulator& sim)
 {
   const unsigned int size  = getPropertyValue<int>("size").value();
   const int          delay = getPropertyValue<int>("delay").value();
@@ -119,7 +122,7 @@ int WireMerger::setSize(int newSize)
   return newSize;
 }
 
-void WireMerger::simulate(Simulator& sim)
+void WireMerger::simulate(SILICON::simulation::Simulator& sim)
 {
   const unsigned int size  = getPropertyValue<int>("size").value();
   const int          delay = getPropertyValue<int>("delay").value();
@@ -134,3 +137,5 @@ void WireMerger::simulate(Simulator& sim)
     }
   }
 }
+
+}  // namespace SILICON::extra

@@ -26,6 +26,11 @@
 #include <ui/logiFlow/components/graphicalLogicComponent.hpp>
 #include <ui/logiFlow/components/subcircuit/metadata.hpp>
 
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+
 /**
  * @brief Graphical component wrapper for a registered subcircuit.
  *
@@ -71,3 +76,6 @@ private:
   /** @brief Rebuilds visible ports when subcircuit I/O shape changes. */
   void                      updatePortSizes() override;
 };
+
+}  // namespace ui
+}  // namespace SILICON

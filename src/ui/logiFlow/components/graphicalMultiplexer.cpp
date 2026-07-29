@@ -28,6 +28,12 @@
 
 #include <ui/common/theme.hpp>
 
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+using namespace SILICON::extra;
+
 namespace {
 std::shared_ptr<Multiplexer> makeMultiplexer()
 {
@@ -393,3 +399,6 @@ void GraphicalDecoder::setComponent(const Component_ptr& component)
   setupCallbacks();
   applySelectionSize(component->getPropertyValue<int>("selectionSize").value_or(1));
 }
+
+}  // namespace ui
+}  // namespace SILICON

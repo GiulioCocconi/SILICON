@@ -22,6 +22,8 @@
 #include <string>
 #include <string_view>
 
+namespace SILICON::core {
+
 /**
  * @brief Transparent hash functor for string-like keys.
  *
@@ -70,3 +72,5 @@ struct TransparentStringEqual {
     return lhs == rhs;
   }
 };
+
+}  // namespace SILICON::core

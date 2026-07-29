@@ -20,4 +20,8 @@
 
 #include <core/serialization/component_registry.hpp>
 
+namespace SILICON::core {
+
 void registerAllComponents(ComponentRegistry& registry);
+
+}  // namespace SILICON::core

@@ -27,6 +27,9 @@
 
 #include <core/projectDocument.hpp>
 
+
+namespace SILICON {
+namespace ui {
 class SubcircuitRectShape : public QGraphicsRectItem {
 public:
   explicit SubcircuitRectShape(const QSize& size, QGraphicsItem* parent = nullptr);
@@ -42,5 +45,8 @@ public:
 [[nodiscard]] int pixelsToNearestGrid(qreal value);
 [[nodiscard]] QPoint pixelsToNearestGrid(const QPointF& point);
 
-[[nodiscard]] silicon::project::Document
+[[nodiscard]] SILICON::project::Document
 preparedSubcircuitDocument(std::string path, std::string sceneJson);
+
+}  // namespace ui
+}  // namespace SILICON

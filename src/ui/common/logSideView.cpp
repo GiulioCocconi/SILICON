@@ -14,6 +14,10 @@
 
 #include <ui/common/theme.hpp>
 
+
+namespace SILICON {
+namespace ui {
+
 namespace {
 
 QString getLevel(const QString& line)
@@ -138,3 +142,6 @@ void LogSideView::repaintLogText()
 
   logOutput->viewport()->update();
 }
+
+}  // namespace ui
+}  // namespace SILICON

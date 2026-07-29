@@ -18,12 +18,16 @@
 
 #include <ui/common/icons.hpp>
 
+
+namespace SILICON {
+namespace ui {
+
 namespace {
 
 constexpr int ItemKindRole = Qt::UserRole;
 constexpr int PathRole     = Qt::UserRole + 1;
 
-QString documentDisplayName(const silicon::project::Document& document)
+QString documentDisplayName(const SILICON::project::Document& document)
 {
   try {
     const auto scene = nlohmann::json::parse(document.sceneJson());
@@ -39,16 +43,16 @@ QString documentDisplayName(const silicon::project::Document& document)
   return fileName.isEmpty() ? QString::fromStdString(document.path()) : fileName;
 }
 
-ProjectTreeItemKind sectionKind(const silicon::project::DocumentKind kind)
+ProjectTreeItemKind sectionKind(const SILICON::project::DocumentKind kind)
 {
-  return kind == silicon::project::DocumentKind::Circuit
+  return kind == SILICON::project::DocumentKind::Circuit
              ? ProjectTreeItemKind::CircuitSection
              : ProjectTreeItemKind::SubcircuitSection;
 }
 
-ProjectTreeItemKind documentKind(const silicon::project::DocumentKind kind)
+ProjectTreeItemKind documentKind(const SILICON::project::DocumentKind kind)
 {
-  return kind == silicon::project::DocumentKind::Circuit
+  return kind == SILICON::project::DocumentKind::Circuit
              ? ProjectTreeItemKind::Circuit
              : ProjectTreeItemKind::Subcircuit;
 }
@@ -63,9 +67,9 @@ ProjectTree::ProjectTree(QWidget* parent) : QTreeWidget(parent)
   setContextMenuPolicy(Qt::CustomContextMenu);
 }
 
-void ProjectTree::rebuild(const silicon::project::ProjectInfo&           project,
-                          const std::vector<silicon::project::Document>& circuits,
-                          const std::vector<silicon::project::Document>& subcircuits,
+void ProjectTree::rebuild(const SILICON::project::ProjectInfo&           project,
+                          const std::vector<SILICON::project::Document>& circuits,
+                          const std::vector<SILICON::project::Document>& subcircuits,
                           const std::string& activeDocumentPath)
 {
   const QSignalBlocker blocker(this);
@@ -75,17 +79,17 @@ void ProjectTree::rebuild(const silicon::project::ProjectInfo&           project
   projectItem->setText(0, QString::fromStdString(project.name));
   projectItem->setData(0, ItemKindRole, static_cast<int>(ProjectTreeItemKind::Project));
   projectItem->setExpanded(true);
-  addSection(projectItem, silicon::project::DocumentKind::Circuit, circuits);
-  addSection(projectItem, silicon::project::DocumentKind::Subcircuit, subcircuits);
+  addSection(projectItem, SILICON::project::DocumentKind::Circuit, circuits);
+  addSection(projectItem, SILICON::project::DocumentKind::Subcircuit, subcircuits);
   expandAll();
 
   if (!activeDocumentPath.empty())
     selectDocument(activeDocumentPath);
 }
 
-void ProjectTree::updateLabels(const silicon::project::ProjectInfo&           project,
-                               const std::vector<silicon::project::Document>& circuits,
-                               const std::vector<silicon::project::Document>& subcircuits)
+void ProjectTree::updateLabels(const SILICON::project::ProjectInfo&           project,
+                               const std::vector<SILICON::project::Document>& circuits,
+                               const std::vector<SILICON::project::Document>& subcircuits)
 {
   const QSignalBlocker blocker(this);
   if (topLevelItemCount() == 0)
@@ -93,8 +97,8 @@ void ProjectTree::updateLabels(const silicon::project::ProjectInfo&           pr
 
   topLevelItem(0)->setText(0, QString::fromStdString(project.name));
   for (const auto& [kind, documents] :
-       {std::pair{silicon::project::DocumentKind::Circuit, &circuits},
-        std::pair{silicon::project::DocumentKind::Subcircuit, &subcircuits}}) {
+       {std::pair{SILICON::project::DocumentKind::Circuit, &circuits},
+        std::pair{SILICON::project::DocumentKind::Subcircuit, &subcircuits}}) {
     auto* section = sectionFor(kind);
     if (!section)
       continue;
@@ -102,7 +106,7 @@ void ProjectTree::updateLabels(const silicon::project::ProjectInfo&           pr
          ++i) {
       const auto& document = documents->at(static_cast<std::size_t>(i));
       section->child(i)->setText(
-          0, kind == silicon::project::DocumentKind::Circuit
+          0, kind == SILICON::project::DocumentKind::Circuit
                  ? documentDisplayName(document)
                  : QString::fromStdString(
                        document.subcircuitSlug().value_or(document.path())));
@@ -114,7 +118,7 @@ void ProjectTree::selectDocument(const std::string& path)
 {
   const QSignalBlocker blocker(this);
   clearSelection();
-  const auto kind    = silicon::project::classifyDocumentPath(path);
+  const auto kind    = SILICON::project::classifyDocumentPath(path);
   auto*      section = kind ? sectionFor(*kind) : nullptr;
   if (!section)
     return;
@@ -142,7 +146,7 @@ QTreeWidgetItem* ProjectTree::selectedProjectItem() const
   return items.empty() ? nullptr : items.front();
 }
 
-QTreeWidgetItem* ProjectTree::sectionFor(const silicon::project::DocumentKind kind) const
+QTreeWidgetItem* ProjectTree::sectionFor(const SILICON::project::DocumentKind kind) const
 {
   if (topLevelItemCount() == 0)
     return nullptr;
@@ -166,10 +170,10 @@ std::string ProjectTree::documentPath(const QTreeWidgetItem* item)
 }
 
 void ProjectTree::addSection(QTreeWidgetItem*                               projectItem,
-                             const silicon::project::DocumentKind           kind,
-                             const std::vector<silicon::project::Document>& documents)
+                             const SILICON::project::DocumentKind           kind,
+                             const std::vector<SILICON::project::Document>& documents)
 {
-  const bool circuits = kind == silicon::project::DocumentKind::Circuit;
+  const bool circuits = kind == SILICON::project::DocumentKind::Circuit;
   auto*      section  = new QTreeWidgetItem(projectItem);
   section->setText(0, circuits ? tr("Circuits") : tr("Subcircuits"));
   section->setData(0, ItemKindRole, static_cast<int>(sectionKind(kind)));
@@ -185,3 +189,6 @@ void ProjectTree::addSection(QTreeWidgetItem*                               proj
     item->setData(0, PathRole, QString::fromStdString(document.path()));
   }
 }
+
+}  // namespace ui
+}  // namespace SILICON

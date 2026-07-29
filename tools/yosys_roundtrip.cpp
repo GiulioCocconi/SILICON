@@ -13,6 +13,8 @@
 
 #include <core/circuit.hpp>
 
+using namespace SILICON::core;
+
 namespace {
 
 class TemporaryDirectory {

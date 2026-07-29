@@ -33,11 +33,15 @@ class QPushButton;
 class QSettings;
 class QSpinBox;
 
+
+namespace SILICON {
+namespace ui {
+
 /**
  * @brief Shortcut row shown in the settings dialog.
  */
 struct ShortcutSetting {
-  SiliconSetting::Definition setting;
+  SILICON::ui::settings::Definition setting;
   QString                    label;
   QAction*                   action;
 };
@@ -94,3 +98,6 @@ private:
   QPushButton*      restoreDefaultsButton;
   QDialogButtonBox* buttonBox;
 };
+
+}  // namespace ui
+}  // namespace SILICON

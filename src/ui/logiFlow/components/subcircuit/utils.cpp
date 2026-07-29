@@ -27,6 +27,11 @@
 #include <ui/common/theme.hpp>
 #include <ui/logiFlow/components/subcircuit/metadata.hpp>
 
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+
 SubcircuitRectShape::SubcircuitRectShape(const QSize& size, QGraphicsItem* parent)
   : QGraphicsRectItem(0, 0, size.width(), size.height(), parent)
 {
@@ -62,9 +67,12 @@ int pixelsToNearestGrid(const qreal value)
 QPoint pixelsToNearestGrid(const QPointF& point)
 { return {pixelsToNearestGrid(point.x()), pixelsToNearestGrid(point.y())}; }
 
-silicon::project::Document preparedSubcircuitDocument(std::string path,
+SILICON::project::Document preparedSubcircuitDocument(std::string path,
                                                        std::string sceneJson)
 {
   auto coreJson = graphicalSubcircuitCoreCircuitJson(sceneJson);
   return {std::move(path), std::move(sceneJson), std::move(coreJson)};
 }
+
+}  // namespace ui
+}  // namespace SILICON

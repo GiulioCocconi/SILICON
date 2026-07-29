@@ -24,6 +24,8 @@
 #include <core/component.hpp>
 #include <core/wire.hpp>
 
+namespace SILICON::core {
+
 /**
  * @brief Base class for combinational logic gates.
  *
@@ -84,8 +86,8 @@ public:
 
   AndGate() = default;
   AndGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output);
-  void simulate(Simulator& sim) override;
-  void serializeYosys(silicon::yosys::SerializationContext& context) const override;
+  void simulate(SILICON::simulation::Simulator& sim) override;
+  void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
 };
 
 class OrGate : public Gate {
@@ -100,8 +102,8 @@ public:
 
   OrGate() = default;
   OrGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output);
-  void simulate(Simulator& sim) override;
-  void serializeYosys(silicon::yosys::SerializationContext& context) const override;
+  void simulate(SILICON::simulation::Simulator& sim) override;
+  void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
 };
 
 class NotGate : public Gate {
@@ -115,8 +117,8 @@ public:
 
   NotGate() = default;
   NotGate(Wire_ptr input, Wire_ptr output);
-  void simulate(Simulator& sim) override;
-  void serializeYosys(silicon::yosys::SerializationContext& context) const override;
+  void simulate(SILICON::simulation::Simulator& sim) override;
+  void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
 };
 
 class NandGate : public Gate {
@@ -131,8 +133,8 @@ public:
 
   NandGate() = default;
   NandGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output);
-  void simulate(Simulator& sim) override;
-  void serializeYosys(silicon::yosys::SerializationContext& context) const override;
+  void simulate(SILICON::simulation::Simulator& sim) override;
+  void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
 };
 
 class NorGate : public Gate {
@@ -147,8 +149,8 @@ public:
 
   NorGate() = default;
   NorGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output);
-  void simulate(Simulator& sim) override;
-  void serializeYosys(silicon::yosys::SerializationContext& context) const override;
+  void simulate(SILICON::simulation::Simulator& sim) override;
+  void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
 };
 
 class XorGate : public Gate {
@@ -163,6 +165,8 @@ public:
 
   XorGate() = default;
   XorGate(const std::array<Wire_ptr, 2>& inputs, Wire_ptr output);
-  void simulate(Simulator& sim) override;
-  void serializeYosys(silicon::yosys::SerializationContext& context) const override;
+  void simulate(SILICON::simulation::Simulator& sim) override;
+  void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
 };
+
+}  // namespace SILICON::core

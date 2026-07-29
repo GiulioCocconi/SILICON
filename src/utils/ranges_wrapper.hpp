@@ -25,16 +25,16 @@
   #include <range/v3/view/sliding.hpp>
 #endif
 
-namespace silicon::views {
+namespace SILICON::views {
 
 #ifndef __cpp_lib_ranges_enumerate
 static inline constexpr auto enumerate = [](auto&& r) {
   return std::views::zip(std::views::iota(0, static_cast<ptrdiff_t>(r.size())), r);
 };
 
-template <typename R> auto operator|(R&& r, decltype(silicon::views::enumerate))
+template <typename R> auto operator|(R&& r, decltype(SILICON::views::enumerate))
 {
-  return silicon::views::enumerate(std::forward<R>(r));
+  return SILICON::views::enumerate(std::forward<R>(r));
 }
 #else
 inline constexpr auto enumerate = std::views::enumerate;
@@ -46,4 +46,4 @@ inline constexpr auto slide = ranges::views::sliding;
 inline constexpr auto slide = std::views::slide;
 #endif
 
-}  // namespace silicon::views
+}  // namespace SILICON::views

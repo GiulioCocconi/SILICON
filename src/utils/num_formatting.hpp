@@ -22,7 +22,7 @@
 #include <string>
 #include <string_view>
 
-namespace silicon {
+namespace SILICON::core {
 
 enum class NumberFormat { Signed, Unsigned, Hex, Oct, Bin };
 
@@ -31,4 +31,4 @@ enum class NumberFormat { Signed, Unsigned, Hex, Oct, Bin };
 [[nodiscard]] bool         parseBusValue(std::string_view text, unsigned int& value);
 [[nodiscard]] std::string  formatRawBits(std::string_view rawBits, NumberFormat format);
 
-}  // namespace silicon
+}  // namespace SILICON::core

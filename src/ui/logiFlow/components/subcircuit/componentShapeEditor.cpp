@@ -54,6 +54,11 @@
 #include <ui/logiFlow/components/subcircuit/metadata.hpp>
 #include <ui/logiFlow/components/subcircuit/utils.hpp>
 
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+
 namespace {
 
 constexpr int ExternalPortMarginGrid = 2;
@@ -454,8 +459,8 @@ void editGraphicalSubcircuitShape(const std::string& slug, QUndoStack* undoStack
   if (slug.empty())
     return;
 
-  const auto  path     = silicon::project::subcircuitPathForSlug(slug);
-  const auto* document = silicon::project::DocumentStore::active().find(path);
+  const auto  path     = SILICON::project::subcircuitPathForSlug(slug);
+  const auto* document = SILICON::project::DocumentStore::active().find(path);
   if (!document)
     return;
 
@@ -567,7 +572,7 @@ void editGraphicalSubcircuitShape(const std::string& slug, QUndoStack* undoStack
   QObject::connect(buttons, &QDialogButtonBox::rejected, dialog, &QDialog::reject);
   QObject::connect(dialog, &QDialog::accepted, dialog, [draft, path, undoStack, parent] {
     try {
-      const auto* currentDocument = silicon::project::DocumentStore::active().find(path);
+      const auto* currentDocument = SILICON::project::DocumentStore::active().find(path);
       if (!currentDocument)
         return;
 
@@ -582,18 +587,18 @@ void editGraphicalSubcircuitShape(const std::string& slug, QUndoStack* undoStack
       // stack.
       if (undoStack) {
         auto apply = [path](const std::string& sceneJson) {
-          silicon::project::DocumentStore::active().upsertDocument(
+          SILICON::project::DocumentStore::active().upsertDocument(
               preparedSubcircuitDocument(path, sceneJson));
         };
         undoStack->push(new MetadataEditCommand(QObject::tr("Edit Subcircuit Shape"),
                                                 oldSceneJson, newSceneJson,
                                                 std::move(apply)));
       } else {
-        silicon::project::DocumentStore::active().upsertDocument(
+        SILICON::project::DocumentStore::active().upsertDocument(
             preparedSubcircuitDocument(path, newSceneJson));
       }
     } catch (const std::exception& e) {
-      SiliconInputDialog::warning(parent, QObject::tr("Edit shape"), e.what());
+      SILICON::ui::inputDialog::warning(parent, QObject::tr("Edit shape"), e.what());
     }
   });
 
@@ -605,3 +610,6 @@ void editGraphicalSubcircuitShape(const std::string& slug, QUndoStack* undoStack
   delete dialog;
 #endif
 }
+
+}  // namespace ui
+}  // namespace SILICON

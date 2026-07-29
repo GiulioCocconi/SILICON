@@ -30,6 +30,8 @@
 #include <core/activeKeyGuard.hpp>
 #include <core/projectDocument.hpp>
 
+namespace SILICON::core {
+
 namespace {
 
 [[nodiscard]] std::unordered_map<std::uint64_t, Wire_ptr>
@@ -86,7 +88,6 @@ resolvePorts(const Circuit& target, const std::vector<CircuitPort>& ports)
 
 }  // namespace
 
-namespace silicon::subcircuits {
 
 std::string extractCoreCircuitJson(std::string_view sceneJson)
 {
@@ -105,8 +106,8 @@ SubcircuitDefinition loadSubcircuitDefinition(const std::string_view slug,
   ActiveKeyGuard activeSlug(activeResolutionSlugs, std::string(slug),
                            "Recursive subcircuit dependency detected: ");
 
-  const auto path = silicon::project::subcircuitPathForSlug(slug);
-  const auto* document = silicon::project::DocumentStore::active().find(path);
+  const auto path = SILICON::project::subcircuitPathForSlug(slug);
+  const auto* document = SILICON::project::DocumentStore::active().find(path);
   if (!document)
     throw std::runtime_error(std::format("Unknown subcircuit slug '{}'", slug));
 
@@ -123,4 +124,5 @@ SubcircuitDefinition loadSubcircuitDefinition(const std::string_view slug,
           .outputs = std::move(outputs)};
 }
 
-}  // namespace silicon::subcircuits
+
+}  // namespace SILICON::core

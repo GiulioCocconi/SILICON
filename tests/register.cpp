@@ -25,6 +25,10 @@
 
 #include <nlohmann/json.hpp>
 
+using namespace SILICON::core;
+using namespace SILICON::simulation;
+using namespace SILICON::waveform;
+
 namespace {
 
 void expectBusStates(const Bus& bus, std::initializer_list<State> expected)

@@ -28,6 +28,8 @@
 #include <core/simulator.hpp>
 #include <utils/num_formatting.hpp>
 
+namespace SILICON::core {
+
 namespace {
 
 constexpr std::string_view                PortOrientationProperty = "portOrientation";
@@ -63,7 +65,7 @@ ConstantComponent::ConstantComponent(Wire_ptr output, std::string value)
   setProperty("value", std::move(value));
 }
 
-void ConstantComponent::simulate(Simulator& sim)
+void ConstantComponent::simulate(SILICON::simulation::Simulator& sim)
 {
   if (outputs.empty() || outputs[0].size() != 1)
     return;
@@ -76,14 +78,14 @@ void ConstantComponent::simulate(Simulator& sim)
 }
 
 void ConstantComponent::serializeYosys(
-    silicon::yosys::SerializationContext& context) const
+    SILICON::yosys::SerializationContext& context) const
 {
   if (outputs.empty() || outputs[0].size() != 1)
     throw std::runtime_error("Cannot export a malformed constant component");
 
   const auto value = getPropertyValue<std::string>("value").value_or("x");
-  silicon::yosys::detail::emitUnary(context, "constant", "$pos",
-                                    silicon::yosys::Json::array({value}),
+  SILICON::yosys::detail::emitUnary(context, "constant", "$pos",
+                                    SILICON::yosys::Json::array({value}),
                                     context.bits(outputs[0]));
 }
 
@@ -98,7 +100,7 @@ BoundaryIoComponent::BoundaryIoComponent(std::vector<Bus> inputs,
 }
 
 void BoundaryIoComponent::serializeYosys(
-    silicon::yosys::SerializationContext& context) const
+    SILICON::yosys::SerializationContext& context) const
 {
   const auto role = metadata().portRole;
   if (role == PortRole::Input) {
@@ -133,7 +135,7 @@ DummyBusInputComponent::DummyBusInputComponent(Bus bus, std::string name)
       [this](const PropertyValue& value) { return setSize(std::get<int>(value)); });
   defineProperty("startValue", 0, [this](const PropertyValue& value) {
     const auto width    = outputs.empty() ? 1 : outputs[0].size();
-    const int  maxValue = static_cast<int>(silicon::maxValueForBusWidth(width));
+    const int  maxValue = static_cast<int>(SILICON::core::maxValueForBusWidth(width));
     return std::clamp(std::get<int>(value), 0, maxValue);
   });
 }
@@ -184,3 +186,5 @@ int DummyBusOutputComponent::setSize(const int newSize)
   setInput(0, bus);
   return size;
 }
+
+}  // namespace SILICON::core

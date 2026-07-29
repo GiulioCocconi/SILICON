@@ -22,18 +22,20 @@
 
 #include <limits>
 
+using namespace SILICON::core;
+
 TEST(NumFormattingTest, FixedWidthHexMatchesBusWidth)
 {
-  EXPECT_EQ(silicon::formatFixedWidthHex(0, 1), "0X0");
-  EXPECT_EQ(silicon::formatFixedWidthHex(10, 4), "0XA");
-  EXPECT_EQ(silicon::formatFixedWidthHex(10, 8), "0X0A");
-  EXPECT_EQ(silicon::formatFixedWidthHex(0x123, 12), "0X123");
+  EXPECT_EQ(SILICON::core::formatFixedWidthHex(0, 1), "0X0");
+  EXPECT_EQ(SILICON::core::formatFixedWidthHex(10, 4), "0XA");
+  EXPECT_EQ(SILICON::core::formatFixedWidthHex(10, 8), "0X0A");
+  EXPECT_EQ(SILICON::core::formatFixedWidthHex(0x123, 12), "0X123");
 }
 
 TEST(NumFormattingTest, MaxValueForBusWidthClampsAtUnsignedIntWidth)
 {
-  EXPECT_EQ(silicon::maxValueForBusWidth(4), 15U);
-  EXPECT_EQ(silicon::maxValueForBusWidth(std::numeric_limits<unsigned int>::digits),
+  EXPECT_EQ(SILICON::core::maxValueForBusWidth(4), 15U);
+  EXPECT_EQ(SILICON::core::maxValueForBusWidth(std::numeric_limits<unsigned int>::digits),
             std::numeric_limits<unsigned int>::max());
 }
 
@@ -41,47 +43,47 @@ TEST(NumFormattingTest, ParseBusValueAcceptsDecimalHexAndBinary)
 {
   unsigned int value = 0;
 
-  ASSERT_TRUE(silicon::parseBusValue("42", value));
+  ASSERT_TRUE(SILICON::core::parseBusValue("42", value));
   EXPECT_EQ(value, 42U);
 
-  ASSERT_TRUE(silicon::parseBusValue(" 0x2a ", value));
+  ASSERT_TRUE(SILICON::core::parseBusValue(" 0x2a ", value));
   EXPECT_EQ(value, 42U);
 
-  ASSERT_TRUE(silicon::parseBusValue("0b101010", value));
+  ASSERT_TRUE(SILICON::core::parseBusValue("0b101010", value));
   EXPECT_EQ(value, 42U);
 
-  EXPECT_FALSE(silicon::parseBusValue("", value));
-  EXPECT_FALSE(silicon::parseBusValue("0b102", value));
+  EXPECT_FALSE(SILICON::core::parseBusValue("", value));
+  EXPECT_FALSE(SILICON::core::parseBusValue("0b102", value));
 }
 
 TEST(NumFormattingTest, FormatsKnownRawBits)
 {
-  EXPECT_EQ(silicon::formatRawBits("1010", silicon::NumberFormat::Unsigned), "10");
-  EXPECT_EQ(silicon::formatRawBits("1010", silicon::NumberFormat::Signed), "-6");
-  EXPECT_EQ(silicon::formatRawBits("1010", silicon::NumberFormat::Hex), "0XA");
-  EXPECT_EQ(silicon::formatRawBits("1010", silicon::NumberFormat::Oct), "0O12");
-  EXPECT_EQ(silicon::formatRawBits("1010", silicon::NumberFormat::Bin), "0B1010");
+  EXPECT_EQ(SILICON::core::formatRawBits("1010", SILICON::core::NumberFormat::Unsigned), "10");
+  EXPECT_EQ(SILICON::core::formatRawBits("1010", SILICON::core::NumberFormat::Signed), "-6");
+  EXPECT_EQ(SILICON::core::formatRawBits("1010", SILICON::core::NumberFormat::Hex), "0XA");
+  EXPECT_EQ(SILICON::core::formatRawBits("1010", SILICON::core::NumberFormat::Oct), "0O12");
+  EXPECT_EQ(SILICON::core::formatRawBits("1010", SILICON::core::NumberFormat::Bin), "0B1010");
 }
 
 TEST(NumFormattingTest, SignedUsesTwosComplementWidth)
 {
-  EXPECT_EQ(silicon::formatRawBits("1111", silicon::NumberFormat::Signed), "-1");
-  EXPECT_EQ(silicon::formatRawBits("1000", silicon::NumberFormat::Signed), "-8");
-  EXPECT_EQ(silicon::formatRawBits("0111", silicon::NumberFormat::Signed), "7");
+  EXPECT_EQ(SILICON::core::formatRawBits("1111", SILICON::core::NumberFormat::Signed), "-1");
+  EXPECT_EQ(SILICON::core::formatRawBits("1000", SILICON::core::NumberFormat::Signed), "-8");
+  EXPECT_EQ(SILICON::core::formatRawBits("0111", SILICON::core::NumberFormat::Signed), "7");
 }
 
 TEST(NumFormattingTest, SupportsWideValuesWithoutBigIntDependency)
 {
-  EXPECT_EQ(silicon::formatRawBits(std::string(65, '1'), silicon::NumberFormat::Unsigned),
+  EXPECT_EQ(SILICON::core::formatRawBits(std::string(65, '1'), SILICON::core::NumberFormat::Unsigned),
             "36893488147419103231");
   EXPECT_EQ(
-      silicon::formatRawBits("1" + std::string(64, '0'), silicon::NumberFormat::Signed),
+      SILICON::core::formatRawBits("1" + std::string(64, '0'), SILICON::core::NumberFormat::Signed),
       "-18446744073709551616");
 }
 
 TEST(NumFormattingTest, UnknownAndMixedValuesRemainReadable)
 {
-  EXPECT_EQ(silicon::formatRawBits("x", silicon::NumberFormat::Hex), "X");
-  EXPECT_EQ(silicon::formatRawBits("z", silicon::NumberFormat::Unsigned), "Z");
-  EXPECT_EQ(silicon::formatRawBits("10x1", silicon::NumberFormat::Signed), "10X1");
+  EXPECT_EQ(SILICON::core::formatRawBits("x", SILICON::core::NumberFormat::Hex), "X");
+  EXPECT_EQ(SILICON::core::formatRawBits("z", SILICON::core::NumberFormat::Unsigned), "Z");
+  EXPECT_EQ(SILICON::core::formatRawBits("10x1", SILICON::core::NumberFormat::Signed), "10X1");
 }

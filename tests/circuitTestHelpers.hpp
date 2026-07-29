@@ -28,6 +28,8 @@
 
 #include <core/circuit.hpp>
 
+using namespace SILICON::core;
+
 inline std::vector<Component_ptr> componentsIn(const Circuit& circuit)
 {
   std::vector<Component_ptr> components;

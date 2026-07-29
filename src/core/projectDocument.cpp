@@ -27,7 +27,7 @@
 
 #include <nlohmann/json.hpp>
 
-namespace silicon::project {
+namespace SILICON::project {
 namespace {
 
   std::optional<DocumentKind> classifyFlatJsonPath(const std::string_view path,
@@ -276,4 +276,4 @@ void DocumentStore::removeListener(const std::uint64_t id)
   listeners_.remove(id);
 }
 
-}  // namespace silicon::project
+}  // namespace SILICON::project

@@ -49,6 +49,12 @@
 #include <ui/common/componentSearchBox.hpp>
 #include <ui/common/wireManager.hpp>
 
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+using namespace SILICON::waveform;
+
 class DiagramSceneSerializer;
 class DiagramSceneSimulationController;
 class GraphicalComponent;
@@ -343,7 +349,7 @@ public:
    * @param inputSnapshots Input-only timestamped values ordered like waveform inputs
    */
   void simulateEditedWaveform(qulonglong                         duration,
-                              std::vector<SiliconWaveformSample> inputSnapshots);
+                              std::vector<Sample> inputSnapshots);
 
   ~DiagramScene() override;
 
@@ -495,3 +501,6 @@ private:
  * @brief Alias for DiagramScene::InteractionMode
  */
 using InteractionMode = DiagramScene::InteractionMode;
+
+}  // namespace ui
+}  // namespace SILICON

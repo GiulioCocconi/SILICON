@@ -5,6 +5,8 @@
 #include <gtest/gtest.h>
 #include <memory>
 
+using namespace SILICON::core;
+
 extern "C" {
 inline void __ubsan_on_report()
 {

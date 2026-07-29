@@ -23,20 +23,25 @@
 
 #include <core/serialization/component_registry.hpp>
 
-namespace silicon::simulation {
+namespace SILICON::simulation {
 
-SimulationSession::SimulationSession(std::shared_ptr<Circuit>     sourceCircuit,
+using namespace SILICON::core;
+using namespace SILICON::waveform;
+using namespace SILICON::waveform::fst;
+
+
+Session::Session(std::shared_ptr<Circuit>     sourceCircuit,
                                      Simulator::CancellationCheck isCancelled)
   : sourceCircuit(std::move(sourceCircuit)),
     elaborator(ComponentRegistry::instance())
 {
   if (!this->sourceCircuit)
-    throw std::invalid_argument("SimulationSession requires a valid Circuit pointer");
+    throw std::invalid_argument("Session requires a valid Circuit pointer");
 
   rebuild(std::move(isCancelled));
 }
 
-void SimulationSession::rebuild(Simulator::CancellationCheck isCancelled)
+void Session::rebuild(Simulator::CancellationCheck isCancelled)
 {
   auto replacementRuntime   = elaborator.elaborate(*sourceCircuit);
   auto replacementSimulator = std::make_unique<Simulator>(
@@ -50,20 +55,20 @@ void SimulationSession::rebuild(Simulator::CancellationCheck isCancelled)
   runtimeSimulator = std::move(replacementSimulator);
 }
 
-Simulator::RunResult SimulationSession::run(const uint64_t               duration,
+Simulator::RunResult Session::run(const uint64_t               duration,
                                             Simulator::CancellationCheck isCancelled)
 {
   return runtimeSimulator->run(duration, std::move(isCancelled));
 }
 
 Simulator::RunResult
-SimulationSession::runUntilIdle(Simulator::CancellationCheck isCancelled)
+Session::runUntilIdle(Simulator::CancellationCheck isCancelled)
 {
   return runtimeSimulator->runUntilIdle(std::move(isCancelled));
 }
 
-Simulator::RunResult SimulationSession::simulateWaveform(
-    const uint64_t duration, std::span<const SiliconWaveformSample> inputSnapshots,
+Simulator::RunResult Session::simulateWaveform(
+    const uint64_t duration, std::span<const Sample> inputSnapshots,
     std::span<const Simulator::WaveformInputDriver> inputDrivers,
     Simulator::CancellationCheck                    isCancelled)
 {
@@ -71,45 +76,46 @@ Simulator::RunResult SimulationSession::simulateWaveform(
                                             std::move(isCancelled));
 }
 
-Simulator::RunResult SimulationSession::setBus(Bus bus, const unsigned int value,
+Simulator::RunResult Session::setBus(Bus bus, const unsigned int value,
                                                Simulator::CancellationCheck isCancelled)
 {
   return runtimeSimulator->setBus(std::move(bus), value, std::move(isCancelled));
 }
 
-Simulator::RunResult SimulationSession::setBus(Bus bus, const unsigned int value,
+Simulator::RunResult Session::setBus(Bus bus, const unsigned int value,
                                                const Component_weakPtr&     source,
                                                Simulator::CancellationCheck isCancelled)
 {
   return runtimeSimulator->setBus(std::move(bus), value, source, std::move(isCancelled));
 }
 
-void SimulationSession::setTraceBuses(std::vector<SiliconFstWriter::NamedBus> buses)
+void Session::setTraceBuses(std::vector<CircuitWriter::NamedBus> buses)
 {
   traceBuses = std::move(buses);
   runtimeSimulator->setTraceBuses(traceBuses);
 }
 
-void SimulationSession::setTraceSink(Simulator::TraceSink sink)
+void Session::setTraceSink(Simulator::TraceSink sink)
 {
   traceSink = std::move(sink);
   runtimeSimulator->setTraceSink(traceSink);
 }
 
-void SimulationSession::setFstWriter(std::unique_ptr<SiliconFstWriter> writer)
+void Session::setFstWriter(std::unique_ptr<CircuitWriter> writer)
 {
   runtimeSimulator->setFstWriter(std::move(writer));
 }
 
-void SimulationSession::enableFstTracing(std::string_view          fileName,
-                                         SiliconFstWriter::Options options)
+void Session::enableFstTracing(std::string_view          fileName,
+                                         CircuitWriter::Options options)
 {
   runtimeSimulator->enableFstTracing(fileName, std::move(options));
 }
 
-uint64_t SimulationSession::getCurrentTime() const
+uint64_t Session::getCurrentTime() const
 {
   return runtimeSimulator->getCurrentTime();
 }
 
-}  // namespace silicon::simulation
+
+}  // namespace SILICON::simulation

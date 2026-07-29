@@ -5,6 +5,8 @@
 #include <string>
 #include <string_view>
 
+namespace SILICON::logging {
+
 enum class LogLevel {
   Trace,
   Debug,
@@ -54,3 +56,5 @@ private:
 
   static void log(LogLevel level, std::string_view category, std::string_view message);
 };
+
+}  // namespace SILICON::logging

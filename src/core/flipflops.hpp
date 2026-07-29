@@ -26,6 +26,8 @@
 #include <string_view>
 #include <vector>
 
+namespace SILICON::core {
+
 /**
  * @class FlipFlop
  * @brief Base class for edge-triggered storage elements with async clear/preset.
@@ -68,13 +70,13 @@ public:
    * @brief Evaluates async controls and selected clock edges.
    *
    * Initial/full evaluations drive the initial stored state when needed. Reactive
-   * evaluations use SimulationContext::previousState for edge detection and timing;
+   * evaluations use SILICON::simulation::Context::previousState for edge detection and timing;
    * async CLR/PRE are evaluated first on every call.
    *
-   * @param sim Simulator used to drive output wires
+   * @param sim SILICON::simulation::Simulator used to drive output wires
    * @param context Evaluation context supplied by the simulator
    */
-  void simulate(Simulator& sim, const SimulationContext& context) override;
+  void simulate(SILICON::simulation::Simulator& sim, const SILICON::simulation::Context& context) override;
 
   [[nodiscard]] bool usesStagedSequentialOutputs() const override { return true; }
 
@@ -115,9 +117,9 @@ protected:
 
 private:
   void initializeProperties();
-  void driveOutput(Simulator& sim, State newState);
+  void driveOutput(SILICON::simulation::Simulator& sim, State newState);
   [[nodiscard]] bool
-  hasTimingSensitiveInputChange(const SimulationContext& context) const;
+  hasTimingSensitiveInputChange(const SILICON::simulation::Context& context) const;
   [[nodiscard]] bool violatesSetupTime(uint64_t currentTime,
                                        bool     timingInputChanged) const;
   [[nodiscard]] bool violatesHoldTime(uint64_t currentTime,
@@ -153,7 +155,7 @@ private:
   std::optional<uint64_t> lastSelectedClockEdgeTime;
 
   // Cached properties to avoid costly map lookups per delta cycle.
-  Simulator::EdgeType edgeType = Simulator::EdgeType::RISE;
+  SILICON::simulation::Simulator::EdgeType edgeType = SILICON::simulation::Simulator::EdgeType::RISE;
 };
 
 /**
@@ -209,7 +211,7 @@ public:
   DFlipFlop(Wire_ptr d, Wire_ptr clock, Wire_ptr clear, Wire_ptr preset, Wire_ptr q,
             Wire_ptr notQ);
 
-  void serializeYosys(silicon::yosys::SerializationContext& context) const override;
+  void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
 
 protected:
   /** @copydoc FlipFlop::captureState */
@@ -275,7 +277,7 @@ public:
   EFlipFlop(Wire_ptr d, Wire_ptr enable, Wire_ptr clock, Wire_ptr clear, Wire_ptr preset,
             Wire_ptr q, Wire_ptr notQ);
 
-  void serializeYosys(silicon::yosys::SerializationContext& context) const override;
+  void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
 
 protected:
   /** @copydoc FlipFlop::captureState */
@@ -323,13 +325,13 @@ public:
    */
   DLatch(Wire_ptr d, Wire_ptr enable, Wire_ptr q, Wire_ptr notQ);
 
-  void               simulate(Simulator& sim, const SimulationContext& context) override;
+  void               simulate(SILICON::simulation::Simulator& sim, const SILICON::simulation::Context& context) override;
   [[nodiscard]] bool usesStagedSequentialOutputs() const override { return true; }
-  void serializeYosys(silicon::yosys::SerializationContext& context) const override;
+  void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
 
 private:
   void initializeProperties();
-  void driveOutput(Simulator& sim, State newState);
+  void driveOutput(SILICON::simulation::Simulator& sim, State newState);
 
   State    state            = State::UNKNOWN;
   uint64_t propagationDelay = 0;
@@ -392,10 +394,12 @@ public:
   JKFlipFlop(Wire_ptr j, Wire_ptr k, Wire_ptr clock, Wire_ptr clear, Wire_ptr preset,
              Wire_ptr q, Wire_ptr notQ);
 
-  void serializeYosys(silicon::yosys::SerializationContext& context) const override;
+  void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
 
 protected:
   /** @copydoc FlipFlop::captureState */
   State captureState() const override;
   bool  isTimingSensitiveInput(unsigned int inputIndex) const override;
 };
+
+}  // namespace SILICON::core

@@ -26,7 +26,11 @@
 
 class QWidget;
 
-namespace SiliconFileDialog {
+
+namespace SILICON {
+namespace ui {
+
+namespace fileDialog {
 
 using OpenContentCallback = std::function<void(const QString&, const QByteArray&)>;
 
@@ -37,4 +41,7 @@ std::optional<QString> saveFileContent(QWidget* parent, const QString& caption,
                                        const QString& suggestedFileName,
                                        const QString& filter, const QByteArray& content);
 
-}  // namespace SiliconFileDialog
+}  // namespace fileDialog
+
+}  // namespace ui
+}  // namespace SILICON

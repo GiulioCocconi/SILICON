@@ -10,6 +10,8 @@
 #include <algorithm>
 #include <vector>
 
+using namespace SILICON::core;
+
 namespace {
 
 Avoid::Polygon rectangle(double left, double top, double right, double bottom)
@@ -97,7 +99,7 @@ TEST(WireRoutingTest, RoutesAroundBufferedObstacle)
 
   const QRectF bufferedObstacle =
       obstacle.normalized().adjusted(-clearance, -clearance, clearance, clearance);
-  const auto route = silicon::routeOrthogonalWire(start, end, {bufferedObstacle});
+  const auto route = SILICON::core::routeOrthogonalWire(start, end, {bufferedObstacle});
 
   ASSERT_GE(route.size(), 3U);
   EXPECT_EQ(route.front(), start);
@@ -117,7 +119,7 @@ TEST(WireRoutingTest, RoutesVerticalPairsAroundBufferedObstacle)
 
   const QRectF bufferedObstacle =
       obstacle.normalized().adjusted(-clearance, -clearance, clearance, clearance);
-  const auto route = silicon::routeOrthogonalWire(start, end, {bufferedObstacle});
+  const auto route = SILICON::core::routeOrthogonalWire(start, end, {bufferedObstacle});
 
   ASSERT_GE(route.size(), 3U);
   EXPECT_EQ(route.front(), start);

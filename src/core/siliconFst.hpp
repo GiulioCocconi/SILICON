@@ -28,15 +28,19 @@
 #include <core/circuit.hpp>
 #include <core/fstTraceWriter.hpp>
 
+namespace SILICON::waveform::fst {
+
+using namespace SILICON::core;
+
 /**
- * @class SiliconFstWriter
+ * @class CircuitWriter
  * @brief SILICON-aware adapter over the generic FST writer wrapper.
  *
  * The low-level FST wrapper exposes libfst concepts such as scopes, variables, and
  * handles. This class lifts that API to SILICON concepts by registering circuit buses as
  * vector signals and emitting snapshots from the buses' current simulation states.
  */
-class SiliconFstWriter final {
+class CircuitWriter final {
 public:
   /**
    * @brief Bus registered under a stable trace signal name.
@@ -44,21 +48,21 @@ public:
   using NamedBus = std::pair<std::string, Bus>;
 
   /**
-   * @brief FST file metadata and hierarchy options shared with FstTraceWriter.
+   * @brief FST file metadata and hierarchy options shared with TraceWriter.
    */
-  using Options = FstTraceWriter::Options;
+  using Options = TraceWriter::Options;
 
-  SiliconFstWriter(std::string_view fileName, const Circuit& circuit);
-  SiliconFstWriter(std::string_view fileName, const Circuit& circuit, Options options);
-  SiliconFstWriter(std::string_view fileName, const std::vector<NamedBus>& buses);
-  SiliconFstWriter(std::string_view fileName, const std::vector<NamedBus>& buses,
+  CircuitWriter(std::string_view fileName, const Circuit& circuit);
+  CircuitWriter(std::string_view fileName, const Circuit& circuit, Options options);
+  CircuitWriter(std::string_view fileName, const std::vector<NamedBus>& buses);
+  CircuitWriter(std::string_view fileName, const std::vector<NamedBus>& buses,
                    Options options);
 
-  SiliconFstWriter(const SiliconFstWriter&)            = delete;
-  SiliconFstWriter& operator=(const SiliconFstWriter&) = delete;
+  CircuitWriter(const CircuitWriter&)            = delete;
+  CircuitWriter& operator=(const CircuitWriter&) = delete;
 
-  SiliconFstWriter(SiliconFstWriter&&) noexcept            = default;
-  SiliconFstWriter& operator=(SiliconFstWriter&&) noexcept = default;
+  CircuitWriter(CircuitWriter&&) noexcept            = default;
+  CircuitWriter& operator=(CircuitWriter&&) noexcept = default;
 
   /**
    * @brief Emits all registered bus states at the given simulation timestamp.
@@ -87,5 +91,7 @@ public:
 
 private:
   std::vector<NamedBus> buses;
-  FstTraceWriter        writer;
+  TraceWriter        writer;
 };
+
+}  // namespace SILICON::waveform::fst

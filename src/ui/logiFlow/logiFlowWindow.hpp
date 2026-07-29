@@ -30,9 +30,10 @@
 #include <QString>
 #include <QVector>
 
+#include <core/circuit.hpp>
+
 class AboutDialog;
 class QAction;
-class Circuit;
 class ComponentCatalogOverlay;
 class DiagramScene;
 class DiagramView;
@@ -53,7 +54,6 @@ class QTreeWidgetItem;
 class QUndoStack;
 class LogSideView;
 struct ShortcutSetting;
-class WaveformViewer;
 class ProjectTree;
 
 #include <core/projectDependencyGraph.hpp>
@@ -66,6 +66,23 @@ class ProjectTree;
 #ifndef QT_NO_CONTEXTMENU
 class QContextMenuEvent;
 #endif
+
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+
+class AboutDialog;
+class ComponentCatalogOverlay;
+class DiagramScene;
+class DiagramView;
+class GraphicalLogStream;
+class LogSideView;
+class ProjectTree;
+namespace waveform {
+class Viewer;
+}
+struct ShortcutSetting;
 
 /**
  * @brief Main window for the LogiFlow graphical circuit editor.
@@ -282,8 +299,8 @@ private:
   void convertActiveSubcircuitToHdl();
   /** @brief Returns whether the active subcircuit scene contains an HDL descriptor. */
   [[nodiscard]] bool                            activeDocumentHasHdl() const;
-  [[nodiscard]] silicon::project::ProjectAsset* projectAsset(std::string_view path);
-  [[nodiscard]] const silicon::project::ProjectAsset*
+  [[nodiscard]] SILICON::project::ProjectAsset* projectAsset(std::string_view path);
+  [[nodiscard]] const SILICON::project::ProjectAsset*
   projectAsset(std::string_view path) const;
 
   /**
@@ -347,7 +364,7 @@ private:
    * @param switchToPath Circuit path to activate after insertion, or empty to keep
    *                     the current one
    */
-  void insertDocument(silicon::project::Document    document,
+  void insertDocument(SILICON::project::Document    document,
                       std::optional<std::ptrdiff_t> insertAt, bool activate);
 
   /**
@@ -355,7 +372,7 @@ private:
    * @param requestedName Human-readable circuit name entered by the user
    * @return A non-conflicting path under the project circuits directory
    */
-  [[nodiscard]] std::string uniqueDocumentPath(silicon::project::DocumentKind kind,
+  [[nodiscard]] std::string uniqueDocumentPath(SILICON::project::DocumentKind kind,
                                                const QString& requestedName) const;
 
   /**
@@ -365,10 +382,10 @@ private:
    */
   [[nodiscard]] std::string emptyCircuitSceneJson(const std::string& name) const;
   [[nodiscard]] std::string emptySubcircuitSceneJson(const std::string& name) const;
-  void                      createDocument(silicon::project::DocumentKind kind);
+  void                      createDocument(SILICON::project::DocumentKind kind);
   void                      deleteSelectedDocument();
   [[nodiscard]] QTreeWidgetItem*
-  projectDocumentSectionItem(silicon::project::DocumentKind kind) const;
+  projectDocumentSectionItem(SILICON::project::DocumentKind kind) const;
 
   /**
    * @brief Checks whether the current project contains a circuit path.
@@ -409,8 +426,8 @@ private:
   QVector<ShortcutSetting> shortcutSettings() const;
 
   [[nodiscard]] static std::string defaultMainCircuitPath();
-  [[nodiscard]] static silicon::project::Document defaultCircuitDocument();
-  [[nodiscard]] static silicon::project::ProjectInfo
+  [[nodiscard]] static SILICON::project::Document defaultCircuitDocument();
+  [[nodiscard]] static SILICON::project::ProjectInfo
   defaultProjectInfo(const QString& currentFileName);
   [[nodiscard]] std::string projectMainCircuitPath() const;
   static void               ensureProjectDocuments();
@@ -436,7 +453,7 @@ private:
   QDialog* waveformWindow = nullptr;
 
   /** @brief Widget used to inspect simulation waveforms. */
-  WaveformViewer* waveformViewer = nullptr;
+  waveform::Viewer* waveformViewer = nullptr;
 
   /** @brief Widget that displays captured application log lines. */
   LogSideView* logSideView = nullptr;
@@ -541,17 +558,17 @@ private:
   QString currentFileName;
 
   /** @brief Optional persisted metadata for the current project. */
-  std::optional<silicon::project::ProjectMetadata> currentProjectMetadata;
+  std::optional<SILICON::project::ProjectMetadata> currentProjectMetadata;
 
   /** @brief Optional persisted project information for the current project. */
-  std::optional<silicon::project::ProjectInfo> currentProjectInfo;
+  std::optional<SILICON::project::ProjectInfo> currentProjectInfo;
 
   /** @brief Project-relative path of the circuit loaded in the diagram scene. */
   std::string                                 activeDocumentPath;
-  std::vector<silicon::project::ProjectAsset> projectAssets;
+  std::vector<SILICON::project::ProjectAsset> projectAssets;
   /** @brief True only while an HDL-backed subcircuit source is editable. */
   bool                                     hdlCodeMode = false;
-  silicon::project::ProjectDependencyGraph dependencyGraph;
+  SILICON::project::ProjectDependencyGraph dependencyGraph;
 
   /** @brief Lazily shown application about dialog. */
   AboutDialog* aboutDialog = nullptr;
@@ -595,3 +612,6 @@ private:
   /** @brief Tracks whether the widget is displaying a mixed-value placeholder. */
   bool m_isMixed = false;
 };
+
+}  // namespace ui
+}  // namespace SILICON

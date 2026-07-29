@@ -39,6 +39,11 @@
 #include <ui/logiFlow/logiFlowWindow.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
 
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+
 DiagramScene::DiagramScene(QObject* parent) : QGraphicsScene(parent)
 {
   simulationController = std::make_unique<DiagramSceneSimulationController>(*this);
@@ -256,7 +261,7 @@ void DiagramScene::mouseMoveEvent(QGraphicsSceneMouseEvent* mouseEvent)
           wireSegmentToBeDrawn->mapToScene(wireSegmentToBeDrawn->lastPoint());
 
       auto route =
-          silicon::routeOrthogonalWire(lastPoint, cursorPos, wireRoutingObstacles());
+          SILICON::core::routeOrthogonalWire(lastPoint, cursorPos, wireRoutingObstacles());
 
       if (!route.empty())
         route.erase(route.begin());
@@ -415,7 +420,7 @@ bool DiagramScene::isFstTracingEnabled() const
 }
 
 void DiagramScene::simulateEditedWaveform(
-    const qulonglong duration, std::vector<SiliconWaveformSample> inputSnapshots)
+    const qulonglong duration, std::vector<Sample> inputSnapshots)
 {
   simulationController->simulateEditedWaveform(duration, std::move(inputSnapshots));
 }
@@ -450,7 +455,7 @@ bool DiagramScene::calculateWiresForComponents()
           continue;
 
         for (const auto& [index, p] :
-             gComp->getOutputPorts() | silicon::views::enumerate) {
+             gComp->getOutputPorts() | SILICON::views::enumerate) {
           if (gComp->mapToScene(p->getPosition()) != vertex)
             continue;
 
@@ -460,7 +465,7 @@ bool DiagramScene::calculateWiresForComponents()
         }
 
         for (const auto& [index, p] :
-             gComp->getInputPorts() | silicon::views::enumerate) {
+             gComp->getInputPorts() | SILICON::views::enumerate) {
           if (gComp->mapToScene(p->getPosition()) == vertex) {
             try {
               gComp->assignInputPortBus(index, wire->getBus());
@@ -696,3 +701,6 @@ DiagramScene::~DiagramScene()
     componentToBeDrawn = nullptr;
   }
 }
+
+}  // namespace ui
+}  // namespace SILICON

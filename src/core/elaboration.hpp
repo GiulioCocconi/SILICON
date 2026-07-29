@@ -21,10 +21,15 @@
 #include <memory>
 #include <core/circuit.hpp>
 
+namespace SILICON::core {
 class ComponentRegistry;
+}
 
-namespace silicon::elaboration {
+namespace SILICON::simulation {
 
+using namespace SILICON::core;
+
+namespace core = SILICON::core;
 /**
  * @brief Converts source designs into simulator-ready runtime circuits.
  *
@@ -50,7 +55,7 @@ public:
    * @brief Creates an elaborator using the given component registry for cloning and
    * deserialization.
    */
-  explicit CircuitElaborator(const ComponentRegistry& registry);
+  explicit CircuitElaborator(const core::ComponentRegistry& registry);
 
   /**
    * @brief Builds a simulator-ready runtime circuit from a source design.
@@ -63,7 +68,7 @@ public:
   [[nodiscard]] std::shared_ptr<Circuit> elaborate(const Circuit& sourceCircuit) const;
 
 private:
-  const ComponentRegistry& registry;
+  const core::ComponentRegistry& registry;
 };
 
-}  // namespace silicon::elaboration
+}  // namespace SILICON::simulation

@@ -19,6 +19,11 @@
 
 #include <stdexcept>
 
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+
 GraphicalGate::GraphicalGate(const std::shared_ptr<Gate> gate, QGraphicsItem* shape,
                              QGraphicsItem* parent, bool scanShape)
   : GraphicalLogicComponent(gate, shape, parent, scanShape)
@@ -49,3 +54,6 @@ GraphicalNot::GraphicalNot(QGraphicsItem* parent)
 
   setPorts({PortPair{"i", QPoint(-20, 20)}}, {PortPair{"o", QPoint(80, 20)}});
 }
+
+}  // namespace ui
+}  // namespace SILICON
