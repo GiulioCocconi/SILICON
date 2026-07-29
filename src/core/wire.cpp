@@ -28,6 +28,8 @@
 #include <logging/logger.hpp>
 #include <utils/ranges_wrapper.hpp>
 
+namespace SILICON::core {
+
 State operator&&(const State& a, const State& b)
 {
   if (a == State::ERROR || b == State::ERROR)
@@ -83,7 +85,11 @@ std::string to_str(State s)
   throw std::logic_error("Unhandled State enum value");
 }
 
-namespace silicon::wire {
+}  // namespace SILICON::core
+
+namespace SILICON::wireUtils {
+
+using namespace SILICON::core;
 
 bool busValueOverflowsWidth(const unsigned int value, const std::size_t width)
 {
@@ -94,7 +100,7 @@ bool busValueOverflowsWidth(const unsigned int value, const std::size_t width)
 
 bool busWillChangeToValue(const Bus& bus, const unsigned int value)
 {
-  for (const auto& [index, wire] : bus | silicon::views::enumerate) {
+  for (const auto& [index, wire] : bus | SILICON::views::enumerate) {
     if (!wire)
       continue;
 
@@ -130,7 +136,9 @@ State optionalControlStateOrInactive(const std::vector<Bus>& inputs,
   return Wire::safeGetCurrentState(inputs[index][0]);
 }
 
-}  // namespace silicon::wire
+}  // namespace SILICON::wireUtils
+
+namespace SILICON::core {
 
 Wire::Wire()
 {
@@ -207,7 +215,7 @@ void Wire::setCurrentState(const State newState, const Component_weakPtr& reques
   const bool changeIsAuthorized = this->authorizedComponent.lock() == requestedBy.lock();
 
   if (!changeIsAuthorized) {
-    static const Logger log("wire");
+    static const SILICON::logging::Logger log("wire");
     log.error("Unauthorized wire state change detected");
   }
 
@@ -271,7 +279,7 @@ int Bus::forceSetCurrentValue(const unsigned int value)
       this->busData[i]->forceSetCurrentState(s);
     }
   }
-  return silicon::wire::busValueOverflowsWidth(value, this->size());
+  return SILICON::wireUtils::busValueOverflowsWidth(value, this->size());
 }
 
 int Bus::forceSetCurrentValue(const unsigned int       value,
@@ -283,7 +291,7 @@ int Bus::forceSetCurrentValue(const unsigned int       value,
       this->busData[i]->forceSetCurrentState(s, authorizedBy);
     }
   }
-  return silicon::wire::busValueOverflowsWidth(value, this->size());
+  return SILICON::wireUtils::busValueOverflowsWidth(value, this->size());
 }
 
 int Bus::setCurrentValue(const unsigned int value, const Component_weakPtr& requestedBy)
@@ -294,7 +302,7 @@ int Bus::setCurrentValue(const unsigned int value, const Component_weakPtr& requ
       Wire::safeSetCurrentState(this->busData[i], s, requestedBy);
     }
   }
-  return silicon::wire::busValueOverflowsWidth(value, this->size());
+  return SILICON::wireUtils::busValueOverflowsWidth(value, this->size());
 }
 
 unsigned int Bus::getCurrentValue() const
@@ -354,3 +362,5 @@ bool Bus::operator==(const Bus& other) const
     return a.get() == b.get();
   });
 }
+
+}  // namespace SILICON::core

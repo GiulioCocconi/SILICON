@@ -30,6 +30,11 @@
 #include <ui/common/undoCommands.hpp>
 #include <ui/logiFlow/logiFlowWindow.hpp>
 
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+
 namespace {
 
 std::atomic<uint64_t> NextGraphicalItemUiId = 1;
@@ -292,3 +297,6 @@ void GraphicalItem::modeChanged(InteractionMode mode)
     default: throw std::logic_error("Unhandled InteractionMode in modeChanged");
   }
 }
+
+}  // namespace ui
+}  // namespace SILICON

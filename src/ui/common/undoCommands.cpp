@@ -31,6 +31,11 @@
 #include <ui/logiFlow/components/graphicalLogicComponent.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
 
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+
 namespace {
 
 DiagramScene* itemScene(const QGraphicsItem* item)
@@ -53,7 +58,7 @@ std::string activeDocumentPath(DiagramScene* scene)
   if (auto* window = sceneWindow(scene)) {
     const auto subcircuitSlug = window->activeProjectSubcircuitSlug();
     if (!subcircuitSlug.empty())
-      return silicon::project::subcircuitPathForSlug(subcircuitSlug);
+      return SILICON::project::subcircuitPathForSlug(subcircuitSlug);
 
     return window->activeProjectCircuitPath();
   }
@@ -404,3 +409,6 @@ void MetadataEditCommand::undo()
 
 void MetadataEditCommand::redo()
 { apply(newValue); }
+
+}  // namespace ui
+}  // namespace SILICON

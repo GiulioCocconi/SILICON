@@ -4,7 +4,11 @@
 #include <QMap>
 #include <QString>
 
-namespace SiliconTheme {
+
+namespace SILICON {
+namespace ui {
+
+namespace theme {
 
 enum class Mode { Light, Dark };
 
@@ -36,15 +40,18 @@ inline ColorMap dark()
           {"SILICON_DISABLED", {"#857c8e"}}};
 }
 
-}  // namespace SiliconTheme
+}  // namespace theme
 
 class ThemeEngine {
 public:
-  static void          apply(QApplication& app, SiliconTheme::Mode mode);
+  static void          apply(QApplication& app, SILICON::ui::theme::Mode mode);
   static const QColor& getColor(const QString& key);
 
 private:
   static QString loadQssTemplate();
-  static QString injectTokens(const QString& qss, const SiliconTheme::ColorMap& tokens);
-  static SiliconTheme::ColorMap currentMap;
+  static QString injectTokens(const QString& qss, const SILICON::ui::theme::ColorMap& tokens);
+  static SILICON::ui::theme::ColorMap currentMap;
 };
+
+}  // namespace ui
+}  // namespace SILICON

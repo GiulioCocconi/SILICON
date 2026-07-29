@@ -32,6 +32,9 @@
 #include <string_view>
 #include <vector>
 
+
+namespace SILICON {
+namespace ui {
 class GraphicalComponent;
 
 /**
@@ -123,3 +126,6 @@ private:
 
   std::map<std::string, Entry, std::less<>> factories_;
 };
+
+}  // namespace ui
+}  // namespace SILICON

@@ -25,6 +25,8 @@
 
 #include <core/wireUtils.hpp>
 
+namespace SILICON::core {
+
 namespace {
 
 void validateSize(const int size)
@@ -41,7 +43,7 @@ void validateDelay(const PropertyValue& value)
 
 State normalizedInputState(const State state)
 {
-  return silicon::wire::normalizeBinaryOrUnknown(state);
+  return SILICON::wireUtils::normalizeBinaryOrUnknown(state);
 }
 
 unsigned short dataBusSize(const std::string& inputType, const int size)
@@ -193,7 +195,7 @@ void Register::clearState()
   state.assign(static_cast<std::size_t>(configuredSize()), State::LOW);
 }
 
-void Register::driveOutput(Simulator& sim)
+void Register::driveOutput(SILICON::simulation::Simulator& sim)
 {
   if (outputs.empty() || outputBusSize(Outputs::Out) == 0)
     return;
@@ -212,7 +214,7 @@ void Register::driveOutput(Simulator& sim)
   sim.updateWire(outputWire(Outputs::Out), bitState, delay, weak_from_this());
 }
 
-void Register::simulate(Simulator& sim, const SimulationContext& context)
+void Register::simulate(SILICON::simulation::Simulator& sim, const SILICON::simulation::Context& context)
 {
   if (state.size() != static_cast<std::size_t>(configuredSize()))
     state.assign(static_cast<std::size_t>(configuredSize()), State::UNKNOWN);
@@ -243,7 +245,7 @@ void Register::simulate(Simulator& sim, const SimulationContext& context)
   }
 
   const Wire_ptr clockWire = inputWire(Inputs::Clock);
-  if (Simulator::edgeType(context, clockWire) == Simulator::EdgeType::RISE) {
+  if (SILICON::simulation::Simulator::edgeType(context, clockWire) == SILICON::simulation::Simulator::EdgeType::RISE) {
     
     if (parallelInput()) {
       if (parallelOutput()) {
@@ -283,3 +285,5 @@ void Register::simulate(Simulator& sim, const SimulationContext& context)
   if (context.initialEvaluation)
     driveOutput(sim);
 }
+
+}  // namespace SILICON::core

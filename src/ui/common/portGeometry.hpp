@@ -24,6 +24,9 @@
 #include <QPoint>
 #include <QRect>
 
+
+namespace SILICON {
+namespace ui {
 enum class PortSide {
   LEFT,
   RIGHT,
@@ -60,7 +63,7 @@ struct RectEdges {
  */
 [[nodiscard]] inline bool isPortPositionOutside(const QPoint& pt, const QRect& rect)
 {
-  const auto edges = portGeometryDetail::rectEdges(rect);
+  const auto edges = SILICON::ui::portGeometryDetail::rectEdges(rect);
   return pt.x() < edges.left || pt.x() > edges.right || pt.y() < edges.top
          || pt.y() > edges.bottom;
 }
@@ -72,7 +75,7 @@ struct RectEdges {
 [[nodiscard]] inline std::pair<PortSide, QPoint> nearestPortSide(const QPoint& pt,
                                                                  const QRect&  rect)
 {
-  const auto edges = portGeometryDetail::rectEdges(rect);
+  const auto edges = SILICON::ui::portGeometryDetail::rectEdges(rect);
 
   const int leftOverflow   = std::max(0, edges.left - pt.x());
   const int rightOverflow  = std::max(0, pt.x() - edges.right);
@@ -110,3 +113,6 @@ struct RectEdges {
     return {PortSide::UP, QPoint(pt.x(), edges.top)};
   return {PortSide::DOWN, QPoint(pt.x(), edges.bottom)};
 }
+
+}  // namespace ui
+}  // namespace SILICON

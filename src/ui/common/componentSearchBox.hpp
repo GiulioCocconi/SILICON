@@ -30,6 +30,10 @@
 
 #include <ui/common/enums.hpp>
 
+
+namespace SILICON {
+namespace ui {
+
 class ComponentSearchBox : public QGraphicsProxyWidget {
   Q_OBJECT
 public:
@@ -70,3 +74,6 @@ private:
 
   std::vector<std::string> completionList;
 };
+
+}  // namespace ui
+}  // namespace SILICON

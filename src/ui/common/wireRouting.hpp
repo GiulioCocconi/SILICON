@@ -23,9 +23,9 @@
 #include <QPointF>
 #include <QRectF>
 
-namespace silicon {
+namespace SILICON::core {
 
 [[nodiscard]] std::vector<QPointF>
 routeOrthogonalWire(QPointF start, QPointF end, const std::vector<QRectF>& obstacleRects);
 
-}
+}  // namespace SILICON::core

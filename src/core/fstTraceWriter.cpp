@@ -25,6 +25,10 @@
 
 #include <utils/ranges_wrapper.hpp>
 
+namespace SILICON::waveform::fst {
+
+using namespace SILICON::core;
+
 namespace {
 
 uint32_t checkedFstWidth(const std::size_t width)
@@ -37,17 +41,17 @@ uint32_t checkedFstWidth(const std::size_t width)
 
 }  // namespace
 
-FstTraceWriter::FstTraceWriter(std::string_view                fileName,
+TraceWriter::TraceWriter(std::string_view                fileName,
                                const std::vector<TraceSignal>& signals)
-  : FstTraceWriter(fileName, signals, Options{})
+  : TraceWriter(fileName, signals, Options{})
 {
 }
 
-FstTraceWriter::FstTraceWriter(std::string_view                fileName,
+TraceWriter::TraceWriter(std::string_view                fileName,
                                const std::vector<TraceSignal>& traceSignals,
                                Options                         options)
   : writer([&] {
-      FstHierarchyBuilder builder(fileName);
+      HierarchyBuilder builder(fileName);
       builder.setTimeScale(options.timescale);
       builder.setVersion(options.version);
       builder.setPackType(FST_WR_PT_LZ4);
@@ -57,7 +61,7 @@ FstTraceWriter::FstTraceWriter(std::string_view                fileName,
       registeredSignals.reserve(traceSignals.size());
       handlesBySignalName.reserve(traceSignals.size());
 
-      for (const auto& [index, signal] : traceSignals | silicon::views::enumerate) {
+      for (const auto& [index, signal] : traceSignals | SILICON::views::enumerate) {
         if (signal.width == 0)
           continue;
 
@@ -74,7 +78,7 @@ FstTraceWriter::FstTraceWriter(std::string_view                fileName,
 {
 }
 
-void FstTraceWriter::emitSnapshot(const uint64_t                     time,
+void TraceWriter::emitSnapshot(const uint64_t                     time,
                                   const std::span<const std::string> values)
 {
   writer.emitTimeChange(time);
@@ -87,12 +91,12 @@ void FstTraceWriter::emitSnapshot(const uint64_t                     time,
   }
 }
 
-void FstTraceWriter::flush()
+void TraceWriter::flush()
 {
   writer.flush();
 }
 
-std::optional<fstHandle> FstTraceWriter::handleForSignal(std::string_view name) const
+std::optional<fstHandle> TraceWriter::handleForSignal(std::string_view name) const
 {
   const auto it = handlesBySignalName.find(name);
   if (it == handlesBySignalName.end())
@@ -101,7 +105,7 @@ std::optional<fstHandle> FstTraceWriter::handleForSignal(std::string_view name) 
   return it->second;
 }
 
-std::string FstTraceWriter::normalizeValue(std::string_view  value,
+std::string TraceWriter::normalizeValue(std::string_view  value,
                                            const std::size_t width)
 {
   std::string normalized(value);
@@ -120,3 +124,5 @@ std::string FstTraceWriter::normalizeValue(std::string_view  value,
 
   return normalized;
 }
+
+}  // namespace SILICON::waveform::fst

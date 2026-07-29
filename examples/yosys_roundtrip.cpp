@@ -34,6 +34,9 @@
 #include <core/wire.hpp>
 #include <extraComponents/arithmetic.hpp>
 
+using namespace SILICON::core;
+using namespace SILICON::extra;
+
 namespace {
 
 constexpr auto CounterWidth = 4;
@@ -158,18 +161,18 @@ void writeFile(const std::filesystem::path& path, const std::string_view content
 }
 
 [[nodiscard]] std::string makePlainVerilog(const Circuit&                     circuit,
-                                           const silicon::yosys::ToolOptions& options)
+                                           const SILICON::yosys::ToolOptions& options)
 {
   const auto structuralPath = temporaryPath("structural.v");
   const auto techmapPath    = temporaryPath("plain_map.v");
   const auto plainPath      = temporaryPath("plain.v");
 
-  writeFile(structuralPath, silicon::yosys::exportVerilog(circuit, options));
+  writeFile(structuralPath, SILICON::yosys::exportVerilog(circuit, options));
   writeFile(techmapPath, PlainVerilogTechmap);
 
   const auto blackBoxLibrary =
       std::filesystem::path(SILICON_YOSYS_RESOURCE_DIR) / "silicon_cells_bb.v";
-  (void)silicon::yosys::runScript(
+  (void)SILICON::yosys::runScript(
       "read_verilog -lib " + quotePath(blackBoxLibrary) + "\n" + "read_verilog "
           + quotePath(structuralPath) + "\n" + "hierarchy -check -top "
           + std::string(TopModule) + "\n" + "opt_expr t:$pos\n" + "opt_clean -purge\n"
@@ -196,7 +199,7 @@ void writeFile(const std::filesystem::path& path, const std::string_view content
 int main()
 {
   try {
-    const silicon::yosys::ToolOptions options{
+    const SILICON::yosys::ToolOptions options{
 #ifdef SILICON_YOSYS_EXECUTABLE
         .executable = std::filesystem::path(SILICON_YOSYS_EXECUTABLE),
 #else
@@ -216,7 +219,7 @@ int main()
 
     const std::string importedSource = readFile(verilogPath);
     const Circuit     restored =
-        silicon::yosys::importVerilog(importedSource, TopModule, options);
+        SILICON::yosys::importVerilog(importedSource, TopModule, options);
     writeFile(circuitJsonPath, restored.serialize());
 
     std::cout << "Exported SILICON counter to " << verilogPath << '\n';

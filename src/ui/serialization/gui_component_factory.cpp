@@ -18,6 +18,11 @@
 
 #include <ui/serialization/gui_component_factory.hpp>
 
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+
 GUIComponentFactory::GUIComponentFactory() = default;
 
 GUIComponentFactory GUIComponentFactory::empty()
@@ -89,3 +94,6 @@ GUIComponentFactory::metadata(std::string_view type) const
   }
   return it->second.metadata;
 }
+
+}  // namespace ui
+}  // namespace SILICON

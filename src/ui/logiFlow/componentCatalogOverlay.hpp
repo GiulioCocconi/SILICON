@@ -27,9 +27,15 @@
 #include <core/serialization/component_registry.hpp>
 #include <core/component.hpp>
 
-class DiagramScene;
 class QLineEdit;
 class QTableWidget;
+
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+
+class DiagramScene;
 
 class ComponentCatalogOverlay : public QWidget {
 public:
@@ -57,3 +63,6 @@ private:
   QTableWidget*           table        = nullptr;
   std::vector<CatalogRow> catalogRows;
 };
+
+}  // namespace ui
+}  // namespace SILICON

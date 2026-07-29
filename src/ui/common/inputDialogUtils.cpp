@@ -28,7 +28,11 @@
 #include <QMessageBox>
 #include <QWidget>
 
-namespace SiliconInputDialog {
+
+namespace SILICON {
+namespace ui {
+
+namespace inputDialog {
 
 QWidget* parentWidgetForGraphicsItem(const QGraphicsItem* item)
 {
@@ -137,4 +141,7 @@ void question(QWidget* parent, const QString& title, const QString& text,
 #endif
 }
 
-}  // namespace SiliconInputDialog
+}  // namespace inputDialog
+
+}  // namespace ui
+}  // namespace SILICON

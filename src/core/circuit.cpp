@@ -33,9 +33,11 @@
 
 #include <nlohmann/json.hpp>
 
+namespace SILICON::core {
+
 namespace {
 
-const Logger circuitLog("circuit");
+const SILICON::logging::Logger circuitLog("circuit");
 
 [[nodiscard]] std::string interfacePortName(const PortRole role,
                                             const std::size_t index)
@@ -764,13 +766,13 @@ std::string Circuit::serialize() const
 
 std::string Circuit::getYosysJson() const
 {
-  return silicon::yosys::serialize(*this);
+  return SILICON::yosys::serialize(*this);
 }
 
 Circuit Circuit::deserializeYosys(const std::string_view                json,
                                   const std::optional<std::string_view> moduleName)
 {
-  return silicon::yosys::deserialize(json, moduleName);
+  return SILICON::yosys::deserialize(json, moduleName);
 }
 
 Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry& reg)
@@ -908,3 +910,5 @@ Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry
   result.buildTopologyMap();
   return result;
 }
+
+}  // namespace SILICON::core

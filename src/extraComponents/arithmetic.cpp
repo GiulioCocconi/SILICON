@@ -24,6 +24,9 @@
 #include <utility>
 #include <variant>
 
+namespace SILICON::extra {
+using namespace SILICON::core;
+
 HalfAdder::HalfAdder()
 {
   defineProperty("delay", 2);
@@ -43,7 +46,7 @@ HalfAdder::HalfAdder(std::array<Wire_ptr, 2> inputWires, Wire_ptr sum, Wire_ptr 
   outputs = {{std::move(sum)}, {std::move(cout)}};
 }
 
-void HalfAdder::simulate(Simulator& sim)
+void HalfAdder::simulate(SILICON::simulation::Simulator& sim)
 {
   if (outputBusSize(Outputs::Sum) == 0 || outputBusSize(Outputs::Cout) == 0)
     return;
@@ -77,7 +80,7 @@ FullAdder::FullAdder(std::array<Wire_ptr, 2> inputWires, Wire_ptr cin, Wire_ptr 
   outputs = {{std::move(sum)}, {std::move(cout)}};
 }
 
-void FullAdder::simulate(Simulator& sim)
+void FullAdder::simulate(SILICON::simulation::Simulator& sim)
 {
   if (outputBusSize(Outputs::Sum) == 0 || outputBusSize(Outputs::Cout) == 0)
     return;
@@ -154,7 +157,7 @@ int AdderNBits::setSize(const int width)
   return width;
 }
 
-void AdderNBits::simulate(Simulator& sim)
+void AdderNBits::simulate(SILICON::simulation::Simulator& sim)
 {
   if (outputBusSize(Outputs::Sum) == 0 || outputBusSize(Outputs::Cout) == 0)
     return;
@@ -174,3 +177,5 @@ void AdderNBits::simulate(Simulator& sim)
 
   sim.updateWire(outputWire(Outputs::Cout), carry, propagationDelay, weak_from_this());
 }
+
+}  // namespace SILICON::extra

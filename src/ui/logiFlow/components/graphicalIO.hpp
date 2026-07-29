@@ -33,6 +33,11 @@
 #include <ui/common/graphicalComponent.hpp>
 #include <ui/logiFlow/components/graphicalLogicComponent.hpp>
 
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+
 /**
  * @class GraphicalIO
  * @brief Abstract base class for all graphical Input and Output components.
@@ -312,3 +317,6 @@ private:
   void   installPropertyCallbacks();
   QRectF boundingRect() const override;
 };
+
+}  // namespace ui
+}  // namespace SILICON

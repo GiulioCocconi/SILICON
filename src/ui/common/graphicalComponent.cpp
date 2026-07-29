@@ -32,6 +32,11 @@
 #include <ui/serialization/gui_component_factory.hpp>
 #include <utils/ranges_wrapper.hpp>
 
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+
 namespace {
 
 class ThemedPortLineItem : public QGraphicsLineItem {
@@ -162,7 +167,7 @@ void GraphicalComponent::setPorts(const std::vector<PortPair>& busToPortInputs,
 {
   clearPorts();
 
-  for (const auto& [index, pair] : busToPortInputs | silicon::views::enumerate) {
+  for (const auto& [index, pair] : busToPortInputs | SILICON::views::enumerate) {
     const auto& [name, pos] = pair;
 
     // The memory is not leaked since the port address is freed by Qt Garbage collector
@@ -172,7 +177,7 @@ void GraphicalComponent::setPorts(const std::vector<PortPair>& busToPortInputs,
     this->setPortLine(p);
   }
 
-  for (const auto& [index, pair] : busToPortOutputs | silicon::views::enumerate) {
+  for (const auto& [index, pair] : busToPortOutputs | SILICON::views::enumerate) {
     const auto& [name, pos] = pair;
 
     // ReSharper disable once CppDFAMemoryLeak
@@ -477,3 +482,6 @@ GraphicalComponent::deserialize(const nlohmann::json& j, GUIComponentFactory& fa
 
   return component;
 }
+
+}  // namespace ui
+}  // namespace SILICON

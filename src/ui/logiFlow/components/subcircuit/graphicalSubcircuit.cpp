@@ -25,6 +25,11 @@
 
 #include <ui/logiFlow/components/subcircuit/utils.hpp>
 
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+
 namespace {
 
 [[nodiscard]] PortPair portPair(const GraphicalSubcircuitPortMetadata& metadata)
@@ -55,11 +60,11 @@ GraphicalSubcircuitComponent::GraphicalSubcircuitComponent(QGraphicsItem* parent
   printPortNames = true;
 
   registryListenerId =
-      silicon::project::DocumentStore::active().addListener(
+      SILICON::project::DocumentStore::active().addListener(
           [this](std::string_view path) {
         if (path.empty()
             || path
-                   == silicon::project::subcircuitPathForSlug(currentSlug()))
+                   == SILICON::project::subcircuitPathForSlug(currentSlug()))
           refreshFromMetadata();
       });
   refreshFromMetadata();
@@ -76,7 +81,7 @@ GraphicalSubcircuitComponent::GraphicalSubcircuitComponent(std::string slug,
 GraphicalSubcircuitComponent::~GraphicalSubcircuitComponent()
 {
   if (registryListenerId != 0)
-    silicon::project::DocumentStore::active().removeListener(registryListenerId);
+    SILICON::project::DocumentStore::active().removeListener(registryListenerId);
 }
 
 void GraphicalSubcircuitComponent::setComponent(const Component_ptr& component)
@@ -145,8 +150,8 @@ void GraphicalSubcircuitComponent::refreshFromMetadata()
     return;
   }
 
-  const auto* document = silicon::project::DocumentStore::active().find(
-      silicon::project::subcircuitPathForSlug(slug));
+  const auto* document = SILICON::project::DocumentStore::active().find(
+      SILICON::project::subcircuitPathForSlug(slug));
   if (!document) {
     applyEmptyMetadata();
     return;
@@ -174,3 +179,6 @@ void GraphicalSubcircuitComponent::refreshFromMetadata()
   } catch (const std::exception&) {
   }
 }
+
+}  // namespace ui
+}  // namespace SILICON

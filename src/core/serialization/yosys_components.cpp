@@ -32,11 +32,13 @@
 #include <optional>
 #include <ranges>
 
-using silicon::yosys::Json;
-using silicon::yosys::SerializationContext;
-using namespace silicon::yosys::detail;
+namespace SILICON::core {
 
-namespace {
+using SILICON::yosys::Json;
+using SILICON::yosys::SerializationContext;
+using namespace SILICON::yosys::detail;
+
+namespace yosys_component_detail {
 
 [[nodiscard]] const Bus& requireScalarBus(const Component& component, const bool input,
                                           const std::size_t index,
@@ -61,7 +63,9 @@ void requireBusCounts(const Component& component, const std::size_t expectedInpu
   }
 }
 
-}  // namespace
+}  // namespace yosys_component_detail
+
+using namespace yosys_component_detail;
 
 void AndGate::serializeYosys(SerializationContext& context) const
 {
@@ -105,6 +109,14 @@ void XorGate::serializeYosys(SerializationContext& context) const
   emitGateFold(context, *this, "$xor", false);
 }
 
+}  // namespace SILICON::core
+
+namespace SILICON::extra {
+using namespace SILICON::core;
+using SILICON::yosys::Json;
+using SILICON::yosys::SerializationContext;
+using namespace SILICON::core::yosys_component_detail;
+
 void HalfAdder::serializeYosys(SerializationContext& context) const
 {
   if (inputBuses().size() != 2 || outputBuses().size() != 2)
@@ -112,7 +124,7 @@ void HalfAdder::serializeYosys(SerializationContext& context) const
         "Cannot export malformed 'HalfAdder': expected 2 inputs and 2 outputs");
 
   context.addCell(
-      "half_adder", silicon::yosys::cells::HalfAdder, Json::object(),
+      "half_adder", SILICON::yosys::cells::HalfAdder, Json::object(),
       directions({{"A", "input"}, {"B", "input"}, {"SUM", "output"}, {"COUT", "output"}}),
       Json{{"A", context.bits(requireScalarBus(*this, true, 0))},
            {"B", context.bits(requireScalarBus(*this, true, 1))},
@@ -126,7 +138,7 @@ void FullAdder::serializeYosys(SerializationContext& context) const
     throw std::runtime_error(
         "Cannot export malformed 'FullAdder': expected 3 inputs and 2 outputs");
 
-  context.addCell("full_adder", silicon::yosys::cells::FullAdder, Json::object(),
+  context.addCell("full_adder", SILICON::yosys::cells::FullAdder, Json::object(),
                   directions({{"A", "input"},
                               {"B", "input"},
                               {"CIN", "input"},
@@ -159,7 +171,7 @@ void AdderNBits::serializeYosys(SerializationContext& context) const
   }
 
   context.addCell(
-      "adder", silicon::yosys::cells::Adder,
+      "adder", SILICON::yosys::cells::Adder,
       Json{{"WIDTH", SerializationContext::parameter(*width)},
            {"A_SIGNED", SerializationContext::parameter(0, 1)},
            {"B_SIGNED", SerializationContext::parameter(0, 1)}},
@@ -254,6 +266,10 @@ void WireMerger::serializeYosys(SerializationContext& context) const
             context.bits(requireBus(*this, false, 0)));
 }
 
+}  // namespace SILICON::extra
+
+namespace SILICON::core {
+
 namespace {
 
 [[nodiscard]] bool connected(const Bus& bus)
@@ -317,7 +333,7 @@ void DFlipFlop::serializeYosys(SerializationContext& context) const
   const auto& q           = requireScalarBus(*this, false, 0);
   const auto& qn          = requireScalarBus(*this, false, 1);
   emitDff(context, *this, d, nullptr, clock, clear, preset, q, qn,
-          silicon::yosys::cells::Dff, silicon::yosys::cells::Dffsr, "dff");
+          SILICON::yosys::cells::Dff, SILICON::yosys::cells::Dffsr, "dff");
 }
 
 void EFlipFlop::serializeYosys(SerializationContext& context) const
@@ -331,7 +347,7 @@ void EFlipFlop::serializeYosys(SerializationContext& context) const
   const auto& q           = requireScalarBus(*this, false, 0);
   const auto& qn          = requireScalarBus(*this, false, 1);
   emitDff(context, *this, d, &enable, clock, clear, preset, q, qn,
-          silicon::yosys::cells::Dffe, silicon::yosys::cells::Dffsre,
+          SILICON::yosys::cells::Dffe, SILICON::yosys::cells::Dffsre,
           "dffe");
 }
 
@@ -343,7 +359,7 @@ void DLatch::serializeYosys(SerializationContext& context) const
   const auto& q      = requireScalarBus(*this, false, 0);
   const auto& qn     = requireScalarBus(*this, false, 1);
   context.addCell(
-      "dlatch", silicon::yosys::cells::Dlatch,
+      "dlatch", SILICON::yosys::cells::Dlatch,
       Json{{"EN_POLARITY", SerializationContext::parameter(1, 1)}},
       directions({{"D", "input"}, {"EN", "input"}, {"Q", "output"}, {"QN", "output"}}),
       Json{{"D", context.bits(d)},
@@ -363,7 +379,7 @@ void JKFlipFlop::serializeYosys(SerializationContext& context) const
   const auto& q      = requireScalarBus(*this, false, 0);
   const auto& qn     = requireScalarBus(*this, false, 1);
   context.addCell(
-      "jkff", silicon::yosys::cells::Jkff,
+      "jkff", SILICON::yosys::cells::Jkff,
       Json{{"CLK_POLARITY", SerializationContext::parameter(positiveClock(*this), 1)},
            {"SET_POLARITY", SerializationContext::parameter(1, 1)},
            {"CLR_POLARITY", SerializationContext::parameter(1, 1)}},
@@ -425,7 +441,7 @@ void Register::serializeYosys(SerializationContext& context) const
   if (parallelIn && !parallelOut) {
     parameters["LOAD_POLARITY"] = SerializationContext::parameter(1, 1);
     connections["LOAD"]         = context.bits(requireScalarBus(*this, true, 4));
-    context.addCell("piso", silicon::yosys::cells::Piso, std::move(parameters),
+    context.addCell("piso", SILICON::yosys::cells::Piso, std::move(parameters),
                     directions({{"DATA", "input"},
                                 {"CLK", "input"},
                                 {"EN", "input"},
@@ -436,9 +452,9 @@ void Register::serializeYosys(SerializationContext& context) const
     return;
   }
 
-  const auto cellType = parallelIn    ? silicon::yosys::cells::Pipo
-                        : parallelOut ? silicon::yosys::cells::Sipo
-                                      : silicon::yosys::cells::Siso;
+  const auto cellType = parallelIn    ? SILICON::yosys::cells::Pipo
+                        : parallelOut ? SILICON::yosys::cells::Sipo
+                                      : SILICON::yosys::cells::Siso;
   const auto cellName = parallelIn ? "pipo" : parallelOut ? "sipo" : "siso";
   context.addCell(cellName, cellType, std::move(parameters),
                   directions({{"DATA", "input"},
@@ -456,3 +472,5 @@ void SubcircuitComponent::serializeYosys(SerializationContext& context) const
   const auto slug = getPropertyValue<std::string>("slug").value_or(std::string());
   context.addSubcircuitInstance(slug, inputBuses(), outputBuses());
 }
+
+}  // namespace SILICON::core

@@ -43,9 +43,14 @@
 #include <ui/logiFlow/components/graphicalUtils.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
 
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+
 namespace {
 
-const Logger uiLogger("ui scene");
+const SILICON::logging::Logger uiLogger("ui scene");
 
 struct PendingWireSegment {
   uint64_t             wireId;
@@ -531,3 +536,6 @@ bool DiagramSceneSerializer::removeSelection(const nlohmann::json& payload)
   scene.removeItems(itemsToDelete);
   return true;
 }
+
+}  // namespace ui
+}  // namespace SILICON

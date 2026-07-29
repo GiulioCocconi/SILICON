@@ -2,6 +2,12 @@
 
 #include <ui/common/theme.hpp>
 
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+using namespace SILICON::extra;
+
 GraphicalWireSplitter::GraphicalWireSplitter(QGraphicsItem* parent)
   : GraphicalLogicComponent(std::make_shared<WireSplitter>(Bus(), (std::vector<Bus>){}),
                             nullptr, parent)
@@ -108,3 +114,6 @@ int GraphicalWireMerger::setSize(const int newSize)
 
   return newSize;
 }
+
+}  // namespace ui
+}  // namespace SILICON

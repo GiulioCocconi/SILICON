@@ -24,6 +24,8 @@
 #include <boost/log/utility/setup/common_attributes.hpp>
 #include <boost/make_shared.hpp>
 
+namespace SILICON::logging {
+
 namespace logging  = boost::log;
 namespace sinks    = boost::log::sinks;
 namespace src      = boost::log::sources;
@@ -333,3 +335,5 @@ void Logger::log(const LogLevel level, std::string_view category,
   initialize();
   writeRecord(level, category, message);
 }
+
+}  // namespace SILICON::logging

@@ -29,6 +29,10 @@
 
 #include <toml++/toml.hpp>
 
+
+namespace SILICON {
+namespace ui {
+
 namespace {
 constexpr std::string_view typedValueTypeKey  = "__type";
 constexpr std::string_view typedValueValueKey = "value";
@@ -237,10 +241,14 @@ const QSettings::Format tomlFormat =
 
 }  // namespace
 
-QVariant SiliconSetting::value(const QSettings& settings, const Definition& setting)
+namespace settings {
+
+QVariant value(const QSettings& settings, const Definition& setting)
 {
   return settings.value(setting.name, setting.defaultValue);
 }
+
+}  // namespace settings
 
 SiliconSettings::SiliconSettings(const QString& appName, QObject* parent)
   : QSettings(tomlFormat, QSettings::UserScope, "SILICON", appName, parent)
@@ -255,17 +263,20 @@ QSettings::Format SiliconSettings::format()
 CommonSettingsValues readCommonSettings(const QSettings& settings)
 {
   return {
-      .theme = SiliconSetting::value(settings, SiliconSetting::Theme).toString(),
+      .theme = SILICON::ui::settings::value(settings, SILICON::ui::settings::Theme).toString(),
       .maxSimulationSteps =
-          SiliconSetting::value(settings, SiliconSetting::MaxSimulationSteps).toInt(),
+          SILICON::ui::settings::value(settings, SILICON::ui::settings::MaxSimulationSteps).toInt(),
       .maxTransitionsPerDeltaCycle =
-          SiliconSetting::value(settings, SiliconSetting::MaxTransitionsPerDeltaCycle)
+          SILICON::ui::settings::value(settings, SILICON::ui::settings::MaxTransitionsPerDeltaCycle)
               .toInt(),
   };
 }
 
-SiliconTheme::Mode themeModeFromText(const QString& value)
+SILICON::ui::theme::Mode themeModeFromText(const QString& value)
 {
-  return value == SiliconSetting::DarkTheme ? SiliconTheme::Mode::Dark
-                                            : SiliconTheme::Mode::Light;
+  return value == SILICON::ui::settings::DarkTheme ? SILICON::ui::theme::Mode::Dark
+                                            : SILICON::ui::theme::Mode::Light;
 }
+
+}  // namespace ui
+}  // namespace SILICON

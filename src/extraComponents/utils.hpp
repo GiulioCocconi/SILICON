@@ -23,6 +23,9 @@
 #include <string_view>
 #include <vector>
 
+namespace SILICON::extra {
+using namespace SILICON::core;
+
 class WireSplitter : public Component {
 private:
   void initializeProperties();
@@ -41,8 +44,8 @@ public:
 
   int setSize(int newSize);
 
-  void simulate(class Simulator& sim) override;
-  void serializeYosys(silicon::yosys::SerializationContext& context) const override;
+  void simulate(SILICON::simulation::Simulator& sim) override;
+  void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
 };
 
 class WireMerger : public Component {
@@ -63,6 +66,8 @@ public:
 
   int setSize(int newSize);
 
-  void simulate(class Simulator& sim) override;
-  void serializeYosys(silicon::yosys::SerializationContext& context) const override;
+  void simulate(SILICON::simulation::Simulator& sim) override;
+  void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
 };
+
+}  // namespace SILICON::extra

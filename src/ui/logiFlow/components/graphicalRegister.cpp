@@ -27,6 +27,11 @@
 
 #include <ui/common/theme.hpp>
 
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+
 namespace {
 
 constexpr QRectF RegisterBodyRect(0.0, 0.0, 100.0, 80.0);
@@ -184,3 +189,6 @@ void GraphicalRegister::setComponent(const Component_ptr& component)
           .value_or(std::string(Register::ParallelType)));
   updateLayout();
 }
+
+}  // namespace ui
+}  // namespace SILICON

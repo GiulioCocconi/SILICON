@@ -29,7 +29,9 @@
 #include <core/component.hpp>
 #include <core/serialization/yosys.hpp>
 
-namespace silicon::yosys::detail {
+namespace SILICON::yosys::detail {
+
+using namespace SILICON::core;
 
 [[nodiscard]] inline Json
 directions(std::initializer_list<std::pair<std::string_view, std::string_view>> values)
@@ -153,4 +155,4 @@ inline void emitGateFold(SerializationContext& context, const Component& compone
     emitUnary(context, "invert", "$not", accumulator, context.bits(output));
 }
 
-}  // namespace silicon::yosys::detail
+}  // namespace SILICON::yosys::detail

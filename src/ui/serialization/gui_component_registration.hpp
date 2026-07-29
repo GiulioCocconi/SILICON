@@ -20,4 +20,10 @@
 
 #include <ui/serialization/gui_component_factory.hpp>
 
+
+namespace SILICON {
+namespace ui {
 void registerAllGUIComponents(GUIComponentFactory& factory);
+
+}  // namespace ui
+}  // namespace SILICON

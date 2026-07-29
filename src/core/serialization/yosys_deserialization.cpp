@@ -47,7 +47,10 @@
 #include <extraComponents/multiplexer.hpp>
 #include <extraComponents/utils.hpp>
 
-namespace silicon::yosys {
+namespace SILICON::yosys {
+
+using namespace SILICON::core;
+using namespace SILICON::extra;
 namespace {
 
   [[noreturn]] void fail(const std::string_view context, const std::string_view message)
@@ -1411,4 +1414,4 @@ Circuit deserialize(const std::string_view                json,
   }
 }
 
-}  // namespace silicon::yosys
+}  // namespace SILICON::yosys

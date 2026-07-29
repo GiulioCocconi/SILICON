@@ -29,8 +29,14 @@
 
 #include <logging/logger.hpp>
 
+namespace SILICON::simulation {
+
+using namespace SILICON::core;
+using namespace SILICON::waveform;
+using namespace SILICON::waveform::fst;
+
 namespace {
-const Logger simulationLog("simulation");
+const SILICON::logging::Logger simulationLog("simulation");
 
 struct StepVectorHash {
   [[nodiscard]] std::size_t
@@ -114,7 +120,7 @@ private:
   bool                                 previousStageSequentialOutputs   = false;
 };
 
-Simulator::EdgeType Simulator::edgeType(const SimulationContext& context,
+Simulator::EdgeType Simulator::edgeType(const Context& context,
                                         const Wire_ptr&          wire)
 {
   const auto previousState = context.previousState(wire);
@@ -135,7 +141,7 @@ Simulator::EdgeType Simulator::edgeType(const SimulationContext& context,
 }
 
 Simulator::Simulator(std::shared_ptr<Circuit> c, uint64_t initialSimulationTime,
-                     bool isInteractive, std::unique_ptr<SiliconFstWriter> fstWriter,
+                     bool isInteractive, std::unique_ptr<CircuitWriter> fstWriter,
                      CancellationCheck isCancelled)
   : circuit(std::move(c)), fstWriter(std::move(fstWriter))
 {
@@ -155,7 +161,7 @@ Simulator::Simulator(std::shared_ptr<Circuit> c, uint64_t initialSimulationTime,
 
     // Construction can be expensive for large circuits, so it participates in the
     // same cooperative cancellation contract as later runs.
-    const SimulationContext initialContext{true, {}};
+    const Context initialContext{true, {}};
     if (!evaluateExecutionPlan(executionPlan, initialContext, isCancelled))
       return;
     emitTraceSnapshot();
@@ -188,7 +194,7 @@ void Simulator::recompile()
 
   std::unordered_map<const Component*, std::size_t> componentToStep;
   for (const auto& [stepIndex, executionStep] :
-       executionPlan | silicon::views::enumerate) {
+       executionPlan | SILICON::views::enumerate) {
     for (const auto& weakComp : executionStep.components) {
       if (auto comp = weakComp.lock()) {
         componentToStep[comp.get()] = stepIndex;
@@ -280,24 +286,24 @@ void Simulator::recompile()
 }
 
 void Simulator::enableFstTracing(std::string_view          fileName,
-                                 SiliconFstWriter::Options options)
+                                 CircuitWriter::Options options)
 {
   if (!traceBuses.empty()) {
     setFstWriter(
-        std::make_unique<SiliconFstWriter>(fileName, traceBuses, std::move(options)));
+        std::make_unique<CircuitWriter>(fileName, traceBuses, std::move(options)));
   } else {
     setFstWriter(
-        std::make_unique<SiliconFstWriter>(fileName, *circuit, std::move(options)));
+        std::make_unique<CircuitWriter>(fileName, *circuit, std::move(options)));
   }
 }
 
-void Simulator::setFstWriter(std::unique_ptr<SiliconFstWriter> writer)
+void Simulator::setFstWriter(std::unique_ptr<CircuitWriter> writer)
 {
   fstWriter = std::move(writer);
   emitTraceSnapshot();
 }
 
-void Simulator::setTraceBuses(std::vector<SiliconFstWriter::NamedBus> buses)
+void Simulator::setTraceBuses(std::vector<CircuitWriter::NamedBus> buses)
 {
   traceBuses = std::move(buses);
   emitTraceSnapshot();
@@ -337,7 +343,7 @@ std::string Simulator::encodeTraceBusValue(const Bus& bus)
     if (!*it) {
       value.push_back('x');
     } else {
-      value.push_back(SiliconFstWriter::stateToFstValue((*it)->getCurrentState()));
+      value.push_back(CircuitWriter::stateToFstValue((*it)->getCurrentState()));
     }
   }
 
@@ -455,7 +461,7 @@ Simulator::compileExecutionPlan(std::span<const Circuit::SimulationBlock> blocks
 }
 
 bool Simulator::evaluateExecutionStep(const ExecutionStep&     step,
-                                      const SimulationContext& context,
+                                      const Context& context,
                                       const CancellationCheck& isCancelled)
 {
   if (cancellationRequested(isCancelled))
@@ -500,7 +506,7 @@ bool Simulator::evaluateExecutionStep(const ExecutionStep&     step,
 }
 
 bool Simulator::evaluateExecutionPlan(std::span<const ExecutionStep> steps,
-                                      const SimulationContext&       context,
+                                      const Context&       context,
                                       const CancellationCheck&       isCancelled)
 {
   for (const auto& step : steps) {
@@ -511,7 +517,7 @@ bool Simulator::evaluateExecutionPlan(std::span<const ExecutionStep> steps,
 }
 
 bool Simulator::evaluateExecutionStepIndices(std::span<const std::size_t> stepIndices,
-                                             const SimulationContext&     context,
+                                             const Context&     context,
                                              const CancellationCheck&     isCancelled)
 {
   for (const auto stepIndex : stepIndices) {
@@ -526,7 +532,7 @@ bool Simulator::evaluateExecutionStepIndices(std::span<const std::size_t> stepIn
 
 Simulator::RunResult
 Simulator::evaluateExecutionStepIndicesAndTrace(std::span<const std::size_t> stepIndices,
-                                                const SimulationContext&     context,
+                                                const Context&     context,
                                                 const CancellationCheck&     isCancelled)
 {
   if (!evaluateExecutionStepIndices(stepIndices, context, isCancelled))
@@ -590,7 +596,7 @@ void Simulator::updateWire(const Wire_ptr& target, State newState, uint64_t dela
 
 Simulator::RunResult
 Simulator::evaluateExecutionPlanAndTrace(std::span<const ExecutionStep> steps,
-                                         const SimulationContext&       context,
+                                         const Context&       context,
                                          const CancellationCheck&       isCancelled)
 {
   if (!evaluateExecutionPlan(steps, context, isCancelled))
@@ -605,7 +611,7 @@ Simulator::RunResult Simulator::evaluateForwardConeAndTrace(
     std::unordered_map<uint64_t, State> previousWireStates,
     const CancellationCheck& isCancelled, const bool enableSequentialStaging)
 {
-  SimulationContext          context{false, changedBuses, std::move(previousWireStates)};
+  Context          context{false, changedBuses, std::move(previousWireStates)};
   const auto                 steps = getForwardExecutionSteps(changedBuses);
   const EvaluationStateGuard evaluationState(*this, &context.previousWireStates,
                                              enableSequentialStaging);
@@ -625,7 +631,7 @@ Simulator::RunResult Simulator::evaluateForwardConeAndTrace(
                                      : std::vector<Bus>{};
 
     if (!stagedChangedBuses.empty()) {
-      auto       stagedContext = SimulationContext{false, stagedChangedBuses,
+      auto       stagedContext = Context{false, stagedChangedBuses,
                                              std::move(stagedPreviousWireStates)};
       const auto stagedSteps   = getForwardExecutionSteps(stagedChangedBuses);
       evaluationState.setActivePreviousWireStates(&stagedContext.previousWireStates);
@@ -727,7 +733,7 @@ Simulator::processNextEventBatch(const CancellationCheck& isCancelled)
 }
 
 Simulator::RunResult Simulator::simulateWaveform(
-    const uint64_t duration, std::span<const SiliconWaveformSample> inputSnapshots,
+    const uint64_t duration, std::span<const Sample> inputSnapshots,
     std::span<const WaveformInputDriver> inputDrivers, CancellationCheck isCancelled)
 {
   for (std::size_t sampleIndex = 0; sampleIndex < inputSnapshots.size();) {
@@ -777,7 +783,7 @@ Simulator::applyWaveformInputSample(std::span<const std::string>         values,
     const auto  value  = rawBitsToUnsignedValue(values[i]);
     auto        bus    = driver.bus;
 
-    if (silicon::wire::busWillChangeToValue(bus, value)) {
+    if (SILICON::wireUtils::busWillChangeToValue(bus, value)) {
       inputsChanged = true;
       changedBuses.push_back(bus);
       capturePreviousBusStates(previousWireStates, bus);
@@ -849,6 +855,8 @@ Simulator::RunResult Simulator::simulateBus(const Bus& bus, CancellationCheck is
   auto    blocks     = subCircuit.splitCyclic();
   auto    plan       = compileExecutionPlan(blocks);
 
-  const SimulationContext context{true, {}};
+  const Context context{true, {}};
   return evaluateExecutionPlanAndTrace(plan, context, isCancelled);
 }
+
+}  // namespace SILICON::simulation

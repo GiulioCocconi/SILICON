@@ -25,6 +25,8 @@
 #include <core/serialization/component_registry.hpp>
 #include <core/projectDocument.hpp>
 
+namespace SILICON::core {
+
 namespace {
 
 [[nodiscard]] std::vector<Bus>
@@ -48,9 +50,9 @@ SubcircuitComponent::SubcircuitComponent()
                  });
 
   registryListenerId =
-      silicon::project::DocumentStore::active().addListener(
+      SILICON::project::DocumentStore::active().addListener(
           [this](std::string_view path) {
-        const auto configuredPath = silicon::project::subcircuitPathForSlug(
+        const auto configuredPath = SILICON::project::subcircuitPathForSlug(
             getPropertyValue<std::string>("slug").value_or(std::string()));
         if (path.empty() || path == configuredPath)
           reloadFromRegistry();
@@ -60,7 +62,7 @@ SubcircuitComponent::SubcircuitComponent()
 SubcircuitComponent::~SubcircuitComponent()
 {
   if (registryListenerId != 0)
-    silicon::project::DocumentStore::active().removeListener(registryListenerId);
+    SILICON::project::DocumentStore::active().removeListener(registryListenerId);
 }
 
 void SubcircuitComponent::clearResolvedCircuit()
@@ -77,7 +79,7 @@ void SubcircuitComponent::configureFromSlug(std::string_view slug)
     return;
   }
 
-  auto definition = silicon::subcircuits::loadSubcircuitDefinition(
+  auto definition = SILICON::core::loadSubcircuitDefinition(
       slug, ComponentRegistry::instance());
   auto externalInputs  = makeExternalBuses(definition.inputs);
   auto externalOutputs = makeExternalBuses(definition.outputs);
@@ -90,10 +92,12 @@ void SubcircuitComponent::reloadFromRegistry()
   configureFromSlug(getPropertyValue<std::string>("slug").value_or(std::string()));
 }
 
-void SubcircuitComponent::simulate(Simulator& sim)
+void SubcircuitComponent::simulate(SILICON::simulation::Simulator& sim)
 {
   (void)sim;
   throw std::logic_error(
-      "Unprocessed SubcircuitComponent reached Simulator; preprocess the circuit "
-      "with CircuitElaborator or SimulationSession before simulation");
+      "Unprocessed SubcircuitComponent reached SILICON::simulation::Simulator; preprocess the circuit "
+      "with CircuitElaborator or Session before simulation");
 }
+
+}  // namespace SILICON::core

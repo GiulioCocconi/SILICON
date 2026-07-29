@@ -22,7 +22,7 @@
 
 #include <core/wire.hpp>
 
-namespace silicon::wire {
+namespace SILICON::wireUtils {
 
 /**
  * @brief Checks whether an unsigned value exceeds a bus width.
@@ -38,14 +38,14 @@ namespace silicon::wire {
  * @param value Binary value encoded least-significant bit first.
  * @return True when at least one existing wire would change state.
  */
-[[nodiscard]] bool busWillChangeToValue(const Bus& bus, unsigned int value);
+[[nodiscard]] bool busWillChangeToValue(const core::Bus& bus, unsigned int value);
 
 /**
  * @brief Tests whether a state is a concrete binary logic value.
  * @param state State to test.
  * @return True for LOW or HIGH, false for UNKNOWN or ERROR.
  */
-[[nodiscard]] bool isKnownBinary(State state);
+[[nodiscard]] bool isKnownBinary(core::State state);
 
 /**
  * @brief Tests whether an actual state could represent an expected binary state.
@@ -53,14 +53,14 @@ namespace silicon::wire {
  * @param expected Expected concrete state.
  * @return True when actual equals expected or actual is not a known binary state.
  */
-[[nodiscard]] bool mayBe(State actual, State expected);
+[[nodiscard]] bool mayBe(core::State actual, core::State expected);
 
 /**
  * @brief Normalizes non-binary states for stored binary elements.
  * @param state State to normalize.
  * @return LOW/HIGH unchanged, UNKNOWN for every other state.
  */
-[[nodiscard]] State normalizeBinaryOrUnknown(State state);
+[[nodiscard]] core::State normalizeBinaryOrUnknown(core::State state);
 
 /**
  * @brief Reads an optional control input, defaulting to inactive when unconnected.
@@ -69,8 +69,8 @@ namespace silicon::wire {
  * @param inactiveState State returned when the control pin is unconnected.
  * @return Current wire state, or inactiveState when the pin is unconnected.
  */
-[[nodiscard]] State optionalControlStateOrInactive(const std::vector<Bus>& inputs,
-                                                   unsigned int            index,
-                                                   State                   inactiveState);
+[[nodiscard]] core::State
+optionalControlStateOrInactive(const std::vector<core::Bus>& inputs, unsigned int index,
+                               core::State inactiveState);
 
-}  // namespace silicon::wire
+}  // namespace SILICON::wireUtils

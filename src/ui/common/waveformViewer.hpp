@@ -31,6 +31,10 @@ class QAction;
 class QLineEdit;
 class QMouseEvent;
 
+
+namespace SILICON::ui::waveform {
+using namespace SILICON::waveform;
+
 class SignalListWidget : public QWidget {
   Q_OBJECT
 public:
@@ -60,13 +64,13 @@ private:
   [[nodiscard]] int signalRowAt(QPoint position) const;
 };
 
-class WaveformCanvas : public QWidget {
+class Canvas : public QWidget {
   Q_OBJECT
 public:
   /** @brief One complete set of signal values at a simulation timestamp. */
-  using Sample = SiliconWaveformSample;
+  using Sample = SILICON::waveform::Sample;
 
-  explicit WaveformCanvas(QWidget* parent = nullptr);
+  explicit Canvas(QWidget* parent = nullptr);
 
   /**
    * @brief Displays a trace using the existing input-group count.
@@ -85,7 +89,7 @@ public:
                 int inputCount);
 
   /** @brief Sets per-signal display formats used for bus labels. */
-  void setSignalFormats(const std::vector<silicon::NumberFormat>& formats);
+  void setSignalFormats(const std::vector<SILICON::core::NumberFormat>& formats);
 
   /**
    * @brief Changes horizontal waveform scale.
@@ -178,7 +182,7 @@ private:
   QStringList signalNames;
 
   /**
-   * @brief Non-owning view of WaveformViewer's sample storage.
+   * @brief Non-owning view of Viewer's sample storage.
    *
    * The viewer owns the canvas and its sample vector, so this remains valid for the
    * canvas lifetime and avoids copying the complete trace on every refresh.
@@ -197,7 +201,7 @@ private:
   int                                editDragSignalIndex      = -1;
   quint64                            editDragStartTime        = 0;
   quint64                            editDragEndTime          = 0;
-  std::vector<silicon::NumberFormat> signalFormats;
+  std::vector<SILICON::core::NumberFormat> signalFormats;
 
   [[nodiscard]] int     rowHeight() const { return 28; }
   [[nodiscard]] int     rulerHeight() const { return 24; }
@@ -211,7 +215,7 @@ private:
   [[nodiscard]] int     yForSignalRow(int row) const;
   [[nodiscard]] int     signalRowAt(QPoint position) const;
   [[nodiscard]] int     yForScalarValue(int row, const QString& value) const;
-  [[nodiscard]] silicon::NumberFormat formatForSignal(int row) const;
+  [[nodiscard]] SILICON::core::NumberFormat formatForSignal(int row) const;
   /** @brief Recomputes the scrollable canvas dimensions from trace extent and zoom. */
   void updateCanvasSize();
 
@@ -221,10 +225,10 @@ private:
   void drawBus(QPainter& painter, int row, int x0, int x1, const QString& value) const;
 };
 
-class WaveformViewer : public QWidget {
+class Viewer : public QWidget {
   Q_OBJECT
 public:
-  explicit WaveformViewer(QWidget* parent = nullptr);
+  explicit Viewer(QWidget* parent = nullptr);
 
 protected:
   /** @brief Tracks focus changes for precise interval edit fields. */
@@ -277,11 +281,11 @@ signals:
    * @param inputSnapshots Edited input-only snapshots
    */
   void editTraceCommitted(qulonglong                         duration,
-                          std::vector<SiliconWaveformSample> inputSnapshots);
+                          std::vector<Sample> inputSnapshots);
 
 private:
   SignalListWidget* signalList;
-  WaveformCanvas*   canvas;
+  Canvas*   canvas;
   QScrollArea*      labelScrollArea;
   QScrollArea*      scrollArea;
   QAction*          newAct;
@@ -294,11 +298,11 @@ private:
   QLineEdit*        startEdit;
   QLineEdit*        endEdit;
 
-  SiliconWaveformTrace               trace;
+  Trace               trace;
   int                                selectedSampleIndex = -1;
   int                                selectedSignalIndex = -1;
   double                             pixelsPerTick       = 12.0;
-  std::vector<silicon::NumberFormat> signalFormats;
+  std::vector<SILICON::core::NumberFormat> signalFormats;
   bool                               syncingScrollBars      = false;
   bool                               editMode               = false;
   quint64                            editDuration           = 20;
@@ -355,7 +359,7 @@ private:
   void updateDurationField();
 
   /** @brief Converts the current editable samples into signal payload form. */
-  [[nodiscard]] std::vector<SiliconWaveformSample> editedInputSnapshots() const;
+  [[nodiscard]] std::vector<Sample> editedInputSnapshots() const;
 
   /** @brief Synchronizes edit controls with the current mode and duration. */
   void updateEditControls();
@@ -370,3 +374,5 @@ private:
   void                      showSignalFormatMenu(int signalIndex, QPoint globalPosition);
   void                      saveTrace();
 };
+
+}  // namespace SILICON::ui::waveform

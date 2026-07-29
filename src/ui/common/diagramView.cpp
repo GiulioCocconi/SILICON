@@ -20,6 +20,11 @@
 
 #include <stdexcept>
 
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+
 DiagramView::DiagramView(QWidget* parent) : QGraphicsView(parent)
 {
   setMouseTracking(true);
@@ -105,3 +110,6 @@ void DiagramView::modeChanged(InteractionMode mode)
     default: throw std::logic_error("Unhandled InteractionMode in modeChanged");
   }
 }
+
+}  // namespace ui
+}  // namespace SILICON

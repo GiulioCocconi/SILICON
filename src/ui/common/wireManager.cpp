@@ -25,6 +25,11 @@
 
 #include <ui/common/graphicalWire.hpp>
 
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+
 void WireManager::clear()
 {
   // Detach segments without side-effects (avoids creating new wires during
@@ -449,3 +454,6 @@ void WireManager::fuseSegments(GraphicalWireSegment* a, GraphicalWireSegment* b)
     evaluateWireSplits(absorbedWire);
   }
 }
+
+}  // namespace ui
+}  // namespace SILICON

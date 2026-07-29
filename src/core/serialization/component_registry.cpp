@@ -23,6 +23,8 @@
 #include <stdexcept>
 #include <utility>
 
+namespace SILICON::core {
+
 ComponentRegistry::ComponentRegistry() = default;
 
 ComponentRegistry ComponentRegistry::empty()
@@ -74,7 +76,7 @@ bool ComponentRegistry::hasType(std::string_view type) const
   return types_.contains(type);
 }
 
-ComponentRegistry::ComponentMetadata ComponentRegistry::metadata(std::string_view type) const
+ComponentMetadata ComponentRegistry::metadata(std::string_view type) const
 {
   auto it = types_.find(type);
   if (it == types_.end()) {
@@ -109,3 +111,5 @@ std::string_view componentCategoryName(const ComponentCategory category)
   }
   std::unreachable();
 }
+
+}  // namespace SILICON::core

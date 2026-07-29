@@ -19,6 +19,12 @@
 
 #include <QGraphicsSvgItem>
 
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+using namespace SILICON::extra;
+
 namespace {
 
 std::shared_ptr<HalfAdder> makeHalfAdder()
@@ -73,3 +79,6 @@ GraphicalAdderNBits::GraphicalAdderNBits(QGraphicsItem* parent)
   setPorts({PortPair{"a", QPoint(20, -20)}, PortPair{"b", QPoint(80, -20)}},
            {PortPair{"sum", QPoint(50, 120)}, PortPair{"of", QPoint(110, 40)}});
 }
+
+}  // namespace ui
+}  // namespace SILICON

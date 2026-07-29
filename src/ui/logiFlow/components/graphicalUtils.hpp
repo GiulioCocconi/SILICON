@@ -26,6 +26,12 @@ Copyright (c) 2025. Giulio Cocconi
 #include <extraComponents/utils.hpp>
 #include <ui/logiFlow/components/graphicalLogicComponent.hpp>
 
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+using namespace SILICON::extra;
+
 class GraphicalWireSplitter : public GraphicalLogicComponent {
 public:
   explicit GraphicalWireSplitter(QGraphicsItem* parent = nullptr);
@@ -53,3 +59,6 @@ private:
 
   unsigned int size = 1;
 };
+
+}  // namespace ui
+}  // namespace SILICON

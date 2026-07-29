@@ -25,14 +25,18 @@
 #include <QStyle>
 #include <QWidget>
 
+
+namespace SILICON {
+namespace ui {
+
 namespace {
 
-QColor color(const SiliconTheme::ColorMap& tokens, const QString& key)
+QColor color(const SILICON::ui::theme::ColorMap& tokens, const QString& key)
 {
   return tokens.value(key);
 }
 
-QPalette paletteFromTokens(const SiliconTheme::ColorMap& tokens)
+QPalette paletteFromTokens(const SILICON::ui::theme::ColorMap& tokens)
 {
   QPalette palette;
 
@@ -77,7 +81,7 @@ QString ThemeEngine::loadQssTemplate()
 }
 
 QString ThemeEngine::injectTokens(const QString&                qss,
-                                  const SiliconTheme::ColorMap& tokens)
+                                  const SILICON::ui::theme::ColorMap& tokens)
 {
   QString out = qss;
 
@@ -92,12 +96,12 @@ QString ThemeEngine::injectTokens(const QString&                qss,
   return out;
 }
 
-SiliconTheme::ColorMap ThemeEngine::currentMap;
+SILICON::ui::theme::ColorMap ThemeEngine::currentMap;
 
-void ThemeEngine::apply(QApplication& app, SiliconTheme::Mode mode)
+void ThemeEngine::apply(QApplication& app, SILICON::ui::theme::Mode mode)
 {
   currentMap =
-      (mode == SiliconTheme::Mode::Dark) ? SiliconTheme::dark() : SiliconTheme::light();
+      (mode == SILICON::ui::theme::Mode::Dark) ? SILICON::ui::theme::dark() : SILICON::ui::theme::light();
 
   const QString base     = loadQssTemplate();
   const QString finalQss = injectTokens(base, currentMap);
@@ -116,3 +120,6 @@ const QColor& ThemeEngine::getColor(const QString& key)
 {
   return currentMap[key];
 }
+
+}  // namespace ui
+}  // namespace SILICON

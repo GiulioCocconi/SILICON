@@ -24,6 +24,10 @@
 #include <ui/common/componentSearchMatcher.hpp>
 #include <ui/common/theme.hpp>
 
+
+namespace SILICON {
+namespace ui {
+
 ComponentSearchBox::ComponentSearchBox(std::vector<std::string> list, QString title,
                                        QGraphicsItem* parent)
   : QGraphicsProxyWidget(parent)
@@ -133,7 +137,7 @@ void ComponentSearchBox::updateCompletionModel() const
     strings.append(QString::fromStdString(item));
   }
 
-  const auto ranked = ComponentSearchMatcher::rank(strings, query, true);
+  const auto ranked = SILICON::ui::componentSearchMatcher::rank(strings, query, true);
 
   QStringList sortedStrings;
   sortedStrings.reserve(static_cast<qsizetype>(ranked.size()));
@@ -185,3 +189,6 @@ void ComponentSearchBox::acceptCompletion(QString completion)
 
   emit selectedComponent(typeName, scenePos());
 }
+
+}  // namespace ui
+}  // namespace SILICON

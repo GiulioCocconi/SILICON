@@ -30,9 +30,11 @@
 
 #include <core/wire.hpp>
 
+namespace SILICON::core {
 class Circuit;
+}
 
-namespace silicon::yosys {
+namespace SILICON::yosys {
 
 using Json = nlohmann::ordered_json;
 
@@ -68,8 +70,9 @@ struct ScriptResult {
  * Captured Yosys output is written through the `yosys` logger; failures refer callers
  * to those logs instead of embedding an arbitrarily large tool transcript.
  */
-[[nodiscard]] Circuit importVerilog(std::string_view source, std::string_view topModule,
-                                    const ToolOptions& options = {});
+[[nodiscard]] core::Circuit importVerilog(std::string_view   source,
+                                          std::string_view   topModule,
+                                          const ToolOptions& options = {});
 
 /**
  * @brief Convert a Silicon circuit to readable Verilog using external Yosys.
@@ -81,8 +84,8 @@ struct ScriptResult {
  * When the SILICON Yosys plugin is available, wide muxes are raised to combinational
  * processes so the backend emits readable case statements.
  */
-[[nodiscard]] std::string exportVerilog(const Circuit&     circuit,
-                                        const ToolOptions& options = {});
+[[nodiscard]] std::string exportVerilog(const core::Circuit& circuit,
+                                        const ToolOptions&   options = {});
 
 /**
  * @brief Mutable module-building interface passed to component serializers.
@@ -96,7 +99,7 @@ public:
   struct Impl;
 
   /** @brief Convert a Silicon bus to a Yosys least-significant-bit-first vector. */
-  [[nodiscard]] Json bits(const Bus& bus, std::string_view nullValue = "x") const;
+  [[nodiscard]] Json bits(const core::Bus& bus, std::string_view nullValue = "x") const;
 
   /** @brief Allocate module-local temporary signal bits. */
   [[nodiscard]] Json allocateBits(std::size_t width);
@@ -112,11 +115,11 @@ public:
                Json portDirections, Json connections);
 
   /** @brief Register a named top-level input or output port. */
-  void addPort(std::string name, std::string_view direction, const Bus& bus);
+  void addPort(std::string name, std::string_view direction, const core::Bus& bus);
 
   /** @brief Emit a hierarchical instance and recursively serialize its definition. */
-  void addSubcircuitInstance(std::string_view slug, const std::vector<Bus>& inputs,
-                             const std::vector<Bus>& outputs);
+  void addSubcircuitInstance(std::string_view slug, const std::vector<core::Bus>& inputs,
+                             const std::vector<core::Bus>& outputs);
 
   /** @internal Constructed only by the circuit serializer. */
   explicit SerializationContext(Impl& impl) : impl(impl) {}
@@ -124,11 +127,11 @@ public:
 private:
   Impl& impl;
 
-  friend std::string serialize(const Circuit& circuit);
+  friend std::string serialize(const core::Circuit& circuit);
 };
 
 /** @brief Serialize a complete Silicon circuit as Yosys write_json-compatible JSON. */
-[[nodiscard]] std::string serialize(const Circuit& circuit);
+[[nodiscard]] std::string serialize(const core::Circuit& circuit);
 
 /**
  * @brief Deserialize one supported Yosys write_json module into a Silicon circuit.
@@ -136,8 +139,8 @@ private:
  * When @p moduleName is absent, the sole module or unique module carrying the Yosys
  * `top` attribute is selected. Unsupported or ambiguous designs fail atomically.
  */
-[[nodiscard]] Circuit
+[[nodiscard]] core::Circuit
 deserialize(std::string_view                json,
             std::optional<std::string_view> moduleName = std::nullopt);
 
-}  // namespace silicon::yosys
+}  // namespace SILICON::yosys

@@ -22,6 +22,11 @@
 #include <stdexcept>
 #include <vector>
 
+using namespace SILICON::core;
+using namespace SILICON::extra;
+using namespace SILICON::simulation;
+using namespace SILICON::waveform;
+
 TEST(ArithmeticTest, HalfAdderCase)
 {
   auto a    = std::make_shared<Wire>(State::LOW);
@@ -160,7 +165,7 @@ TEST(ArithmeticTest, DelayedAdderReschedulesUnchangedOutputBits)
   auto      circ = std::make_shared<Circuit>(Component_set{adder});
   Simulator sim(circ);
 
-  const std::vector<SiliconWaveformSample> inputSnapshots{
+  const std::vector<Sample> inputSnapshots{
       {0, {"0000", "0000"}},
       {2, {"0100", "0101"}},
   };

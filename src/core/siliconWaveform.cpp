@@ -24,10 +24,12 @@
 #include <stdexcept>
 #include <utility>
 
+namespace SILICON::waveform {
+
 namespace {
 
 [[nodiscard]] std::vector<std::string>
-defaultInputValues(const SiliconWaveformTrace& trace)
+defaultInputValues(const Trace& trace)
 {
   std::vector<std::string> values;
   const auto               inputCount =
@@ -35,12 +37,12 @@ defaultInputValues(const SiliconWaveformTrace& trace)
   values.reserve(static_cast<std::size_t>(inputCount));
 
   for (int i = 0; i < inputCount; ++i)
-    values.push_back(std::string(waveformSignalWidth(trace, i), '0'));
+    values.push_back(std::string(signalWidth(trace, i), '0'));
 
   return values;
 }
 
-[[nodiscard]] std::vector<std::string> valuesAt(const SiliconWaveformTrace& trace,
+[[nodiscard]] std::vector<std::string> valuesAt(const Trace& trace,
                                                 uint64_t                    time)
 {
   auto values = defaultInputValues(trace);
@@ -54,8 +56,8 @@ defaultInputValues(const SiliconWaveformTrace& trace)
 
 }  // namespace
 
-void resetWaveformTrace(SiliconWaveformTrace&              trace,
-                        std::vector<SiliconWaveformSignal> signalDefinitions,
+void resetTrace(Trace&              trace,
+                        std::vector<Signal> signalDefinitions,
                         const int                          inputCount)
 {
   trace.signalDefinitions = std::move(signalDefinitions);
@@ -67,7 +69,7 @@ void resetWaveformTrace(SiliconWaveformTrace&              trace,
     signal.width = std::max<std::size_t>(1, signal.width);
 }
 
-void appendWaveformSnapshot(SiliconWaveformTrace& trace, const uint64_t time,
+void appendSnapshot(Trace& trace, const uint64_t time,
                             std::vector<std::string> values)
 {
   if (!trace.samples.empty() && trace.samples.back().time == time) {
@@ -78,20 +80,20 @@ void appendWaveformSnapshot(SiliconWaveformTrace& trace, const uint64_t time,
   trace.samples.push_back({time, std::move(values)});
 }
 
-void appendWaveformSnapshots(SiliconWaveformTrace&                  trace,
-                             std::span<const SiliconWaveformSample> snapshots)
+void appendSnapshots(Trace&                  trace,
+                             std::span<const Sample> snapshots)
 {
   trace.samples.reserve(trace.samples.size() + snapshots.size());
   for (const auto& sample : snapshots)
-    appendWaveformSnapshot(trace, sample.time, sample.values);
+    appendSnapshot(trace, sample.time, sample.values);
 }
 
-void clearWaveformSamples(SiliconWaveformTrace& trace)
+void clearSamples(Trace& trace)
 {
   trace.samples.clear();
 }
 
-std::size_t waveformSignalWidth(const SiliconWaveformTrace& trace, const int signalIndex)
+std::size_t signalWidth(const Trace& trace, const int signalIndex)
 {
   if (signalIndex < 0 || signalIndex >= static_cast<int>(trace.signalDefinitions.size()))
     return 0;
@@ -139,7 +141,7 @@ unsigned int rawBitsToUnsignedValue(const std::string_view rawBits)
   return value;
 }
 
-void rebuildEditableWaveformTrace(SiliconWaveformTrace& trace, const uint64_t duration)
+void rebuildEditableTrace(Trace& trace, const uint64_t duration)
 {
   trace.samples.clear();
 
@@ -151,7 +153,7 @@ void rebuildEditableWaveformTrace(SiliconWaveformTrace& trace, const uint64_t du
   trace.samples.push_back({duration, defaultValues});
 }
 
-void applyWaveformEditInterval(SiliconWaveformTrace& trace, uint64_t duration,
+void applyEditInterval(Trace& trace, uint64_t duration,
                                int signalIndex, uint64_t startTime, uint64_t endTime,
                                std::string rawValue)
 {
@@ -165,14 +167,14 @@ void applyWaveformEditInterval(SiliconWaveformTrace& trace, uint64_t duration,
     return;
 
   if (trace.samples.empty())
-    rebuildEditableWaveformTrace(trace, duration);
+    rebuildEditableTrace(trace, duration);
 
   const auto startValues = valuesAt(trace, startTime);
   const auto endValues   = valuesAt(trace, endTime);
 
   auto ensureBoundary = [&](const uint64_t time, const std::vector<std::string>& values) {
     const auto it =
-        std::ranges::lower_bound(trace.samples, time, {}, &SiliconWaveformSample::time);
+        std::ranges::lower_bound(trace.samples, time, {}, &Sample::time);
     if (it != trace.samples.end() && it->time == time) {
       it->values = values;
       return;
@@ -192,7 +194,7 @@ void applyWaveformEditInterval(SiliconWaveformTrace& trace, uint64_t duration,
     sample.values[static_cast<std::size_t>(signalIndex)] = rawValue;
   }
 
-  std::vector<SiliconWaveformSample> compacted;
+  std::vector<Sample> compacted;
   compacted.reserve(trace.samples.size());
   for (const auto& sample : trace.samples) {
     if (!compacted.empty() && compacted.back().values == sample.values
@@ -204,35 +206,43 @@ void applyWaveformEditInterval(SiliconWaveformTrace& trace, uint64_t duration,
   trace.samples = std::move(compacted);
 }
 
-std::vector<SiliconWaveformSample>
-editedInputWaveformSamples(const SiliconWaveformTrace& trace)
+std::vector<Sample>
+editedInputSamples(const Trace& trace)
 {
   return trace.samples;
 }
 
-void writeFstTrace(std::string_view fileName, const SiliconWaveformTrace& trace)
+}  // namespace SILICON::waveform
+
+namespace SILICON::waveform::fst {
+
+using namespace SILICON::waveform;
+
+void writeTrace(std::string_view fileName, const Trace& trace)
 {
-  writeFstTrace(fileName, trace, {.topScopeName = "Waveform"});
+  writeTrace(fileName, trace, {.topScopeName = "Waveform"});
 }
 
-void writeFstTrace(std::string_view fileName, const SiliconWaveformTrace& trace,
-                   FstTraceWriter::Options options)
+void writeTrace(std::string_view fileName, const Trace& trace,
+                   TraceWriter::Options options)
 {
   if (trace.signalDefinitions.empty())
     throw std::runtime_error("no waveform signals are available");
 
-  std::vector<FstTraceWriter::TraceSignal> traceSignals;
+  std::vector<TraceWriter::TraceSignal> traceSignals;
   traceSignals.reserve(trace.signalDefinitions.size());
 
   for (std::size_t i = 0; i < trace.signalDefinitions.size(); ++i) {
     traceSignals.push_back({trace.signalDefinitions[i].name,
-                            waveformSignalWidth(trace, static_cast<int>(i))});
+                            signalWidth(trace, static_cast<int>(i))});
   }
 
-  FstTraceWriter writer(fileName, traceSignals, std::move(options));
+  TraceWriter writer(fileName, traceSignals, std::move(options));
 
   for (const auto& sample : trace.samples)
     writer.emitSnapshot(sample.time, sample.values);
 
   writer.flush();
 }
+
+}  // namespace SILICON::waveform::fst

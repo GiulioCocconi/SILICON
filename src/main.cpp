@@ -42,6 +42,9 @@
 #include <ui/logiFlow/logiFlowWindow.hpp>
 #include <ui/serialization/gui_component_registration.hpp>
 
+using namespace SILICON::logging;
+using namespace SILICON::ui;
+
 int siliconMain(int argc, char** argv)
 {
   Logger::initialize();
@@ -75,7 +78,7 @@ int siliconMain(int argc, char** argv)
     parser.process(app);
 
     // Theme
-    ThemeEngine::apply(app, SiliconTheme::Mode::Light);
+    ThemeEngine::apply(app, SILICON::ui::theme::Mode::Light);
 
 #ifdef __MINGW32__
     QFont font = QApplication::font();

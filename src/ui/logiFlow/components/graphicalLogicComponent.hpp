@@ -34,6 +34,11 @@
 #include <ui/common/diagramScene/diagramScene.hpp>
 #include <ui/common/graphicalComponent.hpp>
 
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+
 /**
  * @class GraphicalLogicComponent
  * @brief Base class for logic-gate graphical components.
@@ -138,3 +143,6 @@ public:
     return "Unknown";
   }
 };
+
+}  // namespace ui
+}  // namespace SILICON

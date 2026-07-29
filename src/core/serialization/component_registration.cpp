@@ -28,6 +28,9 @@
 #include <extraComponents/multiplexer.hpp>
 #include <extraComponents/utils.hpp>
 
+namespace SILICON::core {
+using namespace SILICON::extra;
+
 template <typename T> inline void registerComponent(ComponentRegistry& registry)
 {
   static_assert(HasType<T>,
@@ -67,3 +70,5 @@ void registerAllComponents(ComponentRegistry& registry)
   registerComponent<WireSplitter>(registry);
   registerComponent<WireMerger>(registry);
 }
+
+}  // namespace SILICON::core

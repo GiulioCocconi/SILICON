@@ -20,11 +20,16 @@
 
 #include <QPlainTextEdit>
 
-class HDLLineNumberArea;
 class QEvent;
 class QPaintEvent;
 class QResizeEvent;
 class QWidget;
+
+
+namespace SILICON {
+namespace ui {
+
+class HDLLineNumberArea;
 
 /**
  * @brief Plain-text HDL editor with a non-editable line-number gutter.
@@ -53,3 +58,6 @@ private:
 
   HDLLineNumberArea* lineNumberArea;
 };
+
+}  // namespace ui
+}  // namespace SILICON

@@ -23,7 +23,11 @@
 #include <QString>
 #include <QStringList>
 
-namespace ComponentSearchMatcher {
+
+namespace SILICON {
+namespace ui {
+
+namespace componentSearchMatcher {
 
 struct Match {
   int  index;
@@ -35,4 +39,7 @@ struct Match {
 std::vector<Match> rank(QStringList candidates, const QString& query,
                         bool includeNonMatches);
 
-}  // namespace ComponentSearchMatcher
+}  // namespace componentSearchMatcher
+
+}  // namespace ui
+}  // namespace SILICON

@@ -24,9 +24,10 @@
 #include <string_view>
 #include <vector>
 
+namespace SILICON::core {
+
 class ComponentRegistry;
 
-namespace silicon::subcircuits {
 
 /** @brief Core-circuit implementation and interface of a project subcircuit. */
 struct SubcircuitDefinition {
@@ -40,4 +41,5 @@ struct SubcircuitDefinition {
 [[nodiscard]] SubcircuitDefinition
 loadSubcircuitDefinition(std::string_view slug, const ComponentRegistry& registry);
 
-}  // namespace silicon::subcircuits
+
+}  // namespace SILICON::core

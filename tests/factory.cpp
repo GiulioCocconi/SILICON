@@ -22,6 +22,8 @@
 #include <core/serialization/component_registration.hpp>
 #include <core/serialization/component_registry.hpp>
 
+using namespace SILICON::core;
+
 class FactoryTest : public ::testing::Test {
 protected:
   ComponentRegistry registry;

@@ -25,6 +25,8 @@
 
 #include <utils/ranges_wrapper.hpp>
 
+namespace SILICON::core {
+
 Component::Component(std::vector<Bus> inputs, std::vector<Bus> outputs)
   : inputs(std::move(inputs)), outputs(std::move(outputs))
 {
@@ -36,7 +38,7 @@ ComponentMetadata Component::metadata() const
   return {type, type, ComponentCategory::Utils};
 }
 
-void Component::serializeYosys(silicon::yosys::SerializationContext&) const
+void Component::serializeYosys(SILICON::yosys::SerializationContext&) const
 {
   // Export is opt-in: a component must override this method with an exact lowering.
   // Failing here prevents an unsupported component from silently disappearing from
@@ -206,7 +208,7 @@ void Component::setInputs(std::vector<Bus>& newInputs)
   if (this->inputs == newInputs)
     return;
   this->inputs.resize(newInputs.size());
-  for (auto [index, bus] : newInputs | silicon::views::enumerate) {
+  for (auto [index, bus] : newInputs | SILICON::views::enumerate) {
     replaceBus(this->inputs, index, bus, true);
   }
   notifyIOListeners();
@@ -217,7 +219,7 @@ void Component::setOutputs(std::vector<Bus>& newOutputs)
   if (this->outputs == newOutputs)
     return;
   this->outputs.resize(newOutputs.size());
-  for (auto [index, bus] : newOutputs | silicon::views::enumerate) {
+  for (auto [index, bus] : newOutputs | SILICON::views::enumerate) {
     replaceBus(this->outputs, index, bus, false);
   }
   notifyIOListeners();
@@ -231,11 +233,13 @@ bool Component::isConnectedTo(const Bus& b) const
 
 void Component::clearWires()
 {
-  for (auto [index, bus] : this->outputs | silicon::views::enumerate) {
+  for (auto [index, bus] : this->outputs | SILICON::views::enumerate) {
     replaceBus(this->outputs, index, Bus(std::vector<Wire_ptr>(bus.size())), false);
   }
-  for (auto [index, bus] : this->inputs | silicon::views::enumerate) {
+  for (auto [index, bus] : this->inputs | SILICON::views::enumerate) {
     replaceBus(this->inputs, index, Bus(std::vector<Wire_ptr>(bus.size())), true);
   }
   notifyIOListeners();
 }
+
+}  // namespace SILICON::core

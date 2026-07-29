@@ -27,6 +27,10 @@
 #include <QTextBlock>
 #include <QWidget>
 
+
+namespace SILICON {
+namespace ui {
+
 class HDLLineNumberArea : public QWidget {
 public:
   explicit HDLLineNumberArea(HDLCodeEditor* editor)
@@ -131,3 +135,6 @@ void HDLCodeEditor::updateLineNumberAreaWidth()
 {
   setViewportMargins(lineNumberAreaWidth(), 0, 0, 0);
 }
+
+}  // namespace ui
+}  // namespace SILICON

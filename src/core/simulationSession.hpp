@@ -25,7 +25,12 @@
 #include <core/elaboration.hpp>
 #include <core/simulator.hpp>
 
-namespace silicon::simulation {
+namespace SILICON::simulation {
+
+using namespace SILICON::core;
+using namespace SILICON::waveform;
+using namespace SILICON::waveform::fst;
+
 
 /**
  * @brief Owns the source design elaboration and its runtime Simulator.
@@ -34,7 +39,7 @@ namespace silicon::simulation {
  * handles the higher-level simulation lifecycle: elaborate source modules, construct
  * the runtime simulator, and rebuild when the source topology changes.
  *
- * @details SimulationSession is the runtime workflow facade:
+ * @details Session is the runtime workflow facade:
  *
  * 1. The caller provides the source Circuit, which may contain source-level module
  *    placeholders such as subcircuits.
@@ -48,7 +53,7 @@ namespace silicon::simulation {
  * Saved circuit JSON and UI component state remain source-level data; the runtime
  * circuit is an implementation detail of the active simulation session.
  */
-class SimulationSession {
+class Session {
 public:
   /**
    * @brief Creates a simulation session for a source circuit.
@@ -58,13 +63,13 @@ public:
    * construction.
    * @throws std::invalid_argument if @p sourceCircuit is null.
    */
-  explicit SimulationSession(std::shared_ptr<Circuit>     sourceCircuit,
+  explicit Session(std::shared_ptr<Circuit>     sourceCircuit,
                              Simulator::CancellationCheck isCancelled = {});
 
-  ~SimulationSession() = default;
+  ~Session() = default;
 
-  SimulationSession(const SimulationSession&)            = delete;
-  SimulationSession& operator=(const SimulationSession&) = delete;
+  Session(const Session&)            = delete;
+  Session& operator=(const Session&) = delete;
 
   /**
    * @brief Rebuilds the runtime circuit and runtime simulator from the source circuit.
@@ -91,7 +96,7 @@ public:
    */
   Simulator::RunResult
   simulateWaveform(uint64_t                                        duration,
-                   std::span<const SiliconWaveformSample>          inputSnapshots,
+                   std::span<const Sample>          inputSnapshots,
                    std::span<const Simulator::WaveformInputDriver> inputDrivers,
                    Simulator::CancellationCheck                    isCancelled = {});
 
@@ -113,7 +118,7 @@ public:
    *
    * The stored configuration is reapplied after runtime simulator rebuilds.
    */
-  void setTraceBuses(std::vector<SiliconFstWriter::NamedBus> buses);
+  void setTraceBuses(std::vector<CircuitWriter::NamedBus> buses);
 
   /**
    * @brief Stores and applies the callback that receives encoded trace snapshots.
@@ -125,13 +130,13 @@ public:
   /**
    * @brief Installs or clears the active FST writer on the current runtime simulator.
    */
-  void setFstWriter(std::unique_ptr<SiliconFstWriter> writer);
+  void setFstWriter(std::unique_ptr<CircuitWriter> writer);
 
   /**
    * @brief Creates and installs an FST writer for the current runtime simulator.
    */
   void enableFstTracing(std::string_view          fileName,
-                        SiliconFstWriter::Options options = {});
+                        CircuitWriter::Options options = {});
 
   /**
    * @brief Returns the current runtime simulator time.
@@ -142,10 +147,11 @@ private:
   std::shared_ptr<Circuit>                sourceCircuit;
   std::shared_ptr<Circuit>                runtime;
   std::unique_ptr<Simulator>              runtimeSimulator;
-  silicon::elaboration::CircuitElaborator elaborator;
+  CircuitElaborator elaborator;
 
-  std::vector<SiliconFstWriter::NamedBus> traceBuses;
+  std::vector<CircuitWriter::NamedBus> traceBuses;
   Simulator::TraceSink                    traceSink;
 };
 
-}  // namespace silicon::simulation
+
+}  // namespace SILICON::simulation

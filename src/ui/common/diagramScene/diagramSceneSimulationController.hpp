@@ -39,10 +39,18 @@
 #include <core/siliconWaveform.hpp>
 #include <core/simulationSession.hpp>
 
-class Bus;
-class DiagramScene;
 class QProgressDialog;
 class QTimer;
+
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+using namespace SILICON::simulation;
+using namespace SILICON::waveform;
+using namespace SILICON::waveform::fst;
+
+class DiagramScene;
 
 /**
  * @class DiagramSceneSimulationController
@@ -117,7 +125,7 @@ public:
    * @param inputSnapshots Input-only timestamped values ordered like waveform inputs
    */
   void simulateEditedWaveform(qulonglong                         duration,
-                              std::vector<SiliconWaveformSample> inputSnapshots);
+                              std::vector<Sample> inputSnapshots);
 
   /**
    * @brief Returns whether FST tracing is currently enabled.
@@ -127,7 +135,7 @@ public:
 private:
   /** @brief Ordered buses and group metadata used by waveform tracing. */
   struct TraceConfiguration {
-    std::vector<SiliconFstWriter::NamedBus> buses;          /**< Buses to sample */
+    std::vector<CircuitWriter::NamedBus> buses;          /**< Buses to sample */
     QList<int>                              widths;         /**< Bus widths */
     int                                     inputCount = 0; /**< Leading input buses */
   };
@@ -175,7 +183,7 @@ private:
   void resetJobCancellation();
 
   /** @brief Rebuilds the waveform viewer's signal-name configuration. */
-  void resetWaveformTrace(const TraceConfiguration& trace);
+  void resetTrace(const TraceConfiguration& trace);
 
   /**
    * @brief Applies trace buses, snapshot collection, and optional FST output.
@@ -189,7 +197,7 @@ private:
   DiagramScene& scene;
 
   /** @brief Runtime simulation session active only during simulation mode */
-  std::unique_ptr<silicon::simulation::SimulationSession> simulator;
+  std::unique_ptr<SILICON::simulation::Session> simulator;
 
   /** @brief Optional output file used for live FST tracing */
   std::optional<std::string> fstTraceFile;
@@ -221,3 +229,6 @@ private:
   /** @brief Worker-produced snapshots delivered to the viewer as one GUI batch */
   QList<QPair<qulonglong, QStringList>> pendingWaveformSnapshots;
 };
+
+}  // namespace ui
+}  // namespace SILICON

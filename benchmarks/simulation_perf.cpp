@@ -34,6 +34,11 @@
 #include <string_view>
 #include <vector>
 
+using namespace SILICON::core;
+using namespace SILICON::simulation;
+using namespace SILICON::waveform;
+using namespace SILICON::logging;
+
 namespace {
 
 using Clock = std::chrono::steady_clock;

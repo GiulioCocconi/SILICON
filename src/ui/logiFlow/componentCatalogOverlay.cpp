@@ -48,6 +48,11 @@
 #include <core/projectDocument.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
 
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+
 namespace {
 
 constexpr int CatalogPreviewPadding            = 8;
@@ -103,8 +108,8 @@ std::vector<ComponentCatalogOverlay::CatalogRow> componentCatalogRows(
   }
 
   for (const auto& document :
-       silicon::project::DocumentStore::active().documents(
-           silicon::project::DocumentKind::Subcircuit)) {
+       SILICON::project::DocumentStore::active().documents(
+           SILICON::project::DocumentKind::Subcircuit)) {
     if (!subcircuitHasGraphicalMetadata(document.sceneJson()))
       continue;
 
@@ -219,7 +224,7 @@ void ComponentCatalogOverlay::rebuildRows()
     }
 
     std::vector<bool> selected(catalogRows.size(), false);
-    for (const auto& match : ComponentSearchMatcher::rank(candidates, query, false)) {
+    for (const auto& match : SILICON::ui::componentSearchMatcher::rank(candidates, query, false)) {
       const size_t rowIndex = candidateRows[static_cast<size_t>(match.index)];
       if (selected[rowIndex])
         continue;
@@ -359,3 +364,6 @@ QStringList ComponentCatalogOverlay::searchableFields(const CatalogRow& rowData)
           QString::fromStdString(
               std::string(componentCategoryName(rowData.metadata.category)))};
 }
+
+}  // namespace ui
+}  // namespace SILICON

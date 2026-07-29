@@ -37,7 +37,10 @@
 #include <core/subcircuit.hpp>
 #include <core/subcircuitDefinition.hpp>
 
-namespace silicon::yosys {
+namespace SILICON::yosys {
+
+using namespace SILICON::core;
+
 namespace {
 
   struct ModuleInterface {
@@ -224,8 +227,7 @@ namespace {
       }
 
       auto definition =
-          subcircuits::loadSubcircuitDefinition(slugString,
-                                                ComponentRegistry::instance());
+          loadSubcircuitDefinition(slugString, ComponentRegistry::instance());
 
       ModuleInterface interface;
       interface.moduleName = slugString;
@@ -407,4 +409,4 @@ std::string serialize(const Circuit& circuit)
   return design.dump(2);
 }
 
-}  // namespace silicon::yosys
+}  // namespace SILICON::yosys

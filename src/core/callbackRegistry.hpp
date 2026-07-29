@@ -11,6 +11,8 @@
 #include <utility>
 #include <vector>
 
+namespace SILICON::core {
+
 template <typename... Args>
 class CallbackRegistry {
 public:
@@ -40,3 +42,5 @@ private:
   std::unordered_map<std::uint64_t, Callback> callbacks;
   std::uint64_t                               nextId = 0;
 };
+
+}  // namespace SILICON::core

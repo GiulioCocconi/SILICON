@@ -26,51 +26,59 @@
 
 #include <core/fstTraceWriter.hpp>
 
-struct SiliconWaveformSignal {
+namespace SILICON::waveform {
+
+struct Signal {
   std::string name;
   std::size_t width = 1;
 };
 
-struct SiliconWaveformSample {
+struct Sample {
   uint64_t                 time = 0;
   std::vector<std::string> values;
 };
 
-struct SiliconWaveformTrace {
-  std::vector<SiliconWaveformSignal> signalDefinitions;
-  std::vector<SiliconWaveformSample> samples;
+struct Trace {
+  std::vector<Signal> signalDefinitions;
+  std::vector<Sample> samples;
   int                                inputCount = 0;
 };
 
-void resetWaveformTrace(SiliconWaveformTrace&              trace,
-                        std::vector<SiliconWaveformSignal> signalDefinitions,
+void resetTrace(Trace&              trace,
+                        std::vector<Signal> signalDefinitions,
                         int                                inputCount);
 
-void appendWaveformSnapshot(SiliconWaveformTrace& trace, uint64_t time,
+void appendSnapshot(Trace& trace, uint64_t time,
                             std::vector<std::string> values);
 
-void appendWaveformSnapshots(SiliconWaveformTrace&                  trace,
-                             std::span<const SiliconWaveformSample> samples);
+void appendSnapshots(Trace&                  trace,
+                             std::span<const Sample> samples);
 
-void clearWaveformSamples(SiliconWaveformTrace& trace);
+void clearSamples(Trace& trace);
 
-[[nodiscard]] std::size_t waveformSignalWidth(const SiliconWaveformTrace& trace,
+[[nodiscard]] std::size_t signalWidth(const Trace& trace,
                                               int                         signalIndex);
 
 [[nodiscard]] std::string rawBitsForValue(unsigned int value, std::size_t width);
 
 [[nodiscard]] unsigned int rawBitsToUnsignedValue(std::string_view rawBits);
 
-void rebuildEditableWaveformTrace(SiliconWaveformTrace& trace, uint64_t duration);
+void rebuildEditableTrace(Trace& trace, uint64_t duration);
 
-void applyWaveformEditInterval(SiliconWaveformTrace& trace, uint64_t duration,
+void applyEditInterval(Trace& trace, uint64_t duration,
                                int signalIndex, uint64_t startTime, uint64_t endTime,
                                std::string rawValue);
 
-[[nodiscard]] std::vector<SiliconWaveformSample>
-editedInputWaveformSamples(const SiliconWaveformTrace& trace);
+[[nodiscard]] std::vector<Sample>
+editedInputSamples(const Trace& trace);
 
-void writeFstTrace(std::string_view fileName, const SiliconWaveformTrace& trace);
+}  // namespace SILICON::waveform
 
-void writeFstTrace(std::string_view fileName, const SiliconWaveformTrace& trace,
-                   FstTraceWriter::Options options);
+namespace SILICON::waveform::fst {
+
+void writeTrace(std::string_view fileName, const waveform::Trace& trace);
+
+void writeTrace(std::string_view fileName, const waveform::Trace& trace,
+                   TraceWriter::Options options);
+
+}  // namespace SILICON::waveform::fst

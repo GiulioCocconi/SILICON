@@ -35,10 +35,15 @@
 #include <core/wire.hpp>
 #include <utils/transparent_string.hpp>
 
-class Simulator;
-namespace silicon::yosys {
+namespace SILICON::yosys {
 class SerializationContext;
 }
+
+namespace SILICON::simulation {
+class Simulator;
+}
+
+namespace SILICON::core {
 
 enum class ComponentCategory {
   Gates,
@@ -71,6 +76,10 @@ struct ComponentMetadata {
   PortRole          portRole = PortRole::None;
 };
 
+}  // namespace SILICON::core
+
+namespace SILICON::simulation {
+
 /**
  * @brief Context describing why a component is being evaluated.
  *
@@ -78,25 +87,25 @@ struct ComponentMetadata {
  * simulate(Simulator&) overload. Timing-aware components can override the overload
  * that receives this structure.
  */
-struct SimulationContext {
+struct Context {
   /** @brief True for initial or otherwise full-plan evaluation. */
   bool initialEvaluation = false;
 
   /** @brief Buses that caused a reactive forward-cone evaluation. */
-  std::span<const Bus> changedBuses{};
+  std::span<const core::Bus> changedBuses{};
 
   /** @brief Wire states captured before the reactive mutation that caused this pass. */
-  std::unordered_map<uint64_t, State> previousWireStates{};
+  std::unordered_map<uint64_t, core::State> previousWireStates{};
 
   /** @brief Returns true when a wire has a captured previous state different from now. */
-  [[nodiscard]] bool changed(const Wire_ptr& wire) const
+  [[nodiscard]] bool changed(const core::Wire_ptr& wire) const
   {
     const auto previous = previousState(wire);
     return previous.has_value() && wire && *previous != wire->getCurrentState();
   }
 
   /** @brief Returns the state a wire had before this reactive evaluation, if captured. */
-  [[nodiscard]] std::optional<State> previousState(const Wire_ptr& wire) const
+  [[nodiscard]] std::optional<core::State> previousState(const core::Wire_ptr& wire) const
   {
     if (!wire)
       return std::nullopt;
@@ -108,6 +117,10 @@ struct SimulationContext {
     return it->second;
   }
 };
+
+}  // namespace SILICON::simulation
+
+namespace SILICON::core {
 
 /**
  * @brief Concept to check if a type has a Type static member.
@@ -371,7 +384,10 @@ public:
    *
    * @param sim The simulator executing this component
    */
-  virtual void simulate(Simulator& sim) { simulate(sim, SimulationContext{true, {}}); }
+  virtual void simulate(SILICON::simulation::Simulator& sim)
+  {
+    simulate(sim, SILICON::simulation::Context{true, {}});
+  }
 
   /**
    * @brief Executes the component's logic with simulator scheduling context.
@@ -383,7 +399,8 @@ public:
    * @param sim The simulator executing this component
    * @param context Evaluation metadata for this simulation pass
    */
-  virtual void simulate(Simulator& sim, const SimulationContext& context)
+  virtual void simulate(SILICON::simulation::Simulator&                sim,
+                        const SILICON::simulation::Context& context)
   {
     (void)context;
     simulate(sim);
@@ -557,7 +574,7 @@ public:
    * Third-party components that do not override this method fail export with a
    * descriptive error instead of silently producing an incomplete netlist.
    */
-  virtual void serializeYosys(silicon::yosys::SerializationContext& context) const;
+  virtual void serializeYosys(SILICON::yosys::SerializationContext& context) const;
 
   // --- IO Observer Pattern ---
 
@@ -574,3 +591,5 @@ public:
    */
   void removeIOListener(uint64_t id);
 };
+
+}  // namespace SILICON::core

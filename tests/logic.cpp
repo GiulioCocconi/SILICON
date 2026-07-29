@@ -25,6 +25,10 @@
 #include <string>
 #include <utility>
 
+using namespace SILICON::core;
+using namespace SILICON::simulation;
+using namespace SILICON::waveform;
+
 namespace {
 void expectBusStates(const Bus& bus, std::initializer_list<State> expected)
 {
@@ -79,7 +83,7 @@ public:
 
   void simulate(Simulator&) override { ++legacyCallCount; }
 
-  void simulate(Simulator&, const SimulationContext& context) override
+  void simulate(Simulator&, const Context& context) override
   {
     Record record;
     record.initialEvaluation = context.initialEvaluation;
@@ -260,7 +264,7 @@ TEST(SimulatorTest, SimulatesInternalInputWaveform)
   auto      circuit = std::make_shared<Circuit>(Component_set{gate});
   Simulator simulator(circuit);
 
-  const std::vector<SiliconWaveformSample> inputSnapshots{
+  const std::vector<Sample> inputSnapshots{
       {0, {"0", "0"}},
       {3, {"1", "1"}},
   };
@@ -285,7 +289,7 @@ TEST(SimulatorTest, WaveformInputSampleCapturesPreviousWireStates)
   auto      circuit  = std::make_shared<Circuit>(Component_set{recorder});
   Simulator simulator(circuit);
 
-  const std::vector<SiliconWaveformSample>          inputSnapshots{{0, {"01"}}};
+  const std::vector<Sample>          inputSnapshots{{0, {"01"}}};
   const std::vector<Simulator::WaveformInputDriver> inputDrivers{{input, {}}};
 
   EXPECT_EQ(simulator.simulateWaveform(1, inputSnapshots, inputDrivers),
@@ -583,7 +587,7 @@ TEST(FlipFlopTest, DLatchUnknownEnableInvalidatesStoredState)
   enable->setCurrentState(State::UNKNOWN, {});
   const std::array changedBuses{Bus{enable}};
   latch->simulate(simulator,
-                  SimulationContext{false, changedBuses, {{enable->getId(), State::HIGH}}});
+                  Context{false, changedBuses, {{enable->getId(), State::HIGH}}});
   EXPECT_EQ(q->getCurrentState(), State::UNKNOWN);
   EXPECT_EQ(notQ->getCurrentState(), State::UNKNOWN);
 }
@@ -1011,7 +1015,7 @@ TEST(SimulatorTest, InteractiveSettlingKeepsWaveformChangesAtDistinctTimes)
   auto      circuit = std::make_shared<Circuit>(Component_set{gate});
   Simulator simulator(circuit);
 
-  std::vector<SiliconWaveformSample> samples;
+  std::vector<Sample> samples;
   auto appendSnapshot = [&samples](uint64_t time, std::vector<std::string> values) {
     if (!samples.empty() && samples.back().time == time) {
       samples.back().values = std::move(values);
@@ -1067,7 +1071,7 @@ TEST(SimulatorTest, WaveformAppliesSameTimestampInputsTogether)
   });
   tracedValues.clear();
 
-  const std::vector<SiliconWaveformSample> inputSnapshots{
+  const std::vector<Sample> inputSnapshots{
       {0, {"0", "0"}},
       {3, {"1", "1"}},
   };

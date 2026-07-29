@@ -30,6 +30,10 @@
 #include <core/subcircuit.hpp>
 #include <core/subcircuitDefinition.hpp>
 
+namespace SILICON::simulation {
+
+using namespace SILICON::core;
+
 namespace {
 
 using WirePtrMap = std::unordered_map<const Wire*, Wire_ptr>;
@@ -152,8 +156,7 @@ void appendSubcircuitInstance(const Component_ptr& component,
   ActiveKeyGuard activeSubcircuit(activeSubcircuits, *slug,
                                   "Recursive subcircuit dependency detected: ");
 
-  auto definition = silicon::subcircuits::loadSubcircuitDefinition(*slug,
-                                                                   context.registry);
+  auto definition = SILICON::core::loadSubcircuitDefinition(*slug, context.registry);
   validateInterface(key, "input", definition.inputs, component->getInputs());
   validateInterface(key, "output", definition.outputs, component->getOutputs());
 
@@ -217,7 +220,6 @@ void appendCircuit(const Circuit& circuit, ElaborationContext& context,
 
 }  // namespace
 
-namespace silicon::elaboration {
 
 CircuitElaborator::CircuitElaborator(const ComponentRegistry& registry)
   : registry(registry)
@@ -238,4 +240,5 @@ std::shared_ptr<Circuit> CircuitElaborator::elaborate(const Circuit& sourceCircu
   return runtimeCircuit;
 }
 
-}  // namespace silicon::elaboration
+
+}  // namespace SILICON::simulation

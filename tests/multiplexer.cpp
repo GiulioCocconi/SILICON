@@ -17,6 +17,11 @@
 #include <stdexcept>
 #include <vector>
 
+using namespace SILICON::core;
+using namespace SILICON::extra;
+using namespace SILICON::simulation;
+using namespace SILICON::waveform;
+
 namespace {
 void expectBusStates(const Bus& bus, const std::vector<State>& expected)
 {

@@ -16,6 +16,10 @@
 
 #include <core/serialization/projectFile.hpp>
 
+
+namespace SILICON {
+namespace ui {
+
 /** @brief Semantic type of an item shown in the LogiFlow project tree. */
 enum class ProjectTreeItemKind {
   Project,
@@ -37,23 +41,26 @@ class ProjectTree : public QTreeWidget {
 public:
   explicit ProjectTree(QWidget* parent = nullptr);
 
-  void rebuild(const silicon::project::ProjectInfo&           project,
-               const std::vector<silicon::project::Document>& circuits,
-               const std::vector<silicon::project::Document>& subcircuits,
+  void rebuild(const SILICON::project::ProjectInfo&           project,
+               const std::vector<SILICON::project::Document>& circuits,
+               const std::vector<SILICON::project::Document>& subcircuits,
                const std::string&                             activeDocumentPath);
-  void updateLabels(const silicon::project::ProjectInfo&           project,
-                    const std::vector<silicon::project::Document>& circuits,
-                    const std::vector<silicon::project::Document>& subcircuits);
+  void updateLabels(const SILICON::project::ProjectInfo&           project,
+                    const std::vector<SILICON::project::Document>& circuits,
+                    const std::vector<SILICON::project::Document>& subcircuits);
 
   void selectDocument(const std::string& path);
   void clearDocumentSelection();
 
   [[nodiscard]] QTreeWidgetItem* selectedProjectItem() const;
-  [[nodiscard]] QTreeWidgetItem* sectionFor(silicon::project::DocumentKind kind) const;
+  [[nodiscard]] QTreeWidgetItem* sectionFor(SILICON::project::DocumentKind kind) const;
   [[nodiscard]] static ProjectTreeItemKind itemKind(const QTreeWidgetItem* item);
   [[nodiscard]] static std::string         documentPath(const QTreeWidgetItem* item);
 
 private:
-  void addSection(QTreeWidgetItem* projectItem, silicon::project::DocumentKind kind,
-                  const std::vector<silicon::project::Document>& documents);
+  void addSection(QTreeWidgetItem* projectItem, SILICON::project::DocumentKind kind,
+                  const std::vector<SILICON::project::Document>& documents);
 };
+
+}  // namespace ui
+}  // namespace SILICON

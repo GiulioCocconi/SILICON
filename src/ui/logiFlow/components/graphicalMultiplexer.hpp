@@ -21,6 +21,12 @@
 #include <extraComponents/multiplexer.hpp>
 #include <ui/logiFlow/components/graphicalLogicComponent.hpp>
 
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+using namespace SILICON::extra;
+
 class GraphicalMultiplexer : public GraphicalLogicComponent {
   Q_OBJECT
 private:
@@ -81,3 +87,6 @@ public:
 
   void setComponent(const Component_ptr& component) override;
 };
+
+}  // namespace ui
+}  // namespace SILICON

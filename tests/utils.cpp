@@ -21,6 +21,11 @@
 #include <core/simulator.hpp>
 #include <extraComponents/utils.hpp>
 
+using namespace SILICON::core;
+using namespace SILICON::extra;
+using namespace SILICON::simulation;
+using namespace SILICON::waveform;
+
 TEST(UtilsTest, WireMergerCase)
 {
   auto a = std::make_shared<Wire>(State::LOW);

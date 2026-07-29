@@ -23,6 +23,11 @@
 #include <core/gates.hpp>
 #include <ui/logiFlow/components/graphicalLogicComponent.hpp>
 
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+
 class GraphicalGate : public GraphicalLogicComponent {
   Q_OBJECT
 protected:
@@ -104,3 +109,6 @@ public:
 
   int type() const override { return SiliconTypes::XOR_GATE; }
 };
+
+}  // namespace ui
+}  // namespace SILICON

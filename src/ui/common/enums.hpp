@@ -21,6 +21,10 @@
 #include <QVariant>
 #include <utility>
 
+
+namespace SILICON {
+namespace ui {
+
 // 1. Define safe roles and categories
 enum class ItemDataRole { Category = Qt::UserRole + 1 };
 
@@ -106,3 +110,6 @@ enum SiliconTypes {
 
   LOGIFLOW_END,
 };
+
+}  // namespace ui
+}  // namespace SILICON

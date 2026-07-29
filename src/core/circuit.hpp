@@ -32,6 +32,8 @@
 #include <core/callbackRegistry.hpp>
 #include <core/wire.hpp>
 
+namespace SILICON::core {
+
 class ComponentRegistry;
 enum class PortRole;
 
@@ -451,3 +453,5 @@ struct Circuit::SimulationBlock {
   /** @brief Pre-computed execution order for acyclic blocks */
   std::vector<Component_weakPtr> executionOrder;
 };
+
+}  // namespace SILICON::core

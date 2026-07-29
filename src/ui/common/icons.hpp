@@ -29,6 +29,10 @@
 
 #include <vector>
 
+
+namespace SILICON {
+namespace ui {
+
 class Icon : public QIcon {
 public:
   explicit Icon(const QString&            commonName,
@@ -92,3 +96,6 @@ private:
 
   static QString getPathFromCommonName(const QString& commonName);
 };
+
+}  // namespace ui
+}  // namespace SILICON

@@ -109,6 +109,11 @@
 #include <ui/logiFlow/projectTree.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
 
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+
 namespace {
 
 // Clipboard data is intentionally BSON-only so partial JSON fallbacks cannot drift
@@ -116,7 +121,7 @@ namespace {
 constexpr auto LogiFlowSelectionMimeType =
     "application/vnd.silicon.logiflow-selection+bson";
 
-const Logger uiLog("ui");
+const SILICON::logging::Logger uiLog("ui");
 
 QString interactionModeName(const InteractionMode mode)
 {
@@ -173,7 +178,7 @@ void LogiFlowWindow::newFile()
   try {
     saveActiveDocumentPayload();
   } catch (const std::exception& error) {
-    SiliconInputDialog::critical(
+    SILICON::ui::inputDialog::critical(
         this, tr("HDL Error"),
         tr("Compile the active HDL before creating a new project:\n%1")
             .arg(error.what()));
@@ -200,9 +205,9 @@ void LogiFlowWindow::resetProjectState()
   diagramScene->setSubcircuitDocumentMode(false);
   auto document = defaultCircuitDocument();
   document.setSceneJson(diagramScene->serialize());
-  silicon::project::DocumentStore::active().setDocuments({std::move(document)});
+  SILICON::project::DocumentStore::active().setDocuments({std::move(document)});
   dependencyGraph.rebuildFromProject(
-      silicon::project::DocumentStore::active().documents());
+      SILICON::project::DocumentStore::active().documents());
   updateSubcircuitShapeAction();
 }
 
@@ -337,7 +342,7 @@ void LogiFlowWindow::loadCircuitContent(const QString&    fileName,
     const QString archivePath = archive.fileName();
     archive.close();
 
-    auto projectFile = silicon::project::readProjectFile(archivePath.toStdString());
+    auto projectFile = SILICON::project::readProjectFile(archivePath.toStdString());
 
     // Clear the current scene items to prepare for the new circuit.
     diagramScene->clear();
@@ -347,23 +352,23 @@ void LogiFlowWindow::loadCircuitContent(const QString&    fileName,
     currentProjectInfo     = std::move(projectFile.project);
     projectAssets          = std::move(projectFile.assets);
     activeDocumentPath     = projectMainCircuitPath();
-    std::vector<silicon::project::Document> documents;
+    std::vector<SILICON::project::Document> documents;
     documents.reserve(projectFile.documents.size());
     for (auto& document : projectFile.documents) {
-      if (document.kind() == silicon::project::DocumentKind::Subcircuit)
+      if (document.kind() == SILICON::project::DocumentKind::Subcircuit)
         documents.push_back(
             preparedSubcircuitDocument(document.path(), document.sceneJson()));
       else
         documents.push_back(std::move(document));
     }
-    silicon::project::DocumentStore::active().setDocuments(std::move(documents));
+    SILICON::project::DocumentStore::active().setDocuments(std::move(documents));
     dependencyGraph.rebuildFromProject(
-        silicon::project::DocumentStore::active().documents());
+        SILICON::project::DocumentStore::active().documents());
 
     auto&       guiFactory   = GUIComponentFactory::instance();
     auto&       coreRegistry = ComponentRegistry::instance();
     const auto* document =
-        silicon::project::DocumentStore::active().find(activeDocumentPath);
+        SILICON::project::DocumentStore::active().find(activeDocumentPath);
     if (!document)
       throw std::runtime_error("Main circuit payload is missing");
     diagramScene->deserialize(document->sceneJson(), guiFactory, coreRegistry);
@@ -377,11 +382,11 @@ void LogiFlowWindow::loadCircuitContent(const QString&    fileName,
     updatePropertyDock();
 
   } catch (const nlohmann::json::exception& e) {
-    SiliconInputDialog::critical(
+    SILICON::ui::inputDialog::critical(
         this, tr("Corrupted File"),
         tr("The circuit file contains invalid JSON data:\n%1").arg(e.what()));
   } catch (const std::exception& e) {
-    SiliconInputDialog::critical(this, tr("Load Error"),
+    SILICON::ui::inputDialog::critical(this, tr("Load Error"),
                                  tr("Failed to load the circuit:\n%1").arg(e.what()));
   }
 }
@@ -391,13 +396,13 @@ void LogiFlowWindow::open()
   try {
     saveActiveDocumentPayload();
   } catch (const std::exception& error) {
-    SiliconInputDialog::critical(
+    SILICON::ui::inputDialog::critical(
         this, tr("HDL Error"),
         tr("Compile the active HDL before opening another project:\n%1")
             .arg(error.what()));
     return;
   }
-  SiliconFileDialog::openFileContent(
+  SILICON::ui::fileDialog::openFileContent(
       this, tr("Open Circuit"), tr("Silicon Circuit (*.sil);;All Files (*)"),
       [this](const QString& fileName, const QByteArray& fileContent) {
         loadCircuitContent(fileName, fileContent);
@@ -409,7 +414,7 @@ void LogiFlowWindow::save()
   try {
     saveActiveDocumentPayload();
   } catch (const std::exception& e) {
-    SiliconInputDialog::critical(
+    SILICON::ui::inputDialog::critical(
         this, tr("Save Error"),
         tr("Failed to serialize the active circuit:\n%1").arg(e.what()));
     return;
@@ -431,25 +436,25 @@ void LogiFlowWindow::save()
 
   try {
     auto metadata =
-        currentProjectMetadata.value_or(silicon::project::metadataForNewFile());
-    metadata.formatVersion  = silicon::project::ProjectFormatVersion;
+        currentProjectMetadata.value_or(SILICON::project::metadataForNewFile());
+    metadata.formatVersion  = SILICON::project::ProjectFormatVersion;
     metadata.siliconVersion = SILICON_VERSION;
-    metadata.lastModify     = silicon::project::currentUtcTimestamp();
+    metadata.lastModify     = SILICON::project::currentUtcTimestamp();
 
-    auto project = currentProjectInfo.value_or(silicon::project::ProjectInfo{});
+    auto project = currentProjectInfo.value_or(SILICON::project::ProjectInfo{});
     if (project.name.empty())
       project.name = QFileInfo(destinationFileName).baseName().toStdString();
     if (project.mainCircuit.empty())
       project.mainCircuit = defaultMainCircuitPath();
     currentProjectInfo = project;
     ensureProjectDocuments();
-    const auto  documents = silicon::project::DocumentStore::active().documents();
+    const auto  documents = SILICON::project::DocumentStore::active().documents();
     const auto* mainDocument =
-        silicon::project::DocumentStore::active().find(project.mainCircuit);
+        SILICON::project::DocumentStore::active().find(project.mainCircuit);
     if (!mainDocument)
       throw std::runtime_error("Main circuit payload is missing");
 
-    silicon::project::ProjectFile projectFile{.metadata  = metadata,
+    SILICON::project::ProjectFile projectFile{.metadata  = metadata,
                                               .project   = project,
                                               .documents = documents,
                                               .assets    = projectAssets,
@@ -463,26 +468,26 @@ void LogiFlowWindow::save()
     const QString archivePath = archive.fileName();
     archive.close();
 
-    silicon::project::writeProjectFile(archivePath.toStdString(), projectFile);
+    SILICON::project::writeProjectFile(archivePath.toStdString(), projectFile);
 
     QFile archiveFile(archivePath);
     if (!archiveFile.open(QIODevice::ReadOnly))
       throw std::runtime_error("Cannot read the temporary project archive");
 
-    const auto savedFileName = SiliconFileDialog::saveFileContent(
+    const auto savedFileName = SILICON::ui::fileDialog::saveFileContent(
         this, tr("Save Circuit"), destinationFileName,
         tr("Silicon Circuit (*.sil);;All Files (*)"), archiveFile.readAll());
     if (!savedFileName)
       return;
     setFileName(*savedFileName);
 #else
-    silicon::project::writeProjectFile(destinationFileName.toStdString(), projectFile);
+    SILICON::project::writeProjectFile(destinationFileName.toStdString(), projectFile);
     setFileName(destinationFileName);
 #endif
     currentProjectMetadata = std::move(metadata);
     updateProjectTreeLabels();
   } catch (const std::exception& e) {
-    SiliconInputDialog::critical(this, tr("Save Error"),
+    SILICON::ui::inputDialog::critical(this, tr("Save Error"),
                                  tr("Failed to save the circuit:\n%1").arg(e.what()));
   }
 }
@@ -655,23 +660,23 @@ void LogiFlowWindow::showProjectTreeContextMenu(const QPoint& position)
 
 void LogiFlowWindow::createCircuit()
 {
-  createDocument(silicon::project::DocumentKind::Circuit);
+  createDocument(SILICON::project::DocumentKind::Circuit);
 }
 
 void LogiFlowWindow::createSubcircuit()
 {
-  createDocument(silicon::project::DocumentKind::Subcircuit);
+  createDocument(SILICON::project::DocumentKind::Subcircuit);
 }
 
-void LogiFlowWindow::createDocument(const silicon::project::DocumentKind kind)
+void LogiFlowWindow::createDocument(const SILICON::project::DocumentKind kind)
 {
-  const bool circuit = kind == silicon::project::DocumentKind::Circuit;
-  SiliconInputDialog::getText(
+  const bool circuit = kind == SILICON::project::DocumentKind::Circuit;
+  SILICON::ui::inputDialog::getText(
       this, circuit ? tr("New Circuit") : tr("New Subcircuit"),
       circuit ? tr("Circuit name") : tr("Subcircuit name"),
       circuit ? tr("Circuit") : tr("Subcircuit"),
       [this, kind](const QString& requestedName) {
-        const bool    circuit     = kind == silicon::project::DocumentKind::Circuit;
+        const bool    circuit     = kind == SILICON::project::DocumentKind::Circuit;
         const QString trimmedName = requestedName.trimmed();
         const QString displayName =
             trimmedName.isEmpty()
@@ -681,8 +686,8 @@ void LogiFlowWindow::createDocument(const silicon::project::DocumentKind kind)
         const auto path              = uniqueDocumentPath(kind, displayName);
         const auto sceneJson         = circuit ? emptyCircuitSceneJson(displayNameString)
                                                : emptySubcircuitSceneJson(displayNameString);
-        silicon::project::Document document =
-            circuit ? silicon::project::Document(path, sceneJson)
+        SILICON::project::Document document =
+            circuit ? SILICON::project::Document(path, sceneJson)
                     : preparedSubcircuitDocument(path, sceneJson);
 
         auto addDocument = [this, document] {
@@ -730,7 +735,7 @@ void LogiFlowWindow::deleteSelectedDocument()
   try {
     saveActiveDocumentPayload();
   } catch (const std::exception& e) {
-    SiliconInputDialog::warning(
+    SILICON::ui::inputDialog::warning(
         this, circuit ? tr("Delete Circuit") : tr("Delete Subcircuit"),
         tr("Failed to save the active document before deleting it:\n%1").arg(e.what()));
     return;
@@ -742,19 +747,19 @@ void LogiFlowWindow::deleteSelectedDocument()
       QStringList dependentNames;
       for (const auto& dependent : dependents)
         dependentNames.push_back(QString::fromStdString(dependent));
-      SiliconInputDialog::warning(
+      SILICON::ui::inputDialog::warning(
           this, tr("Delete Subcircuit"),
           tr("This subcircuit is still used by:\n%1").arg(dependentNames.join('\n')));
       return;
     }
   }
 
-  SiliconInputDialog::question(
+  SILICON::ui::inputDialog::question(
       this, circuit ? tr("Delete Circuit") : tr("Delete Subcircuit"),
       (circuit ? tr("Delete circuit \"%1\"?") : tr("Delete subcircuit \"%1\"?"))
           .arg(selectedProjectItem->text(0)),
       [this, path, circuit] {
-        auto&       store          = silicon::project::DocumentStore::active();
+        auto&       store          = SILICON::project::DocumentStore::active();
         const auto* storedDocument = store.find(path);
         const auto  storedIndex    = store.indexOf(path);
         if (!storedDocument || !storedIndex)
@@ -762,9 +767,9 @@ void LogiFlowWindow::deleteSelectedDocument()
 
         const auto document = *storedDocument;
         const auto index    = static_cast<std::ptrdiff_t>(*storedIndex);
-        std::optional<silicon::project::ProjectAsset> hdlAsset;
+        std::optional<SILICON::project::ProjectAsset> hdlAsset;
         if (const auto descriptor =
-                silicon::project::parseHdlDescriptor(document.sceneJson())) {
+                SILICON::project::parseHdlDescriptor(document.sceneJson())) {
           if (const auto* asset = projectAsset(descriptor->path))
             hdlAsset = *asset;
         }
@@ -781,3 +786,6 @@ void LogiFlowWindow::deleteSelectedDocument()
                                                 restoreDocument, removeStored));
       });
 }
+
+}  // namespace ui
+}  // namespace SILICON

@@ -27,7 +27,7 @@
 #include <boost/graph/topological_sort.hpp>
 #include <nlohmann/json.hpp>
 
-namespace silicon::project {
+namespace SILICON::project {
 namespace {
 
   [[nodiscard]] std::string slugForDocumentPath(const std::string_view documentPath)
@@ -312,4 +312,4 @@ void ProjectDependencyGraph::throwIfCyclic() const
   }
 }
 
-}  // namespace silicon::project
+}  // namespace SILICON::project

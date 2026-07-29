@@ -22,6 +22,10 @@
 
 #include <ui/common/icons.hpp>
 
+
+namespace SILICON {
+namespace ui {
+
 class AboutDialog : public QDialog {
   Q_OBJECT
 
@@ -47,3 +51,6 @@ private:
   QPushButton*    closeButton;
   QString         licenseText = "";
 };
+
+}  // namespace ui
+}  // namespace SILICON

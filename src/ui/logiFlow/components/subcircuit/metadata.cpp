@@ -35,6 +35,11 @@
 #include <ui/common/enums.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
 
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+
 namespace {
 
 constexpr ItemCategory InputCategory  = ItemCategory::IO | ItemCategory::Input;
@@ -552,3 +557,6 @@ graphicalSubcircuitMetadataToJson(const GraphicalSubcircuitMetadata& metadata)
 {
   return metadataToJson(metadata);
 }
+
+}  // namespace ui
+}  // namespace SILICON

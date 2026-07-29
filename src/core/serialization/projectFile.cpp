@@ -34,7 +34,7 @@
 #include <nlohmann/json.hpp>
 #include <zip.h>
 
-namespace silicon::project {
+namespace SILICON::project {
 namespace {
 
   constexpr const char* MetadataPath = "metadata.json";
@@ -469,4 +469,4 @@ void writeProjectFile(const std::filesystem::path& path, const ProjectFile& proj
   archive.release();
 }
 
-}  // namespace silicon::project
+}  // namespace SILICON::project

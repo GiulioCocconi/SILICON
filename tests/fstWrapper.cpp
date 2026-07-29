@@ -30,6 +30,11 @@
 #include <string>
 #include <vector>
 
+using namespace SILICON::core;
+using namespace SILICON::simulation;
+using namespace SILICON::waveform;
+using namespace SILICON::waveform::fst;
+
 // --- Helper Utilities ------------------------------------------------------------------
 
 // RAII helper to clean up generated test files
@@ -61,7 +66,7 @@ inline void PrintTo(const WaveEvent& ev, std::ostream* os)
 
 TEST(FstWrapperTest, ThrowsOnMissingFile)
 {
-  EXPECT_THROW(FstReader("nonexistent_path_12345.fst"), std::runtime_error);
+  EXPECT_THROW(Reader("nonexistent_path_12345.fst"), std::runtime_error);
 }
 
 TEST(FstWrapperTest, MetadataAndBasicIO)
@@ -72,7 +77,7 @@ TEST(FstWrapperTest, MetadataAndBasicIO)
   fstHandle h_clk, h_rst;
 
   {
-    FstHierarchyBuilder builder(filename);
+    HierarchyBuilder builder(filename);
     builder.setTimeScale(-9);  // nanoseconds
     builder.setDate("2026-01-01");
     builder.setVersion("FST Wrapper Test");
@@ -93,7 +98,7 @@ TEST(FstWrapperTest, MetadataAndBasicIO)
     writer.emitValueChange(h_clk, "1");
   }
 
-  FstReader reader(filename);
+  Reader reader(filename);
 
   EXPECT_EQ(reader.getTimescale(), -9);
   EXPECT_EQ(reader.getDate(), "2026-01-01");
@@ -132,7 +137,7 @@ TEST(FstWrapperTest, HierarchyTreeConstruction)
   FileCleanup       cleanup{filename};
 
   {
-    FstHierarchyBuilder builder(filename);
+    HierarchyBuilder builder(filename);
 
     builder.setScope(FST_ST_VCD_MODULE, "Top");
     builder.createVar(FST_VT_VCD_WIRE, FST_VD_INPUT, 1, "clk");
@@ -145,7 +150,7 @@ TEST(FstWrapperTest, HierarchyTreeConstruction)
     auto writer = std::move(builder).finish();
   }
 
-  FstReader reader(filename);
+  Reader reader(filename);
   auto      top = reader.buildHierarchyTree();
 
   EXPECT_EQ(top.name, "Top");
@@ -171,7 +176,7 @@ TEST(FstWrapperTest, NumericAndVariableLengthEmissions)
   fstHandle h_32, h_64, h_varlen;
 
   {
-    FstHierarchyBuilder builder(filename);
+    HierarchyBuilder builder(filename);
     builder.setScope(FST_ST_VCD_MODULE, "Core");
     h_32        = builder.createVar(FST_VT_VCD_INTEGER, FST_VD_IMPLICIT, 4, "val32");
     h_64        = builder.createVar(FST_VT_VCD_INTEGER, FST_VD_IMPLICIT, 4, "val64");
@@ -184,7 +189,7 @@ TEST(FstWrapperTest, NumericAndVariableLengthEmissions)
     writer.emitVariableLengthValueChange(h_varlen, "Hello_FST");
   }
 
-  FstReader reader(filename);
+  Reader reader(filename);
   reader.setFacProcessMaskAll();
 
   std::map<fstHandle, std::string> latest_vals;
@@ -203,7 +208,7 @@ TEST(FstWrapperTest, TimeRangeFiltering)
 
   fstHandle h_clk;
   {
-    FstHierarchyBuilder builder(filename);
+    HierarchyBuilder builder(filename);
     builder.setScope(FST_ST_VCD_MODULE, "TB");
     h_clk       = builder.createVar(FST_VT_VCD_WIRE, FST_VD_IMPLICIT, 1, "clk");
     auto writer = std::move(builder).finish();
@@ -215,7 +220,7 @@ TEST(FstWrapperTest, TimeRangeFiltering)
     }
   }
 
-  FstReader reader(filename);
+  Reader reader(filename);
   reader.setFacProcessMaskAll();
 
   // Set reading limit completely outside the bounds of the file's min/max.
@@ -244,7 +249,7 @@ TEST(FstWrapperTest, FacilityMaskFiltering)
 
   fstHandle h_v1, h_v2;
   {
-    FstHierarchyBuilder builder(filename);
+    HierarchyBuilder builder(filename);
     builder.setScope(FST_ST_VCD_MODULE, "TB");
     h_v1        = builder.createVar(FST_VT_VCD_WIRE, FST_VD_IMPLICIT, 1, "v1");
     h_v2        = builder.createVar(FST_VT_VCD_WIRE, FST_VD_IMPLICIT, 1, "v2");
@@ -255,7 +260,7 @@ TEST(FstWrapperTest, FacilityMaskFiltering)
     writer.emitValueChange(h_v2, "1");
   }
 
-  FstReader reader(filename);
+  Reader reader(filename);
 
   reader.clearFacProcessMaskAll();
   reader.setFacProcessMask(h_v2);
@@ -274,7 +279,7 @@ TEST(FstWrapperTest, EnumTables)
   FileCleanup       cleanup{filename};
 
   {
-    FstHierarchyBuilder builder(filename);
+    HierarchyBuilder builder(filename);
 
     // 1. Declare the scope first!
     builder.setScope(FST_ST_VCD_MODULE, "Core");
@@ -290,7 +295,7 @@ TEST(FstWrapperTest, EnumTables)
     auto writer = std::move(builder).finish();
   }
 
-  FstReader   reader(filename);
+  Reader   reader(filename);
   std::string captured_enum_str;
 
   // Search the raw hierarchy attributes to extract the encoded payload.
@@ -308,7 +313,7 @@ TEST(FstWrapperTest, EnumTables)
       << "Failed to locate dynamic enum payload in generated FST attributes.";
 
   // Decode the raw payload using the wrapper tool
-  auto [name, mapping] = FstReader::parseEnumTable(captured_enum_str);
+  auto [name, mapping] = Reader::parseEnumTable(captured_enum_str);
 
   EXPECT_EQ(name, "StateEnum");
   ASSERT_EQ(mapping.size(), 2);
@@ -326,7 +331,7 @@ TEST(FstWrapperTest, ThrowsOnMultipleRoots)
   FileCleanup       cleanup{filename};
 
   {
-    FstHierarchyBuilder builder(filename);
+    HierarchyBuilder builder(filename);
     builder.setScope(FST_ST_VCD_MODULE, "RootA");
     builder.upScope();
     builder.setScope(FST_ST_VCD_MODULE, "RootB");
@@ -334,7 +339,7 @@ TEST(FstWrapperTest, ThrowsOnMultipleRoots)
     std::move(builder).finish();
   }
 
-  FstReader reader(filename);
+  Reader reader(filename);
   EXPECT_THROW(auto a = reader.buildHierarchyTree(), std::runtime_error);
 }
 
@@ -346,7 +351,7 @@ TEST(FstTraceWriterTest, RegistersSignalsAndEmitsSnapshots)
   fstHandle h_scalar, h_bus;
 
   {
-    FstTraceWriter writer(filename,
+    TraceWriter writer(filename,
                           {{"scalar", 1}, {"bus", 4}, {"ignored_zero_width", 0}},
                           {.topScopeName = "Trace"});
 
@@ -364,7 +369,7 @@ TEST(FstTraceWriterTest, RegistersSignalsAndEmitsSnapshots)
     writer.emitSnapshot(5, secondValues);
   }
 
-  FstReader reader(filename);
+  Reader reader(filename);
 
   EXPECT_EQ(reader.getTimescale(), -9);
   EXPECT_EQ(reader.getVarCount(), 2);
@@ -396,7 +401,7 @@ TEST(FstTraceWriterTest, NormalizesSampledValues)
   fstHandle h_wide, h_empty, h_invalid, h_missing;
 
   {
-    FstTraceWriter writer(filename,
+    TraceWriter writer(filename,
                           {{"wide", 3}, {"empty", 2}, {"invalid", 2}, {"missing", 2}},
                           {.topScopeName = "Trace"});
 
@@ -409,7 +414,7 @@ TEST(FstTraceWriterTest, NormalizesSampledValues)
     writer.emitSnapshot(0, values);
   }
 
-  FstReader reader(filename);
+  Reader reader(filename);
 
   std::map<std::pair<uint64_t, fstHandle>, std::string> values;
   reader.setFacProcessMaskAll();
@@ -444,7 +449,7 @@ TEST(SiliconFstWriterTest, RegistersCircuitBusesAndEmitsSnapshots)
   fstHandle h_input0, h_input1, h_output0;
 
   {
-    SiliconFstWriter writer(filename, circuit, {.topScopeName = "Trace"});
+    CircuitWriter writer(filename, circuit, {.topScopeName = "Trace"});
 
     EXPECT_EQ(writer.busCount(), 3);
     ASSERT_TRUE(writer.handleForBus("input_0").has_value());
@@ -466,7 +471,7 @@ TEST(SiliconFstWriterTest, RegistersCircuitBusesAndEmitsSnapshots)
     writer.emitSnapshot(5);
   }
 
-  FstReader reader(filename);
+  Reader reader(filename);
 
   EXPECT_EQ(reader.getTimescale(), -9);
   EXPECT_EQ(reader.getVarCount(), 3);
@@ -519,7 +524,7 @@ TEST(SiliconFstWriterTest, SimulatorFstTraceUsesConfiguredBusNames)
     simulator.run(5);
   }
 
-  FstReader  reader(filename);
+  Reader  reader(filename);
   const auto hierarchy = reader.buildHierarchyTree();
 
   EXPECT_EQ(hierarchy.name, "SimTrace");

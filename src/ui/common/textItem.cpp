@@ -17,6 +17,11 @@
 
 #include "textItem.hpp"
 
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+
 TextItem::TextItem(std::string_view text, QGraphicsItem* parent) : QGraphicsItem(parent)
 {
   this->setText(text);
@@ -29,3 +34,6 @@ void TextItem::setText(std::string_view text)
   this->rect = QFontMetrics(QApplication::font()).boundingRect(qText);
   this->text = qText;
 }
+
+}  // namespace ui
+}  // namespace SILICON

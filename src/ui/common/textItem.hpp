@@ -27,6 +27,9 @@
 #include <QPointF>
 #include <QRectF>
 
+
+namespace SILICON {
+namespace ui {
 class TextItem : public QGraphicsItem {
 public:
   explicit TextItem(std::string_view text, QGraphicsItem* parent = nullptr);
@@ -43,3 +46,6 @@ private:
   QRectF  rect;
   QString text;
 };
+
+}  // namespace ui
+}  // namespace SILICON

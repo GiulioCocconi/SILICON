@@ -35,6 +35,11 @@
 
 #include <nlohmann/json.hpp>
 
+
+namespace SILICON {
+namespace ui {
+using namespace SILICON::core;
+
 class GraphicalWireSegment;
 class WireManager;
 
@@ -410,3 +415,6 @@ private:
   /** @brief Grab radius for point selection */
   static constexpr double grabRadius = 8.0;
 };
+
+}  // namespace ui
+}  // namespace SILICON

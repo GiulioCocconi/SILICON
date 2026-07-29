@@ -25,6 +25,9 @@ Copyright (c) 2026. Giulio Cocconi
 
 #include <ui/common/diagramScene/diagramScene.hpp>
 
+
+namespace SILICON {
+namespace ui {
 class DiagramView : public QGraphicsView {
   Q_OBJECT
 public:
@@ -47,3 +50,6 @@ private:
   int                  zoomLevel      = 100;
   void                 updateZoom();
 };
+
+}  // namespace ui
+}  // namespace SILICON

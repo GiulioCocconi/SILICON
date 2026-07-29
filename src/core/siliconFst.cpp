@@ -22,10 +22,14 @@
 #include <string>
 #include <vector>
 
+namespace SILICON::waveform::fst {
+
+using namespace SILICON::core;
+
 namespace {
 
-SiliconFstWriter::Options optionsForCircuit(const Circuit&            circuit,
-                                            SiliconFstWriter::Options options)
+CircuitWriter::Options optionsForCircuit(const Circuit&            circuit,
+                                            CircuitWriter::Options options)
 {
   if (options.topScopeName.empty() && !circuit.getName().empty())
     options.topScopeName = circuit.getName();
@@ -33,9 +37,9 @@ SiliconFstWriter::Options optionsForCircuit(const Circuit&            circuit,
   return options;
 }
 
-std::vector<SiliconFstWriter::NamedBus> collectCircuitIoBuses(const Circuit& circuit)
+std::vector<CircuitWriter::NamedBus> collectCircuitIoBuses(const Circuit& circuit)
 {
-  std::vector<SiliconFstWriter::NamedBus> buses;
+  std::vector<CircuitWriter::NamedBus> buses;
 
   const auto inputs = circuit.getInputs();
   buses.reserve(inputs.size() + circuit.getOutputs().size());
@@ -50,10 +54,10 @@ std::vector<SiliconFstWriter::NamedBus> collectCircuitIoBuses(const Circuit& cir
   return buses;
 }
 
-std::vector<SiliconFstWriter::NamedBus>
-registeredBusesFor(const std::vector<SiliconFstWriter::NamedBus>& namedBuses)
+std::vector<CircuitWriter::NamedBus>
+registeredBusesFor(const std::vector<CircuitWriter::NamedBus>& namedBuses)
 {
-  std::vector<SiliconFstWriter::NamedBus> buses;
+  std::vector<CircuitWriter::NamedBus> buses;
   buses.reserve(namedBuses.size());
 
   for (const auto& [name, bus] : namedBuses) {
@@ -66,10 +70,10 @@ registeredBusesFor(const std::vector<SiliconFstWriter::NamedBus>& namedBuses)
   return buses;
 }
 
-std::vector<FstTraceWriter::TraceSignal>
-traceSignalsFor(const std::vector<SiliconFstWriter::NamedBus>& namedBuses)
+std::vector<TraceWriter::TraceSignal>
+traceSignalsFor(const std::vector<CircuitWriter::NamedBus>& namedBuses)
 {
-  std::vector<FstTraceWriter::TraceSignal> signals;
+  std::vector<TraceWriter::TraceSignal> signals;
   signals.reserve(namedBuses.size());
 
   for (const auto& [name, bus] : namedBuses) {
@@ -92,7 +96,7 @@ std::string encodeBusValue(const Bus& bus)
     if (!*it) {
       value.push_back('x');
     } else {
-      value.push_back(SiliconFstWriter::stateToFstValue((*it)->getCurrentState()));
+      value.push_back(CircuitWriter::stateToFstValue((*it)->getCurrentState()));
     }
   }
 
@@ -101,25 +105,25 @@ std::string encodeBusValue(const Bus& bus)
 
 }  // namespace
 
-SiliconFstWriter::SiliconFstWriter(std::string_view fileName, const Circuit& circuit)
-  : SiliconFstWriter(fileName, circuit, Options{})
+CircuitWriter::CircuitWriter(std::string_view fileName, const Circuit& circuit)
+  : CircuitWriter(fileName, circuit, Options{})
 {
 }
 
-SiliconFstWriter::SiliconFstWriter(std::string_view fileName, const Circuit& circuit,
+CircuitWriter::CircuitWriter(std::string_view fileName, const Circuit& circuit,
                                    Options options)
-  : SiliconFstWriter(fileName, collectCircuitIoBuses(circuit),
+  : CircuitWriter(fileName, collectCircuitIoBuses(circuit),
                      optionsForCircuit(circuit, std::move(options)))
 {
 }
 
-SiliconFstWriter::SiliconFstWriter(std::string_view             fileName,
+CircuitWriter::CircuitWriter(std::string_view             fileName,
                                    const std::vector<NamedBus>& buses)
-  : SiliconFstWriter(fileName, buses, Options{})
+  : CircuitWriter(fileName, buses, Options{})
 {
 }
 
-SiliconFstWriter::SiliconFstWriter(std::string_view             fileName,
+CircuitWriter::CircuitWriter(std::string_view             fileName,
                                    const std::vector<NamedBus>& namedBuses,
                                    Options                      options)
   : buses(registeredBusesFor(namedBuses)),
@@ -127,7 +131,7 @@ SiliconFstWriter::SiliconFstWriter(std::string_view             fileName,
 {
 }
 
-void SiliconFstWriter::emitSnapshot(uint64_t time)
+void CircuitWriter::emitSnapshot(uint64_t time)
 {
   std::vector<std::string> values;
   values.reserve(buses.size());
@@ -138,17 +142,17 @@ void SiliconFstWriter::emitSnapshot(uint64_t time)
   writer.emitSnapshot(time, values);
 }
 
-void SiliconFstWriter::flush()
+void CircuitWriter::flush()
 {
   writer.flush();
 }
 
-std::optional<fstHandle> SiliconFstWriter::handleForBus(std::string_view name) const
+std::optional<fstHandle> CircuitWriter::handleForBus(std::string_view name) const
 {
   return writer.handleForSignal(name);
 }
 
-char SiliconFstWriter::stateToFstValue(const State state)
+char CircuitWriter::stateToFstValue(const State state)
 {
   switch (state) {
     case State::LOW: return '0';
@@ -159,3 +163,5 @@ char SiliconFstWriter::stateToFstValue(const State state)
 
   return 'x';
 }
+
+}  // namespace SILICON::waveform::fst

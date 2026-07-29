@@ -24,6 +24,9 @@
 #include <core/component.hpp>
 #include <core/wire.hpp>
 
+namespace SILICON::extra {
+using namespace SILICON::core;
+
 /**
  * @class HalfAdder
  * @brief One-bit half adder.
@@ -76,10 +79,10 @@ public:
 
   /**
    * @brief Evaluates the half-adder truth table.
-   * @param sim Simulator used to drive output wires
+   * @param sim SILICON::simulation::Simulator used to drive output wires
    */
-  void simulate(class Simulator& sim) override;
-  void serializeYosys(silicon::yosys::SerializationContext& context) const override;
+  void simulate(SILICON::simulation::Simulator& sim) override;
+  void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
 };
 
 /**
@@ -138,10 +141,10 @@ public:
 
   /**
    * @brief Evaluates the full-adder truth table.
-   * @param sim Simulator used to drive output wires
+   * @param sim SILICON::simulation::Simulator used to drive output wires
    */
-  void simulate(Simulator& sim) override;
-  void serializeYosys(silicon::yosys::SerializationContext& context) const override;
+  void simulate(SILICON::simulation::Simulator& sim) override;
+  void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
 };
 
 /**
@@ -197,10 +200,10 @@ public:
 
   /**
    * @brief Evaluates the N-bit adder.
-   * @param sim Simulator used to drive output wires
+   * @param sim SILICON::simulation::Simulator used to drive output wires
    */
-  void simulate(Simulator& sim) override;
-  void serializeYosys(silicon::yosys::SerializationContext& context) const override;
+  void simulate(SILICON::simulation::Simulator& sim) override;
+  void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
 
   /**
    * @brief Resizes both inputs, the sum output, and the carry output.
@@ -209,3 +212,5 @@ public:
    */
   int setSize(int width);
 };
+
+}  // namespace SILICON::extra

@@ -20,7 +20,7 @@
 
 #include <string_view>
 
-namespace silicon::yosys::cells {
+namespace SILICON::yosys::cells {
 
 inline constexpr std::string_view Dff       = "SILICON_DFF";
 inline constexpr std::string_view Dffe      = "SILICON_DFFE";
@@ -36,4 +36,4 @@ inline constexpr std::string_view Piso      = "SILICON_PISO";
 inline constexpr std::string_view Sipo      = "SILICON_SIPO";
 inline constexpr std::string_view Siso      = "SILICON_SISO";
 
-}  // namespace silicon::yosys::cells
+}  // namespace SILICON::yosys::cells

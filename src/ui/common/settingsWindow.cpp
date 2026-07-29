@@ -43,6 +43,10 @@
 #include <ui/common/fileDialogUtils.hpp>
 #include <ui/common/theme.hpp>
 
+
+namespace SILICON {
+namespace ui {
+
 namespace {
 void copySettings(QSettings& source, QSettings& target)
 {
@@ -50,7 +54,7 @@ void copySettings(QSettings& source, QSettings& target)
     target.setValue(key, source.value(key));
 }
 
-void applySettingHelp(QWidget* widget, const SiliconSetting::Definition& setting)
+void applySettingHelp(QWidget* widget, const SILICON::ui::settings::Definition& setting)
 {
   if (!setting.help.has_value())
     return;
@@ -60,7 +64,7 @@ void applySettingHelp(QWidget* widget, const SiliconSetting::Definition& setting
 }
 
 void addSettingRow(QFormLayout* layout, const QString& label, QWidget* editor,
-                   const SiliconSetting::Definition& setting)
+                   const SILICON::ui::settings::Definition& setting)
 {
   const auto labelWidget = new QLabel(label, layout->parentWidget());
   labelWidget->setBuddy(editor);
@@ -80,8 +84,8 @@ SettingsWindow::SettingsWindow(const QString& appName, QVector<ShortcutSetting> 
   resize(560, 520);
 
   themeCombo = new QComboBox(this);
-  themeCombo->addItem(tr("Light"), SiliconSetting::LightTheme);
-  themeCombo->addItem(tr("Dark"), SiliconSetting::DarkTheme);
+  themeCombo->addItem(tr("Light"), SILICON::ui::settings::LightTheme);
+  themeCombo->addItem(tr("Dark"), SILICON::ui::settings::DarkTheme);
 
   maxSimulationStepsSpinBox = new QSpinBox(this);
   maxSimulationStepsSpinBox->setRange(1, std::numeric_limits<int>::max());
@@ -91,12 +95,12 @@ SettingsWindow::SettingsWindow(const QString& appName, QVector<ShortcutSetting> 
 
   const auto generalGroup  = new QGroupBox(tr("General"), this);
   const auto generalLayout = new QFormLayout(generalGroup);
-  addSettingRow(generalLayout, tr("Theme"), themeCombo, SiliconSetting::Theme);
+  addSettingRow(generalLayout, tr("Theme"), themeCombo, SILICON::ui::settings::Theme);
   addSettingRow(generalLayout, tr("Max simulation steps"), maxSimulationStepsSpinBox,
-                SiliconSetting::MaxSimulationSteps);
+                SILICON::ui::settings::MaxSimulationSteps);
   addSettingRow(generalLayout, tr("Max transitions per delta cycle"),
                 maxTransitionsPerDeltaCycleSpinBox,
-                SiliconSetting::MaxTransitionsPerDeltaCycle);
+                SILICON::ui::settings::MaxTransitionsPerDeltaCycle);
 
   keybindingsLayout = new QFormLayout();
   for (const ShortcutSetting& shortcut : this->shortcuts)
@@ -155,14 +159,14 @@ void SettingsWindow::loadSettings()
   const int                  themeIndex = themeCombo->findData(values.theme);
   themeCombo->setCurrentIndex(
       themeIndex >= 0 ? themeIndex
-                      : themeCombo->findData(SiliconSetting::Theme.defaultValue));
+                      : themeCombo->findData(SILICON::ui::settings::Theme.defaultValue));
 
   maxSimulationStepsSpinBox->setValue(values.maxSimulationSteps);
   maxTransitionsPerDeltaCycleSpinBox->setValue(values.maxTransitionsPerDeltaCycle);
 
   for (int i = 0; i < shortcuts.size(); ++i) {
     shortcutEditors[i]->setKeySequence(
-        SiliconSetting::value(settings, shortcuts[i].setting).value<QKeySequence>());
+        SILICON::ui::settings::value(settings, shortcuts[i].setting).value<QKeySequence>());
   }
 }
 
@@ -172,7 +176,7 @@ void SettingsWindow::restoreDefaults()
   const int                  themeIndex = themeCombo->findData(defaults.theme);
   themeCombo->setCurrentIndex(
       themeIndex >= 0 ? themeIndex
-                      : themeCombo->findData(SiliconSetting::Theme.defaultValue));
+                      : themeCombo->findData(SILICON::ui::settings::Theme.defaultValue));
   maxSimulationStepsSpinBox->setValue(defaults.maxSimulationSteps);
   maxTransitionsPerDeltaCycleSpinBox->setValue(defaults.maxTransitionsPerDeltaCycle);
 
@@ -253,7 +257,7 @@ QByteArray SettingsWindow::exportSettingsContent()
 
 void SettingsWindow::importSettings()
 {
-  SiliconFileDialog::openFileContent(
+  SILICON::ui::fileDialog::openFileContent(
       this, tr("Import Settings"), tr("TOML Settings (*.toml);;All Files (*)"),
       [this](const QString& fileName, const QByteArray& fileContent) {
         QTemporaryFile importedFile(this);
@@ -276,7 +280,7 @@ void SettingsWindow::exportSettings()
 {
   const QByteArray content = exportSettingsContent();
   if (!content.isEmpty())
-    SiliconFileDialog::saveFileContent(
+    SILICON::ui::fileDialog::saveFileContent(
         this, tr("Export Settings"), QStringLiteral("silicon-settings.toml"),
         tr("TOML Settings (*.toml);;All Files (*)"), content);
 }
@@ -290,9 +294,10 @@ void SettingsWindow::addShortcutEditor(const ShortcutSetting& shortcut)
 
 void SettingsWindow::applySettings()
 {
-  Simulator::setMaxSimulationSteps(
+  SILICON::simulation::Simulator::setMaxSimulationSteps(
       static_cast<uint64_t>(maxSimulationStepsSpinBox->value()));
-  Simulator::setMaxTransitionsPerDeltaCycle(maxTransitionsPerDeltaCycleSpinBox->value());
+  SILICON::simulation::Simulator::setMaxTransitionsPerDeltaCycle(
+      maxTransitionsPerDeltaCycleSpinBox->value());
 
   ThemeEngine::apply(*qApp, themeModeFromText(themeCombo->currentData().toString()));
 
@@ -304,13 +309,16 @@ void SettingsWindow::applySettings()
 
 void SettingsWindow::writeVisibleSettings(QSettings& target) const
 {
-  target.setValue(SiliconSetting::Theme.name, themeCombo->currentData().toString());
-  target.setValue(SiliconSetting::MaxSimulationSteps.name,
+  target.setValue(SILICON::ui::settings::Theme.name, themeCombo->currentData().toString());
+  target.setValue(SILICON::ui::settings::MaxSimulationSteps.name,
                   maxSimulationStepsSpinBox->value());
-  target.setValue(SiliconSetting::MaxTransitionsPerDeltaCycle.name,
+  target.setValue(SILICON::ui::settings::MaxTransitionsPerDeltaCycle.name,
                   maxTransitionsPerDeltaCycleSpinBox->value());
 
   for (int i = 0; i < shortcuts.size(); ++i)
     target.setValue(shortcuts[i].setting.name,
                     QVariant::fromValue(shortcutEditors[i]->keySequence()));
 }
+
+}  // namespace ui
+}  // namespace SILICON
