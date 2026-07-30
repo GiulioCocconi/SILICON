@@ -13,8 +13,7 @@
 
 namespace SILICON::core {
 
-template <typename... Args>
-class CallbackRegistry {
+template <typename... Args> class CallbackRegistry {
 public:
   using Callback = std::function<void(Args...)>;
 
@@ -25,8 +24,7 @@ public:
     return id;
   }
 
-  void remove(const std::uint64_t id)
-  { callbacks.erase(id); }
+  void remove(const std::uint64_t id) { callbacks.erase(id); }
 
   void notify(Args... args)
   {

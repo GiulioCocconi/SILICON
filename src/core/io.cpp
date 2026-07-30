@@ -32,24 +32,24 @@ namespace SILICON::core {
 
 namespace {
 
-constexpr std::string_view                PortOrientationProperty = "portOrientation";
-constexpr std::array<std::string_view, 4> PortOrientations        = {"UP", "DOWN", "LEFT",
-                                                                     "RIGHT"};
-constexpr int MaxEditableBus = std::numeric_limits<unsigned int>::digits - 1;
+  constexpr std::string_view                PortOrientationProperty = "portOrientation";
+  constexpr std::array<std::string_view, 4> PortOrientations = {"UP", "DOWN", "LEFT",
+                                                                "RIGHT"};
+  constexpr int MaxEditableBus = std::numeric_limits<unsigned int>::digits - 1;
 
-[[nodiscard]] StringPropertyOptions orientationOptions()
-{
-  StringPropertyOptions options;
-  options.reserve(PortOrientations.size());
-  for (const auto orientation : PortOrientations)
-    options.emplace_back(orientation);
-  return options;
-}
+  [[nodiscard]] StringPropertyOptions orientationOptions()
+  {
+    StringPropertyOptions options;
+    options.reserve(PortOrientations.size());
+    for (const auto orientation : PortOrientations)
+      options.emplace_back(orientation);
+    return options;
+  }
 
-[[nodiscard]] int normalizedBusSize(const int size)
-{
-  return std::clamp(size, 1, MaxEditableBus);
-}
+  [[nodiscard]] int normalizedBusSize(const int size)
+  {
+    return std::clamp(size, 1, MaxEditableBus);
+  }
 
 }  // namespace
 
@@ -90,8 +90,7 @@ void ConstantComponent::serializeYosys(
 }
 
 BoundaryIoComponent::BoundaryIoComponent(std::vector<Bus> inputs,
-                                         std::vector<Bus> outputs,
-                                         std::string name)
+                                         std::vector<Bus> outputs, std::string name)
   : Component(std::move(inputs), std::move(outputs))
 {
   defineProperty("name", std::move(name));
@@ -104,11 +103,11 @@ void BoundaryIoComponent::serializeYosys(
 {
   const auto role = metadata().portRole;
   if (role == PortRole::Input) {
-    context.addPort(getPropertyValue<std::string>("name").value_or("input"),
-                    "input", outputBuses().at(0));
+    context.addPort(getPropertyValue<std::string>("name").value_or("input"), "input",
+                    outputBuses().at(0));
   } else if (role == PortRole::Output) {
-    context.addPort(getPropertyValue<std::string>("name").value_or("output"),
-                    "output", inputBuses().at(0));
+    context.addPort(getPropertyValue<std::string>("name").value_or("output"), "output",
+                    inputBuses().at(0));
   } else {
     throw std::runtime_error("Cannot export boundary I/O without a port role");
   }

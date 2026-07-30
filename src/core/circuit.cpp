@@ -37,71 +37,76 @@ namespace SILICON::core {
 
 namespace {
 
-const SILICON::logging::Logger circuitLog("circuit");
+  const SILICON::logging::Logger circuitLog("circuit");
 
-[[nodiscard]] std::string interfacePortName(const PortRole role,
-                                            const std::size_t index)
-{
-  return std::format("{}_{}", role == PortRole::Input ? "input" : "output", index);
-}
+  [[nodiscard]] std::string interfacePortName(const PortRole    role,
+                                              const std::size_t index)
+  {
+    return std::format("{}_{}", role == PortRole::Input ? "input" : "output", index);
+  }
 
-[[nodiscard]] std::vector<CircuitPort> boundaryPorts(const CircuitGraph& graph,
-                                                     const PortRole role)
-{
-  std::vector<CircuitPort> ports;
-  for (const auto vertex : boost::make_iterator_range(boost::vertices(graph))) {
-    const auto& component = graph[vertex].component;
-    if (!component || component->metadata().portRole != role)
-      continue;
+  [[nodiscard]] std::vector<CircuitPort> boundaryPorts(const CircuitGraph& graph,
+                                                       const PortRole      role)
+  {
+    std::vector<CircuitPort> ports;
+    for (const auto vertex : boost::make_iterator_range(boost::vertices(graph))) {
+      const auto& component = graph[vertex].component;
+      if (!component || component->metadata().portRole != role)
+        continue;
 
-    const auto& buses =
-        role == PortRole::Input ? component->outputBuses() : component->inputBuses();
-    for (const auto& bus : buses) {
-      ports.push_back(
-          {.name = component->getPropertyValue<std::string>("name").value_or(
-               interfacePortName(role, ports.size())),
-           .bus = bus});
+      const auto& buses =
+          role == PortRole::Input ? component->outputBuses() : component->inputBuses();
+      for (const auto& bus : buses) {
+        ports.push_back(
+            {.name = component->getPropertyValue<std::string>("name").value_or(
+                 interfacePortName(role, ports.size())),
+             .bus = bus});
+      }
     }
+    return ports;
   }
-  return ports;
-}
 
-[[nodiscard]] bool hasRegistryDefinedInterface(const std::string_view type)
-{
-  return type == "Subcircuit";
-}
-
-[[nodiscard]] Bus reconcileBus(const Bus& expectedBus, const Bus& serializedBus)
-{
-  if (expectedBus.size() == serializedBus.size())
-    return serializedBus;
-
-  auto       wires = static_cast<std::vector<Wire_ptr>>(expectedBus);
-  const auto width = std::min(expectedBus.size(), serializedBus.size());
-  for (std::size_t bit = 0; bit < width; ++bit)
-    wires[bit] = serializedBus[static_cast<unsigned short>(bit)];
-  return Bus(std::move(wires));
-}
-
-[[nodiscard]] std::vector<Bus> reconcileBuses(std::vector<Bus>        expectedBuses,
-                                              const std::vector<Bus>& serializedBuses)
-{
-  for (std::size_t busIndex = 0;
-       busIndex < expectedBuses.size() && busIndex < serializedBuses.size(); ++busIndex) {
-    expectedBuses[busIndex] =
-        reconcileBus(expectedBuses[busIndex], serializedBuses[busIndex]);
+  [[nodiscard]] bool hasRegistryDefinedInterface(const std::string_view type)
+  {
+    return type == "Subcircuit";
   }
-  return expectedBuses;
-}
+
+  [[nodiscard]] Bus reconcileBus(const Bus& expectedBus, const Bus& serializedBus)
+  {
+    if (expectedBus.size() == serializedBus.size())
+      return serializedBus;
+
+    auto       wires = static_cast<std::vector<Wire_ptr>>(expectedBus);
+    const auto width = std::min(expectedBus.size(), serializedBus.size());
+    for (std::size_t bit = 0; bit < width; ++bit)
+      wires[bit] = serializedBus[static_cast<unsigned short>(bit)];
+    return Bus(std::move(wires));
+  }
+
+  [[nodiscard]] std::vector<Bus> reconcileBuses(std::vector<Bus>        expectedBuses,
+                                                const std::vector<Bus>& serializedBuses)
+  {
+    for (std::size_t busIndex = 0;
+         busIndex < expectedBuses.size() && busIndex < serializedBuses.size();
+         ++busIndex) {
+      expectedBuses[busIndex] =
+          reconcileBus(expectedBuses[busIndex], serializedBuses[busIndex]);
+    }
+    return expectedBuses;
+  }
 }  // namespace
 
 // --- Topology Observers & Live Editing -------------------------------------------------
 
 uint64_t Circuit::addTopologyListener(TopologyObserver cb)
-{ return topologyListeners.add(std::move(cb)); }
+{
+  return topologyListeners.add(std::move(cb));
+}
 
 void Circuit::removeTopologyListener(uint64_t id)
-{ topologyListeners.remove(id); }
+{
+  topologyListeners.remove(id);
+}
 
 void Circuit::notifyTopologyListeners()
 {
@@ -413,7 +418,9 @@ std::vector<Bus> Circuit::getInputs() const
 }
 
 std::vector<CircuitPort> Circuit::getInputPorts() const
-{ return interfacePorts(PortRole::Input); }
+{
+  return interfacePorts(PortRole::Input);
+}
 
 std::vector<CircuitPort> Circuit::interfacePorts(const PortRole role) const
 {
@@ -429,17 +436,14 @@ std::vector<CircuitPort> Circuit::interfacePorts(const PortRole role) const
   std::vector<Bus> result;
 
   if (role == PortRole::Input)
-    std::ranges::set_difference(inputBuses, outputBuses,
-                                std::back_inserter(result));
+    std::ranges::set_difference(inputBuses, outputBuses, std::back_inserter(result));
   else
-    std::ranges::set_difference(outputBuses, inputBuses,
-                                std::back_inserter(result));
+    std::ranges::set_difference(outputBuses, inputBuses, std::back_inserter(result));
 
   std::vector<CircuitPort> fallback;
   fallback.reserve(result.size());
   for (std::size_t index = 0; index < result.size(); ++index)
-    fallback.push_back(
-        {.name = interfacePortName(role, index), .bus = result[index]});
+    fallback.push_back({.name = interfacePortName(role, index), .bus = result[index]});
   return fallback;
 }
 
@@ -451,7 +455,9 @@ std::vector<Bus> Circuit::getOutputs() const
 }
 
 std::vector<CircuitPort> Circuit::getOutputPorts() const
-{ return interfacePorts(PortRole::Output); }
+{
+  return interfacePorts(PortRole::Output);
+}
 
 Component_set Circuit::getComponentsForBus(Bus b) const
 {

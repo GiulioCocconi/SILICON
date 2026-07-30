@@ -36,39 +36,39 @@ using namespace SILICON::waveform;
 using namespace SILICON::waveform::fst;
 
 namespace {
-const SILICON::logging::Logger simulationLog("simulation");
+  const SILICON::logging::Logger simulationLog("simulation");
 
-struct StepVectorHash {
-  [[nodiscard]] std::size_t
-  operator()(const std::vector<std::size_t>& values) const noexcept
-  {
-    std::size_t seed = values.size();
-    for (const auto value : values) {
-      seed ^= std::hash<std::size_t>{}(value) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+  struct StepVectorHash {
+    [[nodiscard]] std::size_t
+    operator()(const std::vector<std::size_t>& values) const noexcept
+    {
+      std::size_t seed = values.size();
+      for (const auto value : values) {
+        seed ^= std::hash<std::size_t>{}(value) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+      }
+      return seed;
     }
-    return seed;
+  };
+
+  bool cancellationRequested(const Simulator::CancellationCheck& isCancelled)
+  {
+    // An empty callback keeps existing synchronous callers on the zero-overhead path.
+    return isCancelled && isCancelled();
   }
-};
 
-bool cancellationRequested(const Simulator::CancellationCheck& isCancelled)
-{
-  // An empty callback keeps existing synchronous callers on the zero-overhead path.
-  return isCancelled && isCancelled();
-}
+  void capturePreviousWireState(std::unordered_map<uint64_t, State>& previousWireStates,
+                                const Wire_ptr&                      wire)
+  {
+    if (wire)
+      previousWireStates.emplace(wire->getId(), wire->getCurrentState());
+  }
 
-void capturePreviousWireState(std::unordered_map<uint64_t, State>& previousWireStates,
-                              const Wire_ptr&                      wire)
-{
-  if (wire)
-    previousWireStates.emplace(wire->getId(), wire->getCurrentState());
-}
-
-void capturePreviousBusStates(std::unordered_map<uint64_t, State>& previousWireStates,
-                              const Bus&                           bus)
-{
-  for (const auto& wire : bus)
-    capturePreviousWireState(previousWireStates, wire);
-}
+  void capturePreviousBusStates(std::unordered_map<uint64_t, State>& previousWireStates,
+                                const Bus&                           bus)
+  {
+    for (const auto& wire : bus)
+      capturePreviousWireState(previousWireStates, wire);
+  }
 
 }  // namespace
 
@@ -120,8 +120,7 @@ private:
   bool                                 previousStageSequentialOutputs   = false;
 };
 
-Simulator::EdgeType Simulator::edgeType(const Context& context,
-                                        const Wire_ptr&          wire)
+Simulator::EdgeType Simulator::edgeType(const Context& context, const Wire_ptr& wire)
 {
   const auto previousState = context.previousState(wire);
   if (!previousState || !wire)
@@ -285,15 +284,14 @@ void Simulator::recompile()
   simulationLog.debug(std::format("Compiled {} simulation steps", executionPlan.size()));
 }
 
-void Simulator::enableFstTracing(std::string_view          fileName,
+void Simulator::enableFstTracing(std::string_view       fileName,
                                  CircuitWriter::Options options)
 {
   if (!traceBuses.empty()) {
     setFstWriter(
         std::make_unique<CircuitWriter>(fileName, traceBuses, std::move(options)));
   } else {
-    setFstWriter(
-        std::make_unique<CircuitWriter>(fileName, *circuit, std::move(options)));
+    setFstWriter(std::make_unique<CircuitWriter>(fileName, *circuit, std::move(options)));
   }
 }
 
@@ -460,8 +458,7 @@ Simulator::compileExecutionPlan(std::span<const Circuit::SimulationBlock> blocks
   return plan;
 }
 
-bool Simulator::evaluateExecutionStep(const ExecutionStep&     step,
-                                      const Context& context,
+bool Simulator::evaluateExecutionStep(const ExecutionStep& step, const Context& context,
                                       const CancellationCheck& isCancelled)
 {
   if (cancellationRequested(isCancelled))
@@ -506,7 +503,7 @@ bool Simulator::evaluateExecutionStep(const ExecutionStep&     step,
 }
 
 bool Simulator::evaluateExecutionPlan(std::span<const ExecutionStep> steps,
-                                      const Context&       context,
+                                      const Context&                 context,
                                       const CancellationCheck&       isCancelled)
 {
   for (const auto& step : steps) {
@@ -517,7 +514,7 @@ bool Simulator::evaluateExecutionPlan(std::span<const ExecutionStep> steps,
 }
 
 bool Simulator::evaluateExecutionStepIndices(std::span<const std::size_t> stepIndices,
-                                             const Context&     context,
+                                             const Context&               context,
                                              const CancellationCheck&     isCancelled)
 {
   for (const auto stepIndex : stepIndices) {
@@ -532,7 +529,7 @@ bool Simulator::evaluateExecutionStepIndices(std::span<const std::size_t> stepIn
 
 Simulator::RunResult
 Simulator::evaluateExecutionStepIndicesAndTrace(std::span<const std::size_t> stepIndices,
-                                                const Context&     context,
+                                                const Context&               context,
                                                 const CancellationCheck&     isCancelled)
 {
   if (!evaluateExecutionStepIndices(stepIndices, context, isCancelled))
@@ -596,7 +593,7 @@ void Simulator::updateWire(const Wire_ptr& target, State newState, uint64_t dela
 
 Simulator::RunResult
 Simulator::evaluateExecutionPlanAndTrace(std::span<const ExecutionStep> steps,
-                                         const Context&       context,
+                                         const Context&                 context,
                                          const CancellationCheck&       isCancelled)
 {
   if (!evaluateExecutionPlan(steps, context, isCancelled))
@@ -611,7 +608,7 @@ Simulator::RunResult Simulator::evaluateForwardConeAndTrace(
     std::unordered_map<uint64_t, State> previousWireStates,
     const CancellationCheck& isCancelled, const bool enableSequentialStaging)
 {
-  Context          context{false, changedBuses, std::move(previousWireStates)};
+  Context                    context{false, changedBuses, std::move(previousWireStates)};
   const auto                 steps = getForwardExecutionSteps(changedBuses);
   const EvaluationStateGuard evaluationState(*this, &context.previousWireStates,
                                              enableSequentialStaging);
@@ -631,9 +628,9 @@ Simulator::RunResult Simulator::evaluateForwardConeAndTrace(
                                      : std::vector<Bus>{};
 
     if (!stagedChangedBuses.empty()) {
-      auto       stagedContext = Context{false, stagedChangedBuses,
-                                             std::move(stagedPreviousWireStates)};
-      const auto stagedSteps   = getForwardExecutionSteps(stagedChangedBuses);
+      auto stagedContext =
+          Context{false, stagedChangedBuses, std::move(stagedPreviousWireStates)};
+      const auto stagedSteps = getForwardExecutionSteps(stagedChangedBuses);
       evaluationState.setActivePreviousWireStates(&stagedContext.previousWireStates);
       if (!evaluateExecutionStepIndices(stagedSteps, stagedContext, isCancelled)) {
         return RunResult::Cancelled;

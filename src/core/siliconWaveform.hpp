@@ -41,23 +41,18 @@ struct Sample {
 struct Trace {
   std::vector<Signal> signalDefinitions;
   std::vector<Sample> samples;
-  int                                inputCount = 0;
+  int                 inputCount = 0;
 };
 
-void resetTrace(Trace&              trace,
-                        std::vector<Signal> signalDefinitions,
-                        int                                inputCount);
+void resetTrace(Trace& trace, std::vector<Signal> signalDefinitions, int inputCount);
 
-void appendSnapshot(Trace& trace, uint64_t time,
-                            std::vector<std::string> values);
+void appendSnapshot(Trace& trace, uint64_t time, std::vector<std::string> values);
 
-void appendSnapshots(Trace&                  trace,
-                             std::span<const Sample> samples);
+void appendSnapshots(Trace& trace, std::span<const Sample> samples);
 
 void clearSamples(Trace& trace);
 
-[[nodiscard]] std::size_t signalWidth(const Trace& trace,
-                                              int                         signalIndex);
+[[nodiscard]] std::size_t signalWidth(const Trace& trace, int signalIndex);
 
 [[nodiscard]] std::string rawBitsForValue(unsigned int value, std::size_t width);
 
@@ -65,12 +60,10 @@ void clearSamples(Trace& trace);
 
 void rebuildEditableTrace(Trace& trace, uint64_t duration);
 
-void applyEditInterval(Trace& trace, uint64_t duration,
-                               int signalIndex, uint64_t startTime, uint64_t endTime,
-                               std::string rawValue);
+void applyEditInterval(Trace& trace, uint64_t duration, int signalIndex,
+                       uint64_t startTime, uint64_t endTime, std::string rawValue);
 
-[[nodiscard]] std::vector<Sample>
-editedInputSamples(const Trace& trace);
+[[nodiscard]] std::vector<Sample> editedInputSamples(const Trace& trace);
 
 }  // namespace SILICON::waveform
 
@@ -79,6 +72,6 @@ namespace SILICON::waveform::fst {
 void writeTrace(std::string_view fileName, const waveform::Trace& trace);
 
 void writeTrace(std::string_view fileName, const waveform::Trace& trace,
-                   TraceWriter::Options options);
+                TraceWriter::Options options);
 
 }  // namespace SILICON::waveform::fst

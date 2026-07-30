@@ -120,8 +120,7 @@ Reader::EnumTable Reader::parseEnumTable(std::string_view enumString)
 
 // --- HierarchyBuilder ---------------------------------------------------------------
 
-HierarchyBuilder::HierarchyBuilder(std::string_view fileName,
-                                         int              use_compressed_hier)
+HierarchyBuilder::HierarchyBuilder(std::string_view fileName, int use_compressed_hier)
   : fn(fileName)
 {
   const std::string fileNameStorage(fileName);
@@ -135,7 +134,7 @@ HierarchyBuilder::HierarchyBuilder(std::string_view fileName,
 }
 
 void HierarchyBuilder::setScope(fstScopeType scope_type, std::string_view scope_name,
-                                   std::string_view scope_comp)
+                                std::string_view scope_comp)
 {
   assert(context);
   const std::string scopeName(scope_name);
@@ -144,8 +143,8 @@ void HierarchyBuilder::setScope(fstScopeType scope_type, std::string_view scope_
 }
 
 fstHandle HierarchyBuilder::createVar(fstVarType var_type, fstVarDir var_dir,
-                                         uint32_t len, std::string_view name,
-                                         fstHandle aliasHandle)
+                                      uint32_t len, std::string_view name,
+                                      fstHandle aliasHandle)
 {
   assert(context);
 

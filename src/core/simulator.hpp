@@ -109,8 +109,7 @@ public:
    * @param wire Wire to inspect
    * @return RISE, FALL, UNKNOWN, or NO_CHANGE for this evaluation
    */
-  [[nodiscard]] static EdgeType edgeType(const Context& context,
-                                         const Wire_ptr&          wire);
+  [[nodiscard]] static EdgeType edgeType(const Context& context, const Wire_ptr& wire);
 
   /**
    * @brief Constructs a Simulator for the given circuit.
@@ -123,9 +122,9 @@ public:
    * @throws std::invalid_argument If c is null
    */
   explicit Simulator(std::shared_ptr<Circuit> c, uint64_t initialSimulationTime = 0,
-                     bool                              isInteractive = false,
+                     bool                           isInteractive = false,
                      std::unique_ptr<CircuitWriter> fstWriter     = nullptr,
-                     CancellationCheck                 isCancelled   = {});
+                     CancellationCheck              isCancelled   = {});
   /**
    * @brief Destructor - removes topology listener
    */
@@ -169,10 +168,9 @@ public:
    * @param isCancelled Optional cooperative cancellation callback
    * @return Completion, cancellation, or step-limit outcome
    */
-  RunResult simulateWaveform(uint64_t                               duration,
-                             std::span<const Sample> inputSnapshots,
-                             std::span<const WaveformInputDriver>   inputDrivers,
-                             CancellationCheck                      isCancelled = {});
+  RunResult simulateWaveform(uint64_t duration, std::span<const Sample> inputSnapshots,
+                             std::span<const WaveformInputDriver> inputDrivers,
+                             CancellationCheck                    isCancelled = {});
 
   /**
    * @brief Rebuilds the cached execution plan after topology changes.
@@ -188,8 +186,7 @@ public:
    * The writer is initialized from the simulator's circuit and immediately receives a
    * snapshot for the current simulation time.
    */
-  void enableFstTracing(std::string_view          fileName,
-                        CircuitWriter::Options options = {});
+  void enableFstTracing(std::string_view fileName, CircuitWriter::Options options = {});
 
   /**
    * @brief Installs a caller-created FST writer.
@@ -378,21 +375,21 @@ private:
   compileExecutionPlan(std::span<const Circuit::SimulationBlock> blocks);
 
   [[nodiscard]] bool evaluateExecutionStep(const ExecutionStep&     step,
-                                           const Context& context,
+                                           const Context&           context,
                                            const CancellationCheck& isCancelled = {});
 
   [[nodiscard]] bool evaluateExecutionPlan(std::span<const ExecutionStep> steps,
-                                           const Context&       context,
+                                           const Context&                 context,
                                            const CancellationCheck& isCancelled = {});
 
   [[nodiscard]] bool
   evaluateExecutionStepIndices(std::span<const std::size_t> stepIndices,
-                               const Context&     context,
+                               const Context&               context,
                                const CancellationCheck&     isCancelled = {});
 
   [[nodiscard]] RunResult
   evaluateExecutionStepIndicesAndTrace(std::span<const std::size_t> stepIndices,
-                                       const Context&     context,
+                                       const Context&               context,
                                        const CancellationCheck&     isCancelled = {});
 
   [[nodiscard]] std::vector<std::size_t>
@@ -410,7 +407,7 @@ private:
    */
   [[nodiscard]] RunResult
   evaluateExecutionPlanAndTrace(std::span<const ExecutionStep> steps,
-                                const Context&       context,
+                                const Context&                 context,
                                 const CancellationCheck&       isCancelled = {});
 };
 

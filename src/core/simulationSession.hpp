@@ -31,7 +31,6 @@ using namespace SILICON::core;
 using namespace SILICON::waveform;
 using namespace SILICON::waveform::fst;
 
-
 /**
  * @brief Owns the source design elaboration and its runtime Simulator.
  *
@@ -64,7 +63,7 @@ public:
    * @throws std::invalid_argument if @p sourceCircuit is null.
    */
   explicit Session(std::shared_ptr<Circuit>     sourceCircuit,
-                             Simulator::CancellationCheck isCancelled = {});
+                   Simulator::CancellationCheck isCancelled = {});
 
   ~Session() = default;
 
@@ -95,8 +94,7 @@ public:
    * @brief Drives input buses from waveform samples and simulates the runtime circuit.
    */
   Simulator::RunResult
-  simulateWaveform(uint64_t                                        duration,
-                   std::span<const Sample>          inputSnapshots,
+  simulateWaveform(uint64_t duration, std::span<const Sample> inputSnapshots,
                    std::span<const Simulator::WaveformInputDriver> inputDrivers,
                    Simulator::CancellationCheck                    isCancelled = {});
 
@@ -135,8 +133,7 @@ public:
   /**
    * @brief Creates and installs an FST writer for the current runtime simulator.
    */
-  void enableFstTracing(std::string_view          fileName,
-                        CircuitWriter::Options options = {});
+  void enableFstTracing(std::string_view fileName, CircuitWriter::Options options = {});
 
   /**
    * @brief Returns the current runtime simulator time.
@@ -144,14 +141,13 @@ public:
   [[nodiscard]] uint64_t getCurrentTime() const;
 
 private:
-  std::shared_ptr<Circuit>                sourceCircuit;
-  std::shared_ptr<Circuit>                runtime;
-  std::unique_ptr<Simulator>              runtimeSimulator;
-  CircuitElaborator elaborator;
+  std::shared_ptr<Circuit>   sourceCircuit;
+  std::shared_ptr<Circuit>   runtime;
+  std::unique_ptr<Simulator> runtimeSimulator;
+  CircuitElaborator          elaborator;
 
   std::vector<CircuitWriter::NamedBus> traceBuses;
-  Simulator::TraceSink                    traceSink;
+  Simulator::TraceSink                 traceSink;
 };
-
 
 }  // namespace SILICON::simulation

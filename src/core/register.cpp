@@ -29,32 +29,32 @@ namespace SILICON::core {
 
 namespace {
 
-void validateSize(const int size)
-{
-  if (size <= 1)
-    throw std::invalid_argument("Register size must be greater than 1");
-}
+  void validateSize(const int size)
+  {
+    if (size <= 1)
+      throw std::invalid_argument("Register size must be greater than 1");
+  }
 
-void validateDelay(const PropertyValue& value)
-{
-  if (std::get<int>(value) < 0)
-    throw std::invalid_argument("Register delay must be non-negative");
-}
+  void validateDelay(const PropertyValue& value)
+  {
+    if (std::get<int>(value) < 0)
+      throw std::invalid_argument("Register delay must be non-negative");
+  }
 
-State normalizedInputState(const State state)
-{
-  return SILICON::wireUtils::normalizeBinaryOrUnknown(state);
-}
+  State normalizedInputState(const State state)
+  {
+    return SILICON::wireUtils::normalizeBinaryOrUnknown(state);
+  }
 
-unsigned short dataBusSize(const std::string& inputType, const int size)
-{
-  return inputType == Register::ParallelType ? static_cast<unsigned short>(size) : 1;
-}
+  unsigned short dataBusSize(const std::string& inputType, const int size)
+  {
+    return inputType == Register::ParallelType ? static_cast<unsigned short>(size) : 1;
+  }
 
-unsigned short registerOutputBusSize(const std::string& outputType, const int size)
-{
-  return outputType == Register::ParallelType ? static_cast<unsigned short>(size) : 1;
-}
+  unsigned short registerOutputBusSize(const std::string& outputType, const int size)
+  {
+    return outputType == Register::ParallelType ? static_cast<unsigned short>(size) : 1;
+  }
 
 }  // namespace
 
@@ -69,18 +69,17 @@ Register::Register(Bus data, Wire_ptr clock, Wire_ptr enable, Wire_ptr clear, Bu
   const auto initialDataSize   = data.size();
   const auto initialOutputSize = output.size();
 
-  inputs  = {std::move(data), {std::move(clock)}, {std::move(enable)},
-             {std::move(clear)}};
+  inputs = {std::move(data), {std::move(clock)}, {std::move(enable)}, {std::move(clear)}};
   outputs = {std::move(output)};
 
   const int inferredSize = static_cast<int>(std::max(initialDataSize, initialOutputSize));
   setProperty("size", std::max(2, inferredSize));
   setProperty("inputType", initialDataSize == 1 && initialOutputSize > 1
-                           ? std::string(SerialType)
-                           : std::string(ParallelType));
+                               ? std::string(SerialType)
+                               : std::string(ParallelType));
   setProperty("outputType", initialOutputSize == 1 && initialDataSize > 1
-                            ? std::string(SerialType)
-                            : std::string(ParallelType));
+                                ? std::string(SerialType)
+                                : std::string(ParallelType));
 }
 
 int Register::configuredSize() const
@@ -214,7 +213,8 @@ void Register::driveOutput(SILICON::simulation::Simulator& sim)
   sim.updateWire(outputWire(Outputs::Out), bitState, delay, weak_from_this());
 }
 
-void Register::simulate(SILICON::simulation::Simulator& sim, const SILICON::simulation::Context& context)
+void Register::simulate(SILICON::simulation::Simulator&     sim,
+                        const SILICON::simulation::Context& context)
 {
   if (state.size() != static_cast<std::size_t>(configuredSize()))
     state.assign(static_cast<std::size_t>(configuredSize()), State::UNKNOWN);
@@ -245,8 +245,8 @@ void Register::simulate(SILICON::simulation::Simulator& sim, const SILICON::simu
   }
 
   const Wire_ptr clockWire = inputWire(Inputs::Clock);
-  if (SILICON::simulation::Simulator::edgeType(context, clockWire) == SILICON::simulation::Simulator::EdgeType::RISE) {
-    
+  if (SILICON::simulation::Simulator::edgeType(context, clockWire)
+      == SILICON::simulation::Simulator::EdgeType::RISE) {
     if (parallelInput()) {
       if (parallelOutput()) {
         // PIPO: Overwrite state directly from inputs

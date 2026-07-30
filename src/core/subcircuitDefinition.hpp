@@ -28,7 +28,6 @@ namespace SILICON::core {
 
 class ComponentRegistry;
 
-
 /** @brief Core-circuit implementation and interface of a project subcircuit. */
 struct SubcircuitDefinition {
   Circuit                  circuit;
@@ -40,6 +39,5 @@ struct SubcircuitDefinition {
 
 [[nodiscard]] SubcircuitDefinition
 loadSubcircuitDefinition(std::string_view slug, const ComponentRegistry& registry);
-
 
 }  // namespace SILICON::core

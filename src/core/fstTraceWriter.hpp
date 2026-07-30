@@ -93,7 +93,7 @@ public:
    * @param options File metadata and top-level scope settings.
    */
   TraceWriter(std::string_view fileName, const std::vector<TraceSignal>& traceSignals,
-                 Options options);
+              Options options);
 
   TraceWriter(const TraceWriter&)            = delete;
   TraceWriter& operator=(const TraceWriter&) = delete;
@@ -142,7 +142,7 @@ private:
   std::vector<RegisteredSignal> registeredSignals;
   std::unordered_map<std::string, fstHandle, TransparentStringHash,
                      TransparentStringEqual>
-                handlesBySignalName;
+             handlesBySignalName;
   DataWriter writer;
 };
 

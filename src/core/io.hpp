@@ -41,8 +41,7 @@ public:
   }
 
   void simulate(SILICON::simulation::Simulator& sim) override;
-  void serializeYosys(
-      SILICON::yosys::SerializationContext& context) const override;
+  void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
 };
 
 class BoundaryIoComponent : public Component {
@@ -51,8 +50,7 @@ protected:
                       std::string name);
 
 public:
-  void serializeYosys(
-      SILICON::yosys::SerializationContext& context) const override;
+  void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
 };
 
 /** @brief Logical model behind the graphical single-bit input. */

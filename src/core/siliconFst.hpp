@@ -56,7 +56,7 @@ public:
   CircuitWriter(std::string_view fileName, const Circuit& circuit, Options options);
   CircuitWriter(std::string_view fileName, const std::vector<NamedBus>& buses);
   CircuitWriter(std::string_view fileName, const std::vector<NamedBus>& buses,
-                   Options options);
+                Options options);
 
   CircuitWriter(const CircuitWriter&)            = delete;
   CircuitWriter& operator=(const CircuitWriter&) = delete;
@@ -91,7 +91,7 @@ public:
 
 private:
   std::vector<NamedBus> buses;
-  TraceWriter        writer;
+  TraceWriter           writer;
 };
 
 }  // namespace SILICON::waveform::fst

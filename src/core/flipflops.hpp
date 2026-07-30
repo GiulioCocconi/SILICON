@@ -70,13 +70,14 @@ public:
    * @brief Evaluates async controls and selected clock edges.
    *
    * Initial/full evaluations drive the initial stored state when needed. Reactive
-   * evaluations use SILICON::simulation::Context::previousState for edge detection and timing;
-   * async CLR/PRE are evaluated first on every call.
+   * evaluations use SILICON::simulation::Context::previousState for edge detection and
+   * timing; async CLR/PRE are evaluated first on every call.
    *
    * @param sim SILICON::simulation::Simulator used to drive output wires
    * @param context Evaluation context supplied by the simulator
    */
-  void simulate(SILICON::simulation::Simulator& sim, const SILICON::simulation::Context& context) override;
+  void simulate(SILICON::simulation::Simulator&     sim,
+                const SILICON::simulation::Context& context) override;
 
   [[nodiscard]] bool usesStagedSequentialOutputs() const override { return true; }
 
@@ -155,7 +156,8 @@ private:
   std::optional<uint64_t> lastSelectedClockEdgeTime;
 
   // Cached properties to avoid costly map lookups per delta cycle.
-  SILICON::simulation::Simulator::EdgeType edgeType = SILICON::simulation::Simulator::EdgeType::RISE;
+  SILICON::simulation::Simulator::EdgeType edgeType =
+      SILICON::simulation::Simulator::EdgeType::RISE;
 };
 
 /**
@@ -325,7 +327,8 @@ public:
    */
   DLatch(Wire_ptr d, Wire_ptr enable, Wire_ptr q, Wire_ptr notQ);
 
-  void               simulate(SILICON::simulation::Simulator& sim, const SILICON::simulation::Context& context) override;
+  void               simulate(SILICON::simulation::Simulator&     sim,
+                              const SILICON::simulation::Context& context) override;
   [[nodiscard]] bool usesStagedSequentialOutputs() const override { return true; }
   void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
 

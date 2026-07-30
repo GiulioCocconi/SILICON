@@ -150,7 +150,7 @@ private:
    * @return A pair of vectors: first is input buses, second is output buses
    */
   std::pair<std::vector<Bus>, std::vector<Bus>> getComponentIOs() const;
-  [[nodiscard]] std::vector<CircuitPort> interfacePorts(PortRole role) const;
+  [[nodiscard]] std::vector<CircuitPort>        interfacePorts(PortRole role) const;
 
   /**
    * @brief Recursively adds a component and all connected components

@@ -35,138 +35,138 @@ namespace keywords = boost::log::keywords;
 
 namespace {
 
-using Severity      = logging::trivial::severity_level;
-using ChannelLogger = src::severity_channel_logger_mt<Severity, std::string>;
-using ConsoleSink   = sinks::synchronous_sink<sinks::text_ostream_backend>;
+  using Severity      = logging::trivial::severity_level;
+  using ChannelLogger = src::severity_channel_logger_mt<Severity, std::string>;
+  using ConsoleSink   = sinks::synchronous_sink<sinks::text_ostream_backend>;
 
-LogLevel fromBoostSeverity(Severity level);
+  LogLevel fromBoostSeverity(Severity level);
 
-class CallbackSinkBackend
-  : public sinks::basic_formatted_sink_backend<char, sinks::synchronized_feeding> {
-public:
-  explicit CallbackSinkBackend(Logger::CallbackSink callback)
-    : callback_(std::move(callback))
+  class CallbackSinkBackend
+    : public sinks::basic_formatted_sink_backend<char, sinks::synchronized_feeding> {
+  public:
+    explicit CallbackSinkBackend(Logger::CallbackSink callback)
+      : callback_(std::move(callback))
+    {
+    }
+
+    void consume(const logging::record_view& rec, const string_type& formatted)
+    {
+      if (!callback_)
+        return;
+
+      const auto severityRef   = rec[logging::trivial::severity];
+      const auto channelRef    = rec.attribute_values()["Channel"].extract<std::string>();
+      const auto rawMessageRef = rec.attribute_values()["Message"].extract<std::string>();
+
+      const LogMessage logMessage{
+          .level     = severityRef ? fromBoostSeverity(*severityRef) : LogLevel::Info,
+          .category  = channelRef ? *channelRef : std::string{},
+          .message   = rawMessageRef ? *rawMessageRef : formatted,
+          .formatted = formatted,
+      };
+
+      callback_(logMessage);
+    }
+
+  private:
+    Logger::CallbackSink callback_;
+  };
+
+  using CallbackFrontendSink = sinks::synchronous_sink<CallbackSinkBackend>;
+
+  Severity toBoostSeverity(const LogLevel level)
   {
+    switch (level) {
+      case LogLevel::Trace: return logging::trivial::trace;
+      case LogLevel::Debug: return logging::trivial::debug;
+      case LogLevel::Info: return logging::trivial::info;
+      case LogLevel::Warning: return logging::trivial::warning;
+      case LogLevel::Error: return logging::trivial::error;
+      case LogLevel::Critical: return logging::trivial::fatal;
+    }
+
+    return logging::trivial::info;
   }
 
-  void consume(const logging::record_view& rec, const string_type& formatted)
+  LogLevel fromBoostSeverity(const Severity level)
   {
-    if (!callback_)
+    switch (level) {
+      case logging::trivial::trace: return LogLevel::Trace;
+      case logging::trivial::debug: return LogLevel::Debug;
+      case logging::trivial::info: return LogLevel::Info;
+      case logging::trivial::warning: return LogLevel::Warning;
+      case logging::trivial::error: return LogLevel::Error;
+      case logging::trivial::fatal: return LogLevel::Critical;
+    }
+
+    return LogLevel::Info;
+  }
+
+  struct LoggingState {
+    std::mutex                     mutex;
+    bool                           initialized      = false;
+    bool                           commonAttrsAdded = false;
+    LogLevel                       minimumLevel     = LogLevel::Info;
+    boost::shared_ptr<ConsoleSink> consoleSink;
+    std::map<Logger::SinkHandle, boost::shared_ptr<logging::sinks::sink>> callbackSinks;
+    std::atomic<Logger::SinkHandle> nextSinkHandle{1};
+  };
+
+  LoggingState& state()
+  {
+    static LoggingState value;
+    return value;
+  }
+
+  const char* toLevelString(const LogLevel level)
+  {
+    switch (level) {
+      case LogLevel::Trace: return "TRACE";
+      case LogLevel::Debug: return "DEBUG";
+      case LogLevel::Info: return "INFO";
+      case LogLevel::Warning: return "WARNING";
+      case LogLevel::Error: return "ERROR";
+      case LogLevel::Critical: return "CRITICAL";
+    }
+
+    return "INFO";
+  }
+
+  auto makeFormatter()
+  {
+    return expr::stream << "["
+                        << expr::format_date_time<boost::posix_time::ptime>(
+                               "TimeStamp", "%Y-%m-%d %H:%M:%S.%f")
+                        << "]" << " [" << logging::trivial::severity << "]" << " ["
+                        << expr::attr<std::string>("Channel") << "] " << expr::smessage;
+  }
+
+  void applyFilter()
+  {
+    logging::core::get()->set_filter(logging::trivial::severity
+                                     >= toBoostSeverity(state().minimumLevel));
+  }
+
+  void ensureInitializedLocked(LoggingState& loggingState)
+  {
+    if (loggingState.initialized)
       return;
 
-    const auto severityRef   = rec[logging::trivial::severity];
-    const auto channelRef    = rec.attribute_values()["Channel"].extract<std::string>();
-    const auto rawMessageRef = rec.attribute_values()["Message"].extract<std::string>();
+    if (!loggingState.commonAttrsAdded) {
+      logging::add_common_attributes();
+      loggingState.commonAttrsAdded = true;
+    }
 
-    const LogMessage logMessage{
-        .level     = severityRef ? fromBoostSeverity(*severityRef) : LogLevel::Info,
-        .category  = channelRef ? *channelRef : std::string{},
-        .message   = rawMessageRef ? *rawMessageRef : formatted,
-        .formatted = formatted,
-    };
-
-    callback_(logMessage);
+    applyFilter();
+    loggingState.initialized = true;
   }
 
-private:
-  Logger::CallbackSink callback_;
-};
-
-using CallbackFrontendSink = sinks::synchronous_sink<CallbackSinkBackend>;
-
-Severity toBoostSeverity(const LogLevel level)
-{
-  switch (level) {
-    case LogLevel::Trace: return logging::trivial::trace;
-    case LogLevel::Debug: return logging::trivial::debug;
-    case LogLevel::Info: return logging::trivial::info;
-    case LogLevel::Warning: return logging::trivial::warning;
-    case LogLevel::Error: return logging::trivial::error;
-    case LogLevel::Critical: return logging::trivial::fatal;
+  void writeRecord(const LogLevel level, std::string_view category,
+                   std::string_view message)
+  {
+    ChannelLogger logger(keywords::channel = std::string(category));
+    BOOST_LOG_SEV(logger, toBoostSeverity(level)) << message;
   }
-
-  return logging::trivial::info;
-}
-
-LogLevel fromBoostSeverity(const Severity level)
-{
-  switch (level) {
-    case logging::trivial::trace: return LogLevel::Trace;
-    case logging::trivial::debug: return LogLevel::Debug;
-    case logging::trivial::info: return LogLevel::Info;
-    case logging::trivial::warning: return LogLevel::Warning;
-    case logging::trivial::error: return LogLevel::Error;
-    case logging::trivial::fatal: return LogLevel::Critical;
-  }
-
-  return LogLevel::Info;
-}
-
-struct LoggingState {
-  std::mutex                     mutex;
-  bool                           initialized      = false;
-  bool                           commonAttrsAdded = false;
-  LogLevel                       minimumLevel     = LogLevel::Info;
-  boost::shared_ptr<ConsoleSink> consoleSink;
-  std::map<Logger::SinkHandle, boost::shared_ptr<logging::sinks::sink>> callbackSinks;
-  std::atomic<Logger::SinkHandle>                                       nextSinkHandle{1};
-};
-
-LoggingState& state()
-{
-  static LoggingState value;
-  return value;
-}
-
-const char* toLevelString(const LogLevel level)
-{
-  switch (level) {
-    case LogLevel::Trace: return "TRACE";
-    case LogLevel::Debug: return "DEBUG";
-    case LogLevel::Info: return "INFO";
-    case LogLevel::Warning: return "WARNING";
-    case LogLevel::Error: return "ERROR";
-    case LogLevel::Critical: return "CRITICAL";
-  }
-
-  return "INFO";
-}
-
-auto makeFormatter()
-{
-  return expr::stream << "["
-                      << expr::format_date_time<boost::posix_time::ptime>(
-                             "TimeStamp", "%Y-%m-%d %H:%M:%S.%f")
-                      << "]" << " [" << logging::trivial::severity << "]" << " ["
-                      << expr::attr<std::string>("Channel") << "] " << expr::smessage;
-}
-
-void applyFilter()
-{
-  logging::core::get()->set_filter(logging::trivial::severity
-                                   >= toBoostSeverity(state().minimumLevel));
-}
-
-void ensureInitializedLocked(LoggingState& loggingState)
-{
-  if (loggingState.initialized)
-    return;
-
-  if (!loggingState.commonAttrsAdded) {
-    logging::add_common_attributes();
-    loggingState.commonAttrsAdded = true;
-  }
-
-  applyFilter();
-  loggingState.initialized = true;
-}
-
-void writeRecord(const LogLevel level, std::string_view category,
-                 std::string_view message)
-{
-  ChannelLogger logger(keywords::channel = std::string(category));
-  BOOST_LOG_SEV(logger, toBoostSeverity(level)) << message;
-}
 
 }  // namespace
 

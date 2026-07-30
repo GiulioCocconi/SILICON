@@ -25,47 +25,48 @@
 namespace SILICON::core {
 
 namespace {
-uint64_t gateDelay(const Gate& gate)
-{
-  return gate.getPropertyValue<int>("delay").value_or(0);
-}
-
-bool gateBitwiseEnabled(const Gate& gate)
-{
-  return gate.getPropertyValue<bool>("bitwise").value_or(false);
-}
-
-int gateWidth(const Gate& gate)
-{
-  return gate.getPropertyValue<int>("size").value_or(1);
-}
-
-template <typename Reducer, typename Finalizer = std::identity>
-void simulateBitwiseGate(Gate& gate, SILICON::simulation::Simulator& sim, State initialState,
-                         Reducer&& reducer, Finalizer&& finalizer = {})
-{
-  const auto delay   = gateDelay(gate);
-  const auto inputs  = gate.getInputs();
-  const auto outputs = gate.getOutputs();
-
-  if (!gateBitwiseEnabled(gate)) {
-    State result = initialState;
-    for (const auto& input : inputs)
-      result = reducer(result, Wire::safeGetCurrentState(input[0]));
-
-    sim.updateWire(outputs[0][0], finalizer(result), delay, gate.weak_from_this());
-    return;
+  uint64_t gateDelay(const Gate& gate)
+  {
+    return gate.getPropertyValue<int>("delay").value_or(0);
   }
 
-  const int width = gateWidth(gate);
-  for (int bit = 0; bit < width; ++bit) {
-    State result = initialState;
-    for (const auto& input : inputs)
-      result = reducer(result, Wire::safeGetCurrentState(input[bit]));
-
-    sim.updateWire(outputs[0][bit], finalizer(result), delay, gate.weak_from_this());
+  bool gateBitwiseEnabled(const Gate& gate)
+  {
+    return gate.getPropertyValue<bool>("bitwise").value_or(false);
   }
-}
+
+  int gateWidth(const Gate& gate)
+  {
+    return gate.getPropertyValue<int>("size").value_or(1);
+  }
+
+  template <typename Reducer, typename Finalizer = std::identity>
+  void simulateBitwiseGate(Gate& gate, SILICON::simulation::Simulator& sim,
+                           State initialState, Reducer&& reducer,
+                           Finalizer&& finalizer = {})
+  {
+    const auto delay   = gateDelay(gate);
+    const auto inputs  = gate.getInputs();
+    const auto outputs = gate.getOutputs();
+
+    if (!gateBitwiseEnabled(gate)) {
+      State result = initialState;
+      for (const auto& input : inputs)
+        result = reducer(result, Wire::safeGetCurrentState(input[0]));
+
+      sim.updateWire(outputs[0][0], finalizer(result), delay, gate.weak_from_this());
+      return;
+    }
+
+    const int width = gateWidth(gate);
+    for (int bit = 0; bit < width; ++bit) {
+      State result = initialState;
+      for (const auto& input : inputs)
+        result = reducer(result, Wire::safeGetCurrentState(input[bit]));
+
+      sim.updateWire(outputs[0][bit], finalizer(result), delay, gate.weak_from_this());
+    }
+  }
 }  // namespace
 
 Gate::Gate() : Gate(true) {}
