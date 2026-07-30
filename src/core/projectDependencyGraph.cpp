@@ -116,8 +116,7 @@ void ProjectDependencyGraph::removeDocument(const std::string_view documentPath)
   rebuildPathIndex();
 }
 
-void ProjectDependencyGraph::rebuildFromProject(
-    const std::vector<Document>& documents)
+void ProjectDependencyGraph::rebuildFromProject(const std::vector<Document>& documents)
 {
   ProjectDependencyGraph rebuilt;
 
@@ -140,7 +139,7 @@ void ProjectDependencyGraph::replaceDocumentDependencies(
 }
 
 bool ProjectDependencyGraph::wouldIntroduceCycle(const std::string_view documentPath,
-                                                const std::string_view sceneJson) const
+                                                 const std::string_view sceneJson) const
 {
   try {
     const auto candidate = withDocumentDependencies(documentPath, sceneJson);
@@ -156,7 +155,7 @@ ProjectDependencyGraph::DocumentPathList
 ProjectDependencyGraph::dependentsOf(const std::string_view subcircuitPath) const
 {
   DocumentPathList dependents;
-  const auto target = findVertex(subcircuitPath);
+  const auto       target = findVertex(subcircuitPath);
   if (!target)
     return dependents;
 
@@ -184,8 +183,9 @@ ProjectDependencyGraph::findVertex(const std::string_view documentPath) const
   return it->second;
 }
 
-ProjectDependencyGraph ProjectDependencyGraph::withDocumentDependencies(
-    const std::string_view documentPath, const std::string_view sceneJson) const
+ProjectDependencyGraph
+ProjectDependencyGraph::withDocumentDependencies(const std::string_view documentPath,
+                                                 const std::string_view sceneJson) const
 {
   auto updated = *this;
   updated.replaceDependencyEdges(documentPath, sceneJson);
@@ -195,8 +195,8 @@ ProjectDependencyGraph ProjectDependencyGraph::withDocumentDependencies(
 void ProjectDependencyGraph::replaceDependencyEdges(const std::string_view documentPath,
                                                     const std::string_view sceneJson)
 {
-  const auto documentVertex = ensureVertex(documentPath);
-  const auto dependencies   = extractSubcircuitDependencies(sceneJson);
+  const auto          documentVertex = ensureVertex(documentPath);
+  const auto          dependencies   = extractSubcircuitDependencies(sceneJson);
   std::vector<Vertex> dependencyVertices;
   dependencyVertices.reserve(dependencies.size());
 
@@ -255,14 +255,13 @@ std::vector<std::string> ProjectDependencyGraph::findCycleTraceFrom(
 }
 
 std::vector<std::string>
-ProjectDependencyGraph::cycleTraceEndingAt(const Vertex              repeated,
+ProjectDependencyGraph::cycleTraceEndingAt(const Vertex               repeated,
                                            const std::vector<Vertex>& path) const
 {
   const auto cycleStart = std::ranges::find(path, repeated);
 
   std::vector<std::string> trace;
-  trace.reserve(static_cast<std::size_t>(std::ranges::distance(cycleStart,
-                                                               path.end()))
+  trace.reserve(static_cast<std::size_t>(std::ranges::distance(cycleStart, path.end()))
                 + 1);
 
   for (auto it = cycleStart; it != path.end(); ++it)
@@ -279,7 +278,7 @@ ProjectDependencyGraph::ensureVertex(const std::string_view documentPath)
   if (const auto it = pathToVertex.find(key); it != pathToVertex.end())
     return it->second;
 
-  const auto vertex = boost::add_vertex(graph);
+  const auto vertex  = boost::add_vertex(graph);
   graph[vertex].path = key;
   pathToVertex.emplace(key, vertex);
   return vertex;

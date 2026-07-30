@@ -28,80 +28,80 @@ using namespace SILICON::core;
 
 namespace {
 
-CircuitWriter::Options optionsForCircuit(const Circuit&            circuit,
-                                            CircuitWriter::Options options)
-{
-  if (options.topScopeName.empty() && !circuit.getName().empty())
-    options.topScopeName = circuit.getName();
+  CircuitWriter::Options optionsForCircuit(const Circuit&         circuit,
+                                           CircuitWriter::Options options)
+  {
+    if (options.topScopeName.empty() && !circuit.getName().empty())
+      options.topScopeName = circuit.getName();
 
-  return options;
-}
-
-std::vector<CircuitWriter::NamedBus> collectCircuitIoBuses(const Circuit& circuit)
-{
-  std::vector<CircuitWriter::NamedBus> buses;
-
-  const auto inputs = circuit.getInputs();
-  buses.reserve(inputs.size() + circuit.getOutputs().size());
-
-  for (std::size_t i = 0; i < inputs.size(); ++i)
-    buses.emplace_back(std::format("input_{}", i), inputs[i]);
-
-  const auto outputs = circuit.getOutputs();
-  for (std::size_t i = 0; i < outputs.size(); ++i)
-    buses.emplace_back(std::format("output_{}", i), outputs[i]);
-
-  return buses;
-}
-
-std::vector<CircuitWriter::NamedBus>
-registeredBusesFor(const std::vector<CircuitWriter::NamedBus>& namedBuses)
-{
-  std::vector<CircuitWriter::NamedBus> buses;
-  buses.reserve(namedBuses.size());
-
-  for (const auto& [name, bus] : namedBuses) {
-    if (bus.size() == 0)
-      continue;
-
-    buses.emplace_back(name, bus);
+    return options;
   }
 
-  return buses;
-}
+  std::vector<CircuitWriter::NamedBus> collectCircuitIoBuses(const Circuit& circuit)
+  {
+    std::vector<CircuitWriter::NamedBus> buses;
 
-std::vector<TraceWriter::TraceSignal>
-traceSignalsFor(const std::vector<CircuitWriter::NamedBus>& namedBuses)
-{
-  std::vector<TraceWriter::TraceSignal> signals;
-  signals.reserve(namedBuses.size());
+    const auto inputs = circuit.getInputs();
+    buses.reserve(inputs.size() + circuit.getOutputs().size());
 
-  for (const auto& [name, bus] : namedBuses) {
-    if (bus.size() == 0)
-      continue;
+    for (std::size_t i = 0; i < inputs.size(); ++i)
+      buses.emplace_back(std::format("input_{}", i), inputs[i]);
 
-    signals.push_back({name, bus.size()});
+    const auto outputs = circuit.getOutputs();
+    for (std::size_t i = 0; i < outputs.size(); ++i)
+      buses.emplace_back(std::format("output_{}", i), outputs[i]);
+
+    return buses;
   }
 
-  return signals;
-}
+  std::vector<CircuitWriter::NamedBus>
+  registeredBusesFor(const std::vector<CircuitWriter::NamedBus>& namedBuses)
+  {
+    std::vector<CircuitWriter::NamedBus> buses;
+    buses.reserve(namedBuses.size());
 
-std::string encodeBusValue(const Bus& bus)
-{
-  std::string value;
-  value.reserve(bus.size());
+    for (const auto& [name, bus] : namedBuses) {
+      if (bus.size() == 0)
+        continue;
 
-  for (auto it = bus.end(); it != bus.begin();) {
-    --it;
-    if (!*it) {
-      value.push_back('x');
-    } else {
-      value.push_back(CircuitWriter::stateToFstValue((*it)->getCurrentState()));
+      buses.emplace_back(name, bus);
     }
+
+    return buses;
   }
 
-  return value;
-}
+  std::vector<TraceWriter::TraceSignal>
+  traceSignalsFor(const std::vector<CircuitWriter::NamedBus>& namedBuses)
+  {
+    std::vector<TraceWriter::TraceSignal> signals;
+    signals.reserve(namedBuses.size());
+
+    for (const auto& [name, bus] : namedBuses) {
+      if (bus.size() == 0)
+        continue;
+
+      signals.push_back({name, bus.size()});
+    }
+
+    return signals;
+  }
+
+  std::string encodeBusValue(const Bus& bus)
+  {
+    std::string value;
+    value.reserve(bus.size());
+
+    for (auto it = bus.end(); it != bus.begin();) {
+      --it;
+      if (!*it) {
+        value.push_back('x');
+      } else {
+        value.push_back(CircuitWriter::stateToFstValue((*it)->getCurrentState()));
+      }
+    }
+
+    return value;
+  }
 
 }  // namespace
 
@@ -111,21 +111,20 @@ CircuitWriter::CircuitWriter(std::string_view fileName, const Circuit& circuit)
 }
 
 CircuitWriter::CircuitWriter(std::string_view fileName, const Circuit& circuit,
-                                   Options options)
+                             Options options)
   : CircuitWriter(fileName, collectCircuitIoBuses(circuit),
-                     optionsForCircuit(circuit, std::move(options)))
+                  optionsForCircuit(circuit, std::move(options)))
 {
 }
 
 CircuitWriter::CircuitWriter(std::string_view             fileName,
-                                   const std::vector<NamedBus>& buses)
+                             const std::vector<NamedBus>& buses)
   : CircuitWriter(fileName, buses, Options{})
 {
 }
 
 CircuitWriter::CircuitWriter(std::string_view             fileName,
-                                   const std::vector<NamedBus>& namedBuses,
-                                   Options                      options)
+                             const std::vector<NamedBus>& namedBuses, Options options)
   : buses(registeredBusesFor(namedBuses)),
     writer(fileName, traceSignalsFor(namedBuses), std::move(options))
 {

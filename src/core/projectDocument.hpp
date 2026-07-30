@@ -36,11 +36,12 @@ struct HdlDescriptor {
   bool operator==(const HdlDescriptor&) const = default;
 };
 
-[[nodiscard]] std::optional<DocumentKind>  classifyDocumentPath(std::string_view path);
-[[nodiscard]] std::optional<std::string>   subcircuitSlugForPath(std::string_view path);
-[[nodiscard]] std::string                  subcircuitPathForSlug(std::string_view slug);
-/** @brief Checks that an asset path is normalized, relative, and outside reserved entries. */
-[[nodiscard]] bool                         isValidProjectAssetPath(std::string_view path);
+[[nodiscard]] std::optional<DocumentKind> classifyDocumentPath(std::string_view path);
+[[nodiscard]] std::optional<std::string>  subcircuitSlugForPath(std::string_view path);
+[[nodiscard]] std::string                 subcircuitPathForSlug(std::string_view slug);
+/** @brief Checks that an asset path is normalized, relative, and outside reserved
+ * entries. */
+[[nodiscard]] bool isValidProjectAssetPath(std::string_view path);
 /**
  * @brief Parses and validates the optional HDL descriptor in serialized scene JSON.
  * @return No value when the scene has no `hdl` member.
@@ -91,7 +92,7 @@ public:
   void          removeListener(std::uint64_t id);
 
 private:
-  std::vector<Document>              documents_;
+  std::vector<Document>                             documents_;
   SILICON::core::CallbackRegistry<std::string_view> listeners_;
 };
 

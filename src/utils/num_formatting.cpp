@@ -28,123 +28,124 @@ namespace SILICON::core {
 
 namespace {
 
-std::string trimmed(std::string_view text)
-{
-  while (!text.empty() && std::isspace(static_cast<unsigned char>(text.front())) != 0)
-    text.remove_prefix(1);
-  while (!text.empty() && std::isspace(static_cast<unsigned char>(text.back())) != 0)
-    text.remove_suffix(1);
-  return std::string(text);
-}
+  std::string trimmed(std::string_view text)
+  {
+    while (!text.empty() && std::isspace(static_cast<unsigned char>(text.front())) != 0)
+      text.remove_prefix(1);
+    while (!text.empty() && std::isspace(static_cast<unsigned char>(text.back())) != 0)
+      text.remove_suffix(1);
+    return std::string(text);
+  }
 
-bool startsWithIgnoreCase(std::string_view text, std::string_view prefix)
-{
-  if (text.size() < prefix.size())
-    return false;
-  for (std::size_t i = 0; i < prefix.size(); ++i) {
-    if (std::tolower(static_cast<unsigned char>(text[i]))
-        != std::tolower(static_cast<unsigned char>(prefix[i])))
+  bool startsWithIgnoreCase(std::string_view text, std::string_view prefix)
+  {
+    if (text.size() < prefix.size())
       return false;
-  }
-  return true;
-}
-
-bool isKnownBitString(std::string_view rawBits)
-{
-  return !rawBits.empty()
-         && std::ranges::all_of(rawBits, [](char ch) { return ch == '0' || ch == '1'; });
-}
-
-std::string uppercaseRaw(std::string_view rawBits)
-{
-  std::string value(rawBits);
-  std::ranges::transform(value, value.begin(), [](unsigned char ch) {
-    return static_cast<char>(std::toupper(ch));
-  });
-  return value.empty() ? "X" : value;
-}
-
-void decimalMultiplyByTwo(std::string& value)
-{
-  int carry = 0;
-  for (auto it = value.rbegin(); it != value.rend(); ++it) {
-    const int digit = (*it - '0') * 2 + carry;
-    *it             = static_cast<char>('0' + digit % 10);
-    carry           = digit / 10;
-  }
-  if (carry != 0)
-    value.insert(value.begin(), static_cast<char>('0' + carry));
-}
-
-void decimalAddOne(std::string& value)
-{
-  int carry = 1;
-  for (auto it = value.rbegin(); it != value.rend() && carry != 0; ++it) {
-    const int digit = (*it - '0') + carry;
-    *it             = static_cast<char>('0' + digit % 10);
-    carry           = digit / 10;
-  }
-  if (carry != 0)
-    value.insert(value.begin(), '1');
-}
-
-std::string parseKnownBits(std::string_view rawBits)
-{
-  std::string value = "0";
-  for (const char bit : rawBits) {
-    decimalMultiplyByTwo(value);
-    if (bit == '1')
-      decimalAddOne(value);
-  }
-  return value;
-}
-
-std::string parseTwosComplementMagnitude(std::string_view rawBits)
-{
-  std::string magnitude(rawBits);
-  for (char& bit : magnitude)
-    bit = bit == '1' ? '0' : '1';
-
-  for (auto it = magnitude.rbegin(); it != magnitude.rend(); ++it) {
-    if (*it == '0') {
-      *it = '1';
-      break;
+    for (std::size_t i = 0; i < prefix.size(); ++i) {
+      if (std::tolower(static_cast<unsigned char>(text[i]))
+          != std::tolower(static_cast<unsigned char>(prefix[i])))
+        return false;
     }
-    *it = '0';
+    return true;
   }
 
-  return parseKnownBits(magnitude);
-}
+  bool isKnownBitString(std::string_view rawBits)
+  {
+    return !rawBits.empty() && std::ranges::all_of(rawBits, [](char ch) {
+      return ch == '0' || ch == '1';
+    });
+  }
 
-std::string groupedBase(std::string_view rawBits, int groupSize, std::string_view digits,
-                        std::string_view prefix)
-{
-  if (!isKnownBitString(rawBits))
-    return uppercaseRaw(rawBits);
+  std::string uppercaseRaw(std::string_view rawBits)
+  {
+    std::string value(rawBits);
+    std::ranges::transform(value, value.begin(), [](unsigned char ch) {
+      return static_cast<char>(std::toupper(ch));
+    });
+    return value.empty() ? "X" : value;
+  }
 
-  const std::size_t pad =
-      (groupSize - rawBits.size() % static_cast<std::size_t>(groupSize))
-      % static_cast<std::size_t>(groupSize);
-  std::string padded(pad, '0');
-  padded.append(rawBits);
-
-  std::string result(prefix);
-  bool        emittedNonZero = false;
-  for (std::size_t i = 0; i < padded.size(); i += static_cast<std::size_t>(groupSize)) {
-    int value = 0;
-    for (int offset = 0; offset < groupSize; ++offset) {
-      value <<= 1;
-      if (padded[i + static_cast<std::size_t>(offset)] == '1')
-        ++value;
+  void decimalMultiplyByTwo(std::string& value)
+  {
+    int carry = 0;
+    for (auto it = value.rbegin(); it != value.rend(); ++it) {
+      const int digit = (*it - '0') * 2 + carry;
+      *it             = static_cast<char>('0' + digit % 10);
+      carry           = digit / 10;
     }
-    result.push_back(digits[static_cast<std::size_t>(value)]);
-    emittedNonZero = emittedNonZero || value != 0;
+    if (carry != 0)
+      value.insert(value.begin(), static_cast<char>('0' + carry));
   }
 
-  if (!emittedNonZero)
-    return std::string(prefix) + "0";
-  return result;
-}
+  void decimalAddOne(std::string& value)
+  {
+    int carry = 1;
+    for (auto it = value.rbegin(); it != value.rend() && carry != 0; ++it) {
+      const int digit = (*it - '0') + carry;
+      *it             = static_cast<char>('0' + digit % 10);
+      carry           = digit / 10;
+    }
+    if (carry != 0)
+      value.insert(value.begin(), '1');
+  }
+
+  std::string parseKnownBits(std::string_view rawBits)
+  {
+    std::string value = "0";
+    for (const char bit : rawBits) {
+      decimalMultiplyByTwo(value);
+      if (bit == '1')
+        decimalAddOne(value);
+    }
+    return value;
+  }
+
+  std::string parseTwosComplementMagnitude(std::string_view rawBits)
+  {
+    std::string magnitude(rawBits);
+    for (char& bit : magnitude)
+      bit = bit == '1' ? '0' : '1';
+
+    for (auto it = magnitude.rbegin(); it != magnitude.rend(); ++it) {
+      if (*it == '0') {
+        *it = '1';
+        break;
+      }
+      *it = '0';
+    }
+
+    return parseKnownBits(magnitude);
+  }
+
+  std::string groupedBase(std::string_view rawBits, int groupSize,
+                          std::string_view digits, std::string_view prefix)
+  {
+    if (!isKnownBitString(rawBits))
+      return uppercaseRaw(rawBits);
+
+    const std::size_t pad =
+        (groupSize - rawBits.size() % static_cast<std::size_t>(groupSize))
+        % static_cast<std::size_t>(groupSize);
+    std::string padded(pad, '0');
+    padded.append(rawBits);
+
+    std::string result(prefix);
+    bool        emittedNonZero = false;
+    for (std::size_t i = 0; i < padded.size(); i += static_cast<std::size_t>(groupSize)) {
+      int value = 0;
+      for (int offset = 0; offset < groupSize; ++offset) {
+        value <<= 1;
+        if (padded[i + static_cast<std::size_t>(offset)] == '1')
+          ++value;
+      }
+      result.push_back(digits[static_cast<std::size_t>(value)]);
+      emittedNonZero = emittedNonZero || value != 0;
+    }
+
+    if (!emittedNonZero)
+      return std::string(prefix) + "0";
+    return result;
+  }
 
 }  // namespace
 

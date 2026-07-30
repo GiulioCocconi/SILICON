@@ -19,6 +19,7 @@
 #pragma once
 
 #include <memory>
+
 #include <core/circuit.hpp>
 
 namespace SILICON::core {
@@ -30,6 +31,7 @@ namespace SILICON::simulation {
 using namespace SILICON::core;
 
 namespace core = SILICON::core;
+
 /**
  * @brief Converts source designs into simulator-ready runtime circuits.
  *
@@ -62,8 +64,8 @@ public:
    *
    * @param sourceCircuit Editable/source circuit to elaborate.
    * @return New runtime circuit containing simulator-executable components.
-   * @throws std::runtime_error if a component type, module target, or recursive module
-   * dependency cannot be resolved.
+   * @throws std::runtime_error if a component type, subcircuit target, or recursive
+   * subcircuit dependency cannot be resolved.
    */
   [[nodiscard]] std::shared_ptr<Circuit> elaborate(const Circuit& sourceCircuit) const;
 

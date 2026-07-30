@@ -28,37 +28,33 @@ namespace SILICON::waveform {
 
 namespace {
 
-[[nodiscard]] std::vector<std::string>
-defaultInputValues(const Trace& trace)
-{
-  std::vector<std::string> values;
-  const auto               inputCount =
-      std::min<int>(trace.inputCount, static_cast<int>(trace.signalDefinitions.size()));
-  values.reserve(static_cast<std::size_t>(inputCount));
+  [[nodiscard]] std::vector<std::string> defaultInputValues(const Trace& trace)
+  {
+    std::vector<std::string> values;
+    const auto               inputCount =
+        std::min<int>(trace.inputCount, static_cast<int>(trace.signalDefinitions.size()));
+    values.reserve(static_cast<std::size_t>(inputCount));
 
-  for (int i = 0; i < inputCount; ++i)
-    values.push_back(std::string(signalWidth(trace, i), '0'));
+    for (int i = 0; i < inputCount; ++i)
+      values.push_back(std::string(signalWidth(trace, i), '0'));
 
-  return values;
-}
-
-[[nodiscard]] std::vector<std::string> valuesAt(const Trace& trace,
-                                                uint64_t                    time)
-{
-  auto values = defaultInputValues(trace);
-  for (const auto& sample : trace.samples) {
-    if (sample.time > time)
-      break;
-    values = sample.values;
+    return values;
   }
-  return values;
-}
+
+  [[nodiscard]] std::vector<std::string> valuesAt(const Trace& trace, uint64_t time)
+  {
+    auto values = defaultInputValues(trace);
+    for (const auto& sample : trace.samples) {
+      if (sample.time > time)
+        break;
+      values = sample.values;
+    }
+    return values;
+  }
 
 }  // namespace
 
-void resetTrace(Trace&              trace,
-                        std::vector<Signal> signalDefinitions,
-                        const int                          inputCount)
+void resetTrace(Trace& trace, std::vector<Signal> signalDefinitions, const int inputCount)
 {
   trace.signalDefinitions = std::move(signalDefinitions);
   trace.samples.clear();
@@ -69,8 +65,7 @@ void resetTrace(Trace&              trace,
     signal.width = std::max<std::size_t>(1, signal.width);
 }
 
-void appendSnapshot(Trace& trace, const uint64_t time,
-                            std::vector<std::string> values)
+void appendSnapshot(Trace& trace, const uint64_t time, std::vector<std::string> values)
 {
   if (!trace.samples.empty() && trace.samples.back().time == time) {
     trace.samples.back().values = std::move(values);
@@ -80,8 +75,7 @@ void appendSnapshot(Trace& trace, const uint64_t time,
   trace.samples.push_back({time, std::move(values)});
 }
 
-void appendSnapshots(Trace&                  trace,
-                             std::span<const Sample> snapshots)
+void appendSnapshots(Trace& trace, std::span<const Sample> snapshots)
 {
   trace.samples.reserve(trace.samples.size() + snapshots.size());
   for (const auto& sample : snapshots)
@@ -153,9 +147,8 @@ void rebuildEditableTrace(Trace& trace, const uint64_t duration)
   trace.samples.push_back({duration, defaultValues});
 }
 
-void applyEditInterval(Trace& trace, uint64_t duration,
-                               int signalIndex, uint64_t startTime, uint64_t endTime,
-                               std::string rawValue)
+void applyEditInterval(Trace& trace, uint64_t duration, int signalIndex,
+                       uint64_t startTime, uint64_t endTime, std::string rawValue)
 {
   if (signalIndex < 0 || signalIndex >= trace.inputCount || endTime <= startTime)
     return;
@@ -173,8 +166,7 @@ void applyEditInterval(Trace& trace, uint64_t duration,
   const auto endValues   = valuesAt(trace, endTime);
 
   auto ensureBoundary = [&](const uint64_t time, const std::vector<std::string>& values) {
-    const auto it =
-        std::ranges::lower_bound(trace.samples, time, {}, &Sample::time);
+    const auto it = std::ranges::lower_bound(trace.samples, time, {}, &Sample::time);
     if (it != trace.samples.end() && it->time == time) {
       it->values = values;
       return;
@@ -206,8 +198,7 @@ void applyEditInterval(Trace& trace, uint64_t duration,
   trace.samples = std::move(compacted);
 }
 
-std::vector<Sample>
-editedInputSamples(const Trace& trace)
+std::vector<Sample> editedInputSamples(const Trace& trace)
 {
   return trace.samples;
 }
@@ -224,7 +215,7 @@ void writeTrace(std::string_view fileName, const Trace& trace)
 }
 
 void writeTrace(std::string_view fileName, const Trace& trace,
-                   TraceWriter::Options options)
+                TraceWriter::Options options)
 {
   if (trace.signalDefinitions.empty())
     throw std::runtime_error("no waveform signals are available");
@@ -233,8 +224,8 @@ void writeTrace(std::string_view fileName, const Trace& trace,
   traceSignals.reserve(trace.signalDefinitions.size());
 
   for (std::size_t i = 0; i < trace.signalDefinitions.size(); ++i) {
-    traceSignals.push_back({trace.signalDefinitions[i].name,
-                            signalWidth(trace, static_cast<int>(i))});
+    traceSignals.push_back(
+        {trace.signalDefinitions[i].name, signalWidth(trace, static_cast<int>(i))});
   }
 
   TraceWriter writer(fileName, traceSignals, std::move(options));

@@ -150,14 +150,15 @@ private:
   using PathToVertex = std::unordered_map<std::string, Vertex>;
 
   /// @brief The dependency graph itself.
-  Graph          graph;
+  Graph graph;
   /// @brief Path-to-vertex index kept in sync with @ref graph.
-  PathToVertex   pathToVertex;
+  PathToVertex pathToVertex;
 
   [[nodiscard]] std::optional<Vertex> findVertex(std::string_view documentPath) const;
 
-  [[nodiscard]] ProjectDependencyGraph withDocumentDependencies(
-      std::string_view documentPath, std::string_view sceneJson) const;
+  [[nodiscard]] ProjectDependencyGraph
+  withDocumentDependencies(std::string_view documentPath,
+                           std::string_view sceneJson) const;
 
   void replaceDependencyEdges(std::string_view documentPath, std::string_view sceneJson);
 
@@ -178,8 +179,9 @@ private:
    * @return Ordered slug trace for the first cycle found, or empty when this
    *         branch is acyclic.
    */
-  [[nodiscard]] std::vector<std::string> findCycleTraceFrom(
-      Vertex vertex, std::vector<VisitState>& states, std::vector<Vertex>& path) const;
+  [[nodiscard]] std::vector<std::string>
+  findCycleTraceFrom(Vertex vertex, std::vector<VisitState>& states,
+                     std::vector<Vertex>& path) const;
 
   /**
    * @brief Builds a slug trace when DFS reaches a vertex already in @p path.

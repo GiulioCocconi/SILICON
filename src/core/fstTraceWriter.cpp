@@ -31,25 +31,24 @@ using namespace SILICON::core;
 
 namespace {
 
-uint32_t checkedFstWidth(const std::size_t width)
-{
-  if (width > std::numeric_limits<uint32_t>::max())
-    throw std::invalid_argument("FST signal width exceeds libfst limit");
+  uint32_t checkedFstWidth(const std::size_t width)
+  {
+    if (width > std::numeric_limits<uint32_t>::max())
+      throw std::invalid_argument("FST signal width exceeds libfst limit");
 
-  return static_cast<uint32_t>(width);
-}
+    return static_cast<uint32_t>(width);
+  }
 
 }  // namespace
 
 TraceWriter::TraceWriter(std::string_view                fileName,
-                               const std::vector<TraceSignal>& signals)
+                         const std::vector<TraceSignal>& signals)
   : TraceWriter(fileName, signals, Options{})
 {
 }
 
 TraceWriter::TraceWriter(std::string_view                fileName,
-                               const std::vector<TraceSignal>& traceSignals,
-                               Options                         options)
+                         const std::vector<TraceSignal>& traceSignals, Options options)
   : writer([&] {
       HierarchyBuilder builder(fileName);
       builder.setTimeScale(options.timescale);
@@ -79,7 +78,7 @@ TraceWriter::TraceWriter(std::string_view                fileName,
 }
 
 void TraceWriter::emitSnapshot(const uint64_t                     time,
-                                  const std::span<const std::string> values)
+                               const std::span<const std::string> values)
 {
   writer.emitTimeChange(time);
 
@@ -105,8 +104,7 @@ std::optional<fstHandle> TraceWriter::handleForSignal(std::string_view name) con
   return it->second;
 }
 
-std::string TraceWriter::normalizeValue(std::string_view  value,
-                                           const std::size_t width)
+std::string TraceWriter::normalizeValue(std::string_view value, const std::size_t width)
 {
   std::string normalized(value);
   if (normalized.empty())

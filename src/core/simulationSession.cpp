@@ -29,11 +29,9 @@ using namespace SILICON::core;
 using namespace SILICON::waveform;
 using namespace SILICON::waveform::fst;
 
-
 Session::Session(std::shared_ptr<Circuit>     sourceCircuit,
-                                     Simulator::CancellationCheck isCancelled)
-  : sourceCircuit(std::move(sourceCircuit)),
-    elaborator(ComponentRegistry::instance())
+                 Simulator::CancellationCheck isCancelled)
+  : sourceCircuit(std::move(sourceCircuit)), elaborator(ComponentRegistry::instance())
 {
   if (!this->sourceCircuit)
     throw std::invalid_argument("Session requires a valid Circuit pointer");
@@ -56,35 +54,34 @@ void Session::rebuild(Simulator::CancellationCheck isCancelled)
 }
 
 Simulator::RunResult Session::run(const uint64_t               duration,
-                                            Simulator::CancellationCheck isCancelled)
+                                  Simulator::CancellationCheck isCancelled)
 {
   return runtimeSimulator->run(duration, std::move(isCancelled));
 }
 
-Simulator::RunResult
-Session::runUntilIdle(Simulator::CancellationCheck isCancelled)
+Simulator::RunResult Session::runUntilIdle(Simulator::CancellationCheck isCancelled)
 {
   return runtimeSimulator->runUntilIdle(std::move(isCancelled));
 }
 
-Simulator::RunResult Session::simulateWaveform(
-    const uint64_t duration, std::span<const Sample> inputSnapshots,
-    std::span<const Simulator::WaveformInputDriver> inputDrivers,
-    Simulator::CancellationCheck                    isCancelled)
+Simulator::RunResult
+Session::simulateWaveform(const uint64_t duration, std::span<const Sample> inputSnapshots,
+                          std::span<const Simulator::WaveformInputDriver> inputDrivers,
+                          Simulator::CancellationCheck                    isCancelled)
 {
   return runtimeSimulator->simulateWaveform(duration, inputSnapshots, inputDrivers,
                                             std::move(isCancelled));
 }
 
 Simulator::RunResult Session::setBus(Bus bus, const unsigned int value,
-                                               Simulator::CancellationCheck isCancelled)
+                                     Simulator::CancellationCheck isCancelled)
 {
   return runtimeSimulator->setBus(std::move(bus), value, std::move(isCancelled));
 }
 
 Simulator::RunResult Session::setBus(Bus bus, const unsigned int value,
-                                               const Component_weakPtr&     source,
-                                               Simulator::CancellationCheck isCancelled)
+                                     const Component_weakPtr&     source,
+                                     Simulator::CancellationCheck isCancelled)
 {
   return runtimeSimulator->setBus(std::move(bus), value, source, std::move(isCancelled));
 }
@@ -106,8 +103,7 @@ void Session::setFstWriter(std::unique_ptr<CircuitWriter> writer)
   runtimeSimulator->setFstWriter(std::move(writer));
 }
 
-void Session::enableFstTracing(std::string_view          fileName,
-                                         CircuitWriter::Options options)
+void Session::enableFstTracing(std::string_view fileName, CircuitWriter::Options options)
 {
   runtimeSimulator->enableFstTracing(fileName, std::move(options));
 }
@@ -116,6 +112,5 @@ uint64_t Session::getCurrentTime() const
 {
   return runtimeSimulator->getCurrentTime();
 }
-
 
 }  // namespace SILICON::simulation

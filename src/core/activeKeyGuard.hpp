@@ -32,7 +32,7 @@ class ActiveKeyGuard {
 public:
   ActiveKeyGuard(std::vector<std::string>& stack, std::string key,
                  const std::string_view errorPrefix)
-      : stack(stack)
+    : stack(stack)
   {
     if (std::ranges::contains(stack, key)) {
       std::ostringstream trace;

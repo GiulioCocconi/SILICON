@@ -399,7 +399,7 @@ public:
    * @param sim The simulator executing this component
    * @param context Evaluation metadata for this simulation pass
    */
-  virtual void simulate(SILICON::simulation::Simulator&                sim,
+  virtual void simulate(SILICON::simulation::Simulator&     sim,
                         const SILICON::simulation::Context& context)
   {
     (void)context;

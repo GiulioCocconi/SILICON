@@ -61,7 +61,8 @@ public:
   std::string setInputType(std::string inputType);
   std::string setOutputType(std::string outputType);
 
-  void simulate(SILICON::simulation::Simulator& sim, const SILICON::simulation::Context& context) override;
+  void simulate(SILICON::simulation::Simulator&     sim,
+                const SILICON::simulation::Context& context) override;
   void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
 
 private:

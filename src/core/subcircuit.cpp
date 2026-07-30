@@ -22,36 +22,34 @@
 #include <stdexcept>
 #include <vector>
 
-#include <core/serialization/component_registry.hpp>
 #include <core/projectDocument.hpp>
+#include <core/serialization/component_registry.hpp>
 
 namespace SILICON::core {
 
 namespace {
 
-[[nodiscard]] std::vector<Bus>
-makeExternalBuses(const std::vector<CircuitPort>& interfacePorts)
-{
-  std::vector<Bus> buses;
-  buses.reserve(interfacePorts.size());
-  for (const auto& port : interfacePorts)
-    buses.emplace_back(static_cast<unsigned short>(port.bus.size()));
-  return buses;
-}
+  [[nodiscard]] std::vector<Bus>
+  makeExternalBuses(const std::vector<CircuitPort>& interfacePorts)
+  {
+    std::vector<Bus> buses;
+    buses.reserve(interfacePorts.size());
+    for (const auto& port : interfacePorts)
+      buses.emplace_back(static_cast<unsigned short>(port.bus.size()));
+    return buses;
+  }
 
 }  // namespace
 
 SubcircuitComponent::SubcircuitComponent()
 {
-  defineProperty(std::string("slug"), std::string(),
-                 [this](const PropertyValue& value) {
-                   configureFromSlug(std::get<std::string>(value));
-                   return value;
-                 });
+  defineProperty(std::string("slug"), std::string(), [this](const PropertyValue& value) {
+    configureFromSlug(std::get<std::string>(value));
+    return value;
+  });
 
-  registryListenerId =
-      SILICON::project::DocumentStore::active().addListener(
-          [this](std::string_view path) {
+  registryListenerId = SILICON::project::DocumentStore::active().addListener(
+      [this](std::string_view path) {
         const auto configuredPath = SILICON::project::subcircuitPathForSlug(
             getPropertyValue<std::string>("slug").value_or(std::string()));
         if (path.empty() || path == configuredPath)
@@ -79,8 +77,8 @@ void SubcircuitComponent::configureFromSlug(std::string_view slug)
     return;
   }
 
-  auto definition = SILICON::core::loadSubcircuitDefinition(
-      slug, ComponentRegistry::instance());
+  auto definition =
+      SILICON::core::loadSubcircuitDefinition(slug, ComponentRegistry::instance());
   auto externalInputs  = makeExternalBuses(definition.inputs);
   auto externalOutputs = makeExternalBuses(definition.outputs);
   setInputs(externalInputs);
@@ -95,9 +93,9 @@ void SubcircuitComponent::reloadFromRegistry()
 void SubcircuitComponent::simulate(SILICON::simulation::Simulator& sim)
 {
   (void)sim;
-  throw std::logic_error(
-      "Unprocessed SubcircuitComponent reached SILICON::simulation::Simulator; preprocess the circuit "
-      "with CircuitElaborator or Session before simulation");
+  throw std::logic_error("Unprocessed SubcircuitComponent reached "
+                         "SILICON::simulation::Simulator; preprocess the circuit "
+                         "with CircuitElaborator or Session before simulation");
 }
 
 }  // namespace SILICON::core
