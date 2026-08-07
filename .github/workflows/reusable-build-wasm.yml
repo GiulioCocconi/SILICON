@@ -114,7 +114,7 @@ jobs:
           path: out
 
       - name: Authenticate with Cloudsmith
-        uses: cloudsmith-io/cloudsmith-cli-action@v2
+        uses: cloudsmith-io/cloudsmith-cli-action@v3
         with:
           oidc-namespace: ${{ inputs.cloudsmith_oidc_namespace }}
           oidc-service-slug: ${{ inputs.cloudsmith_oidc_service_slug }}
