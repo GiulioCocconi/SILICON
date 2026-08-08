@@ -158,8 +158,8 @@ void GraphicalSubcircuitComponent::refreshFromMetadata()
   }
 
   auto metadata = synchronizeGraphicalSubcircuitMetadata(
-      document->sceneJson(),
-      parseGraphicalSubcircuitMetadata(document->sceneJson())
+      document->getSceneJson(),
+      parseGraphicalSubcircuitMetadata(document->getSceneJson())
           .value_or(GraphicalSubcircuitMetadata{}));
 
   if (associatedComponent) {

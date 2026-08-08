@@ -541,7 +541,7 @@ bool LogiFlowWindow::activeDocumentHasHdl() const
   const auto* document =
       SILICON::project::DocumentStore::active().find(activeDocumentPath);
   return document && document->kind() == SILICON::project::DocumentKind::Subcircuit
-         && SILICON::project::parseHdlDescriptor(document->sceneJson()).has_value();
+         && SILICON::project::parseHdlDescriptor(document->getSceneJson()).has_value();
 }
 
 void LogiFlowWindow::updateHdlActions()
@@ -587,7 +587,7 @@ void LogiFlowWindow::showActiveHdlDocument()
       SILICON::project::DocumentStore::active().find(activeDocumentPath);
   if (!document)
     throw std::runtime_error("Active subcircuit document is missing");
-  const auto descriptor = SILICON::project::parseHdlDescriptor(document->sceneJson());
+  const auto descriptor = SILICON::project::parseHdlDescriptor(document->getSceneJson());
   if (!descriptor)
     throw std::runtime_error("Active subcircuit has no HDL descriptor");
   const auto* asset = projectAsset(descriptor->path);
@@ -595,8 +595,8 @@ void LogiFlowWindow::showActiveHdlDocument()
     throw std::runtime_error(
         std::format("Subcircuit HDL asset '{}' is missing", descriptor->path));
 
-  const auto coreJson = document->coreCircuitJson().value_or(
-      SILICON::core::extractCoreCircuitJson(document->sceneJson()));
+  const auto coreJson = document->getCoreCircuitJson().value_or(
+      SILICON::core::extractCoreCircuitJson(document->getSceneJson()));
   diagramScene->setCircuit(std::make_shared<Circuit>(
       Circuit::deserialize(coreJson, ComponentRegistry::instance())));
   hdlEditor->setPlainText(QString::fromStdString(asset->contents));
@@ -612,15 +612,15 @@ void LogiFlowWindow::compileActiveHdl()
       SILICON::project::DocumentStore::active().find(activeDocumentPath);
   if (!existing)
     throw std::runtime_error("Active subcircuit document is missing");
-  const auto descriptor = SILICON::project::parseHdlDescriptor(existing->sceneJson());
+  const auto descriptor = SILICON::project::parseHdlDescriptor(existing->getSceneJson());
   const auto slug       = existing->subcircuitSlug();
   if (!descriptor || !slug)
     throw std::runtime_error("Active document is not an HDL-backed subcircuit");
 
   auto circuit =
       SILICON::yosys::importVerilog(hdlEditor->toPlainText().toStdString(), *slug);
-  auto       json     = nlohmann::ordered_json::parse(existing->sceneJson());
-  const auto fallback = parseGraphicalSubcircuitMetadata(existing->sceneJson())
+  auto       json     = nlohmann::ordered_json::parse(existing->getSceneJson());
+  const auto fallback = parseGraphicalSubcircuitMetadata(existing->getSceneJson())
                             .value_or(GraphicalSubcircuitMetadata{});
   json["circuit"]              = nlohmann::json::parse(circuit.serialize());
   json["visual"]["components"] = nlohmann::ordered_json::array();
@@ -663,7 +663,7 @@ void LogiFlowWindow::convertActiveSubcircuitToHdl()
     throw std::runtime_error("Active subcircuit document is missing");
 
   auto circuit = Circuit::deserialize(
-      SILICON::core::extractCoreCircuitJson(existing->sceneJson()),
+      SILICON::core::extractCoreCircuitJson(existing->getSceneJson()),
       ComponentRegistry::instance());
   circuit.setName(slug);
   const auto source = SILICON::yosys::exportVerilog(circuit);
@@ -675,7 +675,7 @@ void LogiFlowWindow::convertActiveSubcircuitToHdl()
   if (projectAsset(assetPath))
     throw std::runtime_error(std::format("Project asset '{}' already exists", assetPath));
 
-  auto json   = nlohmann::ordered_json::parse(existing->sceneJson());
+  auto json   = nlohmann::ordered_json::parse(existing->getSceneJson());
   json["hdl"] = nlohmann::ordered_json{{"type", "verilog"}, {"path", assetPath}};
   json["visual"]["components"] = nlohmann::ordered_json::array();
   json["visual"]["wires"]      = nlohmann::ordered_json::array();

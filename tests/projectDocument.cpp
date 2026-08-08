@@ -36,12 +36,12 @@ TEST(ProjectDocumentTest, SceneReplacementClearsOrReplacesPreparedCoreJson)
 {
   Document document("subcircuits/adder.json", "old", "prepared");
   document.setSceneJson("new");
-  EXPECT_EQ(document.sceneJson(), "new");
-  EXPECT_FALSE(document.coreCircuitJson());
+  EXPECT_EQ(document.getSceneJson(), "new");
+  EXPECT_FALSE(document.getCoreCircuitJson());
 
   document.setSceneJson("newer", "new prepared");
-  ASSERT_TRUE(document.coreCircuitJson());
-  EXPECT_EQ(*document.coreCircuitJson(), "new prepared");
+  ASSERT_TRUE(document.getCoreCircuitJson());
+  EXPECT_EQ(*document.getCoreCircuitJson(), "new prepared");
 }
 
 TEST(ProjectDocumentTest, ParsesOptionalVerilogHdlDescriptor)
@@ -80,14 +80,14 @@ TEST(ProjectDocumentStoreTest, PreservesOrderAcrossMixedKindsAndUpserts)
                       {"circuits/control.json", "control"}});
 
   store.upsertDocument({"subcircuits/adder.json", "updated"});
-  ASSERT_EQ(store.documents().size(), 3);
-  EXPECT_EQ(store.documents()[1].path(), "subcircuits/adder.json");
-  EXPECT_EQ(store.documents()[1].sceneJson(), "updated");
+  ASSERT_EQ(store.getDocuments().size(), 3);
+  EXPECT_EQ(store.getDocuments()[1].getPath(), "subcircuits/adder.json");
+  EXPECT_EQ(store.getDocuments()[1].getSceneJson(), "updated");
 
-  const auto circuits = store.documents(DocumentKind::Circuit);
+  const auto circuits = store.getDocuments(DocumentKind::Circuit);
   ASSERT_EQ(circuits.size(), 2);
-  EXPECT_EQ(circuits[0].path(), "circuits/main.json");
-  EXPECT_EQ(circuits[1].path(), "circuits/control.json");
+  EXPECT_EQ(circuits[0].getPath(), "circuits/main.json");
+  EXPECT_EQ(circuits[1].getPath(), "circuits/control.json");
 
   store.removeDocument("subcircuits/adder.json");
   EXPECT_FALSE(store.contains("subcircuits/adder.json"));

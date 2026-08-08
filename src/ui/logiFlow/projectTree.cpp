@@ -30,7 +30,7 @@ constexpr int PathRole     = Qt::UserRole + 1;
 QString documentDisplayName(const SILICON::project::Document& document)
 {
   try {
-    const auto scene = nlohmann::json::parse(document.sceneJson());
+    const auto scene = nlohmann::json::parse(document.getSceneJson());
     if (scene.contains("circuit") && scene["circuit"].is_object()) {
       const auto name = scene["circuit"].value("name", "");
       if (!name.empty())
@@ -39,8 +39,8 @@ QString documentDisplayName(const SILICON::project::Document& document)
   } catch (const nlohmann::json::exception&) {
   }
 
-  const QString fileName = QFileInfo(QString::fromStdString(document.path())).baseName();
-  return fileName.isEmpty() ? QString::fromStdString(document.path()) : fileName;
+  const QString fileName = QFileInfo(QString::fromStdString(document.getPath())).baseName();
+  return fileName.isEmpty() ? QString::fromStdString(document.getPath()) : fileName;
 }
 
 ProjectTreeItemKind sectionKind(const SILICON::project::DocumentKind kind)
@@ -109,7 +109,7 @@ void ProjectTree::updateLabels(const SILICON::project::ProjectInfo&           pr
           0, kind == SILICON::project::DocumentKind::Circuit
                  ? documentDisplayName(document)
                  : QString::fromStdString(
-                       document.subcircuitSlug().value_or(document.path())));
+                       document.subcircuitSlug().value_or(document.getPath())));
     }
   }
 }
@@ -183,10 +183,10 @@ void ProjectTree::addSection(QTreeWidgetItem*                               proj
     auto* item = new QTreeWidgetItem(section);
     item->setText(0, circuits ? documentDisplayName(document)
                               : QString::fromStdString(
-                                    document.subcircuitSlug().value_or(document.path())));
+                                    document.subcircuitSlug().value_or(document.getPath())));
     item->setIcon(0, Icon("circuit-board"));
     item->setData(0, ItemKindRole, static_cast<int>(documentKind(kind)));
-    item->setData(0, PathRole, QString::fromStdString(document.path()));
+    item->setData(0, PathRole, QString::fromStdString(document.getPath()));
   }
 }
 

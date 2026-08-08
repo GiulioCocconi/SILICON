@@ -79,14 +79,14 @@ std::filesystem::path tempProjectPath(const std::string_view testName)
 
 nlohmann::ordered_json validMetadata()
 {
-  return nlohmann::ordered_json{{"formatVersion", SILICON::project::ProjectFormatVersion},
+  return nlohmann::ordered_json{{"formatVersion", SILICON::project::FORMAT_VERSION},
                                 {"siliconVersion", SILICON_VERSION},
                                 {"creationDate", "2026-01-02T03:04:05Z"},
                                 {"lastModify", "2026-01-02T03:04:05Z"}};
 }
 
 nlohmann::ordered_json validProject(
-    const std::string_view mainCircuit = SILICON::project::DefaultMainCircuitPath)
+    const std::string_view mainCircuit = SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH)
 {
   return nlohmann::ordered_json{
       {"name", "CPU demo"}, {"mainCircuit", mainCircuit}, {"description", ""}};
@@ -172,39 +172,39 @@ TEST(ProjectFileTest, WritesAndReadsProjectArchive)
   FileCleanup cleanup{path};
 
   SILICON::project::ProjectFile projectFile{
-      .metadata        = {.formatVersion  = SILICON::project::ProjectFormatVersion,
+      .metadata        = {.formatVersion  = SILICON::project::FORMAT_VERSION,
                           .siliconVersion = SILICON_VERSION,
                           .creationDate   = "2026-01-02T03:04:05Z",
                           .lastModify     = "2026-01-02T03:05:06Z"},
       .project         = {.name        = "CPU demo",
-                          .mainCircuit = std::string(SILICON::project::DefaultMainCircuitPath),
+                          .mainCircuit = std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH),
                           .description = "Demo project"},
-      .documents       = {{std::string(SILICON::project::DefaultMainCircuitPath),
+      .documents       = {{std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH),
                            R"({"circuit":{},"visual":{"components":[],"wires":[]}})"}},
       .assets          = {},
       .mainCircuitJson = R"({"circuit":{},"visual":{"components":[],"wires":[]}})"};
 
   SILICON::project::writeProjectFile(path, projectFile);
 
-  EXPECT_EQ(readZipEntry(path, "mimetype"), SILICON::project::ProjectMimeType);
+  EXPECT_EQ(readZipEntry(path, "mimetype"), SILICON::project::MIME_TYPE);
 
   const auto metadataJson = nlohmann::json::parse(readZipEntry(path, "metadata.json"));
-  EXPECT_EQ(metadataJson["formatVersion"], SILICON::project::ProjectFormatVersion);
+  EXPECT_EQ(metadataJson["formatVersion"], SILICON::project::FORMAT_VERSION);
   EXPECT_EQ(metadataJson["siliconVersion"], SILICON_VERSION);
   EXPECT_EQ(metadataJson["creationDate"], "2026-01-02T03:04:05Z");
   EXPECT_EQ(metadataJson["lastModify"], "2026-01-02T03:05:06Z");
 
   const auto projectJson = nlohmann::json::parse(readZipEntry(path, "project.json"));
   EXPECT_EQ(projectJson["name"], "CPU demo");
-  EXPECT_EQ(projectJson["mainCircuit"], SILICON::project::DefaultMainCircuitPath);
+  EXPECT_EQ(projectJson["mainCircuit"], SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH);
   EXPECT_EQ(projectJson["description"], "Demo project");
 
   const auto loaded = SILICON::project::readProjectFile(path);
   EXPECT_EQ(loaded.project.name, "CPU demo");
-  EXPECT_EQ(loaded.project.mainCircuit, SILICON::project::DefaultMainCircuitPath);
+  EXPECT_EQ(loaded.project.mainCircuit, SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH);
   ASSERT_EQ(loaded.documents.size(), 1);
-  EXPECT_EQ(loaded.documents.front().path(), SILICON::project::DefaultMainCircuitPath);
-  EXPECT_EQ(loaded.documents.front().sceneJson(), projectFile.mainCircuitJson);
+  EXPECT_EQ(loaded.documents.front().getPath(), SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH);
+  EXPECT_EQ(loaded.documents.front().getSceneJson(), projectFile.mainCircuitJson);
   EXPECT_EQ(loaded.mainCircuitJson, projectFile.mainCircuitJson);
 }
 
@@ -219,37 +219,37 @@ TEST(ProjectFileTest, WritesAndReadsProjectArchiveWithMultipleCircuits)
       R"({"circuit":{"name":"Controller"},"visual":{"components":[],"wires":[]}})";
 
   SILICON::project::ProjectFile projectFile{
-      .metadata  = {.formatVersion  = SILICON::project::ProjectFormatVersion,
+      .metadata  = {.formatVersion  = SILICON::project::FORMAT_VERSION,
                     .siliconVersion = SILICON_VERSION,
                     .creationDate   = "2026-01-02T03:04:05Z",
                     .lastModify     = "2026-01-02T03:05:06Z"},
       .project   = {.name        = "CPU demo",
-                    .mainCircuit = std::string(SILICON::project::DefaultMainCircuitPath),
+                    .mainCircuit = std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH),
                     .description = "Demo project"},
-      .documents = {{std::string(SILICON::project::DefaultMainCircuitPath), mainJson},
+      .documents = {{std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), mainJson},
                     {"circuits/controller.json", controllerJson}},
       .assets = {},
       .mainCircuitJson = mainJson};
 
   SILICON::project::writeProjectFile(path, projectFile);
 
-  EXPECT_EQ(readZipEntry(path, SILICON::project::DefaultMainCircuitPath.data()),
+  EXPECT_EQ(readZipEntry(path, SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH.data()),
             mainJson);
   EXPECT_EQ(readZipEntry(path, "circuits/controller.json"), controllerJson);
 
   const auto loaded = SILICON::project::readProjectFile(path);
-  EXPECT_EQ(loaded.project.mainCircuit, SILICON::project::DefaultMainCircuitPath);
+  EXPECT_EQ(loaded.project.mainCircuit, SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH);
   ASSERT_EQ(loaded.documents.size(), 2);
   const auto mainIt = std::ranges::find(
-      loaded.documents, std::string(SILICON::project::DefaultMainCircuitPath),
-      &SILICON::project::Document::path);
+      loaded.documents, std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH),
+      &SILICON::project::Document::getPath);
   const auto controllerIt =
       std::ranges::find(loaded.documents, std::string("circuits/controller.json"),
-                        &SILICON::project::Document::path);
+                        &SILICON::project::Document::getPath);
   ASSERT_NE(mainIt, loaded.documents.end());
   ASSERT_NE(controllerIt, loaded.documents.end());
-  EXPECT_EQ(mainIt->sceneJson(), mainJson);
-  EXPECT_EQ(controllerIt->sceneJson(), controllerJson);
+  EXPECT_EQ(mainIt->getSceneJson(), mainJson);
+  EXPECT_EQ(controllerIt->getSceneJson(), controllerJson);
   EXPECT_EQ(loaded.mainCircuitJson, mainJson);
 }
 
@@ -258,10 +258,10 @@ TEST(ProjectFileTest, RejectsNestedCircuitEntry)
   const auto  path = tempProjectPath("nested_circuit_entry");
   FileCleanup cleanup{path};
 
-  writeZip(path, {{"mimetype", std::string(SILICON::project::ProjectMimeType)},
+  writeZip(path, {{"mimetype", std::string(SILICON::project::MIME_TYPE)},
                   {"metadata.json", validMetadata().dump(2)},
                   {"project.json", validProject().dump(2)},
-                  {std::string(SILICON::project::DefaultMainCircuitPath), "{}"},
+                  {std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), "{}"},
                   {"circuits/nested/controller.json", "{}"}});
 
   EXPECT_THROW(readProjectFileIgnoringResult(path), std::runtime_error);
@@ -275,14 +275,14 @@ TEST(ProjectFileTest, WritesAndReadsMixedCircuitAndSubcircuitDocuments)
   const std::string subJson  = R"({"circuit":{"name":"Adder"}})";
 
   SILICON::project::ProjectFile projectFile{
-      .metadata  = {.formatVersion  = SILICON::project::ProjectFormatVersion,
+      .metadata  = {.formatVersion  = SILICON::project::FORMAT_VERSION,
                     .siliconVersion = SILICON_VERSION,
                     .creationDate   = "2026-01-02T03:04:05Z",
                     .lastModify     = "2026-01-02T03:05:06Z"},
       .project   = {.name        = "Mixed",
-                    .mainCircuit = std::string(SILICON::project::DefaultMainCircuitPath),
+                    .mainCircuit = std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH),
                     .description = ""},
-      .documents = {{std::string(SILICON::project::DefaultMainCircuitPath), mainJson},
+      .documents = {{std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), mainJson},
                     {"subcircuits/adder.json", subJson}},
       .assets = {},
       .mainCircuitJson = mainJson};
@@ -294,7 +294,7 @@ TEST(ProjectFileTest, WritesAndReadsMixedCircuitAndSubcircuitDocuments)
   ASSERT_EQ(loaded.documents.size(), 2);
   EXPECT_EQ(loaded.documents[0].kind(), SILICON::project::DocumentKind::Circuit);
   EXPECT_EQ(loaded.documents[1].kind(), SILICON::project::DocumentKind::Subcircuit);
-  EXPECT_FALSE(loaded.documents[1].coreCircuitJson());
+  EXPECT_FALSE(loaded.documents[1].getCoreCircuitJson());
   EXPECT_EQ(loaded.mainCircuitJson, mainJson);
 }
 
@@ -310,9 +310,9 @@ TEST(ProjectFileTest, RoundTripsReferencedHdlAsset)
   SILICON::project::ProjectFile projectFile{
       .metadata  = SILICON::project::metadataForNewFile(),
       .project   = {.name        = "HDL",
-                    .mainCircuit = std::string(SILICON::project::DefaultMainCircuitPath),
+                    .mainCircuit = std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH),
                     .description = ""},
-      .documents = {{std::string(SILICON::project::DefaultMainCircuitPath), mainJson},
+      .documents = {{std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), mainJson},
                     {"subcircuits/adder.json", subJson}},
       .assets    = {{"hdl/adder.v", source}},
       .mainCircuitJson = mainJson};
@@ -335,9 +335,9 @@ TEST(ProjectFileTest, RejectsMissingOrInvalidHdlAsset)
   SILICON::project::ProjectFile projectFile{
       .metadata        = SILICON::project::metadataForNewFile(),
       .project         = {.name        = "HDL",
-                          .mainCircuit = std::string(SILICON::project::DefaultMainCircuitPath),
+                          .mainCircuit = std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH),
                           .description = ""},
-      .documents       = {{std::string(SILICON::project::DefaultMainCircuitPath), "{}"},
+      .documents       = {{std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), "{}"},
                           {"subcircuits/adder.json", subJson}},
       .assets          = {},
       .mainCircuitJson = "{}"};
@@ -357,9 +357,9 @@ TEST(ProjectFileTest, RejectsSharedHdlAssetReferences)
       .metadata = SILICON::project::metadataForNewFile(),
       .project = {.name = "HDL",
                   .mainCircuit =
-                      std::string(SILICON::project::DefaultMainCircuitPath),
+                      std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH),
                   .description = ""},
-      .documents = {{std::string(SILICON::project::DefaultMainCircuitPath), "{}"},
+      .documents = {{std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), "{}"},
                     {"subcircuits/first.json", descriptor},
                     {"subcircuits/second.json", descriptor}},
       .assets = {{"hdl/shared.v", "module first; endmodule"}},
@@ -376,9 +376,9 @@ TEST(ProjectFileTest, RejectsNestedSubcircuitPathBeforeCreatingArchive)
   SILICON::project::ProjectFile projectFile{
       .metadata        = SILICON::project::metadataForNewFile(),
       .project         = {.name        = "Invalid",
-                          .mainCircuit = std::string(SILICON::project::DefaultMainCircuitPath),
+                          .mainCircuit = std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH),
                           .description = ""},
-      .documents       = {{std::string(SILICON::project::DefaultMainCircuitPath), "{}"}},
+      .documents       = {{std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), "{}"}},
       .assets          = {},
       .mainCircuitJson = "{}"};
 
@@ -391,10 +391,10 @@ TEST(ProjectFileTest, RejectsNestedSubcircuitArchiveEntry)
   const auto  path = tempProjectPath("nested_subcircuit_entry");
   FileCleanup cleanup{path};
 
-  writeZip(path, {{"mimetype", std::string(SILICON::project::ProjectMimeType)},
+  writeZip(path, {{"mimetype", std::string(SILICON::project::MIME_TYPE)},
                   {"metadata.json", validMetadata().dump(2)},
                   {"project.json", validProject().dump(2)},
-                  {std::string(SILICON::project::DefaultMainCircuitPath), "{}"},
+                  {std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), "{}"},
                   {"subcircuits/nested/adder.json", "{}"}});
 
   EXPECT_THROW(readProjectFileIgnoringResult(path), std::invalid_argument);
@@ -407,10 +407,10 @@ TEST(ProjectFileTest, RejectsDuplicateDocumentPathsBeforeCreatingArchive)
   SILICON::project::ProjectFile projectFile{
       .metadata        = SILICON::project::metadataForNewFile(),
       .project         = {.name        = "Invalid",
-                          .mainCircuit = std::string(SILICON::project::DefaultMainCircuitPath),
+                          .mainCircuit = std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH),
                           .description = ""},
-      .documents       = {{std::string(SILICON::project::DefaultMainCircuitPath), "{}"},
-                          {std::string(SILICON::project::DefaultMainCircuitPath), "{}"}},
+      .documents       = {{std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), "{}"},
+                          {std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), "{}"}},
       .assets          = {},
       .mainCircuitJson = "{}"};
 
@@ -425,9 +425,9 @@ TEST(ProjectFileTest, RejectsDuplicateSubcircuitSlugsBeforeCreatingArchive)
   SILICON::project::ProjectFile projectFile{
       .metadata        = SILICON::project::metadataForNewFile(),
       .project         = {.name        = "Invalid",
-                          .mainCircuit = std::string(SILICON::project::DefaultMainCircuitPath),
+                          .mainCircuit = std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH),
                           .description = ""},
-      .documents       = {{std::string(SILICON::project::DefaultMainCircuitPath), "{}"},
+      .documents       = {{std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), "{}"},
                           {"subcircuits/adder.json", "{}"},
                           {"subcircuits/adder.json", "{}"}},
       .assets          = {},
@@ -445,7 +445,7 @@ TEST(ProjectFileTest, RejectsWrongMimetype)
   writeZip(path, {{"mimetype", "application/octet-stream"},
                   {"metadata.json", validMetadata().dump(2)},
                   {"project.json", validProject().dump(2)},
-                  {std::string(SILICON::project::DefaultMainCircuitPath), "{}"}});
+                  {std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), "{}"}});
 
   EXPECT_THROW(readProjectFileIgnoringResult(path), std::runtime_error);
 }
@@ -467,9 +467,9 @@ TEST(ProjectFileTest, RejectsMissingProjectJson)
   const auto  path = tempProjectPath("missing_project");
   FileCleanup cleanup{path};
 
-  writeZip(path, {{"mimetype", std::string(SILICON::project::ProjectMimeType)},
+  writeZip(path, {{"mimetype", std::string(SILICON::project::MIME_TYPE)},
                   {"metadata.json", validMetadata().dump(2)},
-                  {std::string(SILICON::project::DefaultMainCircuitPath), "{}"}});
+                  {std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), "{}"}});
 
   EXPECT_THROW(readProjectFileIgnoringResult(path), std::runtime_error);
 }
@@ -479,9 +479,9 @@ TEST(ProjectFileTest, RejectsMissingMetadataJson)
   const auto  path = tempProjectPath("missing_metadata");
   FileCleanup cleanup{path};
 
-  writeZip(path, {{"mimetype", std::string(SILICON::project::ProjectMimeType)},
+  writeZip(path, {{"mimetype", std::string(SILICON::project::MIME_TYPE)},
                   {"project.json", validProject().dump(2)},
-                  {std::string(SILICON::project::DefaultMainCircuitPath), "{}"}});
+                  {std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), "{}"}});
 
   EXPECT_THROW(readProjectFileIgnoringResult(path), std::runtime_error);
 }
@@ -491,7 +491,7 @@ TEST(ProjectFileTest, RejectsMissingMainCircuit)
   const auto  path = tempProjectPath("missing_circuit");
   FileCleanup cleanup{path};
 
-  writeZip(path, {{"mimetype", std::string(SILICON::project::ProjectMimeType)},
+  writeZip(path, {{"mimetype", std::string(SILICON::project::MIME_TYPE)},
                   {"metadata.json", validMetadata().dump(2)},
                   {"project.json", validProject().dump(2)}});
 
@@ -503,10 +503,10 @@ TEST(ProjectFileTest, RejectsMainCircuitOutsideCircuitsDirectory)
   const auto  path = tempProjectPath("main_outside_circuits");
   FileCleanup cleanup{path};
 
-  writeZip(path, {{"mimetype", std::string(SILICON::project::ProjectMimeType)},
+  writeZip(path, {{"mimetype", std::string(SILICON::project::MIME_TYPE)},
                   {"metadata.json", validMetadata().dump(2)},
                   {"project.json", validProject("main.json").dump(2)},
-                  {std::string(SILICON::project::DefaultMainCircuitPath), "{}"}});
+                  {std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), "{}"}});
 
   EXPECT_THROW(readProjectFileIgnoringResult(path), std::runtime_error);
 }
@@ -516,10 +516,10 @@ TEST(ProjectFileTest, RejectsMainCircuitNotPresentInArchive)
   const auto  path = tempProjectPath("main_not_present");
   FileCleanup cleanup{path};
 
-  writeZip(path, {{"mimetype", std::string(SILICON::project::ProjectMimeType)},
+  writeZip(path, {{"mimetype", std::string(SILICON::project::MIME_TYPE)},
                   {"metadata.json", validMetadata().dump(2)},
                   {"project.json", validProject("circuits/controller.json").dump(2)},
-                  {std::string(SILICON::project::DefaultMainCircuitPath), "{}"},
+                  {std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), "{}"},
                   {"circuits/io.json", "{}"}});
 
   EXPECT_THROW(readProjectFileIgnoringResult(path), std::runtime_error);

@@ -136,43 +136,43 @@ std::optional<HdlDescriptor> parseHdlDescriptor(const std::string_view sceneJson
 
 Document::Document(std::string path, std::string sceneJson,
                    std::optional<std::string> coreCircuitJson)
-  : path_(std::move(path)),
-    sceneJson_(std::move(sceneJson)),
-    coreCircuitJson_(std::move(coreCircuitJson))
+  : path(std::move(path)),
+    sceneJson(std::move(sceneJson)),
+    coreCircuitJson(std::move(coreCircuitJson))
 {
-  requireValidPath(path_);
+  requireValidPath(this->path);
 }
 
-const std::string& Document::path() const
+const std::string& Document::getPath() const
 {
-  return path_;
+  return path;
 }
 
-const std::string& Document::sceneJson() const
+const std::string& Document::getSceneJson() const
 {
-  return sceneJson_;
+  return sceneJson;
 }
 
-const std::optional<std::string>& Document::coreCircuitJson() const
+const std::optional<std::string>& Document::getCoreCircuitJson() const
 {
-  return coreCircuitJson_;
+  return coreCircuitJson;
 }
 
 DocumentKind Document::kind() const
 {
-  return *classifyDocumentPath(path_);
+  return *classifyDocumentPath(path);
 }
 
 std::optional<std::string> Document::subcircuitSlug() const
 {
-  return subcircuitSlugForPath(path_);
+  return subcircuitSlugForPath(path);
 }
 
 void Document::setSceneJson(std::string                sceneJson,
                             std::optional<std::string> coreCircuitJson)
 {
-  sceneJson_       = std::move(sceneJson);
-  coreCircuitJson_ = std::move(coreCircuitJson);
+  this->sceneJson       = std::move(sceneJson);
+  this->coreCircuitJson = std::move(coreCircuitJson);
 }
 
 DocumentStore& DocumentStore::active()
@@ -185,58 +185,58 @@ void DocumentStore::setDocuments(std::vector<Document> documents)
 {
   std::unordered_set<std::string> paths;
   for (const auto& document : documents) {
-    if (!paths.insert(document.path()).second)
+    if (!paths.insert(document.getPath()).second)
       throw std::invalid_argument(
-          std::format("Duplicate project document path: {}", document.path()));
+          std::format("Duplicate project document path: {}", document.getPath()));
   }
-  documents_ = std::move(documents);
-  listeners_.notify({});
+  this->documents = std::move(documents);
+  listeners.notify({});
 }
 
 void DocumentStore::upsertDocument(Document document)
 {
-  const auto path = document.path();
-  if (auto index = indexOf(document.path())) {
-    documents_[*index] = std::move(document);
-    listeners_.notify(path);
+  const auto path = document.getPath();
+  if (auto index = indexOf(document.getPath())) {
+    documents[*index] = std::move(document);
+    listeners.notify(path);
     return;
   }
-  documents_.push_back(std::move(document));
-  listeners_.notify(path);
+  documents.push_back(std::move(document));
+  listeners.notify(path);
 }
 
 void DocumentStore::insertDocument(Document document, const std::size_t index)
 {
-  const auto path = document.path();
-  if (contains(document.path()))
+  const auto path = document.getPath();
+  if (contains(document.getPath()))
     throw std::invalid_argument(
-        std::format("Duplicate project document path: {}", document.path()));
-  const auto offset = std::min(index, documents_.size());
-  documents_.insert(documents_.begin() + offset, std::move(document));
-  listeners_.notify(path);
+        std::format("Duplicate project document path: {}", document.getPath()));
+  const auto offset = std::min(index, documents.size());
+  documents.insert(documents.begin() + offset, std::move(document));
+  listeners.notify(path);
 }
 
 void DocumentStore::removeDocument(const std::string_view documentPath)
 {
   const auto path    = std::string(documentPath);
-  const auto oldSize = documents_.size();
-  std::erase_if(documents_, [&](const Document& document) {
-    return document.path() == documentPath;
+  const auto oldSize = documents.size();
+  std::erase_if(documents, [&](const Document& document) {
+    return document.getPath() == documentPath;
   });
-  if (documents_.size() != oldSize)
-    listeners_.notify(path);
+  if (documents.size() != oldSize)
+    listeners.notify(path);
 }
 
 void DocumentStore::clear()
 {
-  documents_.clear();
-  listeners_.notify({});
+  documents.clear();
+  listeners.notify({});
 }
 
 const Document* DocumentStore::find(const std::string_view documentPath) const
 {
-  const auto it = std::ranges::find(documents_, documentPath, &Document::path);
-  return it == documents_.end() ? nullptr : &*it;
+  const auto it = std::ranges::find(documents, documentPath, &Document::getPath);
+  return it == documents.end() ? nullptr : &*it;
 }
 
 bool DocumentStore::contains(const std::string_view documentPath) const
@@ -244,14 +244,14 @@ bool DocumentStore::contains(const std::string_view documentPath) const
   return find(documentPath) != nullptr;
 }
 
-std::vector<Document> DocumentStore::documents() const
+std::vector<Document> DocumentStore::getDocuments() const
 {
-  return documents_;
+  return documents;
 }
 
-std::vector<Document> DocumentStore::documents(const DocumentKind kind) const
+std::vector<Document> DocumentStore::getDocuments(const DocumentKind kind) const
 {
-  return documents_ | std::views::filter([kind](const Document& document) {
+  return documents | std::views::filter([kind](const Document& document) {
            return document.kind() == kind;
          })
          | std::ranges::to<std::vector>();
@@ -260,20 +260,20 @@ std::vector<Document> DocumentStore::documents(const DocumentKind kind) const
 std::optional<std::size_t>
 DocumentStore::indexOf(const std::string_view documentPath) const
 {
-  const auto it = std::ranges::find(documents_, documentPath, &Document::path);
-  if (it == documents_.end())
+  const auto it = std::ranges::find(documents, documentPath, &Document::getPath);
+  if (it == documents.end())
     return std::nullopt;
-  return static_cast<std::size_t>(std::distance(documents_.begin(), it));
+  return static_cast<std::size_t>(std::distance(documents.begin(), it));
 }
 
 std::uint64_t DocumentStore::addListener(Listener listener)
 {
-  return listeners_.add(std::move(listener));
+  return listeners.add(std::move(listener));
 }
 
 void DocumentStore::removeListener(const std::uint64_t id)
 {
-  listeners_.remove(id);
+  listeners.remove(id);
 }
 
 }  // namespace SILICON::project

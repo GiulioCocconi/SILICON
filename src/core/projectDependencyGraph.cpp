@@ -121,10 +121,10 @@ void ProjectDependencyGraph::rebuildFromProject(const std::vector<Document>& doc
   ProjectDependencyGraph rebuilt;
 
   for (const auto& document : documents)
-    rebuilt.addDocument(document.path());
+    rebuilt.addDocument(document.getPath());
 
   for (const auto& document : documents)
-    rebuilt.replaceDependencyEdges(document.path(), document.sceneJson());
+    rebuilt.replaceDependencyEdges(document.getPath(), document.getSceneJson());
 
   rebuilt.throwIfCyclic();
   *this = std::move(rebuilt);

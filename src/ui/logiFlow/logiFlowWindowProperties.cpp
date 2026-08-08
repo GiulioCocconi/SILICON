@@ -122,7 +122,7 @@ std::pair<std::string, std::string>
 circuitMetadata(const SILICON::project::Document& document)
 {
   try {
-    const auto scene = nlohmann::json::parse(document.sceneJson());
+    const auto scene = nlohmann::json::parse(document.getSceneJson());
     if (scene.contains("circuit") && scene["circuit"].is_object())
       return {scene["circuit"].value("name", ""),
               scene["circuit"].value("description", "")};
