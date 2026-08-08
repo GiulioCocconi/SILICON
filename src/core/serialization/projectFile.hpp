@@ -21,7 +21,7 @@ namespace SILICON::project {
  * stored, uncompressed `mimetype` file containing this exact value, allowing
  * readers to reject unrelated ZIP files before parsing JSON payloads.
  */
-inline constexpr std::string_view ProjectMimeType = "application/vnd.silicon.project+zip";
+inline constexpr std::string_view MIME_TYPE = "application/vnd.silicon.project+zip";
 
 /**
  * @brief Current version of the Silicon project archive schema.
@@ -29,7 +29,7 @@ inline constexpr std::string_view ProjectMimeType = "application/vnd.silicon.pro
  * Readers reject archives whose `metadata.json.formatVersion` differs from
  * this value.
  */
-inline constexpr int ProjectFormatVersion = 1;
+inline constexpr int FORMAT_VERSION = 1;
 
 /**
  * @brief Default path of the initial circuit JSON file.
@@ -46,14 +46,14 @@ inline constexpr int ProjectFormatVersion = 1;
  * `project.json.mainCircuit` must point to one of the JSON entries under
  * `circuits/`.
  */
-inline constexpr std::string_view DefaultMainCircuitPath = "circuits/main.json";
+inline constexpr std::string_view DEFAULT_MAIN_CIRCUIT_PATH = "circuits/main.json";
 
 /**
  * @brief Metadata stored in `metadata.json`.
  */
 struct ProjectMetadata {
   /// Project archive schema version.
-  int formatVersion = ProjectFormatVersion;
+  int formatVersion = FORMAT_VERSION;
   /// Silicon application version that wrote the file.
   std::string siliconVersion;
   /// UTC timestamp for the first save, formatted as `YYYY-MM-DDTHH:MM:SSZ`.
@@ -69,7 +69,7 @@ struct ProjectInfo {
   /// Human-readable project name.
   std::string name;
   /// ZIP entry containing the main circuit JSON.
-  std::string mainCircuit{DefaultMainCircuitPath};
+  std::string mainCircuit{DEFAULT_MAIN_CIRCUIT_PATH};
   /// Optional human-readable project description.
   std::string description;
 };

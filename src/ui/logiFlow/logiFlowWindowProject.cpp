@@ -128,7 +128,7 @@ QString defaultProjectName(const QString& currentFileName)
 
 std::string LogiFlowWindow::defaultMainCircuitPath()
 {
-  return std::string(SILICON::project::DefaultMainCircuitPath);
+  return std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH);
 }
 
 SILICON::project::Document LogiFlowWindow::defaultCircuitDocument()
@@ -156,7 +156,7 @@ LogiFlowWindow::projectMainCircuitPath() const
 void LogiFlowWindow::ensureProjectDocuments()
 {
   auto& store = SILICON::project::DocumentStore::active();
-  if (store.documents(SILICON::project::DocumentKind::Circuit).empty())
+  if (store.getDocuments(SILICON::project::DocumentKind::Circuit).empty())
     store.upsertDocument(defaultCircuitDocument());
 }
 
@@ -307,7 +307,7 @@ void LogiFlowWindow::saveActiveDocumentPayload()
     if (const auto* existing = store.find(activeDocumentPath)) {
       try {
         auto       newJson  = nlohmann::json::parse(serializedScene);
-        const auto fallback = parseGraphicalSubcircuitMetadata(existing->sceneJson())
+        const auto fallback = parseGraphicalSubcircuitMetadata(existing->getSceneJson())
                                   .value_or(GraphicalSubcircuitMetadata{});
         newJson["graphicalComponent"] = graphicalSubcircuitMetadataToJson(
             synchronizeGraphicalSubcircuitMetadata(serializedScene, fallback));
@@ -366,7 +366,7 @@ bool LogiFlowWindow::switchToDocument(const std::string& path, const bool select
   const auto* target = store.find(path);
   if (!target)
     return false;
-  const auto payload = target->sceneJson();
+  const auto payload = target->getSceneJson();
 
   try {
     diagramScene->clear(false, false);
@@ -410,7 +410,7 @@ void LogiFlowWindow::removeDocument(const std::string& path)
   std::optional<SILICON::project::HdlDescriptor> hdl;
   if (const auto* document = store.find(path);
       document && document->kind() == SILICON::project::DocumentKind::Subcircuit) {
-    hdl = SILICON::project::parseHdlDescriptor(document->sceneJson());
+    hdl = SILICON::project::parseHdlDescriptor(document->getSceneJson());
   }
 
   if (activeDocumentPath == path)
@@ -432,13 +432,13 @@ void LogiFlowWindow::insertDocument(SILICON::project::Document          document
                                     const bool                          activate)
 {
   auto&      store = SILICON::project::DocumentStore::active();
-  const auto path  = document.path();
+  const auto path  = document.getPath();
   if (store.contains(path))
     return;
 
   dependencyGraph.addDocument(path);
   try {
-    dependencyGraph.replaceDocumentDependencies(path, document.sceneJson());
+    dependencyGraph.replaceDocumentDependencies(path, document.getSceneJson());
   } catch (...) {
     dependencyGraph.removeDocument(path);
     throw;
@@ -464,8 +464,8 @@ void LogiFlowWindow::rebuildProjectTree()
   ensureProjectDocuments();
   const auto  project = currentProjectInfo.value_or(defaultProjectInfo(currentFileName));
   const auto& store   = SILICON::project::DocumentStore::active();
-  projectTree->rebuild(project, store.documents(SILICON::project::DocumentKind::Circuit),
-                       store.documents(SILICON::project::DocumentKind::Subcircuit),
+  projectTree->rebuild(project, store.getDocuments(SILICON::project::DocumentKind::Circuit),
+                       store.getDocuments(SILICON::project::DocumentKind::Subcircuit),
                        activeDocumentPath);
 }
 
@@ -476,8 +476,8 @@ void LogiFlowWindow::updateProjectTreeLabels()
   const auto  project = currentProjectInfo.value_or(defaultProjectInfo(currentFileName));
   const auto& store   = SILICON::project::DocumentStore::active();
   projectTree->updateLabels(project,
-                            store.documents(SILICON::project::DocumentKind::Circuit),
-                            store.documents(SILICON::project::DocumentKind::Subcircuit));
+                            store.getDocuments(SILICON::project::DocumentKind::Circuit),
+                            store.getDocuments(SILICON::project::DocumentKind::Subcircuit));
 }
 
 QTreeWidgetItem* LogiFlowWindow::projectDocumentSectionItem(

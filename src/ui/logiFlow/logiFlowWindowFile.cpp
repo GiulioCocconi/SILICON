@@ -207,7 +207,7 @@ void LogiFlowWindow::resetProjectState()
   document.setSceneJson(diagramScene->serialize());
   SILICON::project::DocumentStore::active().setDocuments({std::move(document)});
   dependencyGraph.rebuildFromProject(
-      SILICON::project::DocumentStore::active().documents());
+      SILICON::project::DocumentStore::active().getDocuments());
   updateSubcircuitShapeAction();
 }
 
@@ -357,13 +357,13 @@ void LogiFlowWindow::loadCircuitContent(const QString&    fileName,
     for (auto& document : projectFile.documents) {
       if (document.kind() == SILICON::project::DocumentKind::Subcircuit)
         documents.push_back(
-            preparedSubcircuitDocument(document.path(), document.sceneJson()));
+            preparedSubcircuitDocument(document.getPath(), document.getSceneJson()));
       else
         documents.push_back(std::move(document));
     }
     SILICON::project::DocumentStore::active().setDocuments(std::move(documents));
     dependencyGraph.rebuildFromProject(
-        SILICON::project::DocumentStore::active().documents());
+        SILICON::project::DocumentStore::active().getDocuments());
 
     auto&       guiFactory   = GUIComponentFactory::instance();
     auto&       coreRegistry = ComponentRegistry::instance();
@@ -371,7 +371,7 @@ void LogiFlowWindow::loadCircuitContent(const QString&    fileName,
         SILICON::project::DocumentStore::active().find(activeDocumentPath);
     if (!document)
       throw std::runtime_error("Main circuit payload is missing");
-    diagramScene->deserialize(document->sceneJson(), guiFactory, coreRegistry);
+    diagramScene->deserialize(document->getSceneJson(), guiFactory, coreRegistry);
     editorStack->setCurrentWidget(diagramView);
     hdlCodeMode = false;
     diagramScene->setSubcircuitDocumentMode(false);
@@ -437,7 +437,7 @@ void LogiFlowWindow::save()
   try {
     auto metadata =
         currentProjectMetadata.value_or(SILICON::project::metadataForNewFile());
-    metadata.formatVersion  = SILICON::project::ProjectFormatVersion;
+    metadata.formatVersion  = SILICON::project::FORMAT_VERSION;
     metadata.siliconVersion = SILICON_VERSION;
     metadata.lastModify     = SILICON::project::currentUtcTimestamp();
 
@@ -448,7 +448,7 @@ void LogiFlowWindow::save()
       project.mainCircuit = defaultMainCircuitPath();
     currentProjectInfo = project;
     ensureProjectDocuments();
-    const auto  documents = SILICON::project::DocumentStore::active().documents();
+    const auto  documents = SILICON::project::DocumentStore::active().getDocuments();
     const auto* mainDocument =
         SILICON::project::DocumentStore::active().find(project.mainCircuit);
     if (!mainDocument)
@@ -459,7 +459,7 @@ void LogiFlowWindow::save()
                                               .documents = documents,
                                               .assets    = projectAssets,
                                               .mainCircuitJson =
-                                                  mainDocument->sceneJson()};
+                                                  mainDocument->getSceneJson()};
 
 #ifdef __EMSCRIPTEN__
     QTemporaryFile archive;
@@ -769,7 +769,7 @@ void LogiFlowWindow::deleteSelectedDocument()
         const auto index    = static_cast<std::ptrdiff_t>(*storedIndex);
         std::optional<SILICON::project::ProjectAsset> hdlAsset;
         if (const auto descriptor =
-                SILICON::project::parseHdlDescriptor(document.sceneJson())) {
+                SILICON::project::parseHdlDescriptor(document.getSceneJson())) {
           if (const auto* asset = projectAsset(descriptor->path))
             hdlAsset = *asset;
         }

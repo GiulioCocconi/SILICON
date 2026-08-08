@@ -55,9 +55,9 @@ public:
   Document(std::string path, std::string sceneJson,
            std::optional<std::string> coreCircuitJson = std::nullopt);
 
-  [[nodiscard]] const std::string&                path() const;
-  [[nodiscard]] const std::string&                sceneJson() const;
-  [[nodiscard]] const std::optional<std::string>& coreCircuitJson() const;
+  [[nodiscard]] const std::string&                getPath() const;
+  [[nodiscard]] const std::string&                getSceneJson() const;
+  [[nodiscard]] const std::optional<std::string>& getCoreCircuitJson() const;
   [[nodiscard]] DocumentKind                      kind() const;
   [[nodiscard]] std::optional<std::string>        subcircuitSlug() const;
 
@@ -65,9 +65,9 @@ public:
                     std::optional<std::string> coreCircuitJson = std::nullopt);
 
 private:
-  std::string                path_;
-  std::string                sceneJson_;
-  std::optional<std::string> coreCircuitJson_;
+  std::string                path;
+  std::string                sceneJson;
+  std::optional<std::string> coreCircuitJson;
 };
 
 class DocumentStore {
@@ -84,16 +84,16 @@ public:
 
   [[nodiscard]] const Document*            find(std::string_view documentPath) const;
   [[nodiscard]] bool                       contains(std::string_view documentPath) const;
-  [[nodiscard]] std::vector<Document>      documents() const;
-  [[nodiscard]] std::vector<Document>      documents(DocumentKind kind) const;
+  [[nodiscard]] std::vector<Document>      getDocuments() const;
+  [[nodiscard]] std::vector<Document>      getDocuments(DocumentKind kind) const;
   [[nodiscard]] std::optional<std::size_t> indexOf(std::string_view documentPath) const;
 
   std::uint64_t addListener(Listener listener);
   void          removeListener(std::uint64_t id);
 
 private:
-  std::vector<Document>                             documents_;
-  SILICON::core::CallbackRegistry<std::string_view> listeners_;
+  std::vector<Document>                             documents;
+  SILICON::core::CallbackRegistry<std::string_view> listeners;
 };
 
 }  // namespace SILICON::project
