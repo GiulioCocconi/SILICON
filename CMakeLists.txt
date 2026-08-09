@@ -174,8 +174,18 @@ elseif (UNIX)
     add_compile_options(-Wall -Wextra -Wno-unused-parameter -Wno-return-type)
 elseif (WIN32 AND MINGW)
     add_compile_options(-Wall -Wextra -Wno-unused-parameter)
+
 elseif (EMSCRIPTEN)
     add_link_options(--emrun)
+endif ()
+
+# GCC can speculatively devirtualize unrelated std::shared_ptr control
+# blocks and report false -Warray-bounds diagnostics (GCC PR 122197), that get
+# promoted to errors.
+if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU"
+    AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 16
+    AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 16.2)
+    add_compile_options(-Wno-error=array-bounds)
 endif ()
 
 if (UNIX AND NOT APPLE AND NOT EMSCRIPTEN AND SILICON_ENABLE_SANITIZERS)
