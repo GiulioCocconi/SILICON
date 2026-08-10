@@ -22,6 +22,8 @@
  * Author(s):   Michael Wybrow
 */
 
+// Modified by Giulio Cocconi, for use in the SILICON Project, 2026
+
 //! @file    connend.h
 //! @brief   Contains the interface for the ConnEnd class.
 
@@ -247,6 +249,7 @@ class AVOID_EXPORT ConnEnd
         void disconnect(const bool shapeDeleted = false);
         void usePin(ShapeConnectionPin *pin);
         void usePinVertex(VertInf *pinVert);
+        ShapeConnectionPin*        soleAvailablePin(void) const;
         void freeActivePin(void);
         unsigned int endpointType(void) const;
         bool isPinConnection(void) const;

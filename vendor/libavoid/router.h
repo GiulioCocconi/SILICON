@@ -22,6 +22,8 @@
  * Author(s):  Michael Wybrow
 */
 
+// Modified by Giulio Cocconi, for use in the SILICON Project, 2026
+
 //! @file    router.h
 //! @brief   Contains the interface for the Router class.
 
@@ -478,6 +480,22 @@ class AVOID_EXPORT Router {
         //! @sa setTransactionUse
         //!
         bool processTransaction(void);
+
+        //! @brief Separates orthogonal connector groups into distinct lanes.
+        //!
+        //! Connectors in the same group are treated as one logical net and
+        //! may meet at junctions.  Routes from different groups will neither
+        //! share a positive-length side nor terminate on one another.  Shape
+        //! and free-point ConnEnds remain fixed while junction ConnEnds move
+        //! with the rest of their group.
+        //!
+        //! This method is intended to be called after processTransaction().
+        //! It modifies display routes only.
+        //!
+        //! @param[in] groups      Logical groups of routed connectors.
+        //! @param[in] separation Distance between candidate routing lanes.
+        void separateOrthogonalRouteGroups(const ConnRefListVector& groups,
+                                           double                   separation);
 
         //! @brief Delete a shape from the router scene.
         //!

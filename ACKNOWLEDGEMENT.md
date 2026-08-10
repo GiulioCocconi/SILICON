@@ -25,7 +25,7 @@ Each font is licensed under `OFL`
 - TOML++, under MIT, _Copyright (c) Mark Gillard <mark.gillard@outlook.com.au>_
 
 ### Notes
-We made some minor modification to libavoid. To display them run:
+We made some modification to libavoid. To display them run:
 ```bash
 git clone --depth 1 --branch v1.0.6 https://github.com/Aksem/adaptagrams /tmp/adaptagrams_orig
 git diff --no-index /tmp/adaptagrams_orig/cola/libavoid ./vendor/libavoid

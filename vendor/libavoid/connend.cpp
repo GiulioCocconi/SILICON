@@ -22,6 +22,8 @@
  * Author(s):  Michael Wybrow
 */
 
+// Modified by Giulio Cocconi, for use in the SILICON Project, 2026
+
 #include <cstring>
 #include <cmath>
 #include <cstdlib>
@@ -126,14 +128,15 @@ const Point ConnEnd::position(void) const
     if (m_active_pin)  // Attached to a pin!
     {
         return m_active_pin->position();
-    }
-    else if (m_anchor_obj)
-    {
-        return m_anchor_obj->position();
-    }
-    else
-    {
-        return m_point;
+    } else if (ShapeConnectionPin* pin = soleAvailablePin()) {
+      // A connection class with one available pin is already unambiguous.
+      // Resolve it before path generation so a failed visibility search
+      // retains the real pin coordinate instead of the shape centre.
+      return pin->position();
+    } else if (m_anchor_obj) {
+      return m_anchor_obj->position();
+    } else {
+      return m_point;
     }
 }
 
@@ -143,10 +146,10 @@ ConnDirFlags ConnEnd::directions(void) const
     if (m_active_pin)  // Attached to a pin!
     {
         return m_active_pin->directions();
-    }
-    else
-    {
-        return m_directions;
+    } else if (ShapeConnectionPin* pin = soleAvailablePin()) {
+      return pin->directions();
+    } else {
+      return m_directions;
     }
 }
 
@@ -181,6 +184,28 @@ unsigned int ConnEnd::endpointType(void) const
     return (m_conn_ref->m_dst_connend == this) ? VertID::tar : VertID::src;
 }
 
+ShapeConnectionPin* ConnEnd::soleAvailablePin(void) const
+{
+  if (!m_anchor_obj || (m_connection_pin_class_id == CONNECTIONPIN_UNSET)) {
+    return nullptr;
+  }
+
+  ShapeConnectionPin* result = nullptr;
+  for (ShapeConnectionPinSet::const_iterator curr =
+           m_anchor_obj->m_connection_pins.begin();
+       curr != m_anchor_obj->m_connection_pins.end(); ++curr) {
+    ShapeConnectionPin* pin = *curr;
+    if ((pin->m_class_id != m_connection_pin_class_id)
+        || (pin->m_exclusive && !pin->m_connend_users.empty())) {
+      continue;
+    }
+    if (result) {
+      return nullptr;
+    }
+    result = pin;
+  }
+  return result;
+}
 
 // Marks this ConnEnd as using a particular ShapeConnectionPin.
 void ConnEnd::usePin(ShapeConnectionPin *pin)

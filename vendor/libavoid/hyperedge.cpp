@@ -22,6 +22,8 @@
  * Author(s):  Michael Wybrow
 */
 
+// Modified by Giulio Cocconi, for use in the SILICON Project, 2026
+
 #include "libavoid/hyperedge.h"
 #include "libavoid/hyperedgetree.h"
 #include "libavoid/mtst.h"
@@ -74,16 +76,19 @@ size_t HyperedgeRerouter::count(void) const
 HyperedgeNewAndDeletedObjectLists HyperedgeRerouter::newAndDeletedObjectLists(
         size_t index) const
 {
-    COLA_ASSERT(index <= count());
+  COLA_ASSERT(index < m_new_junctions_vector.size());
+  COLA_ASSERT(index < m_new_connectors_vector.size());
+  COLA_ASSERT(index < m_deleted_junctions_vector.size());
+  COLA_ASSERT(index < m_deleted_connectors_vector.size());
 
-    HyperedgeNewAndDeletedObjectLists result;
+  HyperedgeNewAndDeletedObjectLists result;
 
-    result.newJunctionList = m_new_junctions_vector[index];
-    result.deletedJunctionList = m_deleted_junctions_vector[index];
-    result.newConnectorList = m_new_connectors_vector[index];
-    result.deletedConnectorList = m_deleted_connectors_vector[index];
+  result.newJunctionList      = m_new_junctions_vector[index];
+  result.deletedJunctionList  = m_deleted_junctions_vector[index];
+  result.newConnectorList     = m_new_connectors_vector[index];
+  result.deletedConnectorList = m_deleted_connectors_vector[index];
 
-    return result;
+  return result;
 }
 
 
