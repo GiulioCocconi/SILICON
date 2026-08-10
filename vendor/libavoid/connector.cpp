@@ -22,6 +22,7 @@
  * Author(s):  Michael Wybrow
 */
 
+// Modified by Giulio Cocconi, for use in the SILICON Project, 2026
 
 #include <cstring>
 #include <cfloat>
@@ -712,6 +713,187 @@ Polygon& ConnRef::displayRoute(void)
     return m_display_route;
 }
 
+static bool orthogonalRoute(const Polygon& route)
+{
+  for (size_t i = 1; i < route.size(); ++i) {
+    if ((route.at(i - 1).x != route.at(i).x) && (route.at(i - 1).y != route.at(i).y)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+static double orthogonalRouteLength(const Polygon& route)
+{
+  double length = 0;
+  for (size_t i = 1; i < route.size(); ++i) {
+    length += manhattanDist(route.at(i - 1), route.at(i));
+  }
+  return length;
+}
+
+static void appendDistinctPoint(Polygon& route, const Point& point)
+{
+  if (route.empty() || (route.ps.back() != point)) {
+    route.ps.push_back(point);
+  }
+}
+
+enum SegmentAxis { SegmentAxisUnknown, SegmentAxisHorizontal, SegmentAxisVertical };
+
+static SegmentAxis directionAxis(const ConnDirFlags directions)
+{
+  const bool horizontal = directions & (ConnDirLeft | ConnDirRight);
+  const bool vertical   = directions & (ConnDirUp | ConnDirDown);
+  if (horizontal && !vertical) {
+    return SegmentAxisHorizontal;
+  }
+  if (vertical && !horizontal) {
+    return SegmentAxisVertical;
+  }
+  return SegmentAxisUnknown;
+}
+
+static SegmentAxis segmentAxis(const Point& first, const Point& second)
+{
+  if (first.y == second.y) {
+    return SegmentAxisHorizontal;
+  }
+  if (first.x == second.x) {
+    return SegmentAxisVertical;
+  }
+  return SegmentAxisUnknown;
+}
+
+static Polygon makeOrthogonalRoute(const Polygon&     route,
+                                   const ConnDirFlags sourceDirections,
+                                   const ConnDirFlags targetDirections)
+{
+  if ((route.size() < 2) || orthogonalRoute(route)) {
+    return route;
+  }
+
+  Polygon result;
+  appendDistinctPoint(result, route.ps.front());
+  for (size_t i = 1; i < route.size(); ++i) {
+    const Point  previous = result.ps.back();
+    const Point& next     = route.ps[i];
+    if ((previous.x != next.x) && (previous.y != next.y)) {
+      SegmentAxis startAxis = SegmentAxisUnknown;
+      if (result.size() >= 2) {
+        startAxis = segmentAxis(result.ps[result.size() - 2], previous);
+      } else {
+        startAxis = directionAxis(sourceDirections);
+      }
+
+      SegmentAxis endAxis = SegmentAxisUnknown;
+      if (i + 1 < route.size()) {
+        endAxis = segmentAxis(next, route.ps[i + 1]);
+      } else {
+        endAxis = directionAxis(targetDirections);
+      }
+
+      if ((startAxis == SegmentAxisHorizontal) && (endAxis != SegmentAxisHorizontal)) {
+        appendDistinctPoint(result, Point(next.x, previous.y));
+      } else if ((startAxis == SegmentAxisVertical) && (endAxis != SegmentAxisVertical)) {
+        appendDistinctPoint(result, Point(previous.x, next.y));
+      } else if (endAxis == SegmentAxisHorizontal) {
+        appendDistinctPoint(result, Point(previous.x, next.y));
+      } else if (endAxis == SegmentAxisVertical) {
+        appendDistinctPoint(result, Point(next.x, previous.y));
+      } else {
+        appendDistinctPoint(result, Point(next.x, previous.y));
+      }
+
+      // Equal endpoint axes need two bends so both terminal directions
+      // remain valid.  Place the shared segment halfway between them.
+      if ((startAxis == endAxis) && (startAxis != SegmentAxisUnknown)) {
+        result.ps.pop_back();
+        if (startAxis == SegmentAxisHorizontal) {
+          const double middle = (previous.x + next.x) / 2.0;
+          appendDistinctPoint(result, Point(middle, previous.y));
+          appendDistinctPoint(result, Point(middle, next.y));
+        } else if (startAxis == SegmentAxisVertical) {
+          const double middle = (previous.y + next.y) / 2.0;
+          appendDistinctPoint(result, Point(previous.x, middle));
+          appendDistinctPoint(result, Point(next.x, middle));
+        }
+      }
+    }
+    appendDistinctPoint(result, next);
+  }
+  result.checkpointsOnRoute.clear();
+  result.ts.clear();
+  return result.simplify();
+}
+
+void ConnRef::finaliseOrthogonalDisplayRoute(void)
+{
+  if ((m_type != ConnType_Orthogonal) || (m_route.size() < 2)) {
+    return;
+  }
+
+  const ConnDirFlags sourceDirections =
+      m_src_connend ? m_src_connend->directions() : static_cast<ConnDirFlags>(ConnDirAll);
+  const ConnDirFlags targetDirections =
+      m_dst_connend ? m_dst_connend->directions() : static_cast<ConnDirFlags>(ConnDirAll);
+  const Polygon rawRoute =
+      makeOrthogonalRoute(m_route.simplify(), sourceDirections, targetDirections);
+  COLA_ASSERT(orthogonalRoute(rawRoute));
+  Polygon display = m_display_route.empty() ? rawRoute : m_display_route.simplify();
+  if ((display.size() < 2) || !orthogonalRoute(display)) {
+    m_display_route = rawRoute;
+    return;
+  }
+
+  // The nudger is free to move the first and last display segments.  When
+  // these segments are attached to shape pins this can leave the displayed
+  // route disconnected from the actual ConnEnds, even though m_route still
+  // contains the exact terminal coordinates.  Restore those coordinates
+  // using the direction of the corresponding raw terminal segment.
+  const Point& source = rawRoute.ps.front();
+  const Point& target = rawRoute.ps.back();
+  if ((display.ps.front() != source) || (display.ps.back() != target)) {
+    const double forwardDistance = manhattanDist(source, display.ps.front())
+                                   + manhattanDist(target, display.ps.back());
+    const double reverseDistance = manhattanDist(source, display.ps.back())
+                                   + manhattanDist(target, display.ps.front());
+    if (reverseDistance < forwardDistance) {
+      std::reverse(display.ps.begin(), display.ps.end());
+    }
+  }
+
+  Polygon completed;
+  appendDistinctPoint(completed, source);
+  if (display.ps.front() != source) {
+    const bool  horizontal = rawRoute.ps[0].y == rawRoute.ps[1].y;
+    const Point bend       = horizontal ? Point(display.ps.front().x, source.y)
+                                        : Point(source.x, display.ps.front().y);
+    appendDistinctPoint(completed, bend);
+  }
+  for (size_t i = 0; i < display.size(); ++i) {
+    appendDistinctPoint(completed, display.ps[i]);
+  }
+  if (display.ps.back() != target) {
+    const size_t last       = rawRoute.size() - 1;
+    const bool   horizontal = rawRoute.ps[last - 1].y == rawRoute.ps[last].y;
+    const Point  bend       = horizontal ? Point(display.ps.back().x, target.y)
+                                         : Point(target.x, display.ps.back().y);
+    appendDistinctPoint(completed, bend);
+  }
+  appendDistinctPoint(completed, target);
+  completed = completed.simplify();
+
+  // A malformed post-processed route must never leak through the public
+  // displayRoute() API.  Also avoid manufacturing a long terminal U-turn
+  // merely to reconnect a nudged route when the exact raw path is shorter.
+  const double completedLength = orthogonalRouteLength(completed);
+  const double rawLength       = orthogonalRouteLength(rawRoute);
+  const bool   completedNoWorse =
+      (completedLength < rawLength)
+      || ((completedLength == rawLength) && (completed.size() <= rawRoute.size()));
+  m_display_route = orthogonalRoute(completed) && completedNoWorse ? completed : rawRoute;
+}
 
 void ConnRef::calcRouteDist(void)
 {

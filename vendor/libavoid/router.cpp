@@ -22,11 +22,13 @@
  * Author(s):  Michael Wybrow
 */
 
+// Modified by Giulio Cocconi, for use in the SILICON Project, 2026
 
 #include <algorithm>
-#include <cmath>
 #include <cfloat>
 #include <clocale>
+#include <cmath>
+#include <cstdlib>
 
 #include "libavoid/shape.h"
 #include "libavoid/router.h"
@@ -722,6 +724,205 @@ bool Router::processTransaction(void)
     return true;
 }
 
+static bool pointOnClosedInterval(const double point, const double first,
+                                  const double second)
+{
+  return point >= std::min(first, second) && point <= std::max(first, second);
+}
+
+static bool orthogonalRoutesCreateJunction(const Polygon& first, const Polygon& second)
+{
+  for (size_t i = 1; i < first.size(); ++i) {
+    const Point& a               = first.at(i - 1);
+    const Point& b               = first.at(i);
+    const bool   firstHorizontal = a.y == b.y;
+    for (size_t j = 1; j < second.size(); ++j) {
+      const Point& c                = second.at(j - 1);
+      const Point& d                = second.at(j);
+      const bool   secondHorizontal = c.y == d.y;
+      if (firstHorizontal == secondHorizontal) {
+        if (firstHorizontal && (a.y == c.y)
+            && (std::max(std::min(a.x, b.x), std::min(c.x, d.x))
+                <= std::min(std::max(a.x, b.x), std::max(c.x, d.x)))) {
+          return true;
+        }
+        if (!firstHorizontal && (a.x == c.x)
+            && (std::max(std::min(a.y, b.y), std::min(c.y, d.y))
+                <= std::min(std::max(a.y, b.y), std::max(c.y, d.y)))) {
+          return true;
+        }
+        continue;
+      }
+
+      const Point& horizontalStart = firstHorizontal ? a : c;
+      const Point& horizontalEnd   = firstHorizontal ? b : d;
+      const Point& verticalStart   = firstHorizontal ? c : a;
+      const Point& verticalEnd     = firstHorizontal ? d : b;
+      const Point  intersection(verticalStart.x, horizontalStart.y);
+      if (!pointOnClosedInterval(intersection.x, horizontalStart.x, horizontalEnd.x)
+          || !pointOnClosedInterval(intersection.y, verticalStart.y, verticalEnd.y)) {
+        continue;
+      }
+      if ((intersection == first.ps.front()) || (intersection == first.ps.back())
+          || (intersection == second.ps.front()) || (intersection == second.ps.back())) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+static void appendRoutePoint(Polygon& route, const Point& point)
+{
+  if (route.empty() || (route.ps.back() != point)) {
+    route.ps.push_back(point);
+  }
+}
+
+static double directionSign(const double difference)
+{
+  return difference < 0 ? -1 : 1;
+}
+
+static Polygon offsetOrthogonalRoute(ConnRef* connector, const Point& offset,
+                                     const double separation, const bool fixedSource,
+                                     const bool fixedTarget)
+{
+  const Polygon route = connector->displayRoute();
+  if ((route.size() < 2) || ((offset.x == 0) && (offset.y == 0))) {
+    return route;
+  }
+
+  Polygon shifted = route;
+  shifted.translate(offset.x, offset.y);
+
+  Polygon result;
+  if (fixedSource) {
+    appendRoutePoint(result, route.ps.front());
+    const bool  horizontal = route.ps[0].y == route.ps[1].y;
+    const Point stub =
+        horizontal
+            ? Point(route.ps.front().x
+                        + separation * directionSign(route.ps[1].x - route.ps.front().x),
+                    route.ps.front().y)
+            : Point(route.ps.front().x,
+                    route.ps.front().y
+                        + separation * directionSign(route.ps[1].y - route.ps.front().y));
+    appendRoutePoint(result, stub);
+    appendRoutePoint(result, horizontal ? Point(stub.x, shifted.ps.front().y)
+                                        : Point(shifted.ps.front().x, stub.y));
+  }
+  appendRoutePoint(result, shifted.ps.front());
+  for (size_t i = 1; i + 1 < shifted.size(); ++i) {
+    appendRoutePoint(result, shifted.ps[i]);
+  }
+  appendRoutePoint(result, shifted.ps.back());
+  if (fixedTarget) {
+    const size_t last       = route.size() - 1;
+    const bool   horizontal = route.ps[last - 1].y == route.ps[last].y;
+    const Point  stub =
+        horizontal
+             ? Point(route.ps.back().x
+                         + separation
+                               * directionSign(route.ps[last - 1].x - route.ps.back().x),
+                     route.ps.back().y)
+             : Point(route.ps.back().x,
+                     route.ps.back().y
+                         + separation
+                               * directionSign(route.ps[last - 1].y - route.ps.back().y));
+    appendRoutePoint(result, horizontal ? Point(stub.x, shifted.ps.back().y)
+                                        : Point(shifted.ps.back().x, stub.y));
+    appendRoutePoint(result, stub);
+    appendRoutePoint(result, route.ps.back());
+  }
+  return result.simplify();
+}
+
+static double connectorGroupLength(const ConnRefList& group)
+{
+  double length = 0;
+  for (ConnRefList::const_iterator connector = group.begin(); connector != group.end();
+       ++connector) {
+    const Polygon& route = (*connector)->displayRoute();
+    for (size_t i = 1; i < route.size(); ++i) {
+      length += manhattanDist(route.at(i - 1), route.at(i));
+    }
+  }
+  return length;
+}
+
+void Router::separateOrthogonalRouteGroups(const ConnRefListVector& groups,
+                                           const double             separation)
+{
+  COLA_ASSERT(separation > 0);
+  ConnRefListVector orderedGroups = groups;
+  std::stable_sort(orderedGroups.begin(), orderedGroups.end(),
+                   [](const ConnRefList& first, const ConnRefList& second) {
+                     return connectorGroupLength(first) < connectorGroupLength(second);
+                   });
+  std::vector<Polygon> acceptedRoutes;
+  for (ConnRefListVector::const_iterator group = orderedGroups.begin();
+       group != orderedGroups.end(); ++group) {
+    if (group->empty()) {
+      continue;
+    }
+
+    bool selected = false;
+    for (size_t ring = 0; !selected; ++ring) {
+      std::vector<Point> offsets;
+      if (ring == 0) {
+        offsets.push_back(Point(0, 0));
+      } else {
+        for (long dx = -static_cast<long>(ring); dx <= static_cast<long>(ring); ++dx) {
+          const long dy = static_cast<long>(ring) - std::labs(dx);
+          offsets.push_back(Point(dx * separation, dy * separation));
+          if (dy != 0) {
+            offsets.push_back(Point(dx * separation, -dy * separation));
+          }
+        }
+      }
+
+      for (std::vector<Point>::const_iterator offset = offsets.begin();
+           offset != offsets.end(); ++offset) {
+        std::vector<Polygon> candidates;
+        for (ConnRefList::const_iterator connector = group->begin();
+             connector != group->end(); ++connector) {
+          const bool fixedSource =
+              !((*connector)->m_src_connend
+                && ((*connector)->m_src_connend->type() == ConnEndJunction));
+          const bool fixedTarget =
+              !((*connector)->m_dst_connend
+                && ((*connector)->m_dst_connend->type() == ConnEndJunction));
+          candidates.push_back(offsetOrthogonalRoute(*connector, *offset, separation,
+                                                     fixedSource, fixedTarget));
+        }
+
+        bool conflict = false;
+        for (std::vector<Polygon>::const_iterator candidate = candidates.begin();
+             (candidate != candidates.end()) && !conflict; ++candidate) {
+          for (std::vector<Polygon>::const_iterator accepted = acceptedRoutes.begin();
+               accepted != acceptedRoutes.end(); ++accepted) {
+            if (orthogonalRoutesCreateJunction(*candidate, *accepted)) {
+              conflict = true;
+              break;
+            }
+          }
+        }
+        if (conflict) {
+          continue;
+        }
+
+        ConnRefList::const_iterator connector = group->begin();
+        for (size_t i = 0; i < candidates.size(); ++i, ++connector) {
+          (*connector)->set_route(candidates[i]);
+          acceptedRoutes.push_back(candidates[i]);
+        }
+        selected = true;
+        break;
+      }
+    }
+  }
+}
 
 void Router::addJunction(JunctionRef *junction)
 {

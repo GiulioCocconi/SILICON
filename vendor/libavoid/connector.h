@@ -22,6 +22,8 @@
  * Author(s):   Michael Wybrow
 */
 
+// Modified by Giulio Cocconi, for use in the SILICON Project, 2026
+
 //! @file    connector.h
 //! @brief   Contains the interface for the ConnRef class.
 
@@ -257,6 +259,8 @@ class AVOID_EXPORT ConnRef
         //! collinear line segments into single segments.  It also has all
         //! post-processing applied to the route, including centering, curved
         //! corners and nudging apart of overlapping segments.
+        //! Orthogonal display routes retain the exact source and destination
+        //! coordinates after this post-processing.
         //!
         //! @returns The PolyLine display route for the connector.
         PolyLine& displayRoute(void);
@@ -473,11 +477,13 @@ class AVOID_EXPORT ConnRef
         friend class JunctionRef;
         friend class ConnRerouteFlagDelegate;
         friend class HyperedgeImprover;
+        friend class ImproveOrthogonalRoutes;
         friend struct HyperedgeTreeEdge;
         friend struct HyperedgeTreeNode;
         friend class HyperedgeRerouter;
 
         PolyLine& routeRef(void);
+        void      finaliseOrthogonalDisplayRoute(void);
         void freeRoutes(void);
         void performCallback(void);
         bool generatePath(void);

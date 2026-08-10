@@ -2592,6 +2592,14 @@ void ImproveOrthogonalRoutes::execute(void)
 
     m_router->improveOrthogonalTopology();
 
+    // Topology improvement and nudging operate on display routes and can move
+    // their terminal segments away from shape pins.  Re-establish the public
+    // display-route invariant after all post-processing has finished.
+    for (ConnRefList::const_iterator curr = m_router->connRefs.begin();
+         curr != m_router->connRefs.end(); ++curr) {
+      (*curr)->finaliseOrthogonalDisplayRoute();
+    }
+
     // Clear the segment-checkpoint cache for connectors.
     clearConnectorRouteCheckpointCache(m_router);
 
