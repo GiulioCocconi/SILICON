@@ -187,6 +187,9 @@ public:
    */
   static QPoint snapToGrid(QPointF point);
 
+  /** @brief Snaps one scene coordinate to the grid. */
+  static int snapToGrid(qreal value);
+
   /** @brief Grid cell size in scene units */
   static constexpr int GRID_SIZE = 10;
 
@@ -278,6 +281,8 @@ public:
   [[nodiscard]] GraphicalItem* findGraphicalItemByUiId(uint64_t uiId) const;
   void                         registerGraphicalItem(GraphicalItem* item);
   void                         unregisterGraphicalItem(GraphicalItem* item);
+  [[nodiscard]] bool itemCollisionChecksEnabled() const { return isItemCollisionEnabled; }
+  void setItemCollisionChecksEnabled(bool enabled) { isItemCollisionEnabled = enabled; }
 
   /**
    * @brief Deserializes a full scene from JSON.
@@ -317,6 +322,15 @@ public:
    * Callers should pass only top-level user-editable items.
    */
   void removeItems(const std::vector<QGraphicsItem*>& sceneItems);
+
+  /**
+   * @brief Automatically places components and reroutes wires.
+   *
+   * The scene preserves its authoritative logical circuit when available, computes
+   * component positions with OGDF, and replaces WireManager's graphical wire segments
+   * with libavoid-routed paths carrying the original buses.
+   */
+  void autoPlaceCircuit(bool interactive = false);
 
   /**
    * @brief Removes items matching a serialized selection payload from the current scene.
@@ -495,6 +509,9 @@ private:
 
   /** @brief Persistence and clipboard payload handling */
   std::unique_ptr<DiagramSceneSerializer> serializer;
+
+  /** @brief Disabled while applying batch layouts that must not be rejected mid-move. */
+  bool isItemCollisionEnabled = true;
 };
 
 /**

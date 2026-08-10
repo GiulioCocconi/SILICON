@@ -19,10 +19,16 @@
 #include "wireManager.hpp"
 
 #include <algorithm>
+#include <bit>
+#include <cmath>
+#include <cstdint>
+#include <map>
 #include <queue>
 #include <stdexcept>
 #include <unordered_set>
+#include <utility>
 
+#include <QGraphicsScene>
 #include <ui/common/graphicalWire.hpp>
 
 
@@ -44,6 +50,64 @@ void WireManager::clear()
 
   allSegments.clear();
   managedWires.clear();
+}
+
+void WireManager::clearSegments(QGraphicsScene& scene)
+{
+  auto segments = std::exchange(allSegments, {});
+
+  for (auto* segment : segments) {
+    if (!segment)
+      continue;
+
+    scene.removeItem(segment);
+    segment->detachFromWire();
+    delete segment;
+  }
+
+  for (auto& wire : managedWires) {
+    wire->setManager(nullptr);
+  }
+
+  managedWires.clear();
+}
+
+void WireManager::replaceSegments(QGraphicsScene&             scene,
+                                  std::span<const RoutedWire> routedSegments)
+{
+  clearSegments(scene);
+
+  std::map<uint64_t, std::shared_ptr<GraphicalWire>> wireById;
+  uint64_t                                           fallbackWireId = 1;
+
+  auto routeWireId = [&fallbackWireId](const Bus& bus) {
+    if (bus.size() > 0 && bus[0])
+      return bus[0]->getId();
+
+    return fallbackWireId++;
+  };
+
+  for (const RoutedWire& routed : routedSegments) {
+    if (routed.points.size() < 2)
+      continue;
+
+    auto& wire = wireById[routeWireId(routed.bus)];
+    if (!wire) {
+      wire = createWire(
+          static_cast<unsigned int>(std::max<std::size_t>(routed.bus.size(), 1)));
+      if (routed.bus.size() > 0)
+        wire->setBus(routed.bus);
+    }
+
+    auto* segment = new GraphicalWireSegment(routed.points.front());
+    segment->setPoints(routed.points);
+    scene.addItem(segment);
+    segment->setGraphicalWire(wire.get());
+    allSegments.push_back(segment);
+  }
+
+  calculateJunctions();
+  notifyTopologyChanged();
 }
 
 std::shared_ptr<GraphicalWire> WireManager::createWire(unsigned int busSize)
@@ -82,7 +146,7 @@ void WireManager::addSegment(GraphicalWireSegment* segment)
     segment->setGraphicalWire(wire.get());
   }
 
-  updateSegmentTopology(segment, true);
+  updateSegmentTopology(segment);
 }
 
 void WireManager::removeSegment(GraphicalWireSegment* segment)
@@ -109,8 +173,7 @@ void WireManager::removeSegment(GraphicalWireSegment* segment)
   notifyTopologyChanged();
 }
 
-void WireManager::updateSegmentTopology(GraphicalWireSegment* segment,
-                                        bool                  forceCalculateJunctions)
+void WireManager::updateSegmentTopology(GraphicalWireSegment* segment)
 {
   if (!segment)
     throw std::invalid_argument("updateSegmentTopology() called with null segment");
@@ -152,8 +215,10 @@ void WireManager::updateSegmentTopology(GraphicalWireSegment* segment,
       hasTopologyChanged = true;
   }
 
-  if (hasTopologyChanged || forceCalculateJunctions)
-    calculateJunctions(segment);
+  // Geometry changes can invalidate a marker on a segment that is no longer in the
+  // moved segment's neighborhood. Recalculate globally so former junction members
+  // are cleared as well.
+  calculateJunctions();
 
   if (hasTopologyChanged)
     notifyTopologyChanged();
@@ -199,27 +264,57 @@ void WireManager::calculateJunctions(GraphicalWireSegment* segment,
     neighbor->setFirstPointJunction(false);
     neighbor->setLastPointJunction(false);
 
-    // For each pair of segments, check whether one's endpoint lies on the other's body.
-    // Only endpoints can be junctions.
     const QPointF firstScene = neighbor->mapToScene(neighbor->firstPoint());
     const QPointF lastScene  = neighbor->mapToScene(neighbor->lastPoint());
 
-    const auto segmentsToBeTested = includeNeighborhood ? neighborhood : allSegments;
+    // A junction needs at least three distinct incident wire arms. Merely joining
+    // two routed paths is a bend or a continuation and must not leave a dot behind
+    // after a branch is detached.
+    auto incidentArmCount = [&](const QPointF& scenePoint) {
+      enum Direction : unsigned int {
+        Left  = 1U << 0,
+        Right = 1U << 1,
+        Up    = 1U << 2,
+        Down  = 1U << 3,
+      };
 
-    for (const auto* other : segmentsToBeTested) {
-      if (other == neighbor || other->empty())
-        continue;
+      unsigned int directions = 0;
+      for (const auto* other : allSegments) {
+        if (!other || other->empty()
+            || other->getGraphicalWire() != neighbor->getGraphicalWire())
+          continue;
 
-      // Check if seg's first endpoint lies on other's body
-      const QPointF firstLocal = other->mapFromScene(firstScene);
-      if (other->isPointOnPath(firstLocal))
-        neighbor->setFirstPointJunction(true);
+        const auto& points = other->getPoints();
+        for (std::size_t i = 1; i < points.size(); ++i) {
+          const QPointF a = other->mapToScene(points[i - 1]);
+          const QPointF b = other->mapToScene(points[i]);
 
-      // Check if seg's last endpoint lies on other's body
-      const QPointF lastLocal = other->mapFromScene(lastScene);
-      if (other->isPointOnPath(lastLocal))
-        neighbor->setLastPointJunction(true);
-    }
+          if (a.y() == b.y() && scenePoint.y() == a.y()) {
+            const qreal minX = std::min(a.x(), b.x());
+            const qreal maxX = std::max(a.x(), b.x());
+            if (scenePoint.x() < minX || scenePoint.x() > maxX)
+              continue;
+            if (scenePoint.x() > minX)
+              directions |= Left;
+            if (scenePoint.x() < maxX)
+              directions |= Right;
+          } else if (a.x() == b.x() && scenePoint.x() == a.x()) {
+            const qreal minY = std::min(a.y(), b.y());
+            const qreal maxY = std::max(a.y(), b.y());
+            if (scenePoint.y() < minY || scenePoint.y() > maxY)
+              continue;
+            if (scenePoint.y() > minY)
+              directions |= Up;
+            if (scenePoint.y() < maxY)
+              directions |= Down;
+          }
+        }
+      }
+      return std::popcount(directions);
+    };
+
+    neighbor->setFirstPointJunction(incidentArmCount(firstScene) >= 3);
+    neighbor->setLastPointJunction(incidentArmCount(lastScene) >= 3);
   }
 }
 

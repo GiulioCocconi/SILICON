@@ -275,6 +275,8 @@ void LogiFlowWindow::createActions()
   pasteAct  = makeAction(this, Icon("paste"), tr("&Paste"),
                          tr("Paste the clipboard's contents into the current selection"));
   rotateAct = makeAction(this, Icon("rotate"), tr("&Rotate"));
+  autoPlaceAct   = makeAction(this, Icon("rearrange"), tr("&Auto place"),
+                              tr("Automatically place components and reroute wires"));
   deleteAct =
       makeAction(this, Icon("delete"), tr("&Delete"), tr("Delete selected components"));
   aboutAct    = makeAction(this, Icon("info"), tr("&About"),
@@ -325,6 +327,7 @@ void LogiFlowWindow::createActions()
   connect(copyAct, &QAction::triggered, this, &LogiFlowWindow::copy);
   connect(pasteAct, &QAction::triggered, this, &LogiFlowWindow::paste);
   connect(rotateAct, &QAction::triggered, this, &LogiFlowWindow::rotate);
+  connect(autoPlaceAct, &QAction::triggered, this, &LogiFlowWindow::autoPlace);
   connect(deleteAct, &QAction::triggered, this, &LogiFlowWindow::del);
   connect(aboutAct, &QAction::triggered, this, &LogiFlowWindow::about);
   connect(settingsAct, &QAction::triggered, this, &LogiFlowWindow::openSettings);
@@ -376,6 +379,8 @@ QVector<ShortcutSetting> LogiFlowWindow::shortcutSettings() const
                QKeySequence(QKeySequence::Paste)),
       shortcut(QStringLiteral("keybindings/rotate"), tr("Rotate"), rotateAct,
                QKeySequence(Qt::AltModifier | Qt::Key_R)),
+      shortcut(QStringLiteral("keybindings/autoPlace"), tr("Auto place"), autoPlaceAct,
+               QKeySequence(Qt::AltModifier | Qt::Key_L)),
       shortcut(QStringLiteral("keybindings/delete"), tr("Delete"), deleteAct,
                QKeySequence(QKeySequence::Delete)),
       shortcut(QStringLiteral("keybindings/normalMode"), tr("Normal mode"),
@@ -445,6 +450,7 @@ void LogiFlowWindow::createMenus()
   editMenu->addAction(copyAct);
   editMenu->addAction(pasteAct);
   editMenu->addAction(rotateAct);
+  editMenu->addAction(autoPlaceAct);
   editMenu->addAction(deleteAct);
   editMenu->addSeparator();
   editMenu->addAction(settingsAct);
@@ -475,6 +481,7 @@ void LogiFlowWindow::createToolBar()
   toolBar->addAction(openComponentCatalogAct);
   toolBar->addAction(editSubcircuitShapeAct);
   toolBar->addAction(toggleHdlCodeModeAct);
+  toolBar->addAction(autoPlaceAct);
 
   addToolBar(toolBar);
 }

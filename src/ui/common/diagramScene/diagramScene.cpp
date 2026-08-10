@@ -20,13 +20,21 @@
 
 #include <algorithm>
 #include <map>
+#include <ranges>
+#include <span>
 #include <stdexcept>
+#include <vector>
 
+#include <QApplication>
 #include <QCursor>
 #include <QMessageBox>
+#include <QProgressDialog>
+
+#include <boost/graph/graph_traits.hpp>
 
 #include <utils/ranges_wrapper.hpp>
 
+#include <ui/common/circuitAutoplacer.hpp>
 #include <ui/common/diagramScene/diagramSceneSerializer.hpp>
 #include <ui/common/diagramScene/diagramSceneSimulationController.hpp>
 #include <ui/common/enums.hpp>
@@ -38,7 +46,6 @@
 #include <ui/logiFlow/components/graphicalIO.hpp>
 #include <ui/logiFlow/logiFlowWindow.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
-
 
 namespace SILICON {
 namespace ui {
@@ -59,8 +66,13 @@ DiagramScene::DiagramScene(QObject* parent) : QGraphicsScene(parent)
   connect(csb, &ComponentSearchBox::selectedComponent, this,
           [this](std::string typeName, QPointF) { placeComponent(typeName); });
 
-  wireManager.setTopologyChangedCallback(
-      [this]() { simulationController->handleTopologyChanged(); });
+  wireManager.setTopologyChangedCallback([this]() {
+    // Outside simulation, any user wire edit invalidates the cached logical circuit.
+    // Autoplacement restores a fresh authoritative circuit after replacing all routes.
+    if (getInteractionMode() != InteractionMode::SIMULATION_MODE)
+      circuit.reset();
+    simulationController->handleTopologyChanged();
+  });
 }
 
 namespace {
@@ -71,14 +83,72 @@ std::vector<std::string> componentTypesForScene(const DiagramScene& scene)
   return GUIComponentFactory::instance().availableTypes();
 }
 
+std::vector<GraphicalLogicComponent*> logicComponentsInScene(const QGraphicsScene& scene)
+{
+  std::vector<GraphicalLogicComponent*> components;
+
+  for (auto* item : scene.items()) {
+    auto* component =
+        category_cast<GraphicalLogicComponent>(item, ItemCategory::LogicComponent);
+    if (component && component->getComponent())
+      components.push_back(component);
+  }
+
+  return components;
+}
+
+Component_set coreComponentsFor(std::span<GraphicalLogicComponent* const> components)
+{
+  Component_set coreComponents;
+  for (const auto* component : components) {
+    if (component && component->getComponent())
+      coreComponents.insert(component->getComponent());
+  }
+  return coreComponents;
+}
+
+void applyAutoplacement(DiagramScene& scene, const Circuit& activeCircuit,
+                        std::span<GraphicalLogicComponent* const> components,
+                        const CircuitAutoplacerOptions&           options = {})
+{
+  const auto  result = CircuitAutoplacer::compute(activeCircuit, components, options);
+  const auto& componentMap = result.components;
+  const auto& wires        = result.wires;
+
+  if (componentMap.empty())
+    return;
+
+  const bool collisionChecksEnabled = scene.itemCollisionChecksEnabled();
+  scene.setItemCollisionChecksEnabled(false);
+  for (const auto& [io, side] : result.ioPortOrientations)
+    io->setPortOrientation(side);
+  for (const auto& [component, position] : componentMap) {
+    component->setPos(position);
+    component->setInitialPosition();
+  }
+  scene.setItemCollisionChecksEnabled(collisionChecksEnabled);
+
+  scene.getWireManager().replaceSegments(scene, wires);
+
+  // The routed wires were produced from activeCircuit and already carry its buses.
+  // Recalculating component buses from geometry here is both redundant and unsafe:
+  // coincident route portions near a port can make a later graphical wire overwrite
+  // that port's original assignment. Keep the logical topology authoritative and only
+  // refresh the cached circuit after applying the new geometry.
+  scene.setCircuit(std::make_shared<Circuit>(coreComponentsFor(components), false));
+  scene.update();
+}
+
 }  // namespace
+
+int DiagramScene::snapToGrid(const qreal value)
+{
+  return static_cast<int>(std::round(value / GRID_SIZE)) * GRID_SIZE;
+}
 
 QPoint DiagramScene::snapToGrid(const QPointF point)
 {
-  const auto x = (int)round(point.x() / DiagramScene::GRID_SIZE) * DiagramScene::GRID_SIZE;
-  const auto y = (int)round(point.y() / DiagramScene::GRID_SIZE) * DiagramScene::GRID_SIZE;
-
-  return {x, y};
+  return {snapToGrid(point.x()), snapToGrid(point.y())};
 }
 
 void DiagramScene::drawBackground(QPainter* painter, const QRectF& rect)
@@ -88,12 +158,12 @@ void DiagramScene::drawBackground(QPainter* painter, const QRectF& rect)
   QPen pen(ThemeEngine::getColor("SILICON_GRID"));
   painter->setPen(pen);
 
-  const qreal left = int(rect.left()) - (int(rect.left()) % DiagramScene::GRID_SIZE);
-  const qreal top  = int(rect.top()) - (int(rect.top()) % DiagramScene::GRID_SIZE);
+  const qreal left = int(rect.left()) - (int(rect.left()) % GRID_SIZE);
+  const qreal top  = int(rect.top()) - (int(rect.top()) % GRID_SIZE);
 
   QVector<QPointF> points;
-  for (qreal x = left; x < rect.right(); x += DiagramScene::GRID_SIZE) {
-    for (qreal y = top; y < rect.bottom(); y += DiagramScene::GRID_SIZE) {
+  for (qreal x = left; x < rect.right(); x += GRID_SIZE) {
+    for (qreal y = top; y < rect.bottom(); y += GRID_SIZE) {
       points.append(QPointF(x, y));
     }
   }
@@ -260,8 +330,8 @@ void DiagramScene::mouseMoveEvent(QGraphicsSceneMouseEvent* mouseEvent)
       const QPointF lastPoint =
           wireSegmentToBeDrawn->mapToScene(wireSegmentToBeDrawn->lastPoint());
 
-      auto route =
-          SILICON::core::routeOrthogonalWire(lastPoint, cursorPos, wireRoutingObstacles());
+      auto route = SILICON::core::routeOrthogonalWire(lastPoint, cursorPos,
+                                                      wireRoutingObstacles());
 
       if (!route.empty())
         route.erase(route.begin());
@@ -419,8 +489,8 @@ bool DiagramScene::isFstTracingEnabled() const
   return simulationController->isFstTracingEnabled();
 }
 
-void DiagramScene::simulateEditedWaveform(
-    const qulonglong duration, std::vector<Sample> inputSnapshots)
+void DiagramScene::simulateEditedWaveform(const qulonglong    duration,
+                                          std::vector<Sample> inputSnapshots)
 {
   simulationController->simulateEditedWaveform(duration, std::move(inputSnapshots));
 }
@@ -444,40 +514,54 @@ bool DiagramScene::calculateWiresForComponents()
     }
   }
 
+  // Resolve drivers before consumers. GraphicalWire owns its Bus by value, so an input
+  // assigned before the output resizes that bus would keep a copy of the old width and
+  // wire set. getVertices() is intentionally unordered, therefore doing both jobs in a
+  // single pass made bus-size edits fail intermittently.
   for (const auto& wire : wireManager.wires()) {
     for (const QPointF& vertex : wire->getVertices()) {
-      const auto itemsAtVertex = items(vertex);
-
-      for (QGraphicsItem* item : itemsAtVertex) {
+      for (QGraphicsItem* item : items(vertex)) {
         const auto* gComp =
             category_cast<GraphicalLogicComponent>(item, ItemCategory::LogicComponent);
         if (!gComp || !gComp->getComponent())
           continue;
 
-        for (const auto& [index, p] :
+        for (const auto& [index, port] :
              gComp->getOutputPorts() | SILICON::views::enumerate) {
-          if (gComp->mapToScene(p->getPosition()) != vertex)
+          if (gComp->mapToScene(port->getPosition()) != vertex)
             continue;
 
           const auto outputSize = gComp->getComponent()->getOutputs()[index].size();
           wire->setBusSize(outputSize);
           gComp->getComponent()->setOutput(index, wire->getBus());
         }
+      }
+    }
+  }
 
-        for (const auto& [index, p] :
+  for (const auto& wire : wireManager.wires()) {
+    for (const QPointF& vertex : wire->getVertices()) {
+      for (QGraphicsItem* item : items(vertex)) {
+        const auto* gComp =
+            category_cast<GraphicalLogicComponent>(item, ItemCategory::LogicComponent);
+        if (!gComp || !gComp->getComponent())
+          continue;
+
+        for (const auto& [index, port] :
              gComp->getInputPorts() | SILICON::views::enumerate) {
-          if (gComp->mapToScene(p->getPosition()) == vertex) {
-            try {
-              gComp->assignInputPortBus(index, wire->getBus());
-            } catch (const std::exception& e) {
-              p->setInputAssignmentError(true);
-              QMessageBox::critical(views().first(), "Error while assigning inputs!",
-                                    QString("An input assignation for port %1 "
-                                            "failed:\n %2\n")
-                                        .arg(p->getName(), e.what()));
-              update();
-              return false;
-            }
+          if (gComp->mapToScene(port->getPosition()) != vertex)
+            continue;
+
+          try {
+            gComp->assignInputPortBus(index, wire->getBus());
+          } catch (const std::exception& e) {
+            port->setInputAssignmentError(true);
+            QMessageBox::critical(views().first(), "Error while assigning inputs!",
+                                  QString("An input assignation for port %1 "
+                                          "failed:\n %2\n")
+                                      .arg(port->getName(), e.what()));
+            update();
+            return false;
           }
         }
       }
@@ -508,6 +592,57 @@ void DiagramScene::addComponent(GraphicalComponent* component, QPointF pos)
   addItem(component);
 }
 
+void DiagramScene::autoPlaceCircuit(const bool interactive)
+{
+  setInteractionMode(InteractionMode::NORMAL_MODE);
+
+  auto components = logicComponentsInScene(*this);
+  if (components.empty())
+    return;
+
+  // A deserialized circuit is the authoritative topology. Reconstructing it from the
+  // current drawing before autoplacement can import accidental visual overlaps as real
+  // connections. For an edited scene the cache is invalidated by updateSceneAfterEdit,
+  // so only then derive the circuit from graphical endpoints.
+  std::shared_ptr<Circuit> authoritativeCircuit = getCircuit();
+  if (!authoritativeCircuit
+      || boost::num_vertices(authoritativeCircuit->getGraph()) == 0) {
+    if (!calculateWiresForComponents())
+      return;
+    authoritativeCircuit =
+        std::make_shared<Circuit>(coreComponentsFor(components), false);
+  }
+  const Circuit& activeCircuit = *authoritativeCircuit;
+
+  if (!interactive) {
+    applyAutoplacement(*this, activeCircuit, components);
+    return;
+  }
+
+  constexpr int   candidateCount = 16;
+  auto*           parent = views().isEmpty() ? nullptr : views().first()->window();
+  QProgressDialog progress(tr("Finding a clean circuit layout..."), tr("Use best so far"),
+                           0, candidateCount, parent);
+  progress.setWindowTitle(tr("Auto place"));
+  progress.setWindowModality(Qt::WindowModal);
+  progress.setMinimumDuration(300);
+  progress.setValue(0);
+  QApplication::processEvents();
+
+  CircuitAutoplacerOptions options;
+  options.candidateCount = candidateCount;
+  options.isCancelled    = [&progress]() {
+    QApplication::processEvents();
+    return progress.wasCanceled();
+  };
+  options.progress = [&progress](const int completed, const int) {
+    progress.setValue(completed);
+    QApplication::processEvents();
+  };
+
+  applyAutoplacement(*this, activeCircuit, components, options);
+}
+
 void DiagramScene::placeComponent(std::string_view typeName)
 {
   placeComponent(typeName, true);
@@ -527,7 +662,7 @@ void DiagramScene::placeComponent(std::string_view typeName, const bool showSear
   componentToBeDrawn      = GUIComponentFactory::instance().create(typeName).release();
   lastPlacedComponentType = typeName;
   lastPlacedComponentProperties = initialProperties;
-  suppressNextComponentSearch = !showSearchBox;
+  suppressNextComponentSearch   = !showSearchBox;
 
   if (!initialProperties.empty()) {
     if (auto* logicComponent = category_cast<GraphicalLogicComponent>(

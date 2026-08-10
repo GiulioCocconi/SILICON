@@ -88,6 +88,7 @@ private:
         {"puzzle", "puzzle"},
         {"settings", "settings"},
         {"sticky-note", "sticky-note"},
+        {"rearrange", "layout-freeform"},
         {"text-cursor-input", "text-cursor-input"},
         {"toy-brick", "toy-brick"},
         {"usb", "usb"}};

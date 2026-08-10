@@ -32,7 +32,6 @@
 #include <stdexcept>
 #include <utility>
 
-
 namespace SILICON {
 namespace ui {
 using namespace SILICON::core;
@@ -174,8 +173,9 @@ private:
     cachedWidthText      = QString("[%1]").arg(busWidth);
     cachedWidthTextWidth = widthMetrics.horizontalAdvance(cachedWidthText);
 
-    const QString largestKnown = QString::fromStdString(
-        SILICON::core::formatFixedWidthHex(SILICON::core::maxValueForBusWidth(busWidth), busWidth));
+    const QString largestKnown =
+        QString::fromStdString(SILICON::core::formatFixedWidthHex(
+            SILICON::core::maxValueForBusWidth(busWidth), busWidth));
     const QString unknownBits(static_cast<int>(std::min<unsigned int>(busWidth, 8)),
                               QLatin1Char('X'));
 
@@ -260,26 +260,31 @@ std::string currentPortOrientation(const Component_ptr& component)
       .value_or(std::string(DefaultPortOrientation));
 }
 
-int snapToGrid(const qreal value)
-{
-  return static_cast<int>(std::lround(value / DiagramScene::GRID_SIZE)
-                          * DiagramScene::GRID_SIZE);
-}
-
 QPoint ioPortPosition(const QRectF& shapeRect, const IoPortOrientation orientation)
 {
-  const int centerX = snapToGrid(shapeRect.center().x());
-  const int centerY = snapToGrid(shapeRect.center().y());
+  const int centerX = DiagramScene::snapToGrid(shapeRect.center().x());
+  const int centerY = DiagramScene::snapToGrid(shapeRect.center().y());
 
   switch (orientation) {
     case IoPortOrientation::Up:
-      return {centerX, snapToGrid(shapeRect.top() - IoPortExtension)};
+      return {centerX, DiagramScene::snapToGrid(shapeRect.top() - IoPortExtension)};
     case IoPortOrientation::Down:
-      return {centerX, snapToGrid(shapeRect.bottom() + IoPortExtension)};
+      return {centerX, DiagramScene::snapToGrid(shapeRect.bottom() + IoPortExtension)};
     case IoPortOrientation::Left:
-      return {snapToGrid(shapeRect.left() - IoPortExtension), centerY};
+      return {DiagramScene::snapToGrid(shapeRect.left() - IoPortExtension), centerY};
     case IoPortOrientation::Right:
-      return {snapToGrid(shapeRect.right() + IoPortExtension), centerY};
+      return {DiagramScene::snapToGrid(shapeRect.right() + IoPortExtension), centerY};
+  }
+  std::unreachable();
+}
+
+std::string_view portOrientationName(const PortSide side)
+{
+  switch (side) {
+    case PortSide::UP: return PortOrientationUp;
+    case PortSide::DOWN: return PortOrientationDown;
+    case PortSide::LEFT: return PortOrientationLeft;
+    case PortSide::RIGHT: return PortOrientationRight;
   }
   std::unreachable();
 }
@@ -372,6 +377,31 @@ QRectF GraphicalIO::componentNameRect(const QString& name) const
   const qreal x      = shapeRect.left();
   const qreal y = isPortOrientationUp() ? shapeRect.bottom() : shapeRect.top() - height;
   return {x, y, width, height};
+}
+
+QPoint GraphicalIO::portPositionFor(const PortSide side) const
+{
+  if (!getItemShape())
+    return {};
+  return ioPortPosition(getItemShape()->boundingRect(),
+                        parsePortOrientation(portOrientationName(side)));
+}
+
+QRectF GraphicalIO::collisionRectForPortSide(const PortSide side) const
+{
+  if (!getItemShape())
+    return {};
+  const QPoint portPosition = portPositionFor(side);
+  return getItemShape()->boundingRect().united(
+      QRectF(portPosition - QPoint(1, 1), QSize(2, 2)));
+}
+
+void GraphicalIO::setPortOrientation(const PortSide side)
+{
+  if (!associatedComponent)
+    return;
+  associatedComponent->setPropertyValue(std::string(PortOrientationProperty),
+                                        std::string(portOrientationName(side)));
 }
 
 void GraphicalIO::setComponent(const Component_ptr& component)

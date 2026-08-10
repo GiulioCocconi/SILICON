@@ -308,6 +308,11 @@ void LogiFlowWindow::rotate()
   }
 }
 
+void LogiFlowWindow::autoPlace()
+{
+  diagramScene->autoPlaceCircuit(true);
+}
+
 void LogiFlowWindow::del()
 {
   auto itemsToDelete = diagramScene->selectedItems() | std::views::filter([](auto el) {
