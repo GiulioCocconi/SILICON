@@ -481,7 +481,6 @@ void LogiFlowWindow::createToolBar()
   toolBar->addAction(openComponentCatalogAct);
   toolBar->addAction(editSubcircuitShapeAct);
   toolBar->addAction(toggleHdlCodeModeAct);
-  toolBar->addAction(autoPlaceAct);
 
   addToolBar(toolBar);
 }

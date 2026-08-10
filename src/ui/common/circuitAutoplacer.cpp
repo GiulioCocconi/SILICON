@@ -564,22 +564,6 @@ namespace {
     return orientations;
   }
 
-  void configureRouter(Avoid::Router& router)
-  {
-    // A shared run between different logical nets is ambiguous. Give it a prohibitive
-    // cost and nudge overlapping connectors by at least one complete grid lane so
-    // snapping cannot collapse them back onto the same coordinates.
-    router.setRoutingPenalty(Avoid::segmentPenalty, 500.0);
-    router.setRoutingPenalty(Avoid::fixedSharedPathPenalty, 1'000'000.0);
-    router.setRoutingPenalty(Avoid::idealNudgingDistance, DiagramScene::GRID_SIZE);
-
-    router.setRoutingOption(Avoid::nudgeOrthogonalSegmentsConnectedToShapes, true);
-    router.setRoutingOption(Avoid::improveHyperedgeRoutesMovingJunctions, false);
-    router.setRoutingOption(Avoid::penaliseOrthogonalSharedPathsAtConnEnds, true);
-    router.setRoutingOption(Avoid::nudgeOrthogonalTouchingColinearSegments, true);
-    router.setRoutingOption(Avoid::nudgeSharedPathsWithCommonEndPoint, true);
-  }
-
   Avoid::ConnDirFlags portConnDir(const PortSide side)
   {
     switch (side) {
@@ -627,26 +611,6 @@ namespace {
       result.emplace(component, RoutingObstacle{.shape = shape, .bounds = rect});
     }
     return result;
-  }
-
-  std::vector<QPointF> extractRoutePoints(Avoid::ConnRef& connector)
-  {
-    // Vendored libavoid guarantees that its post-processed orthogonal display route is
-    // still terminal-complete and orthogonal. SILICON only quantizes it to the scene
-    // grid and removes redundant vertices.
-    const auto& route = connector.displayRoute();
-    if (route.size() < 2)
-      return {};
-
-    std::vector<QPointF> points;
-    points.reserve(route.size());
-
-    for (std::size_t i = 0; i < route.size(); ++i)
-      points.push_back(DiagramScene::snapToGrid(Avoid::toQPointF(route.at(i))));
-
-    points = canonicalizeOrthogonalRoute(std::move(points));
-    Q_ASSERT(isOrthogonalRoute(points));
-    return points;
   }
 
   using NetKey = std::vector<std::uint64_t>;
@@ -838,7 +802,7 @@ namespace {
     for (RegisteredNet& registration : registered) {
       registration.net.routes.reserve(registration.connectors.size());
       for (Avoid::ConnRef* connector : registration.connectors) {
-        auto points = extractRoutePoints(*connector);
+        auto points = extractOrthogonalRoute(*connector, DiagramScene::GRID_SIZE);
         if (points.size() < 2)
           continue;
         Q_ASSERT(isOrthogonalRoute(points));
@@ -889,7 +853,7 @@ namespace {
     Q_ASSERT(componentsHaveClearance(result.components, result.ioPortOrientations));
 
     Avoid::Router router(Avoid::OrthogonalRouting);
-    configureRouter(router);
+    configureOrthogonalRouter(router, DiagramScene::GRID_SIZE);
     const auto obstacles = registerObstacles(
         router, result.components, options.obstaclePadding, result.ioPortOrientations);
     // Commit the obstacle visibility graph before adding the complete batch of nets.

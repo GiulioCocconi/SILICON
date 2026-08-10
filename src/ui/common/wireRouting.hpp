@@ -24,7 +24,24 @@
 #include <QPointF>
 #include <QRectF>
 
+namespace Avoid {
+class ConnRef;
+class Router;
+}  // namespace Avoid
+
 namespace SILICON::core {
+
+/**
+ * @brief Applies SILICON's shared orthogonal-routing policy to a libavoid router.
+ *
+ * Both interactive wire previews and full-circuit autoplacement use this policy so
+ * segment costs, shared-path avoidance, and nudging remain consistent.
+ */
+void configureOrthogonalRouter(Avoid::Router& router, qreal gridSize);
+
+/** @brief Extracts, grid-snaps, and canonicalizes a libavoid display route. */
+[[nodiscard]] std::vector<QPointF> extractOrthogonalRoute(Avoid::ConnRef& connector,
+                                                          qreal           gridSize);
 
 /** @brief Returns whether every consecutive route segment is axis-aligned. */
 [[nodiscard]] bool isOrthogonalRoute(std::span<const QPointF> points);
@@ -51,6 +68,7 @@ canonicalizeOrthogonalRoute(std::vector<QPointF> points);
 mergeOrthogonalRoutes(const std::vector<std::vector<QPointF>>& routes);
 
 [[nodiscard]] std::vector<QPointF>
-routeOrthogonalWire(QPointF start, QPointF end, const std::vector<QRectF>& obstacleRects);
+routeOrthogonalWire(QPointF start, QPointF end, const std::vector<QRectF>& obstacleRects,
+                    qreal gridSize);
 
 }  // namespace SILICON::core

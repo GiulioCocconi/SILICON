@@ -8,7 +8,6 @@
 #include <QPolygonF>
 #include <QRectF>
 #include <algorithm>
-#include <cmath>
 #include <vector>
 
 using namespace SILICON::core;
@@ -70,28 +69,13 @@ void expectNoConsecutiveDuplicates(const std::vector<QPointF>& route)
 void configureHyperedgeRouter(Avoid::Router& router)
 {
   constexpr qreal gridSize = 10.0;
-  router.setRoutingPenalty(Avoid::segmentPenalty, 500.0);
-  router.setRoutingPenalty(Avoid::fixedSharedPathPenalty, 1'000'000.0);
-  router.setRoutingPenalty(Avoid::idealNudgingDistance, gridSize);
-  router.setRoutingOption(Avoid::nudgeOrthogonalSegmentsConnectedToShapes, true);
-  router.setRoutingOption(Avoid::penaliseOrthogonalSharedPathsAtConnEnds, true);
-  router.setRoutingOption(Avoid::nudgeOrthogonalTouchingColinearSegments, true);
-  router.setRoutingOption(Avoid::nudgeSharedPathsWithCommonEndPoint, true);
+  configureOrthogonalRouter(router, gridSize);
   router.setRoutingOption(Avoid::improveHyperedgeRoutesMovingJunctions, true);
 }
 
 std::vector<QPointF> snappedDisplayRoute(Avoid::ConnRef& connector)
 {
-  constexpr qreal      gridSize = 10.0;
-  std::vector<QPointF> points;
-  const auto&          route = connector.displayRoute();
-  points.reserve(route.size());
-  for (std::size_t i = 0; i < route.size(); ++i) {
-    const QPointF point = Avoid::toQPointF(route.at(i));
-    points.emplace_back(std::round(point.x() / gridSize) * gridSize,
-                        std::round(point.y() / gridSize) * gridSize);
-  }
-  return canonicalizeOrthogonalRoute(std::move(points));
+  return extractOrthogonalRoute(connector, 10.0);
 }
 
 Avoid::ConnEnd pinnedTerminal(Avoid::Router& router, const QPointF position,
@@ -167,7 +151,8 @@ TEST(WireRoutingTest, RoutesAroundBufferedObstacle)
 
   const QRectF bufferedObstacle =
       obstacle.normalized().adjusted(-clearance, -clearance, clearance, clearance);
-  const auto route = SILICON::core::routeOrthogonalWire(start, end, {bufferedObstacle});
+  const auto route =
+      SILICON::core::routeOrthogonalWire(start, end, {bufferedObstacle}, 10.0);
 
   ASSERT_GE(route.size(), 3U);
   EXPECT_EQ(route.front(), start);
@@ -187,7 +172,8 @@ TEST(WireRoutingTest, RoutesVerticalPairsAroundBufferedObstacle)
 
   const QRectF bufferedObstacle =
       obstacle.normalized().adjusted(-clearance, -clearance, clearance, clearance);
-  const auto route = SILICON::core::routeOrthogonalWire(start, end, {bufferedObstacle});
+  const auto route =
+      SILICON::core::routeOrthogonalWire(start, end, {bufferedObstacle}, 10.0);
 
   ASSERT_GE(route.size(), 3U);
   EXPECT_EQ(route.front(), start);

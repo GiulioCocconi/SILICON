@@ -20,6 +20,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <map>
 #include <set>
@@ -62,6 +63,52 @@ namespace {
   }
 
 }  // namespace
+
+void configureOrthogonalRouter(Avoid::Router& router, const qreal gridSize)
+{
+  Q_ASSERT(gridSize > 0);
+
+  // A shared run between different logical nets is ambiguous. Give it a prohibitive
+  // cost and nudge overlapping connectors by at least one complete grid lane so
+  // snapping cannot collapse them back onto the same coordinates.
+  router.setRoutingPenalty(Avoid::segmentPenalty, 500.0);
+  router.setRoutingPenalty(Avoid::fixedSharedPathPenalty, 1'000'000.0);
+  router.setRoutingPenalty(Avoid::idealNudgingDistance, gridSize);
+
+  router.setRoutingOption(Avoid::nudgeOrthogonalSegmentsConnectedToShapes, true);
+  router.setRoutingOption(Avoid::improveHyperedgeRoutesMovingJunctions, false);
+  router.setRoutingOption(Avoid::penaliseOrthogonalSharedPathsAtConnEnds, true);
+  router.setRoutingOption(Avoid::nudgeOrthogonalTouchingColinearSegments, true);
+  router.setRoutingOption(Avoid::nudgeSharedPathsWithCommonEndPoint, true);
+}
+
+std::vector<QPointF> extractOrthogonalRoute(Avoid::ConnRef& connector,
+                                            const qreal     gridSize)
+{
+  Q_ASSERT(gridSize > 0);
+
+  // Vendored libavoid guarantees that its post-processed orthogonal display route is
+  // still terminal-complete and orthogonal. Quantize it to the editor grid and remove
+  // redundant vertices in one place for every routing workflow.
+  const auto& route = connector.displayRoute();
+  if (route.size() < 2)
+    return {};
+
+  auto snapCoordinate = [gridSize](const qreal value) {
+    return std::round(value / gridSize) * gridSize;
+  };
+
+  std::vector<QPointF> points;
+  points.reserve(route.size());
+  for (std::size_t i = 0; i < route.size(); ++i) {
+    const QPointF point = Avoid::toQPointF(route.at(i));
+    points.emplace_back(snapCoordinate(point.x()), snapCoordinate(point.y()));
+  }
+
+  points = canonicalizeOrthogonalRoute(std::move(points));
+  Q_ASSERT(isOrthogonalRoute(points));
+  return points;
+}
 
 bool isOrthogonalRoute(const std::span<const QPointF> points)
 {
@@ -285,12 +332,14 @@ mergeOrthogonalRoutes(const std::vector<std::vector<QPointF>>& routes)
 }
 
 std::vector<QPointF> routeOrthogonalWire(const QPointF start, const QPointF end,
-                                         const std::vector<QRectF>& obstacleRects)
+                                         const std::vector<QRectF>& obstacleRects,
+                                         const qreal                gridSize)
 {
   if (start == end)
     return {start};
 
   Avoid::Router router(Avoid::OrthogonalRouting);
+  configureOrthogonalRouter(router, gridSize);
 
   QPointF routedStart = start;
   QPointF routedEnd   = end;
@@ -328,18 +377,7 @@ std::vector<QPointF> routeOrthogonalWire(const QPointF start, const QPointF end,
   if (!router.processTransaction())
     return {};
 
-  const Avoid::PolyLine& route = connector->displayRoute();
-  if (route.size() < 2)
-    return {};
-
-  std::vector<QPointF> routedPoints;
-  routedPoints.reserve(route.size());
-
-  for (size_t i = 0; i < route.size(); ++i) {
-    const QPointF point = Avoid::toQPointF(route.at(i));
-    if (routedPoints.empty() || routedPoints.back() != point)
-      routedPoints.push_back(point);
-  }
+  auto routedPoints = extractOrthogonalRoute(*connector, gridSize);
 
   if (routedPoints.empty())
     return {};

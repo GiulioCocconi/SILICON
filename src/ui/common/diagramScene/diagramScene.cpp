@@ -331,7 +331,7 @@ void DiagramScene::mouseMoveEvent(QGraphicsSceneMouseEvent* mouseEvent)
           wireSegmentToBeDrawn->mapToScene(wireSegmentToBeDrawn->lastPoint());
 
       auto route = SILICON::core::routeOrthogonalWire(lastPoint, cursorPos,
-                                                      wireRoutingObstacles());
+                                                      wireRoutingObstacles(), GRID_SIZE);
 
       if (!route.empty())
         route.erase(route.begin());
