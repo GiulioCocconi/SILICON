@@ -191,7 +191,7 @@ private:
  * automatic junction detection, and orthogonal (horizontal/vertical)
  * path maintenance.
  *
- * Junctions occur when endpoints collide with other segments.
+ * Junctions occur where an endpoint meets at least three distinct wire arms.
  * Individual points can be highlighted and dragged to reshape
  * the wire while maintaining orthogonality.
  *
@@ -328,10 +328,11 @@ public:
   ~GraphicalWireSegment() override;
 
   /**
-   * @brief Checks alignment with another segment.
+   * @brief Checks whether another segment is a straight continuation.
    *
    * @param other The segment to check
-   * @return True if aligned (share an endpoint)
+   * @return True if the segments share an endpoint and their incident arms are
+   * collinear and point in opposite directions.
    */
   [[nodiscard]] bool isAlignedWith(const GraphicalWireSegment* other) const;
 

@@ -66,7 +66,7 @@ TargetType* category_cast(QGraphicsItem* item, ItemCategory expectedCategory)
 }
 
 template <typename TargetType>
-const TargetType* category_cast(const QGraphicsItem* item, ItemCategory expectedCategory)
+TargetType* category_cast(const QGraphicsItem* item, ItemCategory expectedCategory)
 {
   return hasCategory(item, expectedCategory) ? static_cast<const TargetType*>(item)
                                              : nullptr;

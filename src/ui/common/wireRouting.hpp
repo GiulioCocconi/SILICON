@@ -18,12 +18,37 @@
 
 #pragma once
 
+#include <span>
 #include <vector>
 
 #include <QPointF>
 #include <QRectF>
 
 namespace SILICON::core {
+
+/** @brief Returns whether every consecutive route segment is axis-aligned. */
+[[nodiscard]] bool isOrthogonalRoute(std::span<const QPointF> points);
+
+/** @brief Returns true when two orthogonal polylines share a positive-length segment. */
+[[nodiscard]] bool orthogonalRoutesShareSegment(std::span<const QPointF> first,
+                                                std::span<const QPointF> second);
+
+/** @brief Returns true when two routes overlap or form an ambiguous endpoint junction. */
+[[nodiscard]] bool orthogonalRoutesIntersect(std::span<const QPointF> first,
+                                             std::span<const QPointF> second);
+
+/** @brief Removes consecutive duplicates and redundant collinear interior points. */
+[[nodiscard]] std::vector<QPointF>
+canonicalizeOrthogonalRoute(std::vector<QPointF> points);
+
+/**
+ * @brief Unions several routes of one net into maximal terminal-to-junction paths.
+ *
+ * Shared and intersecting segments are split into a graph, deduplicated, then joined
+ * through degree-two vertices. Returned path endpoints are terminals or junctions.
+ */
+[[nodiscard]] std::vector<std::vector<QPointF>>
+mergeOrthogonalRoutes(const std::vector<std::vector<QPointF>>& routes);
 
 [[nodiscard]] std::vector<QPointF>
 routeOrthogonalWire(QPointF start, QPointF end, const std::vector<QRectF>& obstacleRects);

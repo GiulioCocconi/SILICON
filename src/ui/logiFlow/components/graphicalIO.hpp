@@ -84,6 +84,15 @@ public:
    */
   static inline const QFont UI_FONT{"NovaMono", 12};
 
+  /** @brief Returns the local port position for a proposed cardinal side. */
+  [[nodiscard]] QPoint portPositionFor(PortSide side) const;
+
+  /** @brief Returns local wire-obstacle bounds for a proposed port side. */
+  [[nodiscard]] QRectF collisionRectForPortSide(PortSide side) const;
+
+  /** @brief Persists and applies a cardinal port orientation. */
+  void setPortOrientation(PortSide side);
+
   /**
    * @brief Called when the user clicks on the component during a live simulation.
    */

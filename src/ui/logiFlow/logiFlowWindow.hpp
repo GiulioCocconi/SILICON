@@ -193,6 +193,9 @@ private slots:
   /** @brief Rotates all selected graphical components. */
   void rotate();
 
+  /** @brief Automatically places components and reroutes wires. */
+  void autoPlace();
+
   /** @brief Deletes the current selection from the diagram. */
   void del();  // Delete is a CPP keyword
 
@@ -509,6 +512,9 @@ private:
 
   /** @brief Rotates selected components. */
   QAction* rotateAct = nullptr;
+
+  /** @brief Automatically places components and reroutes wires. */
+  QAction* autoPlaceAct = nullptr;
 
   /** @brief Deletes the current selection. */
   QAction* deleteAct = nullptr;

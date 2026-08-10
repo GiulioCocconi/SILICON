@@ -291,11 +291,14 @@ void GraphicalWireSegment::paint(QPainter*                       painter,
   painter->setPen(QPen(Qt::red, 3));
   painter->drawPath(showPath);
 
-  // Draw junction ellipses at endpoints
-  if (firstJunction || lastJunction) {
+  // Draw junction ellipses independently: a segment may connect two junctions.
+  if (firstJunction) {
     painter->setPen(QPen(color, 3));
-    const auto junctionPoint = firstJunction ? points.front() : points.back();
-    painter->drawEllipse(junctionPoint, 3, 3);
+    painter->drawEllipse(points.front(), 3, 3);
+  }
+  if (lastJunction) {
+    painter->setPen(QPen(color, 3));
+    painter->drawEllipse(points.back(), 3, 3);
   }
 
   // Draw hovered / selected points
@@ -475,7 +478,7 @@ void GraphicalWireSegment::setFirstPointJunction(bool v)
     return;
 
   firstJunction = v;
-  prepareGeometryChange();
+  update();
 }
 
 void GraphicalWireSegment::setLastPointJunction(bool v)
@@ -484,7 +487,7 @@ void GraphicalWireSegment::setLastPointJunction(bool v)
     return;
 
   lastJunction = v;
-  prepareGeometryChange();
+  update();
 }
 
 bool GraphicalWireSegment::isAlignedWith(const GraphicalWireSegment* other) const
@@ -498,14 +501,43 @@ bool GraphicalWireSegment::isAlignedWith(const GraphicalWireSegment* other) cons
   if (!scene())
     throw std::logic_error("isAlignedWith: segment not in a scene");
 
-  const auto p1 = std::array{mapToScene(points.front()), mapToScene(points.back())};
+  struct Endpoint {
+    QPointF point;
+    QPointF inwardDirection;
+  };
 
-  const auto p2 = std::array{other->mapToScene(other->points.front()),
-                             other->mapToScene(other->points.back())};
+  const std::array endpoints = {
+      Endpoint{mapToScene(points.front()),
+               mapToScene(points[1]) - mapToScene(points.front())},
+      Endpoint{mapToScene(points.back()),
+               mapToScene(points[points.size() - 2]) - mapToScene(points.back())},
+  };
+  const std::array otherEndpoints = {
+      Endpoint{other->mapToScene(other->points.front()),
+               other->mapToScene(other->points[1])
+                   - other->mapToScene(other->points.front())},
+      Endpoint{other->mapToScene(other->points.back()),
+               other->mapToScene(other->points[other->points.size() - 2])
+                   - other->mapToScene(other->points.back())},
+  };
 
-  auto it = std::ranges::find_first_of(p1, p2);
+  for (const Endpoint& endpoint : endpoints) {
+    for (const Endpoint& otherEndpoint : otherEndpoints) {
+      if (endpoint.point != otherEndpoint.point)
+        continue;
 
-  return (it != p1.end());
+      const QPointF& a     = endpoint.inwardDirection;
+      const QPointF& b     = otherEndpoint.inwardDirection;
+      const qreal    cross = a.x() * b.y() - a.y() * b.x();
+      const qreal    dot   = a.x() * b.x() + a.y() * b.y();
+
+      // Sharing an endpoint is not enough: at a junction only the two opposite,
+      // collinear arms form the trunk. Perpendicular arms must remain branches.
+      if (qFuzzyIsNull(cross) && dot < 0.0)
+        return true;
+    }
+  }
+  return false;
 }
 
 void GraphicalWireSegment::mousePressEvent(QGraphicsSceneMouseEvent* event)

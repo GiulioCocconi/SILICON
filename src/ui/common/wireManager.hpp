@@ -20,16 +20,26 @@
 
 #include <functional>
 #include <memory>
+#include <span>
 #include <vector>
 
 #include <QPointF>
 
+#include <core/wire.hpp>
+
+class QGraphicsScene;
 
 namespace SILICON {
 namespace ui {
 
 class GraphicalWire;
 class GraphicalWireSegment;
+
+/** @brief Scene-coordinate wire path produced by an automatic router. */
+struct RoutedWire {
+  core::Bus            bus;
+  std::vector<QPointF> points;
+};
 
 /* WireManager
  * Central orchestrator for GraphicalWires and GraphicalWireSegments.
@@ -71,10 +81,9 @@ public:
   void removeSegment(GraphicalWireSegment* segment);
 
   // Called after a segment has been moved (e.g. by point dragging).
-  // Checks endpoint collisions with all other segments and performs merge or
-  // split as needed.
-  void updateSegmentTopology(GraphicalWireSegment* segment,
-                             bool                  forceCalculateJunctions = false);
+  // Checks endpoint collisions with all other segments, performs merge or split
+  // as needed, and refreshes junctions across the complete scene.
+  void updateSegmentTopology(GraphicalWireSegment* segment);
 
   // Merge: Unify the GraphicalWires of two segments whose endpoints collide.
   // If the segments are aligned (collinear), they are fused into one segment.
@@ -103,6 +112,12 @@ public:
   {
     return allSegments;
   }
+
+  /** @brief Deletes all managed graphical wire segments from @p scene. */
+  void clearSegments(QGraphicsScene& scene);
+
+  /** @brief Replaces all managed graphical wire segments with routed segments. */
+  void replaceSegments(QGraphicsScene& scene, std::span<const RoutedWire> routedSegments);
 
   // Check whether `segment`'s first or last endpoint lies on `other`'s body
   // (or vice-versa). Used for T-junction and connectivity detection.

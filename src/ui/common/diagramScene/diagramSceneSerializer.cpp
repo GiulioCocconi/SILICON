@@ -19,27 +19,34 @@
 #include "diagramSceneSerializer.hpp"
 
 #include <algorithm>
+#include <boost/range/iterator_range.hpp>
 #include <cstdint>
+#include <format>
 #include <limits>
 #include <map>
 #include <memory>
+#include <span>
 #include <stdexcept>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
+#include <QApplication>
+#include <QMessageBox>
 #include <QPointer>
 
 #include <logging/logger.hpp>
 
 #include <core/circuit.hpp>
 #include <core/serialization/component_registry.hpp>
+#include <ui/common/circuitAutoplacer.hpp>
 #include <ui/common/diagramScene/diagramScene.hpp>
 #include <ui/common/enums.hpp>
 #include <ui/common/graphicalComponent.hpp>
 #include <ui/common/graphicalWire.hpp>
 #include <ui/logiFlow/components/graphicalIO.hpp>
+#include <ui/logiFlow/components/graphicalLogicComponent.hpp>
 #include <ui/logiFlow/components/graphicalUtils.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
 
@@ -284,6 +291,40 @@ void addVisualWires(QGraphicsScene& scene, WireManager& wireManager,
   }
 }
 
+std::vector<std::unique_ptr<GraphicalComponent>>
+createAutoplacedVisualComponents(const std::shared_ptr<Circuit>& coreCircuit,
+                                 GUIComponentFactory&            guiFactory)
+{
+  std::vector<std::unique_ptr<GraphicalComponent>> components;
+  if (!coreCircuit)
+    return components;
+
+  const auto& graph = coreCircuit->getGraph();
+  components.reserve(boost::num_vertices(graph));
+
+  for (const auto vertex : boost::make_iterator_range(boost::vertices(graph))) {
+    const auto& coreComponent = graph[vertex].component;
+    if (!coreComponent)
+      continue;
+
+    auto  component      = guiFactory.createForCoreType(coreComponent->typeName());
+    auto* logicComponent = category_cast<GraphicalLogicComponent>(
+        component.get(), ItemCategory::LogicComponent);
+    if (!logicComponent) {
+      throw std::runtime_error(
+          std::format("Autoplacement visual creation: '{}' is not a logic component",
+                      component->getTypeName()));
+    }
+
+    nlohmann::json componentJson;
+    componentJson["vertexId"] = static_cast<int>(vertex);
+    attachCoreComponent(component.get(), componentJson, coreCircuit);
+    components.push_back(std::move(component));
+  }
+
+  return components;
+}
+
 }  // namespace
 
 DiagramSceneSerializer::DiagramSceneSerializer(DiagramScene& scene) : scene(scene) {}
@@ -442,18 +483,52 @@ void DiagramSceneSerializer::deserialize(const std::string&       jsonStr,
 {
   auto j = nlohmann::json::parse(jsonStr);
 
-  if (j.contains("circuit"))
-    scene.setCircuit(deserializeCircuitPayload(j, coreRegistry));
+  const bool hasCircuitPart = j.contains("circuit");
+  const bool hasVisualPart  = j.contains("visual");
 
-  if (!j.contains("visual"))
-    throw std::runtime_error("Opened file doesn't have the visual part!");
+  if (!hasCircuitPart && !hasVisualPart)
+    throw std::runtime_error("Cannot read the file: it has no circuit or visual data");
+
+  std::shared_ptr<Circuit> authoritativeCircuit;
+  if (hasCircuitPart) {
+    authoritativeCircuit = deserializeCircuitPayload(j, coreRegistry);
+    scene.setCircuit(authoritativeCircuit);
+  } else {
+    QMessageBox::warning(QApplication::activeWindow(),
+                         QObject::tr("Visual circuit warning"),
+                         QObject::tr("Simulation properties are not present in the "
+                                     "deserialized file; defaults will be used"));
+  }
+
+  if (!hasVisualPart) {
+    auto components = createAutoplacedVisualComponents(scene.getCircuit(), guiFactory);
+    addVisualComponents(scene, std::move(components), false);
+
+    std::vector<GraphicalLogicComponent*> logicComponents;
+    for (auto* item : scene.items()) {
+      if (auto* component =
+              category_cast<GraphicalLogicComponent>(item, ItemCategory::LogicComponent))
+        logicComponents.push_back(component);
+    }
+
+    if (!logicComponents.empty() && scene.getCircuit())
+      scene.autoPlaceCircuit();
+
+    scene.setInteractionMode(InteractionMode::NORMAL_MODE);
+    return;
+  }
 
   addVisualWires(scene, scene.getWireManager(),
                  deserializeVisualWires(j["visual"], QPointF(), true), false);
-  addVisualComponents(
-      scene,
-      deserializeVisualComponents(j["visual"], guiFactory, scene.getCircuit(), QPointF()),
-      false);
+  addVisualComponents(scene,
+                      deserializeVisualComponents(j["visual"], guiFactory,
+                                                  authoritativeCircuit, QPointF()),
+                      false);
+
+  // Once a visual scene exists, its grouped wires define the editable topology. Rebuild
+  // component connections immediately so bus widths and wire identities agree before
+  // the first simulation or export.
+  scene.updateSceneAfterEdit();
 
   scene.setInteractionMode(InteractionMode::NORMAL_MODE);
 }

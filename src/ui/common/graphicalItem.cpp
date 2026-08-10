@@ -138,6 +138,11 @@ QVariant GraphicalItem::itemChange(GraphicsItemChange change, const QVariant& va
 
     this->collidingStatus = CollidingStatus::NOT_COLLIDING;
 
+    if (!ds->itemCollisionChecksEnabled()) {
+      onPositionChanged(offset);
+      return proposedPos;
+    }
+
     // Calculate the bounding rectangle at the *new* position in scene coordinates.
     // Use the item's bounding rectangle, offset by the proposed new position.
     auto newCollisionRect = getCollisionRect().translated(proposedPos);
