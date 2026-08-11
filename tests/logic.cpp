@@ -1315,6 +1315,20 @@ TEST(LogicTest, BusSettingReadingAtUnsignedIntWidth)
   EXPECT_EQ(bus.getCurrentValue(), 0U);
 }
 
+TEST(LogicTest, DisconnectedBusStateQueriesDoNotDereferenceNullWires)
+{
+  Bus bus{Wire_ptr{}};
+
+  EXPECT_TRUE(bus.isInErrorState());
+  EXPECT_FALSE(bus.hasUnknowns());
+  EXPECT_EQ(bus.getCurrentValueString(), "E");
+
+  bus.setSize(2);
+  EXPECT_TRUE(bus.isInErrorState());
+  EXPECT_TRUE(bus.hasUnknowns());
+  EXPECT_EQ(bus.getCurrentValueString(), "XE");
+}
+
 TEST(LogicTest, GateBitwiseDefaultsAndValidation)
 {
   auto a = std::make_shared<Wire>();
