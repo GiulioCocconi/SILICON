@@ -224,11 +224,11 @@ private slots:
   void showComponentCatalog();
   void editActiveSubcircuitShape();
   /**
-   * @brief Enters editable HDL mode or compiles the active HDL-backed subcircuit.
+   * @brief Toggles an active subcircuit between graphical and editable HDL modes.
    *
-   * Converting a graphical subcircuit to HDL is irreversible. Once it is HDL-backed,
-   * enabling this action makes its source editable and disables simulation; disabling
-   * it asks Yosys to rebuild the cached core circuit before simulation is re-enabled.
+   * Enabling this action exports the graphical circuit to HDL and disables simulation.
+   * Disabling it imports the edited HDL and uses the autoplacer to reconstruct an
+   * editable visual circuit before simulation is re-enabled.
    */
   void toggleHdlCodeMode(bool enabled);
 
@@ -291,13 +291,15 @@ private:
   /** @brief Loads the active subcircuit's project asset into the HDL editor. */
   void showActiveHdlDocument();
   /**
-   * @brief Compiles edited Verilog, replaces the prepared core circuit, and makes the
-   * source read-only. The editor remains writable when compilation fails.
+   * @brief Compiles edited Verilog and restores an autoplaced graphical subcircuit.
+   *
+   * The editor remains writable and the HDL asset is retained when compilation or
+   * graphical reconstruction fails.
    */
   void compileActiveHdl();
   /**
-   * @brief Irreversibly replaces graphical implementation data with an HDL descriptor
-   * and a generated `hdl/<slug>.v` project asset.
+   * @brief Replaces graphical implementation data with an HDL descriptor and a
+   * generated `hdl/<slug>.v` project asset until code mode is disabled.
    */
   void convertActiveSubcircuitToHdl();
   /** @brief Returns whether the active subcircuit scene contains an HDL descriptor. */
