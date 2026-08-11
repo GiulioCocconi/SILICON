@@ -339,14 +339,16 @@ std::string Bus::getCurrentValueString() const
 
 bool Bus::isInErrorState() const
 {
-  return std::ranges::any_of(
-      busData, [](const auto& el) { return el->getCurrentState() == State::ERROR; });
+  return std::ranges::any_of(busData, [](const auto& el) {
+    return Wire::safeGetCurrentState(el) == State::ERROR;
+  });
 }
 
 bool Bus::hasUnknowns() const
 {
-  return std::ranges::any_of(
-      busData, [](const auto& el) { return el->getCurrentState() == State::UNKNOWN; });
+  return std::ranges::any_of(busData, [](const auto& el) {
+    return Wire::safeGetCurrentState(el) == State::UNKNOWN;
+  });
 }
 
 bool Bus::sharesWireWith(const Bus& other) const
@@ -367,7 +369,16 @@ std::strong_ordering Bus::operator<=>(const Bus& other) const
 {
   return std::lexicographical_compare_three_way(
       busData.begin(), busData.end(), other.busData.begin(), other.busData.end(),
-      [](const auto& a, const auto& b) { return a->getId() <=> b->getId(); });
+      [](const auto& a, const auto& b) {
+        if (!a && !b)
+          return std::strong_ordering::equal;
+        if (!a)
+          return std::strong_ordering::less;
+        if (!b)
+          return std::strong_ordering::greater;
+
+        return a->getId() <=> b->getId();
+      });
 }
 
 bool Bus::operator==(const Bus& other) const
