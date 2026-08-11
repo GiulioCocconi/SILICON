@@ -69,6 +69,36 @@ GUIComponentFactory::create(std::string_view type, QGraphicsItem* parent) const
   return it->second.factory(parent);
 }
 
+std::unique_ptr<GraphicalComponent>
+GUIComponentFactory::createForCoreType(std::string_view coreType,
+                                       QGraphicsItem*   parent) const
+{
+  const Entry*     match = nullptr;
+  std::string_view matchedGuiType;
+
+  for (const auto& [guiType, entry] : factories_) {
+    if (entry.metadata.coreType != coreType)
+      continue;
+
+    if (match) {
+      throw std::runtime_error(
+          std::string("Ambiguous GUI component mapping for core type: ")
+          + std::string{coreType} + " (" + std::string{matchedGuiType} + ", " + guiType
+          + ")");
+    }
+
+    match          = &entry;
+    matchedGuiType = guiType;
+  }
+
+  if (!match) {
+    throw std::runtime_error(std::string("No GUI component registered for core type: ")
+                             + std::string{coreType});
+  }
+
+  return match->factory(parent);
+}
+
 std::vector<std::string> GUIComponentFactory::availableTypes() const
 {
   std::vector<std::string> types;
