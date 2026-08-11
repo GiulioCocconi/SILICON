@@ -103,6 +103,18 @@ public:
                                              QGraphicsItem*   parent = nullptr) const;
 
   /**
+   * @brief Creates the graphical component registered for a core component type.
+   *
+   * @param coreType The core component type identifier
+   * @param parent Optional parent graphics item
+   * @return Unique pointer to the matching graphical component
+   * @throws std::runtime_error if no graphical type, or more than one graphical type,
+   *         is registered for the core type
+   */
+  std::unique_ptr<GraphicalComponent>
+  createForCoreType(std::string_view coreType, QGraphicsItem* parent = nullptr) const;
+
+  /**
    * @brief Gets all available component types.
    * @return Vector of type name strings
    */
