@@ -310,8 +310,9 @@ void LogiFlowWindow::createActions()
                                       tr("Edit the active subcircuit shape"));
   editSubcircuitShapeAct->setVisible(false);
   editSubcircuitShapeAct->setEnabled(false);
-  toggleHdlCodeModeAct = makeAction(this, Icon("code"), tr("Code"),
-                                    tr("Edit or compile the active subcircuit HDL"));
+  toggleHdlCodeModeAct =
+      makeAction(this, Icon("code"), tr("Code"),
+                 tr("Toggle the active subcircuit between visual and HDL modes"));
   toggleHdlCodeModeAct->setCheckable(true);
   toggleHdlCodeModeAct->setVisible(false);
   toggleHdlCodeModeAct->setEnabled(false);
@@ -567,8 +568,8 @@ void LogiFlowWindow::updateHdlActions()
 #else
   toggleHdlCodeModeAct->setEnabled(subcircuit);
   toggleHdlCodeModeAct->setToolTip(
-      hdl ? tr("Toggle editable HDL source and compiled mode")
-          : tr("Permanently convert this subcircuit to HDL"));
+      hdl ? tr("Compile this HDL and return to the visual circuit")
+          : tr("Convert this subcircuit to editable HDL"));
 #endif
 
   {
@@ -623,35 +624,49 @@ void LogiFlowWindow::compileActiveHdl()
   if (!descriptor || !slug)
     throw std::runtime_error("Active document is not an HDL-backed subcircuit");
 
-  auto circuit =
-      SILICON::yosys::importVerilog(hdlEditor->toPlainText().toStdString(), *slug);
+  if (!projectAsset(descriptor->path))
+    throw std::runtime_error(
+        std::format("Subcircuit HDL asset '{}' is missing", descriptor->path));
+
+  const auto source   = hdlEditor->toPlainText().toStdString();
+  auto       circuit  = SILICON::yosys::importVerilog(source, *slug);
   auto       json     = nlohmann::ordered_json::parse(existing->getSceneJson());
   const auto fallback = parseGraphicalSubcircuitMetadata(existing->getSceneJson())
                             .value_or(GraphicalSubcircuitMetadata{});
-  json["circuit"]              = nlohmann::json::parse(circuit.serialize());
-  json["visual"]["components"] = nlohmann::ordered_json::array();
-  json["visual"]["wires"]      = nlohmann::ordered_json::array();
+
+  // With no visual payload the scene deserializer creates graphical counterparts for
+  // the imported core components and asks the autoplacer to lay out and route them.
+  // Removing the HDL descriptor turns the result back into a regular graphical
+  // subcircuit instead of leaving the conversion permanent.
+  json.erase("hdl");
+  json["circuit"] = nlohmann::json::parse(circuit.serialize());
+  json.erase("visual");
+
+  diagramScene->clear(false, false);
+  diagramScene->deserialize(json.dump(), GUIComponentFactory::instance(),
+                            ComponentRegistry::instance());
+
+  const auto inferredVisual = nlohmann::ordered_json::parse(diagramScene->serialize());
+  json["circuit"]           = inferredVisual.at("circuit");
+  json["visual"]            = inferredVisual.at("visual");
 
   auto sceneJson             = json.dump(2);
   json["graphicalComponent"] = graphicalSubcircuitMetadataToJson(
       synchronizeGraphicalSubcircuitMetadata(sceneJson, fallback));
   sceneJson = json.dump(2);
 
-  auto* asset = projectAsset(descriptor->path);
-  if (!asset)
-    throw std::runtime_error(
-        std::format("Subcircuit HDL asset '{}' is missing", descriptor->path));
-
-  const auto source = hdlEditor->toPlainText().toStdString();
   dependencyGraph.replaceDocumentDependencies(activeDocumentPath, sceneJson);
   SILICON::project::DocumentStore::active().upsertDocument(
       preparedSubcircuitDocument(activeDocumentPath, std::move(sceneJson)));
-  asset->contents = source;
-  diagramScene->setCircuit(std::make_shared<Circuit>(std::move(circuit)));
+  std::erase_if(projectAssets, [&](const auto& projectAsset) {
+    return projectAsset.path == descriptor->path;
+  });
 
   hdlEditor->document()->setModified(false);
   hdlEditor->setReadOnly(true);
   hdlCodeMode = false;
+  editorStack->setCurrentWidget(diagramView);
+  undoStack->clear();
   updateHdlActions();
   updatePropertyDock();
 }
@@ -673,8 +688,8 @@ void LogiFlowWindow::convertActiveSubcircuitToHdl()
       ComponentRegistry::instance());
   circuit.setName(slug);
   const auto source = SILICON::yosys::exportVerilog(circuit);
-  // Re-import before committing the irreversible conversion. This also validates
-  // that the slug is a supported top-module identifier.
+  // Re-import before committing the conversion. This also validates that the slug is
+  // a supported top-module identifier.
   (void)SILICON::yosys::importVerilog(source, slug);
 
   const auto assetPath = std::format("hdl/{}.v", slug);
