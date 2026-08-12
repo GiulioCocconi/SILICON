@@ -79,8 +79,10 @@ struct ScriptResult {
  *
  * The Yosys result is normalized to ANSI-style module port declarations. Redundant
  * `wire` declarations for those ports are removed, while genuine internal and shared
- * nets remain explicit. Two-input NAND and NOR gates use fused Yosys cells so their
- * generated expressions do not expose a meaningless operation-to-inverter net.
+ * nets remain explicit. SILICON technology cells are lowered to standard behavioral
+ * Verilog, so the result has no dependency on SILICON's Yosys cell library. Two-input
+ * NAND and NOR gates use fused Yosys cells so their generated expressions do not
+ * expose a meaningless operation-to-inverter net.
  * When the SILICON Yosys plugin is available, wide muxes are raised to combinational
  * processes so the backend emits readable case statements.
  */

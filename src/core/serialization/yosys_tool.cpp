@@ -176,20 +176,17 @@ namespace {
   }
 
   struct TechnologyLibrary {
-    std::filesystem::path blackBoxes;
-    std::filesystem::path simulationModels;
+    std::filesystem::path cells;
     std::filesystem::path technologyMap;
   };
 
   [[nodiscard]] std::optional<TechnologyLibrary>
   libraryAt(const std::filesystem::path& directory)
   {
-    TechnologyLibrary result{directory / "silicon_cells_bb.v",
-                             directory / "silicon_cells_sim.v",
+    TechnologyLibrary result{directory / "silicon_cells.v",
                              directory / "silicon_techmap.v"};
     std::error_code   error;
-    for (const auto* path :
-         {&result.blackBoxes, &result.simulationModels, &result.technologyMap}) {
+    for (const auto* path : {&result.cells, &result.technologyMap}) {
       if (!std::filesystem::is_regular_file(*path, error) || error)
         return std::nullopt;
     }
@@ -231,8 +228,7 @@ namespace {
         return *result;
       throw std::runtime_error(std::format(
           "Yosys resource-discovery phase failed: configured technology-library "
-          "directory '{}' does not contain silicon_cells_bb.v, silicon_cells_sim.v, "
-          "and silicon_techmap.v",
+          "directory '{}' does not contain silicon_cells.v and silicon_techmap.v",
           options.technologyLibraryDirectory->string()));
     }
 
@@ -619,7 +615,7 @@ Circuit importVerilog(const std::string_view source, const std::string_view topM
   const auto muxImport = plugin ? std::string("silicon_pmux_bmux\n") : std::string();
 
   (void)runScript(std::format("{}"
-                              "read_verilog -lib {}\n"
+                              "read_verilog -lib -D SILICON_BLACKBOX {}\n"
                               "read_verilog {}\n"
                               "hierarchy -check -top {}\n"
                               "proc\n"
@@ -628,15 +624,15 @@ Circuit importVerilog(const std::string_view source, const std::string_view topM
                               "flatten\n"
                               "delete t:$scopeinfo\n"
                               "opt\n"
-                              "simplemap t:$and t:$or t:$xor t:$not t:$reduce_and "
-                              "t:$reduce_or t:$reduce_xor\n"
+                              "simplemap t:$and t:$or t:$xor t:$not t:$logic_not "
+                              "t:$reduce_and t:$reduce_or t:$reduce_xor\n"
                               "extract_fa\n"
                               "techmap -map {}\n"
                               "opt_clean\n"
                               "write_json {}\n",
-                              pluginLoad, quotePath(library.blackBoxes),
-                              quotePath(sourcePath), topModule, muxImport,
-                              quotePath(library.technologyMap), quotePath(jsonPath)),
+                              pluginLoad, quotePath(library.cells), quotePath(sourcePath),
+                              topModule, muxImport, quotePath(library.technologyMap),
+                              quotePath(jsonPath)),
                   options);
   return deserialize(readFile(jsonPath, "Verilog-import output-reading phase"),
                      topModule);
@@ -655,17 +651,19 @@ std::string exportVerilog(const Circuit& circuit, const ToolOptions& options)
       plugin ? std::format("plugin -i {}\nsilicon_bmux_case\n", quotePath(*plugin))
              : std::string();
 
-  (void)runScript(std::format("read_verilog -lib {}\n"
+  (void)runScript(std::format("read_verilog -lib -D SILICON_BLACKBOX {}\n"
                               "read_json {}\n"
                               "hierarchy -check -auto-top\n"
+                              "techmap -autoproc -D SILICON_EXPORT_MAP -map {}\n"
                               "opt_expr t:$pos\n"
                               "opt_clean -purge\n"
                               "rename -unescape\n"
                               "opt\n"
                               "{}"
                               "write_verilog -noattr -norename -decimal {}\n",
-                              quotePath(library.blackBoxes), quotePath(jsonPath),
-                              muxExport, quotePath(verilogPath)),
+                              quotePath(library.cells), quotePath(jsonPath),
+                              quotePath(library.cells), muxExport,
+                              quotePath(verilogPath)),
                   options);
   return useAnsiPortDeclarations(
       cleanProcessVerilog(readFile(verilogPath, "Verilog-export output-reading phase")));
