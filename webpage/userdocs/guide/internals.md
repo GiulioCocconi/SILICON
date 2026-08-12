@@ -290,8 +290,9 @@ condition produces `UNKNOWN`. `QN` always complements `Q`, including becoming un
 with it. Register clear has priority over enable and clock, shifting moves toward bit
 zero, and PISO load has priority over shift.
 Arithmetic cells are unsigned; `SUM` has `WIDTH` bits and `COUT` is the discarded carry
-bit. `silicon_cells_sim.v` implements the same rules for external simulation, while
-`silicon_cells_bb.v` prevents synthesis from inlining those models.
+bit. `silicon_cells.v` is the single source for these interfaces and behaviours. Loaded
+normally it provides external simulation models; `SILICON_BLACKBOX` selects synthesis
+black boxes, and `SILICON_EXPORT_MAP` selects the native-Yosys export lowering.
 
 The custom-cell importer runs before generic dispatch. It requires the exact parameter
 and connection sets, validates every width and supported polarity, registers both normal
@@ -350,9 +351,9 @@ and are rejected while standalone equality comparison is unsupported.
 
 ### External Verilog pipelines
 
-Verilog import reads `silicon_cells_bb.v` as a library, elaborates and flattens the
-selected user top, preserves word-level arithmetic, extracts recognizable half/full
-adder cones, applies `silicon_techmap.v`, and writes JSON. The map covers supported
+Verilog import reads `silicon_cells.v` with `SILICON_BLACKBOX` as a library, elaborates
+and flattens the selected user top, preserves word-level arithmetic, extracts
+recognizable half/full adder cones, applies `silicon_techmap.v`, and writes JSON. The map covers supported
 scalar active-high `$dlatch`, `$dff`, `$dffe`, `$dffsr`, and `$dffsre` shapes,
 equal-width unsigned `$add`, and the `$fa` cells produced by `extract_fa`. A constant-zero
 carry input identifies a half adder; otherwise the extracted cell becomes a full adder.
@@ -371,20 +372,18 @@ later optimization pass is allowed to decompose `SILICON_*` cells. Conversely, e
 arbitrary Verilog cannot always be raised back to a particular native component; only
 the documented deterministic mappings make that promise.
 
-Verilog export first loads the black-box interfaces, then uses `read_json`, derives
-descriptive names for internal signals, sanitizes escaped identifiers, and writes
-attribute-free Verilog without renaming those signals to numeric temporaries. Parameters
-use decimal notation where possible. A guarded post-processing step folds complete port
-declarations into ANSI module headers; it leaves a module untouched if the emitted
-declarations do not match the header exactly. When `yosys-config` is available at build
-time, SILICON also builds and packages the `silicon_bmux_case` Yosys plugin. The export
-script loads this plugin to raise `$bmux` cells into combinational RTLIL switch processes,
-which the Verilog backend emits as readable `case` statements.
-
-The remaining result is structural Verilog containing parameterized `SILICON_*`
-instances, not inlined behavioural models. Loading
-`silicon_cells_bb.v` makes that output parseable by Yosys; loading
-`silicon_cells_sim.v` instead supplies standalone simulation behaviour.
+Verilog export first loads `silicon_cells.v` in black-box mode, reads the circuit JSON,
+and applies the same file in `SILICON_EXPORT_MAP` mode. This lowers technology cells to
+native Yosys RTL cells so the final HDL uses ordinary expressions and `always` blocks
+without `SILICON_*` dependencies. The exporter then derives descriptive names for
+internal signals, sanitizes escaped identifiers, and writes attribute-free Verilog
+without renaming those signals to numeric temporaries. Parameters use decimal notation
+where possible. A guarded post-processing step folds complete port declarations into
+ANSI module headers; it leaves a module untouched if the emitted declarations do not
+match the header exactly. When `yosys-config` is available at build time, SILICON also
+builds and packages the `silicon_bmux_case` Yosys plugin. The export script loads this
+plugin to raise `$bmux` cells into combinational RTLIL switch processes, which the
+Verilog backend emits as readable `case` statements.
 
 Every external invocation sends captured standard output and standard error to the
 `yosys` logger. User-facing failures identify the failed phase and direct the user to

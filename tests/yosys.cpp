@@ -195,7 +195,7 @@ registerWithMode(const bool parallelInput, const bool parallelOutput, const int 
         .executable = std::filesystem::path(SILICON_TEST_YOSYS_EXECUTABLE),
         .technologyLibraryDirectory = std::nullopt};
     (void)SILICON::yosys::runScript(
-        std::format("read_verilog -lib \"{}/silicon_cells_bb.v\"\n"
+        std::format("read_verilog -lib -D SILICON_BLACKBOX \"{}/silicon_cells.v\"\n"
                     "read_json \"{}\"\n"
                     "hierarchy -check -top top\n"
                     "check -assert\n",
@@ -896,6 +896,9 @@ TEST(YosysTest, YosysAcceptsEveryBuiltInLowering)
     const auto circuit = circuitWithBoundaryPorts(components[index]);
     EXPECT_EQ(validateWithYosys(circuit, std::format("component_{}", index)), 0);
     EXPECT_NO_THROW((void)SILICON::yosys::deserialize(circuit.getYosysJson()));
+    const auto verilog = SILICON::yosys::exportVerilog(circuit);
+    EXPECT_EQ(verilog.find("SILICON_"), std::string::npos);
+    EXPECT_NO_THROW((void)SILICON::yosys::importVerilog(verilog, "top"));
   }
 #endif
 }
@@ -1444,15 +1447,30 @@ TEST(YosysToolTest, ImportedTechnologyCellsPreserveRepresentativeBehavior)
   EXPECT_EQ(output->inputBuses()[0].getCurrentValue(), 16U);
 }
 
-TEST(YosysToolTest, CustomCellStructuralVerilogRoundTrips)
+TEST(YosysToolTest, ExportsAdderAsBehavioralExpression)
+{
+  auto adder = std::make_shared<AdderNBits>(std::array<Bus, 2>{Bus(4), Bus(4)}, Bus(4),
+                                            std::make_shared<Wire>());
+  const auto verilog = SILICON::yosys::exportVerilog(circuitWithBoundaryPorts(adder));
+  EXPECT_EQ(verilog.find("SILICON_"), std::string::npos);
+  EXPECT_NE(verilog.find(" + "), std::string::npos);
+
+  const Circuit restored      = SILICON::yosys::importVerilog(verilog, "top");
+  const auto    restoredAdder = findComponent<AdderNBits>(restored);
+  ASSERT_TRUE(restoredAdder);
+  EXPECT_EQ(restoredAdder->getPropertyValue<int>("size"), 4);
+}
+
+TEST(YosysToolTest, TechnologyCellsExportAsBehavioralVerilog)
 {
   auto component = std::make_shared<FullAdder>(
       std::array<Wire_ptr, 2>{std::make_shared<Wire>(), std::make_shared<Wire>()},
       std::make_shared<Wire>(), std::make_shared<Wire>(), std::make_shared<Wire>());
   const Circuit circuit = circuitWithBoundaryPorts(component);
   const auto    verilog = SILICON::yosys::exportVerilog(circuit);
-  EXPECT_NE(verilog.find("SILICON_FULL_ADDER"), std::string::npos);
-  EXPECT_NE(verilog.find("_full_adder"), std::string::npos);
+  EXPECT_EQ(verilog.find("SILICON_"), std::string::npos);
+  EXPECT_NE(verilog.find("assign output_0"), std::string::npos);
+  EXPECT_NE(verilog.find("assign output_1"), std::string::npos);
   EXPECT_EQ(verilog.find("_auto_"), std::string::npos);
   EXPECT_EQ(verilog.find("$silicon"), std::string::npos);
 
@@ -1497,6 +1515,8 @@ TEST(YosysToolTest, CustomCellStructuralVerilogRoundTrips)
       false);
   dffBoundary.setName("top");
   const auto dffVerilog = SILICON::yosys::exportVerilog(dffBoundary);
+  EXPECT_EQ(dffVerilog.find("SILICON_"), std::string::npos);
+  EXPECT_NE(dffVerilog.find("always @"), std::string::npos);
   auto       dffCircuit =
       std::make_shared<Circuit>(SILICON::yosys::importVerilog(dffVerilog, "top"));
   auto restoredDff = findComponent<DFlipFlop>(*dffCircuit);
@@ -1529,6 +1549,15 @@ TEST(YosysToolTest, ReportsMissingTechnologyLibrary)
               std::string::npos);
     EXPECT_NE(std::string(error.what()).find(missing.string()), std::string::npos);
   }
+}
+
+TEST(YosysToolTest, UnifiedTechnologyCellSourceSupportsSimulationMode)
+{
+  EXPECT_NO_THROW((void)SILICON::yosys::runScript(
+      std::format("read_verilog \"{}/silicon_cells.v\"\n",
+                  SILICON_TEST_YOSYS_RESOURCE_DIR),
+      {.executable                 = std::filesystem::path(SILICON_TEST_YOSYS_EXECUTABLE),
+       .technologyLibraryDirectory = std::nullopt}));
 }
 
 TEST(YosysToolTest, ExportsParseableStructuralVerilog)

@@ -16,7 +16,6 @@
 
  */
 
-#include <chrono>
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
@@ -24,7 +23,6 @@
 #include <iostream>
 #include <memory>
 #include <optional>
-#include <set>
 #include <string>
 
 #include <core/circuit.hpp>
@@ -42,65 +40,9 @@ namespace {
 constexpr auto CounterWidth = 4;
 constexpr auto TopModule    = "counter";
 
-constexpr std::string_view PlainVerilogTechmap = R"(
-(* techmap_celltype = "SILICON_ADDER" *)
-module _silicon_plain_adder #(
-  parameter WIDTH = 1,
-  parameter A_SIGNED = 0,
-  parameter B_SIGNED = 0
-) (
-  input [WIDTH-1:0] A,
-  input [WIDTH-1:0] B,
-  output [WIDTH-1:0] SUM,
-  output COUT
-);
-  wire _TECHMAP_FAIL_ = A_SIGNED || B_SIGNED;
-  assign {COUT, SUM} = {1'b0, A} + {1'b0, B};
-endmodule
-
-(* techmap_celltype = "SILICON_REGISTER" *)
-module _silicon_plain_register #(
-  parameter WIDTH = 2,
-  parameter INPUT_PARALLEL = 1,
-  parameter OUTPUT_PARALLEL = 1,
-  parameter CLK_POLARITY = 1,
-  parameter EN_POLARITY = 1,
-  parameter CLR_POLARITY = 1,
-  parameter LOAD_POLARITY = 1
-) (
-  input [(INPUT_PARALLEL ? WIDTH : 1)-1:0] DATA,
-  input CLK,
-  input EN,
-  input CLR,
-  input LOAD,
-  output [(OUTPUT_PARALLEL ? WIDTH : 1)-1:0] OUT
-);
-  wire _TECHMAP_FAIL_ =
-    !(INPUT_PARALLEL && OUTPUT_PARALLEL && CLK_POLARITY && EN_POLARITY && CLR_POLARITY);
-  reg [WIDTH-1:0] state;
-  assign OUT = state;
-  always @(posedge CLK) begin
-    if (CLR) state <= {WIDTH{1'b0}};
-    else if (EN) state <= DATA;
-  end
-endmodule
-)";
-
 [[nodiscard]] Component_ptr constant(Wire_ptr output, std::string value)
 {
   return std::make_shared<ConstantComponent>(std::move(output), std::move(value));
-}
-
-[[nodiscard]] std::string quotePath(const std::filesystem::path& path)
-{
-  std::string quoted = "\"";
-  for (const char c : path.string()) {
-    if (c == '\\' || c == '"')
-      quoted += '\\';
-    quoted += c;
-  }
-  quoted += '"';
-  return quoted;
 }
 
 void writeFile(const std::filesystem::path& path, const std::string_view contents)
@@ -117,14 +59,6 @@ void writeFile(const std::filesystem::path& path, const std::string_view content
   if (!input)
     throw std::runtime_error("Could not read input file: " + path.string());
   return {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
-}
-
-[[nodiscard]] std::filesystem::path temporaryPath(const std::string_view filename)
-{
-  const auto timestamp = std::chrono::steady_clock::now().time_since_epoch().count();
-  return std::filesystem::temp_directory_path()
-         / ("silicon_yosys_roundtrip_" + std::to_string(timestamp) + "_"
-            + std::string(filename));
 }
 
 [[nodiscard]] Circuit makeCounterCircuit()
@@ -160,35 +94,6 @@ void writeFile(const std::filesystem::path& path, const std::string_view content
   return circuit;
 }
 
-[[nodiscard]] std::string makePlainVerilog(const Circuit&                     circuit,
-                                           const SILICON::yosys::ToolOptions& options)
-{
-  const auto structuralPath = temporaryPath("structural.v");
-  const auto techmapPath    = temporaryPath("plain_map.v");
-  const auto plainPath      = temporaryPath("plain.v");
-
-  writeFile(structuralPath, SILICON::yosys::exportVerilog(circuit, options));
-  writeFile(techmapPath, PlainVerilogTechmap);
-
-  const auto blackBoxLibrary =
-      std::filesystem::path(SILICON_YOSYS_RESOURCE_DIR) / "silicon_cells_bb.v";
-  (void)SILICON::yosys::runScript(
-      "read_verilog -lib " + quotePath(blackBoxLibrary) + "\n" + "read_verilog "
-          + quotePath(structuralPath) + "\n" + "hierarchy -check -top "
-          + std::string(TopModule) + "\n" + "opt_expr t:$pos\n" + "opt_clean -purge\n"
-          + "rename -unescape\n" + "techmap -autoproc -map " + quotePath(techmapPath)
-          + "\n" + "opt\n" + "rename -hide w:*_TECHMAP_FAIL_\n" + "opt_clean -purge\n"
-          + "rename -unescape\n" + "write_verilog -noattr -norename -decimal "
-          + quotePath(plainPath) + "\n",
-      options);
-
-  const auto plainVerilog = readFile(plainPath);
-  std::filesystem::remove(structuralPath);
-  std::filesystem::remove(techmapPath);
-  std::filesystem::remove(plainPath);
-  return plainVerilog;
-}
-
 [[nodiscard]] std::size_t componentCount(const Circuit& circuit)
 {
   return boost::num_vertices(circuit.getGraph());
@@ -209,7 +114,7 @@ int main()
     };
 
     const Circuit     counter = makeCounterCircuit();
-    const std::string verilog = makePlainVerilog(counter, options);
+    const std::string verilog = SILICON::yosys::exportVerilog(counter, options);
 
     const auto verilogPath =
         std::filesystem::current_path() / "yosys_roundtrip_counter.v";

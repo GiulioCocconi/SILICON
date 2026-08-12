@@ -374,8 +374,7 @@ if (NOT EMSCRIPTEN)
         add_executable(yosys_roundtrip examples/yosys_roundtrip.cpp)
         target_link_libraries(yosys_roundtrip PRIVATE silicon_core)
         target_compile_definitions(yosys_roundtrip PRIVATE
-                SILICON_YOSYS_EXECUTABLE="${SILICON_YOSYS_EXECUTABLE}"
-                SILICON_YOSYS_RESOURCE_DIR="${SILICON_YOSYS_BUILD_RESOURCE_DIR}")
+                SILICON_YOSYS_EXECUTABLE="${SILICON_YOSYS_EXECUTABLE}")
         set_target_properties(yosys_roundtrip PROPERTIES
                 AUTOMOC OFF
                 AUTOUIC OFF
