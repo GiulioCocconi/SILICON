@@ -26,12 +26,11 @@
 #include <stdexcept>
 #include <unordered_set>
 
-#include <utils/ranges_wrapper.hpp>
-
 #include <core/wire.hpp>  // Gives access to State enum for coloring
 #include <ui/common/theme.hpp>
 #include <ui/common/undoCommands.hpp>
 #include <ui/common/wireManager.hpp>
+#include <ui/common/wireRouting.hpp>
 #include <ui/logiFlow/logiFlowWindow.hpp>
 
 
@@ -100,8 +99,9 @@ std::vector<QPointF> GraphicalWire::getVertices() const
   std::vector<QPointF> vertices;
 
   for (const auto segment : segments) {
-    const auto sceneFirst = segment->mapToScene(segment->firstPoint());
-    const auto sceneLast  = segment->mapToScene(segment->lastPoint());
+    const auto scenePoints = segment->getScenePoints();
+    const auto sceneFirst  = scenePoints.front();
+    const auto sceneLast   = scenePoints.back();
 
     if (!segment->isFirstPointJunction())
       vertices.push_back(sceneFirst);
@@ -228,6 +228,7 @@ void GraphicalWireSegment::addPoints()
 void GraphicalWireSegment::updatePath()
 {
   prepareGeometryChange();
+  points = canonicalizeOrthogonalRoute(std::move(points));
   path.clear();
   showPath.clear();
 
@@ -240,39 +241,6 @@ void GraphicalWireSegment::updatePath()
     showPath.moveTo(this->lastPoint());
     for (auto showPoint : this->showPoints)
       showPath.lineTo(showPoint);
-  }
-
-  optimize();
-}
-
-void GraphicalWireSegment::optimize()
-{
-  // Need at least 3 points to have a "middle" one to remove
-  if (points.size() < 3)
-    return;
-
-  size_t write_idx = 1;  // We always keep points[0]
-
-  for (size_t read_idx = 1; read_idx < points.size() - 1; ++read_idx) {
-    const QPointF& prev = points[write_idx - 1];
-    const QPointF& curr = points[read_idx];
-    const QPointF& next = points[read_idx + 1];
-
-    bool isHorizontal = (prev.y() == curr.y() && curr.y() == next.y());
-    bool isVertical   = (prev.x() == curr.x() && curr.x() == next.x());
-
-    // If the point is NOT redundant, keep it.
-    // If it IS redundant, do nothing and it gets overwritten later.
-    if (!isHorizontal && !isVertical) {
-      points[write_idx++] = curr;
-    }
-  }
-
-  // We always keep the very last point
-  points[write_idx++] = points.back();
-
-  if (write_idx < points.size()) {
-    points.resize(write_idx);
   }
 }
 
@@ -387,39 +355,21 @@ QPainterPath GraphicalWireSegment::shape() const
 
 bool GraphicalWireSegment::isPointOnPath(const QPointF point) const
 {
-  constexpr double tolerance = 5.0;
-
-  if (points.empty())
-    return false;
-
+  constexpr qreal hitWidth = 10.0;
   if (points.size() == 1)
-    return QLineF(point, points[0]).length() <= tolerance;
+    return QLineF(point, points.front()).length() <= hitWidth / 2.0;
 
-  // Helper lambdas for clean semantic checks
-  auto isClose = [](double a, double b) { return std::abs(a - b) <= tolerance; };
+  QPainterPathStroker stroker;
+  stroker.setWidth(hitWidth);
+  return stroker.createStroke(path).contains(point);
+}
 
-  auto inRange = [](double val, double bound1, double bound2) {
-    const auto [min_val, max_val] = std::minmax(bound1, bound2);
-    return val >= min_val - tolerance && val <= max_val + tolerance;
-  };
-
-  for (const auto el : points | SILICON::views::slide(2)) {
-    // Map the sub-range elements to readable names immediately
-    const auto& p1 = el[0];
-    const auto& p2 = el[1];
-
-    // Horizontal check
-    if (isClose(p1.y(), p2.y()) && isClose(point.y(), p1.y())
-        && inRange(point.x(), p1.x(), p2.x()))
-      return true;
-
-    // Vertical check
-    if (isClose(p1.x(), p2.x()) && isClose(point.x(), p1.x())
-        && inRange(point.y(), p1.y(), p2.y()))
-      return true;
-  }
-
-  return false;
+std::vector<QPointF> GraphicalWireSegment::getScenePoints() const
+{
+  return points | std::views::transform([this](const QPointF& point) {
+           return mapToScene(point);
+         })
+         | std::ranges::to<std::vector>();
 }
 void GraphicalWireSegment::setPoints(std::vector<QPointF> newPoints)
 {

@@ -20,6 +20,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstddef>
 #include <map>
@@ -119,6 +120,41 @@ bool isOrthogonalRoute(const std::span<const QPointF> points)
   return true;
 }
 
+bool pointOnOrthogonalRoute(const QPointF point, const std::span<const QPointF> route)
+{
+  if (route.empty())
+    return false;
+  if (route.size() == 1)
+    return point == route.front();
+
+  auto inRange = [](const qreal value, const qreal first, const qreal second) {
+    const auto [minimum, maximum] = std::minmax(first, second);
+    return value >= minimum && value <= maximum;
+  };
+  for (std::size_t i = 1; i < route.size(); ++i) {
+    const QPointF& first  = route[i - 1];
+    const QPointF& second = route[i];
+    if (first.y() == second.y() && point.y() == first.y()
+        && inRange(point.x(), first.x(), second.x()))
+      return true;
+    if (first.x() == second.x() && point.x() == first.x()
+        && inRange(point.y(), first.y(), second.y()))
+      return true;
+  }
+  return false;
+}
+
+bool orthogonalRoutesTouch(const std::span<const QPointF> first,
+                           const std::span<const QPointF> second)
+{
+  return (!first.empty()
+          && (pointOnOrthogonalRoute(first.front(), second)
+              || pointOnOrthogonalRoute(first.back(), second)))
+         || (!second.empty()
+             && (pointOnOrthogonalRoute(second.front(), first)
+                 || pointOnOrthogonalRoute(second.back(), first)));
+}
+
 bool orthogonalRoutesShareSegment(const std::span<const QPointF> first,
                                   const std::span<const QPointF> second)
 {
@@ -198,6 +234,75 @@ bool orthogonalRoutesIntersect(const std::span<const QPointF> first,
     }
   }
   return false;
+}
+
+std::size_t orthogonalRouteCrossingCount(const std::span<const QPointF> first,
+                                         const std::span<const QPointF> second)
+{
+  std::size_t crossings = 0;
+  for (std::size_t i = 1; i < first.size(); ++i) {
+    for (std::size_t j = 1; j < second.size(); ++j) {
+      const QPointF& a                = first[i - 1];
+      const QPointF& b                = first[i];
+      const QPointF& c                = second[j - 1];
+      const QPointF& d                = second[j];
+      const bool     firstHorizontal  = a.y() == b.y();
+      const bool     secondHorizontal = c.y() == d.y();
+      if (firstHorizontal == secondHorizontal)
+        continue;
+
+      const QPointF& horizontalStart = firstHorizontal ? a : c;
+      const QPointF& horizontalEnd   = firstHorizontal ? b : d;
+      const QPointF& verticalStart   = firstHorizontal ? c : a;
+      const QPointF& verticalEnd     = firstHorizontal ? d : b;
+      if (verticalStart.x() > std::min(horizontalStart.x(), horizontalEnd.x())
+          && verticalStart.x() < std::max(horizontalStart.x(), horizontalEnd.x())
+          && horizontalStart.y() > std::min(verticalStart.y(), verticalEnd.y())
+          && horizontalStart.y() < std::max(verticalStart.y(), verticalEnd.y()))
+        ++crossings;
+    }
+  }
+  return crossings;
+}
+
+std::size_t
+orthogonalRouteIncidentArmCount(const QPointF                            point,
+                                const std::vector<std::vector<QPointF>>& routes)
+{
+  enum Direction : unsigned int {
+    Left  = 1U << 0,
+    Right = 1U << 1,
+    Up    = 1U << 2,
+    Down  = 1U << 3,
+  };
+
+  unsigned int directions = 0;
+  for (const auto& route : routes) {
+    for (std::size_t i = 1; i < route.size(); ++i) {
+      const QPointF& first  = route[i - 1];
+      const QPointF& second = route[i];
+      if (first.y() == second.y() && point.y() == first.y()) {
+        const qreal minimum = std::min(first.x(), second.x());
+        const qreal maximum = std::max(first.x(), second.x());
+        if (point.x() < minimum || point.x() > maximum)
+          continue;
+        if (point.x() > minimum)
+          directions |= Left;
+        if (point.x() < maximum)
+          directions |= Right;
+      } else if (first.x() == second.x() && point.x() == first.x()) {
+        const qreal minimum = std::min(first.y(), second.y());
+        const qreal maximum = std::max(first.y(), second.y());
+        if (point.y() < minimum || point.y() > maximum)
+          continue;
+        if (point.y() > minimum)
+          directions |= Up;
+        if (point.y() < maximum)
+          directions |= Down;
+      }
+    }
+  }
+  return std::popcount(directions);
 }
 
 std::vector<QPointF> canonicalizeOrthogonalRoute(std::vector<QPointF> points)
