@@ -1,8 +1,6 @@
 ![Silicon](./resources/banner.png)
 An Open Source Suite for simulating Circuits, Finite State Machines and Microcontrollers (WIP)
 
-
-
 _Package repository hosting is graciously provided by [Cloudsmith](https://cloudsmith.com).
 Cloudsmith is the only fully hosted, cloud-native, universal package management solution, that
 enables your organization to create, store and share packages in any format, to any place, with total
@@ -41,7 +39,7 @@ _Logic circuits (Silicon LogiFlow)_
 - [ ] Counters
 - [ ] Waveform input & automated testing
 - [ ] Subcircuits
-- [ ] Verilog support
+- [X] Verilog support
     * Yosys integration (JSON netlist)
 - [X] File format
 
