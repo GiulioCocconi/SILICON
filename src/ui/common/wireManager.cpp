@@ -19,7 +19,6 @@
 #include "wireManager.hpp"
 
 #include <algorithm>
-#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <map>
@@ -30,7 +29,7 @@
 
 #include <QGraphicsScene>
 #include <ui/common/graphicalWire.hpp>
-
+#include <ui/common/wireRouting.hpp>
 
 namespace SILICON {
 namespace ui {
@@ -270,51 +269,16 @@ void WireManager::calculateJunctions(GraphicalWireSegment* segment,
     // A junction needs at least three distinct incident wire arms. Merely joining
     // two routed paths is a bend or a continuation and must not leave a dot behind
     // after a branch is detached.
-    auto incidentArmCount = [&](const QPointF& scenePoint) {
-      enum Direction : unsigned int {
-        Left  = 1U << 0,
-        Right = 1U << 1,
-        Up    = 1U << 2,
-        Down  = 1U << 3,
-      };
-
-      unsigned int directions = 0;
-      for (const auto* other : allSegments) {
-        if (!other || other->empty()
-            || other->getGraphicalWire() != neighbor->getGraphicalWire())
-          continue;
-
-        const auto& points = other->getPoints();
-        for (std::size_t i = 1; i < points.size(); ++i) {
-          const QPointF a = other->mapToScene(points[i - 1]);
-          const QPointF b = other->mapToScene(points[i]);
-
-          if (a.y() == b.y() && scenePoint.y() == a.y()) {
-            const qreal minX = std::min(a.x(), b.x());
-            const qreal maxX = std::max(a.x(), b.x());
-            if (scenePoint.x() < minX || scenePoint.x() > maxX)
-              continue;
-            if (scenePoint.x() > minX)
-              directions |= Left;
-            if (scenePoint.x() < maxX)
-              directions |= Right;
-          } else if (a.x() == b.x() && scenePoint.x() == a.x()) {
-            const qreal minY = std::min(a.y(), b.y());
-            const qreal maxY = std::max(a.y(), b.y());
-            if (scenePoint.y() < minY || scenePoint.y() > maxY)
-              continue;
-            if (scenePoint.y() > minY)
-              directions |= Up;
-            if (scenePoint.y() < maxY)
-              directions |= Down;
-          }
-        }
-      }
-      return std::popcount(directions);
-    };
-
-    neighbor->setFirstPointJunction(incidentArmCount(firstScene) >= 3);
-    neighbor->setLastPointJunction(incidentArmCount(lastScene) >= 3);
+    std::vector<std::vector<QPointF>> wireRoutes;
+    for (const auto* other : allSegments) {
+      if (other && !other->empty()
+          && other->getGraphicalWire() == neighbor->getGraphicalWire())
+        wireRoutes.push_back(other->getScenePoints());
+    }
+    neighbor->setFirstPointJunction(
+        orthogonalRouteIncidentArmCount(firstScene, wireRoutes) >= 3);
+    neighbor->setLastPointJunction(orthogonalRouteIncidentArmCount(lastScene, wireRoutes)
+                                   >= 3);
   }
 }
 
@@ -432,31 +396,7 @@ bool WireManager::segmentsTouching(const GraphicalWireSegment* segment,
   if (segment->empty() || other->empty())
     return false;
 
-  // Check if segment's endpoints lie on other's body
-  const QPointF segFirst = segment->mapToScene(segment->firstPoint());
-  const QPointF segLast  = segment->mapToScene(segment->lastPoint());
-
-  const QPointF segFirstLocal = other->mapFromScene(segFirst);
-  if (other->isPointOnPath(segFirstLocal))
-    return true;
-
-  const QPointF segLastLocal = other->mapFromScene(segLast);
-  if (other->isPointOnPath(segLastLocal))
-    return true;
-
-  // Check if other's endpoints lie on segment's body (the reverse direction)
-  const QPointF otherFirst = other->mapToScene(other->firstPoint());
-  const QPointF otherLast  = other->mapToScene(other->lastPoint());
-
-  const QPointF otherFirstLocal = segment->mapFromScene(otherFirst);
-  if (segment->isPointOnPath(otherFirstLocal))
-    return true;
-
-  const QPointF otherLastLocal = segment->mapFromScene(otherLast);
-  if (segment->isPointOnPath(otherLastLocal))
-    return true;
-
-  return false;
+  return orthogonalRoutesTouch(segment->getScenePoints(), other->getScenePoints());
 }
 
 void WireManager::mergeWires(GraphicalWire* dst, GraphicalWire* src)

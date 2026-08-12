@@ -630,34 +630,6 @@ namespace {
     std::vector<std::vector<QPointF>> routes;
   };
 
-  bool pointOnOrthogonalRoute(const QPointF& point, const std::span<const QPointF> route)
-  {
-    for (std::size_t i = 1; i < route.size(); ++i) {
-      const QPointF& first  = route[i - 1];
-      const QPointF& second = route[i];
-      if (first.y() == second.y() && point.y() == first.y()
-          && point.x() >= std::min(first.x(), second.x())
-          && point.x() <= std::max(first.x(), second.x()))
-        return true;
-      if (first.x() == second.x() && point.x() == first.x()
-          && point.y() >= std::min(first.y(), second.y())
-          && point.y() <= std::max(first.y(), second.y()))
-        return true;
-    }
-    return false;
-  }
-
-  bool routesTouch(const std::span<const QPointF> first,
-                   const std::span<const QPointF> second)
-  {
-    return (!first.empty()
-            && (pointOnOrthogonalRoute(first.front(), second)
-                || pointOnOrthogonalRoute(first.back(), second)))
-           || (!second.empty()
-               && (pointOnOrthogonalRoute(second.front(), first)
-                   || pointOnOrthogonalRoute(second.back(), first)));
-  }
-
   bool netRoutesAreComplete(const PendingNet& net)
   {
     if (net.routes.empty())
@@ -680,7 +652,7 @@ namespace {
         if (reached[i])
           continue;
         for (std::size_t j = 0; j < net.routes.size(); ++j) {
-          if (reached[j] && routesTouch(net.routes[i], net.routes[j])) {
+          if (reached[j] && orthogonalRoutesTouch(net.routes[i], net.routes[j])) {
             reached[i] = true;
             changed    = true;
             break;
@@ -820,7 +792,7 @@ namespace {
   {
     std::vector<RoutedWire> wires;
     for (PendingNet& net : pendingNets) {
-      for (auto& points : net.routes)
+      for (auto& points : mergeOrthogonalRoutes(net.routes))
         wires.push_back(RoutedWire{.bus = net.bus, .points = std::move(points)});
     }
     return wires;
@@ -884,25 +856,6 @@ namespace {
       position = DiagramScene::snapToGrid(center + (position - center) * factor);
   }
 
-  bool segmentsCross(const QPointF& a, const QPointF& b, const QPointF& c,
-                     const QPointF& d)
-  {
-    const bool firstHorizontal  = a.y() == b.y();
-    const bool secondHorizontal = c.y() == d.y();
-    if (firstHorizontal == secondHorizontal)
-      return false;
-
-    const QPointF& h1    = firstHorizontal ? a : c;
-    const QPointF& h2    = firstHorizontal ? b : d;
-    const QPointF& v1    = firstHorizontal ? c : a;
-    const QPointF& v2    = firstHorizontal ? d : b;
-    const double   minHX = std::min(h1.x(), h2.x());
-    const double   maxHX = std::max(h1.x(), h2.x());
-    const double   minVY = std::min(v1.y(), v2.y());
-    const double   maxVY = std::max(v1.y(), v2.y());
-    return v1.x() > minHX && v1.x() < maxHX && h1.y() > minVY && h1.y() < maxVY;
-  }
-
   using PlacementScore =
       std::tuple<std::size_t, std::size_t, std::size_t, double, double>;
 
@@ -942,15 +895,7 @@ namespace {
 
         if (orthogonalRoutesShareSegment(wire_a.points, points))
           ++sharedSegments;
-
-        // Extract sliding pairs [a-1, a] and [b-1, b]
-        for (const auto& [pA1, pA2] : wire_a.points | std::views::adjacent<2>) {
-          for (const auto& [pB1, pB2] : points | std::views::adjacent<2>) {
-            if (segmentsCross(pA1, pA2, pB1, pB2)) {
-              ++crossings;
-            }
-          }
-        }
+        crossings += orthogonalRouteCrossingCount(wire_a.points, points);
       }
     }
 

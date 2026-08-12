@@ -223,6 +223,20 @@ TEST(WireRoutingTest, DetectsAmbiguousEndpointJunctionsButAllowsCrossovers)
                                          std::vector<QPointF>{{0, 10}, {30, 10}}));
 }
 
+TEST(WireRoutingTest, SharesPointTouchCrossingAndJunctionGeometry)
+{
+  const std::vector<QPointF> trunk    = {{0, 0}, {40, 0}};
+  const std::vector<QPointF> branch   = {{20, 0}, {20, 30}};
+  const std::vector<QPointF> crossing = {{10, -10}, {10, 10}};
+
+  EXPECT_TRUE(pointOnOrthogonalRoute(QPointF(20, 0), trunk));
+  EXPECT_FALSE(pointOnOrthogonalRoute(QPointF(20, 1), trunk));
+  EXPECT_TRUE(orthogonalRoutesTouch(trunk, branch));
+  EXPECT_FALSE(orthogonalRoutesTouch(trunk, crossing));
+  EXPECT_EQ(orthogonalRouteCrossingCount(trunk, crossing), 1U);
+  EXPECT_EQ(orthogonalRouteIncidentArmCount(QPointF(20, 0), {trunk, branch}), 3U);
+}
+
 TEST(LibavoidHyperedgeTest, RoutesFanoutAsJunctionTree)
 {
   Avoid::Router router(Avoid::OrthogonalRouting);

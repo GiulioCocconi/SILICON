@@ -254,6 +254,9 @@ public:
   /** @brief Gets all points of the segment */
   [[nodiscard]] const std::vector<QPointF>& getPoints() const { return points; }
 
+  /** @brief Gets all points mapped into scene coordinates. */
+  [[nodiscard]] std::vector<QPointF> getScenePoints() const;
+
   /** @brief Gets the last point */
   [[nodiscard]] QPointF lastPoint() const { return points[points.size() - 1]; }
 
@@ -335,13 +338,6 @@ public:
    * collinear and point in opposite directions.
    */
   [[nodiscard]] bool isAlignedWith(const GraphicalWireSegment* other) const;
-
-  /**
-   * @brief Optimizes the path by removing redundant points.
-   *
-   * Removes collinear points to simplify the wire shape.
-   */
-  void optimize();
 
   /**
    * @brief Serializes the wire segment to JSON.

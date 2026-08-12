@@ -46,6 +46,13 @@ void configureOrthogonalRouter(Avoid::Router& router, qreal gridSize);
 /** @brief Returns whether every consecutive route segment is axis-aligned. */
 [[nodiscard]] bool isOrthogonalRoute(std::span<const QPointF> points);
 
+/** @brief Returns whether @p point lies on an orthogonal polyline. */
+[[nodiscard]] bool pointOnOrthogonalRoute(QPointF point, std::span<const QPointF> route);
+
+/** @brief Returns whether an endpoint of either route lies on the other route. */
+[[nodiscard]] bool orthogonalRoutesTouch(std::span<const QPointF> first,
+                                         std::span<const QPointF> second);
+
 /** @brief Returns true when two orthogonal polylines share a positive-length segment. */
 [[nodiscard]] bool orthogonalRoutesShareSegment(std::span<const QPointF> first,
                                                 std::span<const QPointF> second);
@@ -53,6 +60,15 @@ void configureOrthogonalRouter(Avoid::Router& router, qreal gridSize);
 /** @brief Returns true when two routes overlap or form an ambiguous endpoint junction. */
 [[nodiscard]] bool orthogonalRoutesIntersect(std::span<const QPointF> first,
                                              std::span<const QPointF> second);
+
+/** @brief Counts strict, perpendicular interior crossings between two routes. */
+[[nodiscard]] std::size_t orthogonalRouteCrossingCount(std::span<const QPointF> first,
+                                                       std::span<const QPointF> second);
+
+/** @brief Counts the distinct orthogonal arms incident to @p point. */
+[[nodiscard]] std::size_t
+orthogonalRouteIncidentArmCount(QPointF                                  point,
+                                const std::vector<std::vector<QPointF>>& routes);
 
 /** @brief Removes consecutive duplicates and redundant collinear interior points. */
 [[nodiscard]] std::vector<QPointF>
