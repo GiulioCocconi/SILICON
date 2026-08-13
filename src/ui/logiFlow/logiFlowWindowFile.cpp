@@ -175,19 +175,12 @@ bool hasClipboardItems(const nlohmann::json& payload)
 
 void LogiFlowWindow::newFile()
 {
-  try {
-    saveActiveDocumentPayload();
-  } catch (const std::exception& error) {
-    SILICON::ui::inputDialog::critical(
-        this, tr("HDL Error"),
-        tr("Compile the active HDL before creating a new project:\n%1")
-            .arg(error.what()));
-    return;
-  }
-  setFileName("");
-  resetProjectState();
-  rebuildProjectTree();
-  updatePropertyDock();
+  confirmSaveIfDirty([this] {
+    setFileName("");
+    resetProjectState();
+    rebuildProjectTree();
+    updatePropertyDock();
+  });
 }
 
 void LogiFlowWindow::resetProjectState()
@@ -398,23 +391,16 @@ void LogiFlowWindow::loadCircuitContent(const QString&    fileName,
 
 void LogiFlowWindow::open()
 {
-  try {
-    saveActiveDocumentPayload();
-  } catch (const std::exception& error) {
-    SILICON::ui::inputDialog::critical(
-        this, tr("HDL Error"),
-        tr("Compile the active HDL before opening another project:\n%1")
-            .arg(error.what()));
-    return;
-  }
-  SILICON::ui::fileDialog::openFileContent(
-      this, tr("Open Circuit"), tr("Silicon Circuit (*.sil);;All Files (*)"),
-      [this](const QString& fileName, const QByteArray& fileContent) {
-        loadCircuitContent(fileName, fileContent);
-      });
+  confirmSaveIfDirty([this] {
+    SILICON::ui::fileDialog::openFileContent(
+        this, tr("Open Circuit"), tr("Silicon Circuit (*.sil);;All Files (*)"),
+        [this](const QString& fileName, const QByteArray& fileContent) {
+          loadCircuitContent(fileName, fileContent);
+        });
+  });
 }
 
-void LogiFlowWindow::save()
+bool LogiFlowWindow::save()
 {
   try {
     saveActiveDocumentPayload();
@@ -422,7 +408,7 @@ void LogiFlowWindow::save()
     SILICON::ui::inputDialog::critical(
         this, tr("Save Error"),
         tr("Failed to serialize the active circuit:\n%1").arg(e.what()));
-    return;
+    return false;
   }
 
   QString destinationFileName = currentFileName;
@@ -432,7 +418,7 @@ void LogiFlowWindow::save()
         QFileDialog::getSaveFileName(this, tr("Save Circuit"), QString(),
                                      tr("Silicon Circuit (*.sil);;All Files (*)"));
     if (destinationFileName.isEmpty())
-      return;
+      return false;
   }
 #else
   if (destinationFileName.isEmpty())
@@ -483,7 +469,7 @@ void LogiFlowWindow::save()
         this, tr("Save Circuit"), destinationFileName,
         tr("Silicon Circuit (*.sil);;All Files (*)"), archiveFile.readAll());
     if (!savedFileName)
-      return;
+      return false;
     setFileName(*savedFileName);
 #else
     SILICON::project::writeProjectFile(destinationFileName.toStdString(), projectFile);
@@ -491,10 +477,35 @@ void LogiFlowWindow::save()
 #endif
     currentProjectMetadata = std::move(metadata);
     updateProjectTreeLabels();
+    undoStack->setClean();
+    return true;
   } catch (const std::exception& e) {
     SILICON::ui::inputDialog::critical(this, tr("Save Error"),
                                  tr("Failed to save the circuit:\n%1").arg(e.what()));
+    return false;
   }
+}
+
+void LogiFlowWindow::confirmSaveIfDirty(std::function<void()> continuation)
+{
+  if (!undoStack || undoStack->isClean()) {
+    continuation();
+    return;
+  }
+
+  SILICON::ui::inputDialog::warningChoice(
+      this, tr("Unsaved Changes"),
+      tr("The current project has unsaved changes. Do you want to save them?"),
+      tr("Save"), tr("Discard"),
+      [this, continuation = std::move(continuation)](
+          const SILICON::ui::inputDialog::Choice choice) {
+        if (choice == SILICON::ui::inputDialog::Choice::Cancel)
+          return;
+        if (choice == SILICON::ui::inputDialog::Choice::Primary && !save())
+          return;
+
+        continuation();
+      });
 }
 
 void LogiFlowWindow::about() const

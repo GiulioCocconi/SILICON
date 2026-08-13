@@ -26,6 +26,7 @@
 #include <QInputDialog>
 #include <QLineEdit>
 #include <QMessageBox>
+#include <QPushButton>
 #include <QWidget>
 
 
@@ -138,6 +139,51 @@ void question(QWidget* parent, const QString& title, const QString& text,
       == QMessageBox::Yes) {
     accepted();
   }
+#endif
+}
+
+void warningChoice(QWidget* parent, const QString& title, const QString& text,
+                   const QString& primaryText, const QString& secondaryText,
+                   ChoiceCallback callback)
+{
+#ifdef __EMSCRIPTEN__
+  auto* messageBox = new QMessageBox(QMessageBox::Warning, title, text,
+                                     QMessageBox::NoButton, parent);
+  auto* primaryButton =
+      messageBox->addButton(primaryText, QMessageBox::AcceptRole);
+  auto* secondaryButton =
+      messageBox->addButton(secondaryText, QMessageBox::DestructiveRole);
+  messageBox->addButton(QMessageBox::Cancel);
+  messageBox->setDefaultButton(primaryButton);
+  messageBox->setAttribute(Qt::WA_DeleteOnClose);
+  QObject::connect(
+      messageBox, &QMessageBox::finished, messageBox,
+      [messageBox, primaryButton, secondaryButton,
+       callback = std::move(callback)](const int) {
+        if (messageBox->clickedButton() == primaryButton)
+          callback(Choice::Primary);
+        else if (messageBox->clickedButton() == secondaryButton)
+          callback(Choice::Secondary);
+        else
+          callback(Choice::Cancel);
+      });
+  messageBox->open();
+#else
+  QMessageBox messageBox(QMessageBox::Warning, title, text, QMessageBox::NoButton,
+                         parent);
+  auto* primaryButton = messageBox.addButton(primaryText, QMessageBox::AcceptRole);
+  auto* secondaryButton =
+      messageBox.addButton(secondaryText, QMessageBox::DestructiveRole);
+  messageBox.addButton(QMessageBox::Cancel);
+  messageBox.setDefaultButton(primaryButton);
+  messageBox.exec();
+
+  if (messageBox.clickedButton() == primaryButton)
+    callback(Choice::Primary);
+  else if (messageBox.clickedButton() == secondaryButton)
+    callback(Choice::Secondary);
+  else
+    callback(Choice::Cancel);
 #endif
 }
 

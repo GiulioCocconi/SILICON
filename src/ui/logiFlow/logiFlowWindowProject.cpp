@@ -568,15 +568,18 @@ void LogiFlowWindow::resizeEvent(QResizeEvent* event)
 
 void LogiFlowWindow::closeEvent(QCloseEvent* event)
 {
-  try {
-    saveActiveDocumentPayload();
-    QMainWindow::closeEvent(event);
-  } catch (const std::exception& error) {
+  if (undoStack && undoStack->count() != 0 && !closeAfterSaveConfirmation) {
     event->ignore();
-    SILICON::ui::inputDialog::critical(
-        this, tr("HDL Error"),
-        tr("Compile the active HDL before closing the project:\n%1").arg(error.what()));
+    confirmSaveIfDirty([this] {
+      closeAfterSaveConfirmation = true;
+      close();
+    });
+    return;
   }
+
+  closeAfterSaveConfirmation = false;
+
+  QMainWindow::closeEvent(event);
 }
 
 void LogiFlowWindow::updateComponentCatalogGeometry()

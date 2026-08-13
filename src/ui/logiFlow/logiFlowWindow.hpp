@@ -159,7 +159,7 @@ private slots:
   void open();
 
   /** @brief Saves the active project to its current filename or prompts for one. */
-  void save();
+  bool save();
 
   /** @brief Placeholder slot for exporting the diagram as an image. */
   void exportImage() {}
@@ -335,6 +335,12 @@ private:
 
   /** @brief Serializes the active scene into the shared project document store. */
   void saveActiveDocumentPayload();
+
+  /**
+   * @brief Prompts to save when the project undo stack contains unsaved edits.
+   * @param continuation Operation to run after saving or discarding changes
+   */
+  void confirmSaveIfDirty(std::function<void()> continuation);
 
   /**
    * @brief Switches the diagram scene to a project circuit.
@@ -564,6 +570,9 @@ private:
 
   /** @brief Current project file path, or an empty string for unsaved projects. */
   QString currentFileName;
+
+  /** @brief Allows the close event triggered after an accepted dirty-file prompt. */
+  bool closeAfterSaveConfirmation = false;
 
   /** @brief Optional persisted metadata for the current project. */
   std::optional<SILICON::project::ProjectMetadata> currentProjectMetadata;
