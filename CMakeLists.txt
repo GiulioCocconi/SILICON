@@ -330,6 +330,10 @@ target_sources(SILICON
         PRIVATE
         ${UI_SOURCE_FILES})
 
+if (UNIX AND NOT APPLE AND NOT EMSCRIPTEN AND SILICON_ENABLE_SANITIZERS)
+    target_compile_definitions(SILICON PRIVATE SILICON_HAS_SANITIZERS=1)
+endif ()
+
 target_compile_options(SILICON PRIVATE -Werror)
 
 target_link_libraries(SILICON PRIVATE

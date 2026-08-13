@@ -35,6 +35,9 @@ namespace inputDialog {
 using TextCallback     = std::function<void(const QString&)>;
 using AcceptedCallback = std::function<void()>;
 
+enum class Choice { Primary, Secondary, Cancel };
+using ChoiceCallback = std::function<void(Choice)>;
+
 QWidget* parentWidgetForGraphicsItem(const QGraphicsItem* item);
 
 void getText(QWidget* parent, const QString& title, const QString& label,
@@ -49,6 +52,11 @@ void critical(QWidget* parent, const QString& title, const QString& text);
 
 void question(QWidget* parent, const QString& title, const QString& text,
               AcceptedCallback accepted);
+
+/** @brief Shows a three-way warning using caller-provided action labels. */
+void warningChoice(QWidget* parent, const QString& title, const QString& text,
+                   const QString& primaryText, const QString& secondaryText,
+                   ChoiceCallback callback);
 
 }  // namespace inputDialog
 

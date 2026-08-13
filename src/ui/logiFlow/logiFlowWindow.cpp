@@ -60,6 +60,7 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QMimeData>
+#include <QMouseEvent>
 #include <QPlainTextEdit>
 #include <QResizeEvent>
 #include <QSignalBlocker>
@@ -120,6 +121,14 @@ LogiFlowWindow::~LogiFlowWindow()
   emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_DOCUMENT, nullptr, true,
                                   nullptr);
 #endif
+
+  // QToolBar only releases its transient drag state in mouseReleaseEvent().
+  // Finish a pending drag before Qt destroys the toolbar during window teardown.
+  if (toolBar) {
+    QMouseEvent releaseEvent(QEvent::MouseButtonRelease, QPointF(), QPointF(),
+                             Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    QApplication::sendEvent(toolBar, &releaseEvent);
+  }
 
   if (diagramScene) {
     disconnect(diagramScene, nullptr, this, nullptr);

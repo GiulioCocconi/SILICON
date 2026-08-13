@@ -45,6 +45,16 @@
 using namespace SILICON::logging;
 using namespace SILICON::ui;
 
+#if defined(__linux__) && defined(SILICON_HAS_SANITIZERS)
+extern "C" const char* __lsan_default_suppressions()
+{
+  // Qt's Wayland platform plugin can leave proxies behind while it shuts down.
+  // They are allocated and owned by Qt/libwayland, outside SILICON's control.
+  return "leak:wl_display_read_events\n"
+         "leak:QtWaylandClient::QWaylandDisplay::createSurface\n";
+}
+#endif
+
 int siliconMain(int argc, char** argv)
 {
   Logger::initialize();
