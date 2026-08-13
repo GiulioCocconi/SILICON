@@ -17,8 +17,12 @@
 
 #include "graphicalArithmetic.hpp"
 
+#include <ui/common/icons.hpp>
+#include <ui/common/theme.hpp>
+
 #include <QGraphicsSvgItem>
 
+#include <utility>
 
 namespace SILICON {
 namespace ui {
@@ -26,6 +30,44 @@ using namespace SILICON::core;
 using namespace SILICON::extra;
 
 namespace {
+
+class UnaryArithmeticShape : public QGraphicsRectItem {
+public:
+  explicit UnaryArithmeticShape(QString iconName, QGraphicsItem* parent = nullptr)
+    : QGraphicsRectItem(0, 0, 20, 90, parent), iconName(std::move(iconName))
+  {
+  }
+
+  void paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
+             QWidget* widget) override
+  {
+    Q_UNUSED(option);
+    Q_UNUSED(widget);
+
+    const QColor ink = ThemeEngine::getColor("SILICON_INK");
+
+    painter->setRenderHint(QPainter::Antialiasing, false);
+    painter->setPen(QPen(ink, 3));
+    painter->setBrush(ThemeEngine::getColor("SILICON_INTERNAL"));
+    painter->drawRect(rect());
+
+    const int    iconWidth = rect().width() - 5;
+    const QPoint leftPoint =
+        rect().center().toPoint() - QPoint(iconWidth / 2, iconWidth / 2);
+    painter->setPen(QPen(ink));
+    Icon(iconName, {QSize(iconWidth, iconWidth)})
+        .paint(painter, leftPoint.x(), leftPoint.y(), iconWidth, iconWidth);
+  }
+
+private:
+  QString iconName;
+};
+
+std::shared_ptr<Extender> makeExtender()
+{ return std::make_shared<Extender>(Bus(4), Bus(8)); }
+
+std::shared_ptr<Complementer> makeComplementer()
+{ return std::make_shared<Complementer>(Bus(4), Bus(4)); }
 
 std::shared_ptr<HalfAdder> makeHalfAdder()
 {
@@ -48,6 +90,16 @@ std::shared_ptr<AdderNBits> makeAdderNBits()
 }
 
 }  // namespace
+
+GraphicalExtender::GraphicalExtender(QGraphicsItem* parent)
+  : GraphicalLogicComponent(makeExtender(), new UnaryArithmeticShape("expand", parent),
+                            parent)
+{ setPorts({PortPair{"n", QPoint(10, -20)}}, {PortPair{"o", QPoint(10, 110)}}); }
+
+GraphicalComplementer::GraphicalComplementer(QGraphicsItem* parent)
+  : GraphicalLogicComponent(makeComplementer(), new UnaryArithmeticShape("minus", parent),
+                            parent)
+{ setPorts({PortPair{"n", QPoint(10, -20)}}, {PortPair{"o", QPoint(10, 110)}}); }
 
 GraphicalHalfAdder::GraphicalHalfAdder(QGraphicsItem* parent)
   : GraphicalLogicComponent(makeHalfAdder(),

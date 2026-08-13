@@ -75,6 +75,7 @@ private:
         {"xmark", "x"},
         {"binary", "binary"},
         {"box", "box"},
+        {"expand", "expand"},
         {"circle-power", "circle-power"},
         {"circuit-board", "circuit-board"},
         {"clock", "clock"},

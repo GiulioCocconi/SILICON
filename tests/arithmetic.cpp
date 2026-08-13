@@ -20,6 +20,7 @@
 #include <core/simulator.hpp>
 #include <extraComponents/arithmetic.hpp>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 
 using namespace SILICON::core;
@@ -51,6 +52,89 @@ TEST(ArithmeticTest, HalfAdderCase)
   sim.run(20);
   EXPECT_EQ(sum->getCurrentState(), State::LOW);
   EXPECT_EQ(cout->getCurrentState(), State::HIGH);
+}
+
+TEST(ArithmeticTest, ExtenderSupportsUnsignedSignedAndNarrowingModes)
+{
+  const auto evaluate = [](const unsigned short inSize, const unsigned short outSize,
+                           const std::string& mode, const unsigned int value) {
+    auto input    = Bus(inSize);
+    auto output   = Bus(outSize);
+    auto extender = std::make_shared<Extender>(input, output, mode);
+    auto circuit  = std::make_shared<Circuit>(Component_set{extender});
+    Simulator simulator(circuit);
+    simulator.setBus(input, value);
+    if (simulator.runUntilIdle() != Simulator::RunResult::Completed)
+      throw std::runtime_error("Extender simulation did not complete");
+    return output.getCurrentValue();
+  };
+
+  EXPECT_EQ(evaluate(3, 5, std::string(Extender::UnsignedMode), 6), 6U);
+  EXPECT_EQ(evaluate(3, 5, std::string(Extender::SignedMode), 6), 30U);
+  EXPECT_EQ(evaluate(5, 3, std::string(Extender::SignedMode), 29), 5U);
+}
+
+TEST(ArithmeticTest, ExtenderPropertiesValidateAndReshapeBuses)
+{
+  auto extender = std::make_shared<Extender>();
+  EXPECT_EQ(extender->getPropertyValue<int>("inSize"), 4);
+  EXPECT_EQ(extender->getPropertyValue<int>("outSize"), 8);
+  EXPECT_EQ(extender->getPropertyValue<std::string>("mode"),
+            std::string(Extender::UnsignedMode));
+  EXPECT_TRUE(extender->getInputs().empty());
+  EXPECT_TRUE(extender->getOutputs().empty());
+  EXPECT_THROW(extender->setProperty("inSize", 0), std::invalid_argument);
+  EXPECT_THROW(extender->setProperty("outSize", -1), std::invalid_argument);
+  EXPECT_THROW(extender->setProperty("mode", std::string("invalid")),
+               std::invalid_argument);
+  EXPECT_THROW((void)Extender(Bus(), Bus(4)), std::invalid_argument);
+
+  extender = std::make_shared<Extender>(Bus(3), Bus(5),
+                                        std::string(Extender::SignedMode));
+  EXPECT_EQ(extender->getPropertyValue<int>("inSize"), 3);
+  EXPECT_EQ(extender->getPropertyValue<int>("outSize"), 5);
+  EXPECT_EQ(extender->getPropertyValue<std::string>("mode"),
+            std::string(Extender::SignedMode));
+
+  extender->setProperty("inSize", 4);
+  extender->setProperty("outSize", 7);
+  EXPECT_EQ(extender->getInputs()[0].size(), 4);
+  EXPECT_EQ(extender->getOutputs()[0].size(), 7);
+}
+
+TEST(ArithmeticTest, ComplementerComputesFixedWidthTwosComplement)
+{
+  auto      input        = Bus(4);
+  auto      output       = Bus(4);
+  auto      complementer = std::make_shared<Complementer>(input, output);
+  auto      circuit      = std::make_shared<Circuit>(Component_set{complementer});
+  Simulator simulator(circuit);
+
+  for (const auto [value, expected] : std::vector<std::pair<unsigned int, unsigned int>>{
+           {0, 0}, {1, 15}, {3, 13}, {8, 8}, {15, 1}}) {
+    simulator.setBus(input, value);
+    ASSERT_EQ(simulator.runUntilIdle(), Simulator::RunResult::Completed);
+    EXPECT_EQ(output.getCurrentValue(), expected);
+  }
+}
+
+TEST(ArithmeticTest, ComplementerValidatesAndReshapesItsWidth)
+{
+  auto complementer = std::make_shared<Complementer>();
+  EXPECT_EQ(complementer->getPropertyValue<int>("size"), 4);
+  EXPECT_TRUE(complementer->getInputs().empty());
+  EXPECT_TRUE(complementer->getOutputs().empty());
+  EXPECT_THROW(complementer->setProperty("size", 0), std::invalid_argument);
+  EXPECT_THROW(complementer->setProperty("size", -1), std::invalid_argument);
+
+  EXPECT_THROW((void)Complementer(Bus(), Bus()), std::invalid_argument);
+  EXPECT_THROW((void)Complementer(Bus(3), Bus(4)), std::invalid_argument);
+
+  complementer = std::make_shared<Complementer>(Bus(5), Bus(5));
+  EXPECT_EQ(complementer->getPropertyValue<int>("size"), 5);
+  complementer->setProperty("size", 8);
+  EXPECT_EQ(complementer->getInputs()[0].size(), 8);
+  EXPECT_EQ(complementer->getOutputs()[0].size(), 8);
 }
 
 TEST(ArithmeticTest, AdderNBitsFromComponents)

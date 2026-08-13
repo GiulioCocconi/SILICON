@@ -19,6 +19,7 @@
 
 #include <core/simulator.hpp>
 
+#include <format>
 #include <limits>
 #include <stdexcept>
 #include <utility>
@@ -26,6 +27,174 @@
 
 namespace SILICON::extra {
 using namespace SILICON::core;
+
+namespace {
+
+  [[nodiscard]] int validateExtenderWidth(const PropertyValue& value,
+                                          const std::string_view property)
+  {
+    const int width = std::get<int>(value);
+    if (width < 1)
+      throw std::invalid_argument(
+          std::format("Extender {} must be at least 1", property));
+    if (width > std::numeric_limits<unsigned short>::max())
+      throw std::invalid_argument(std::format("Extender {} is too large", property));
+    return width;
+  }
+
+}  // namespace
+
+Extender::Extender()
+{
+  defineProperty("inSize", 4);
+  defineProperty("outSize", 8);
+  defineStringListProperty("mode", std::string(UnsignedMode),
+                           {std::string(UnsignedMode), std::string(SignedMode)});
+
+  setPropertyCallback("inSize", [this](const PropertyValue& value) {
+    const int width = validateExtenderWidth(value, "inSize");
+    if (!inputs.empty())
+      setInputSize(width);
+    return value;
+  });
+  setPropertyCallback("outSize", [this](const PropertyValue& value) {
+    const int width = validateExtenderWidth(value, "outSize");
+    if (!outputs.empty())
+      setOutputSize(width);
+    return value;
+  });
+}
+
+Extender::Extender(Bus in, Bus out, std::string mode) : Extender()
+{
+  if (in.size() == 0 || out.size() == 0)
+    throw std::invalid_argument("Extender buses must not be empty");
+
+  setProperty("inSize", static_cast<int>(in.size()));
+  setProperty("outSize", static_cast<int>(out.size()));
+  setProperty("mode", mode);
+  inputs  = {std::move(in)};
+  outputs = {std::move(out)};
+}
+
+int Extender::setInputSize(const int width)
+{
+  if (width < 1 || width > std::numeric_limits<unsigned short>::max())
+    return getPropertyValue<int>("inSize").value_or(4);
+
+  auto newInputs = getInputs();
+  if (newInputs.empty())
+    newInputs.resize(1);
+  newInputs[0].setSize(static_cast<unsigned short>(width));
+  setInputs(newInputs);
+  return width;
+}
+
+int Extender::setOutputSize(const int width)
+{
+  if (width < 1 || width > std::numeric_limits<unsigned short>::max())
+    return getPropertyValue<int>("outSize").value_or(8);
+
+  auto newOutputs = getOutputs();
+  if (newOutputs.empty())
+    newOutputs.resize(1);
+  newOutputs[0].setSize(static_cast<unsigned short>(width));
+  setOutputs(newOutputs);
+  return width;
+}
+
+void Extender::simulate(SILICON::simulation::Simulator& sim)
+{
+  if (inputs.size() != 1 || outputs.size() != 1 || inputs[0].size() == 0)
+    return;
+
+  const bool signedMode =
+      getPropertyValue<std::string>("mode").value_or(std::string(UnsignedMode))
+      == SignedMode;
+  const State extension =
+      signedMode ? Wire::safeGetCurrentState(inputs[0][inputs[0].size() - 1]) : State::LOW;
+
+  for (std::size_t bit = 0; bit < outputs[0].size(); ++bit) {
+    const State state = bit < inputs[0].size()
+                            ? Wire::safeGetCurrentState(
+                                  inputs[0][static_cast<unsigned short>(bit)])
+                            : extension;
+    sim.updateWire(outputs[0][static_cast<unsigned short>(bit)], state, 0,
+                   weak_from_this());
+  }
+}
+
+Complementer::Complementer()
+{
+  defineProperty("delay", 0);
+  defineProperty("size", 4);
+
+  setPropertyCallback("delay", [](const PropertyValue& value) {
+    if (std::get<int>(value) < 0)
+      throw std::invalid_argument("Complementer delay must be non-negative");
+
+    return value;
+  });
+
+  setPropertyCallback("size", [this](const PropertyValue& value) {
+    const int size = std::get<int>(value);
+    if (size < 1)
+      throw std::invalid_argument("Complementer size must be at least 1");
+    if (size > std::numeric_limits<unsigned short>::max())
+      throw std::invalid_argument("Complementer size is too large");
+
+    if (!inputs.empty() && !outputs.empty())
+      setSize(size);
+
+    return value;
+  });
+}
+
+Complementer::Complementer(Bus in, Bus out) : Complementer()
+{
+  if (in.size() == 0 || in.size() != out.size())
+    throw std::invalid_argument(
+        "Complementer: input bus width must match non-empty output bus width");
+
+  setProperty("size", static_cast<int>(in.size()));
+  inputs  = {std::move(in)};
+  outputs = {std::move(out)};
+}
+
+int Complementer::setSize(const int width)
+{
+  if (width < 1 || width > std::numeric_limits<unsigned short>::max())
+    return getPropertyValue<int>("size").value_or(4);
+
+  auto newInputs = getInputs();
+  if (newInputs.empty())
+    newInputs.resize(1);
+  newInputs[0].setSize(static_cast<unsigned short>(width));
+  setInputs(newInputs);
+
+  auto newOutputs = getOutputs();
+  if (newOutputs.empty())
+    newOutputs.resize(1);
+  newOutputs[0].setSize(static_cast<unsigned short>(width));
+  setOutputs(newOutputs);
+
+  return width;
+}
+
+void Complementer::simulate(SILICON::simulation::Simulator& sim)
+{
+  if (inputs.size() != 1 || outputs.size() != 1 || inputs[0].size() != outputs[0].size())
+    return;
+
+  const int propagationDelay = getPropertyValue<int>("delay").value_or(0);
+  auto      carry            = State::LOW;
+  for (auto i = 0uz; i < inputs[0].size(); i++) {
+    const auto a = !(Wire::safeGetCurrentState(inputs[0][i]));
+    const auto b = (i == 0) ? State::HIGH : State::LOW;
+    sim.updateWire(outputs[0][i], a ^ b ^ carry, propagationDelay, weak_from_this());
+    carry = (a && b) || (carry && (a ^ b));
+  }
+}
 
 HalfAdder::HalfAdder()
 {
