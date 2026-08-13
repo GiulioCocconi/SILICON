@@ -72,8 +72,9 @@ class MinimumTerminalSpanningTree
         ~MinimumTerminalSpanningTree();
 
         // Uses Interleaved construction of the MTST and SPTF (heuristic 2
-        // from paper).  This is the preferred construction approach.
-        void constructInterleaved(void);
+        // from paper).  This is the preferred construction approach. Returns
+        // false when directional visibility leaves disconnected terminal forests.
+        bool constructInterleaved(void);
         // Uses Sequential construction of the MTST (heuristic 1 from paper).
         void constructSequential(void);
 

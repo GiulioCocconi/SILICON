@@ -31,6 +31,8 @@
 #include <algorithm>
 #include <queue>
 #include <limits>
+#include <mutex>
+#include <unordered_map>
 
 #include "libavoid/connector.h"
 #include "libavoid/connend.h"
@@ -45,6 +47,47 @@
 
 
 namespace Avoid {
+
+namespace {
+
+struct EndpointDirections
+{
+    ConnDirFlags source = ConnDirAll;
+    ConnDirFlags target = ConnDirAll;
+};
+
+// Orthogonal visibility generation may temporarily broaden
+// VertInf::visDirections for endpoints on the outside edge of the graph.
+// Keep the directions requested by the caller separately so display-route
+// cleanup can still honour the ports.
+std::unordered_map<const ConnRef *, EndpointDirections>
+        requestedEndpointDirections;
+std::mutex endpointDirectionsMutex;
+
+void rememberEndpointDirections(const ConnRef *connector,
+        const unsigned int type, const ConnDirFlags directions)
+{
+    const std::lock_guard<std::mutex> lock(endpointDirectionsMutex);
+    EndpointDirections& endpoints = requestedEndpointDirections[connector];
+    if (type == static_cast<unsigned int>(VertID::src))
+    {
+        endpoints.source = directions;
+    }
+    else
+    {
+        endpoints.target = directions;
+    }
+}
+
+EndpointDirections endpointDirectionsFor(const ConnRef *connector)
+{
+    const std::lock_guard<std::mutex> lock(endpointDirectionsMutex);
+    const auto found = requestedEndpointDirections.find(connector);
+    return (found == requestedEndpointDirections.end()) ? EndpointDirections()
+                                                         : found->second;
+}
+
+}
 
 
 ConnRef::ConnRef(Router *router, const unsigned int id)
@@ -120,6 +163,10 @@ ConnRef::~ConnRef()
     }
 
     m_router->m_conn_reroute_flags.removeConn(this);
+    {
+        const std::lock_guard<std::mutex> lock(endpointDirectionsMutex);
+        requestedEndpointDirections.erase(this);
+    }
 
     m_router->removeObjectFromQueuedActions(this);
 
@@ -234,6 +281,7 @@ void ConnRef::setRoutingCheckpoints(const std::vector<Checkpoint>& checkpoints)
 
 void ConnRef::common_updateEndPoint(const unsigned int type, ConnEnd connEnd)
 {
+    rememberEndpointDirections(this, type, connEnd.directions());
     const Point& point = connEnd.position();
     //db_printf("common_updateEndPoint(%d,(pid=%d,vn=%d,(%f,%f)))\n",
     //      type,point.id,point.vn,point.x,point.y);
@@ -765,6 +813,24 @@ static SegmentAxis segmentAxis(const Point& first, const Point& second)
   return SegmentAxisUnknown;
 }
 
+static bool directionAllowsStep(const ConnDirFlags directions,
+        const Point& from, const Point& to)
+{
+  if (to.x < from.x) {
+    return directions & ConnDirLeft;
+  }
+  if (to.x > from.x) {
+    return directions & ConnDirRight;
+  }
+  if (to.y < from.y) {
+    return directions & ConnDirUp;
+  }
+  if (to.y > from.y) {
+    return directions & ConnDirDown;
+  }
+  return false;
+}
+
 static Polygon makeOrthogonalRoute(const Polygon&     route,
                                    const ConnDirFlags sourceDirections,
                                    const ConnDirFlags targetDirections)
@@ -833,10 +899,17 @@ void ConnRef::finaliseOrthogonalDisplayRoute(void)
     return;
   }
 
-  const ConnDirFlags sourceDirections =
-      m_src_connend ? m_src_connend->directions() : static_cast<ConnDirFlags>(ConnDirAll);
-  const ConnDirFlags targetDirections =
-      m_dst_connend ? m_dst_connend->directions() : static_cast<ConnDirFlags>(ConnDirAll);
+  const EndpointDirections requestedDirections = endpointDirectionsFor(this);
+  ConnDirFlags sourceDirections = requestedDirections.source;
+  ConnDirFlags targetDirections = requestedDirections.target;
+  if (m_src_connend
+      && (directionAxis(m_src_connend->directions()) != SegmentAxisUnknown)) {
+    sourceDirections = m_src_connend->directions();
+  }
+  if (m_dst_connend
+      && (directionAxis(m_dst_connend->directions()) != SegmentAxisUnknown)) {
+    targetDirections = m_dst_connend->directions();
+  }
   const Polygon rawRoute =
       makeOrthogonalRoute(m_route.simplify(), sourceDirections, targetDirections);
   COLA_ASSERT(orthogonalRoute(rawRoute));
@@ -892,7 +965,75 @@ void ConnRef::finaliseOrthogonalDisplayRoute(void)
   const bool   completedNoWorse =
       (completedLength < rawLength)
       || ((completedLength == rawLength) && (completed.size() <= rawRoute.size()));
-  m_display_route = orthogonalRoute(completed) && completedNoWorse ? completed : rawRoute;
+  Polygon selected =
+      orthogonalRoute(completed) && completedNoWorse ? completed : rawRoute;
+
+  // For facing ports, prefer the conventional centred dogleg when the direct
+  // channel is clear.  The shortest-path and nudging stages can otherwise
+  // leave the two bends immediately beside the terminals even though moving
+  // the cross segment to the middle has exactly the same length.
+  const SegmentAxis sourceAxis = directionAxis(sourceDirections);
+  const SegmentAxis targetAxis = directionAxis(targetDirections);
+  if ((sourceAxis == targetAxis) && (sourceAxis != SegmentAxisUnknown)) {
+    const double grid = m_router->routingParameter(idealNudgingDistance);
+    Polygon centred;
+    appendDistinctPoint(centred, source);
+    if (sourceAxis == SegmentAxisHorizontal) {
+      double middle = (source.x + target.x) / 2.0;
+      if (grid > 0) {
+        middle = std::round(middle / grid) * grid;
+      }
+      appendDistinctPoint(centred, Point(middle, source.y));
+      appendDistinctPoint(centred, Point(middle, target.y));
+    } else {
+      double middle = (source.y + target.y) / 2.0;
+      if (grid > 0) {
+        middle = std::round(middle / grid) * grid;
+      }
+      appendDistinctPoint(centred, Point(source.x, middle));
+      appendDistinctPoint(centred, Point(target.x, middle));
+    }
+    appendDistinctPoint(centred, target);
+    centred = centred.simplify();
+
+    bool directionallyValid =
+        centred.size() >= 2
+        && directionAllowsStep(sourceDirections, centred.ps.front(), centred.ps[1])
+        && directionAllowsStep(targetDirections, centred.ps.back(),
+                               centred.ps[centred.size() - 2]);
+    bool clear = directionallyValid;
+    const std::pair<Obstacle *, Obstacle *> anchors = endpointAnchors();
+    for (ObstacleList::const_iterator obstacle = m_router->m_obstacles.begin();
+         clear && (obstacle != m_router->m_obstacles.end()); ++obstacle) {
+      if ((*obstacle == anchors.first) || (*obstacle == anchors.second)) {
+        continue;
+      }
+      const Polygon polygon = (*obstacle)->routingPolygon();
+      for (size_t segment = 1; clear && (segment < centred.size()); ++segment) {
+        const Point& first = centred.ps[segment - 1];
+        const Point& second = centred.ps[segment];
+        if (inPoly(polygon, first, false) || inPoly(polygon, second, false)) {
+          clear = false;
+          break;
+        }
+        for (size_t edge = 0; edge < polygon.size(); ++edge) {
+          const size_t next = (edge + 1) % polygon.size();
+          if (segmentIntersect(first, second, polygon.ps[edge],
+                               polygon.ps[next])) {
+            clear = false;
+            break;
+          }
+        }
+      }
+    }
+    if (clear
+        && (orthogonalRouteLength(centred)
+            <= orthogonalRouteLength(selected))) {
+      selected = centred;
+    }
+  }
+
+  m_display_route = selected;
 }
 
 void ConnRef::calcRouteDist(void)

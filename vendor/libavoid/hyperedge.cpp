@@ -324,6 +324,15 @@ void HyperedgeRerouter::performRerouting(void)
         // Execute the MTST method to find good junction positions and an
         // initial path.  A hyperedge tree will be built for the new route.
         JunctionHyperedgeTreeNodeMap hyperedgeTreeJunctions;
+        MinimumTerminalSpanningTree feasibilityCheck(m_router,
+                m_terminal_vertices_vector[i], nullptr);
+        if (!feasibilityCheck.constructInterleaved())
+        {
+            // Directional connection pins can split the orthogonal visibility
+            // graph into several terminal forests.  Treat this hyperedge as
+            // unroutable instead of asserting or leaving a partial tree.
+            continue;
+        }
         MinimumTerminalSpanningTree mtst(m_router,
                 m_terminal_vertices_vector[i], &hyperedgeTreeJunctions);
 
@@ -332,10 +341,16 @@ void HyperedgeRerouter::performRerouting(void)
 
         // The preferred MTST construction method.
         // Slightly slower, better quality results.
-        mtst.constructInterleaved();
+        if (!mtst.constructInterleaved())
+        {
+            continue;
+        }
 
         HyperedgeTreeNode *treeRoot = mtst.rootJunction();
-        COLA_ASSERT(treeRoot);
+        if (!treeRoot)
+        {
+            continue;
+        }
 
         // Fill in connector information and join them to junctions of endpoints
         // of original connectors.
