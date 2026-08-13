@@ -447,6 +447,7 @@ private:
   /**
    * @brief Lifecycle helper methods for interaction modes.
    */
+  [[nodiscard]] bool isWireCompletionPoint(QPointF scenePoint) const;
   void finalizeWireCreation();
   void enterComponentPlacingMode();
   void exitComponentPlacingMode();
