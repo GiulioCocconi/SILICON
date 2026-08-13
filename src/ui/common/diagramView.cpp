@@ -45,9 +45,11 @@ void DiagramView::wheelEvent(QWheelEvent* event)
 {
   const bool zoomDirection = event->angleDelta().y() > 0;
 
-  // If the scene is in Wire Creation mode then the mouse wheel shouldn't do anything
+  // Keep the route stable while a wire is actively being drawn. Wire creation mode
+  // itself can still zoom before the first endpoint and between completed wires.
   const auto dg = dynamic_cast<DiagramScene*>(scene());
-  if (dg->getInteractionMode() == InteractionMode::WIRE_CREATION_MODE) {
+  if (dg->getInteractionMode() == InteractionMode::WIRE_CREATION_MODE
+      && dg->isWireCreationInProgress()) {
     event->ignore();
     return;
   }
