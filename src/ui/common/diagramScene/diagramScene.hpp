@@ -131,6 +131,14 @@ public:
   [[nodiscard]] GraphicalComponent* getComponentToBeDrawn() const;
 
   /**
+   * @brief Returns whether a wire currently has a starting endpoint and is being routed.
+   */
+  [[nodiscard]] bool isWireCreationInProgress() const
+  {
+    return wireSegmentToBeDrawn != nullptr;
+  }
+
+  /**
    * @brief Shows the component search box at a position.
    * @param pos Position to show the search box
    */
