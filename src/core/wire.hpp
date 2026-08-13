@@ -35,11 +35,11 @@ namespace SILICON::core {
  * UNKNOWN and ERROR states are only used as simulation internal values, they should not
  * be assignable as inputs. */
 
-enum class State {
-  LOW,
-  HIGH,
-  UNKNOWN,
-  ERROR,
+enum class State : unsigned char {
+  LOW = '0',
+  HIGH = '1',
+  UNKNOWN = 'X',
+  ERROR = 'E',
 };
 
 State operator&&(const State& a, const State& b);
@@ -138,6 +138,7 @@ public:
    * @return Non-zero if value exceeds bus size (overflow), zero otherwise
    */
   int forceSetCurrentValue(unsigned int value, const Component_weakPtr& authorizedBy);
+  void                       forceSetCurrentValue(std::string_view str, const Component_weakPtr& authorizedBy);
   int setCurrentValue(unsigned int value, const Component_weakPtr& requestedBy);
 
   [[nodiscard]] unsigned int getCurrentValue() const;

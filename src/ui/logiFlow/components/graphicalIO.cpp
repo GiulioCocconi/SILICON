@@ -829,7 +829,7 @@ void GraphicalBusOutput::resetSimulationState()
     shape->setBusWidth(width);
     shape->setDisplayState(State::UNKNOWN);
     shape->setValueText(width > 8 ? QStringLiteral("BUS")
-                                  : QString::fromStdString(std::string(width, 'X')));
+                                  : QString::fromStdString(std::string(width, std::to_underlying(State::UNKNOWN))));
   }
 }
 

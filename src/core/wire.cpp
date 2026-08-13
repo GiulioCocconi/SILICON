@@ -325,16 +325,23 @@ unsigned int Bus::getCurrentValue() const
 std::string Bus::getCurrentValueString() const
 {
   return busData | std::views::reverse | std::views::transform([](const auto& wire) {
-           switch (Wire::safeGetCurrentState(wire)) {
-             case State::HIGH: return '1';
-             case State::LOW: return '0';
-             case State::UNKNOWN: return 'X';
-             case State::ERROR: return 'E';
-             default: throw std::runtime_error("Unknown state");
-           }
-           std::unreachable();
+           return std::to_underlying(Wire::safeGetCurrentState(wire));
          })
          | std::ranges::to<std::string>();
+}
+
+void Bus::forceSetCurrentValue(std::string_view         str,
+                               const Component_weakPtr& authorizedBy)
+{
+  if (std::ranges::any_of(
+          str, [](const char c) { return c != '1' && c != '0' && c != 'X' && c != 'E'; }))
+    throw std::invalid_argument(
+        "Bus::setCurrentValue input string contained invalid character");
+
+  setSize(str.size());
+
+  for (const auto [index, c] : str | SILICON::views::enumerate)
+    this->operator[](index)->forceSetCurrentState(static_cast<State>(c), authorizedBy);
 }
 
 bool Bus::isInErrorState() const
