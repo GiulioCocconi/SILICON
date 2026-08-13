@@ -637,27 +637,28 @@ void Canvas::mouseMoveEvent(QMouseEvent* event)
 
   const auto& samples = *traceSamples;
   const int   mouseX  = event->position().toPoint().x();
-  const auto  it      = std::lower_bound(
-      samples.begin(), samples.end(), mouseX,
-      [this](const Sample& sample, const int x) { return xForTime(sample.time) < x; });
 
-  auto       closestIndex    = 0;
-  int        closestDistance = std::abs(mouseX - xForTime(samples.front().time));
-  const auto considerSample  = [this, mouseX, &samples, &closestIndex,
-                               &closestDistance](auto sampleIt) {
-    const int distance = std::abs(mouseX - xForTime(sampleIt->time));
+  const bool hasSelectedSignal =
+      selectedSignalIndex >= 0 && selectedSignalIndex < signalNames.size();
+
+  // Snap to the timestamp where the selected track changes nearest the pointer,
+  // matching the ruler ticks; fall back to every timestamp when no track is selected.
+  int      closestIndex    = -1;
+  int      closestDistance = std::numeric_limits<int>::max();
+  for (int i = 0; i < static_cast<int>(samples.size()); ++i) {
+    if (hasSelectedSignal && i > 0
+        && samples[i].values[selectedSignalIndex]
+               == samples[i - 1].values[selectedSignalIndex])
+      continue;
+    const int distance = std::abs(mouseX - xForTime(samples[i].time));
     if (distance < closestDistance) {
       closestDistance = distance;
-      closestIndex    = sampleIt - samples.begin();
+      closestIndex    = i;
     }
-  };
+  }
 
-  if (it != samples.begin())
-    considerSample(it - 1);
-  if (it != samples.end())
-    considerSample(it);
-
-  emit timestampHovered(closestIndex);
+  if (closestIndex >= 0)
+    emit timestampHovered(closestIndex);
 }
 
 void Canvas::mousePressEvent(QMouseEvent* event)
