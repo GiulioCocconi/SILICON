@@ -18,6 +18,8 @@
 
 #include "circuitAutoplacer.hpp"
 
+#include "boundaryIoPlacement.hpp"
+
 #include "utils/ranges_wrapper.hpp"
 
 #include <algorithm>
@@ -26,6 +28,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <map>
+#include <numeric>
 #include <optional>
 #include <ranges>
 #include <tuple>
@@ -154,13 +157,12 @@ namespace {
   }
 
   void separateBoundaryIos(GraphLayout::PlacementMap& placements,
-                           const OrientationMap&      orientations)
+                           const OrientationMap& orientations, const int obstaclePadding)
   {
     std::vector<QRectF> accepted;
     for (GraphicalLogicComponent* component : orderedComponents(placements, false))
       accepted.push_back(movedComponentObstacle(component, placements.at(component), 0));
 
-    const int                                     grid = DiagramScene::GRID_SIZE;
     std::map<PortSide, std::vector<GraphicalIO*>> grouped;
     for (GraphicalLogicComponent* component : orderedComponents(placements, true)) {
       GraphicalIO* ioComponent = category_cast<GraphicalIO>(component, ItemCategory::IO);
@@ -177,99 +179,24 @@ namespace {
     }
 
     for (auto& [side, ios] : grouped) {
-      const bool horizontal = side == PortSide::UP || side == PortSide::DOWN;
-      std::ranges::sort(ios, [&](GraphicalIO* first, GraphicalIO* second) {
-        const QPointF& firstPosition  = placements.at(first);
-        const QPointF& secondPosition = placements.at(second);
-        const qreal    firstAxis  = horizontal ? firstPosition.x() : firstPosition.y();
-        const qreal    secondAxis = horizontal ? secondPosition.x() : secondPosition.y();
-        return std::pair{firstAxis, first->getUiId()}
-               < std::pair{secondAxis, second->getUiId()};
-      });
-
-      QRectF               preferredBounds;
-      bool                 hasPreferredBounds = false;
-      std::vector<QPointF> candidates;
-      candidates.reserve(ios.size());
-      QRectF previousBounds;
-      bool   hasPreviousBounds = false;
+      std::vector<detail::BoundaryIoLaneItem> laneItems;
+      laneItems.reserve(ios.size());
       for (GraphicalIO* io : ios) {
         const QPointF preferred = placements.at(io);
-        const QRectF  preferredIoBounds =
-            movedComponentObstacle(io, preferred, 0, &orientations);
-        preferredBounds = hasPreferredBounds ? preferredBounds.united(preferredIoBounds)
-                                             : preferredIoBounds;
-        hasPreferredBounds = true;
-
-        QPointF candidate = preferred;
-        QRectF  bounds    = movedComponentObstacle(io, candidate, 0, &orientations);
-        if (hasPreviousBounds) {
-          const qreal overlap =
-              horizontal ? previousBounds.right() + ComponentClearance - bounds.left()
-                         : previousBounds.bottom() + ComponentClearance - bounds.top();
-          if (overlap > 0.0) {
-            const qreal displacement =
-                std::ceil(overlap / static_cast<qreal>(grid)) * grid;
-            if (horizontal)
-              candidate.rx() += displacement;
-            else
-              candidate.ry() += displacement;
-            bounds = movedComponentObstacle(io, candidate, 0, &orientations);
-          }
-        }
-        candidates.push_back(DiagramScene::snapToGrid(candidate));
-        previousBounds    = bounds;
-        hasPreviousBounds = true;
+        laneItems.push_back(
+            {.preferredPosition = preferred,
+             .preferredBounds   = movedComponentObstacle(io, preferred, 0, &orientations),
+             .preferredPort =
+                 io->mapToScene(io->portPositionFor(side)) + (preferred - io->pos()),
+             .stableOrder = io->getUiId()});
       }
 
-      QRectF packedBounds;
-      bool   hasPackedBounds = false;
+      const auto lanePlacement =
+          detail::placeBoundaryIoInLanes(side, laneItems, accepted, ComponentClearance,
+                                         obstaclePadding, DiagramScene::GRID_SIZE);
       for (std::size_t i = 0; i < ios.size(); ++i) {
-        const QRectF bounds =
-            movedComponentObstacle(ios[i], candidates[i], 0, &orientations);
-        packedBounds    = hasPackedBounds ? packedBounds.united(bounds) : bounds;
-        hasPackedBounds = true;
-      }
-      const qreal recenter = DiagramScene::snapToGrid(
-          horizontal ? preferredBounds.center().x() - packedBounds.center().x()
-                     : preferredBounds.center().y() - packedBounds.center().y());
-      for (QPointF& candidate : candidates) {
-        if (horizontal)
-          candidate.rx() += recenter;
-        else
-          candidate.ry() += recenter;
-      }
-
-      QPointF outwardStep;
-      switch (side) {
-        case PortSide::LEFT: outwardStep = QPointF(grid, 0); break;
-        case PortSide::RIGHT: outwardStep = QPointF(-grid, 0); break;
-        case PortSide::UP: outwardStep = QPointF(0, grid); break;
-        case PortSide::DOWN: outwardStep = QPointF(0, -grid); break;
-      }
-
-      for (int distance = 0;; ++distance) {
-        std::vector<QRectF> groupBounds;
-        groupBounds.reserve(ios.size());
-        bool clear = true;
-        for (std::size_t i = 0; i < ios.size(); ++i) {
-          const QPointF candidate = candidates[i] + distance * outwardStep;
-          const QRectF  bounds =
-              movedComponentObstacle(ios[i], candidate, 0, &orientations);
-          if (!hasComponentClearance(bounds, accepted)) {
-            clear = false;
-            break;
-          }
-          groupBounds.push_back(bounds);
-        }
-        if (!clear)
-          continue;
-        for (std::size_t i = 0; i < ios.size(); ++i) {
-          placements.at(ios[i]) =
-              DiagramScene::snapToGrid(candidates[i] + distance * outwardStep);
-          accepted.push_back(groupBounds[i]);
-        }
-        break;
+        placements.at(ios[i]) = DiagramScene::snapToGrid(lanePlacement.positions[i]);
+        accepted.push_back(lanePlacement.bounds[i]);
       }
     }
   }
@@ -331,18 +258,6 @@ namespace {
                               .sourcePort = sourcePorts[connection.sourceBusIndex],
                               .targetPort = targetPorts[connection.targetBusIndex],
                               .bus        = connection.bus};
-  }
-
-  ComponentMap buildComponentMap(const GraphLayout::PlacementMap& placements)
-  {
-    ComponentMap result;
-    result.reserve(placements.size());
-    for (const auto& placement : placements) {
-      auto* component = placement.first;
-      if (component && component->getComponent())
-        result.emplace(component->getComponent().get(), component);
-    }
-    return result;
   }
 
   ComponentMap buildComponentMap(std::span<GraphicalLogicComponent* const> components)
@@ -435,6 +350,54 @@ namespace {
       case PortSide::DOWN: return PortSide::UP;
     }
     std::unreachable();
+  }
+
+  GraphLayoutDirection layoutDirectionFor(const PortSide side)
+  {
+    switch (side) {
+      case PortSide::LEFT:
+      case PortSide::RIGHT: return GraphLayoutDirection::LeftToRight;
+      case PortSide::UP:
+      case PortSide::DOWN: return GraphLayoutDirection::TopToBottom;
+    }
+    std::unreachable();
+  }
+
+  std::array<GraphLayoutDirection, 2>
+  preferredLayoutDirections(std::span<const RoutableConnection> connections,
+                            const GraphLayoutDirection          fallback)
+  {
+    std::array directions = {GraphLayoutDirection::TopToBottom,
+                             GraphLayoutDirection::LeftToRight};
+    const auto fallbackIt = std::ranges::find(directions, fallback);
+    std::ranges::rotate(directions, fallbackIt);
+
+    std::array<std::size_t, 2> votes{};
+    auto                       addVote = [&](const PortSide side) {
+      const auto direction = layoutDirectionFor(side);
+      const auto found = std::ranges::find(directions, direction);
+      ++votes[static_cast<std::size_t>(std::distance(directions.begin(), found))];
+    };
+
+    for (const auto& connection : connections) {
+      const bool sourceIsIo = hasCategory(connection.source, ItemCategory::IO);
+      const bool targetIsIo = hasCategory(connection.target, ItemCategory::IO);
+      if (!sourceIsIo || targetIsIo)
+        addVote(connection.sourcePort->getDirection());
+      if (!targetIsIo || sourceIsIo)
+        addVote(oppositeSide(connection.targetPort->getDirection()));
+    }
+
+    std::array<std::size_t, 2> order{};
+    std::iota(order.begin(), order.end(), 0);
+    std::ranges::stable_sort(order, [&](const std::size_t lhs, const std::size_t rhs) {
+      return votes[lhs] > votes[rhs];
+    });
+
+    std::array<GraphLayoutDirection, 2> result;
+    for (std::size_t i = 0; i < result.size(); ++i)
+      result[i] = directions[order[i]];
+    return result;
   }
 
   OrientationMap
@@ -748,6 +711,7 @@ namespace {
         registered.push_back(std::move(registration));
         continue;
       }
+
       registration.hyperedgeIndex =
           router.hyperedgeRerouter()->registerHyperedgeForRerouting(terminals);
       registered.push_back(std::move(registration));
@@ -811,18 +775,18 @@ namespace {
   }
 
   std::optional<CircuitAutoplacement>
-  routeCandidate(std::span<const RoutableConnection> connections,
-                 GraphLayout::PlacementMap           placements,
-                 const CircuitAutoplacerOptions&     options,
-                 const std::size_t                   routingOrder = 0)
+  routePreparedCandidate(std::span<const RoutableConnection> connections,
+                         GraphLayout::PlacementMap           placements,
+                         const CircuitAutoplacerOptions&     options,
+                         const std::size_t                   routingOrder)
   {
     CircuitAutoplacement result;
-    result.components = std::move(placements);
-    stackSymmetricFeedbackPairs(connections, result.components);
-    separateLogicComponents(result.components);
+    result.components         = std::move(placements);
     result.ioPortOrientations = placeBoundaryIos(connections, result.components);
-    separateBoundaryIos(result.components, result.ioPortOrientations);
-    Q_ASSERT(componentsHaveClearance(result.components, result.ioPortOrientations));
+    separateBoundaryIos(result.components, result.ioPortOrientations,
+                        options.obstaclePadding);
+    if (!componentsHaveClearance(result.components, result.ioPortOrientations))
+      return std::nullopt;
 
     Avoid::Router router(Avoid::OrthogonalRouting);
     configureOrthogonalRouter(router, DiagramScene::GRID_SIZE);
@@ -838,6 +802,18 @@ namespace {
     if (distinctWiresIntersect(result.wires))
       return std::nullopt;
     return result;
+  }
+
+  std::optional<CircuitAutoplacement>
+  routeCandidate(std::span<const RoutableConnection> connections,
+                 GraphLayout::PlacementMap           placements,
+                 const CircuitAutoplacerOptions&     options,
+                 const std::size_t                   routingOrder = 0)
+  {
+    stackSymmetricFeedbackPairs(connections, placements);
+    separateLogicComponents(placements);
+    return routePreparedCandidate(connections, std::move(placements), options,
+                                  routingOrder);
   }
 
   void expandPlacements(GraphLayout::PlacementMap& placements, const int expansionLevel)
@@ -931,6 +907,169 @@ namespace {
 
     return {overlaps, sharedSegments, crossings, routingCost, area};
   }
+
+  bool verticalSide(const PortSide side)
+  {
+    return side == PortSide::UP || side == PortSide::DOWN;
+  }
+
+  qreal medianCoordinate(std::vector<qreal> coordinates)
+  {
+    Q_ASSERT(!coordinates.empty());
+    const auto middle =
+        coordinates.begin() + static_cast<std::ptrdiff_t>(coordinates.size() / 2);
+    std::ranges::nth_element(coordinates, middle);
+    if (coordinates.size() % 2 != 0)
+      return *middle;
+
+    const qreal lower =
+        *std::ranges::max_element(std::ranges::subrange(coordinates.begin(), middle));
+    return (lower + *middle) / 2.0;
+  }
+
+  struct AlignmentTargets {
+    std::vector<qreal> x;
+    std::vector<qreal> y;
+  };
+
+  std::unordered_map<GraphicalLogicComponent*, AlignmentTargets>
+  alignmentTargets(std::span<const RoutableConnection> connections,
+                   const CircuitAutoplacement&         placement)
+  {
+    std::unordered_map<GraphicalLogicComponent*, AlignmentTargets> targets;
+
+    for (const RoutableConnection& connection : connections) {
+      if (!placement.components.contains(connection.source)
+          || !placement.components.contains(connection.target))
+        continue;
+
+      const PortSide sourceSide = effectivePortSide(
+          connection.source, connection.sourcePort, placement.ioPortOrientations);
+      const PortSide targetSide = effectivePortSide(
+          connection.target, connection.targetPort, placement.ioPortOrientations);
+      if (oppositeSide(sourceSide) != targetSide)
+        continue;
+
+      const QPointF sourcePort = movedPortPosition(
+          connection.source, connection.sourcePort,
+          placement.components.at(connection.source), &placement.ioPortOrientations);
+      const QPointF targetPort = movedPortPosition(
+          connection.target, connection.targetPort,
+          placement.components.at(connection.target), &placement.ioPortOrientations);
+
+      if (!hasCategory(connection.source, ItemCategory::IO)) {
+        QPointF sourcePosition = placement.components.at(connection.source);
+        if (verticalSide(sourceSide))
+          targets[connection.source].x.push_back(sourcePosition.x() + targetPort.x()
+                                                 - sourcePort.x());
+        else
+          targets[connection.source].y.push_back(sourcePosition.y() + targetPort.y()
+                                                 - sourcePort.y());
+      }
+      if (!hasCategory(connection.target, ItemCategory::IO)) {
+        QPointF targetPosition = placement.components.at(connection.target);
+        if (verticalSide(targetSide))
+          targets[connection.target].x.push_back(targetPosition.x() + sourcePort.x()
+                                                 - targetPort.x());
+        else
+          targets[connection.target].y.push_back(targetPosition.y() + sourcePort.y()
+                                                 - targetPort.y());
+      }
+    }
+    return targets;
+  }
+
+  void appendDistinctPosition(std::vector<QPointF>& positions, const QPointF position)
+  {
+    const QPointF snapped = DiagramScene::snapToGrid(position);
+    if (std::ranges::find(positions, snapped) == positions.end())
+      positions.push_back(snapped);
+  }
+
+  std::vector<QPointF> refinementPositions(const QPointF&          current,
+                                           const AlignmentTargets& targets)
+  {
+    const std::optional<qreal> targetX =
+        targets.x.empty() ? std::nullopt
+                          : std::optional<qreal>(medianCoordinate(targets.x));
+    const std::optional<qreal> targetY =
+        targets.y.empty() ? std::nullopt
+                          : std::optional<qreal>(medianCoordinate(targets.y));
+
+    std::vector<QPointF> positions;
+    if (targetX) {
+      appendDistinctPosition(positions, QPointF(*targetX, current.y()));
+      appendDistinctPosition(positions,
+                             QPointF((current.x() + *targetX) / 2.0, current.y()));
+    }
+    if (targetY) {
+      appendDistinctPosition(positions, QPointF(current.x(), *targetY));
+      appendDistinctPosition(positions,
+                             QPointF(current.x(), (current.y() + *targetY) / 2.0));
+    }
+    if (targetX && targetY) {
+      appendDistinctPosition(positions, QPointF(*targetX, *targetY));
+      appendDistinctPosition(positions, (current + QPointF(*targetX, *targetY)) / 2.0);
+    }
+    std::erase(positions, DiagramScene::snapToGrid(current));
+    return positions;
+  }
+
+  CircuitAutoplacement refinePlacementWithRouting(
+      std::span<const RoutableConnection> connections, CircuitAutoplacement best,
+      const CircuitAutoplacerOptions& options, std::size_t routingOrder)
+  {
+    constexpr int  maxPasses = 2;
+    PlacementScore bestScore = scorePlacement(best);
+
+    for (int pass = 0; pass < maxPasses; ++pass) {
+      bool                                  improved = false;
+      auto                                  targets = alignmentTargets(connections, best);
+      std::vector<GraphicalLogicComponent*> components;
+      components.reserve(targets.size());
+      for (GraphicalLogicComponent* component : targets | std::views::keys)
+        components.push_back(component);
+      std::ranges::sort(components, [](const auto* lhs, const auto* rhs) {
+        if (lhs->getUiId() != rhs->getUiId())
+          return lhs->getUiId() < rhs->getUiId();
+        return lhs < rhs;
+      });
+
+      for (GraphicalLogicComponent* component : components) {
+        if (options.isCancelled && options.isCancelled())
+          return best;
+
+        // Recompute after every accepted move: the useful alignment coordinate for the
+        // next component may have moved with the net's opposite terminal.
+        targets           = alignmentTargets(connections, best);
+        const auto target = targets.find(component);
+        if (target == targets.end())
+          continue;
+
+        const QPointF current = best.components.at(component);
+        for (const QPointF proposalPosition :
+             refinementPositions(current, target->second)) {
+          auto proposalPlacements       = best.components;
+          proposalPlacements[component] = proposalPosition;
+          auto proposal                 = routePreparedCandidate(
+              connections, std::move(proposalPlacements), options, routingOrder++);
+          if (!proposal)
+            continue;
+
+          const PlacementScore proposalScore = scorePlacement(*proposal);
+          if (proposalScore < bestScore) {
+            best      = std::move(*proposal);
+            bestScore = proposalScore;
+            improved  = true;
+            break;
+          }
+        }
+      }
+      if (!improved)
+        break;
+    }
+    return best;
+  }
 }  // namespace
 
 IoOrientationMap CircuitAutoplacer::boundaryIoOrientations(
@@ -946,10 +1085,17 @@ CircuitAutoplacer::compute(const Circuit&                            circuit,
                            std::span<GraphicalLogicComponent* const> components,
                            const CircuitAutoplacerOptions&           options)
 {
-  const int candidateCount = std::max(1, options.candidateCount);
-  auto initialPlacements = GraphLayout::compute(circuit, components, options.graphLayout);
-  const auto componentToGraphics = buildComponentMap(initialPlacements);
+  const int  candidateCount      = std::max(1, options.candidateCount);
+  const auto componentToGraphics = buildComponentMap(components);
   const auto resolvedConnections = resolveConnections(circuit, componentToGraphics);
+  const auto layoutDirections =
+      preferredLayoutDirections(resolvedConnections, options.graphLayout.direction);
+
+  GraphLayoutOptions primaryLayoutOptions = options.graphLayout;
+  if (primaryLayoutOptions.algorithm == GraphLayoutAlgorithm::Layered)
+    primaryLayoutOptions.direction = layoutDirections.front();
+  auto initialPlacements =
+      GraphLayout::compute(circuit, components, primaryLayoutOptions);
 
   CircuitAutoplacement          best;
   std::optional<PlacementScore> bestScore;
@@ -963,8 +1109,14 @@ CircuitAutoplacer::compute(const Circuit&                            circuit,
       placements = std::move(initialPlacements);
     } else {
       GraphLayoutOptions candidateOptions = options.graphLayout;
-      candidateOptions.algorithm          = GraphLayoutAlgorithm::ForceDirected;
-      candidateOptions.randomSeed         = candidateIndex;
+      if (options.graphLayout.algorithm == GraphLayoutAlgorithm::Layered
+          && candidateIndex < static_cast<int>(layoutDirections.size())) {
+        candidateOptions.direction =
+            layoutDirections[static_cast<std::size_t>(candidateIndex)];
+      } else {
+        candidateOptions.algorithm  = GraphLayoutAlgorithm::ForceDirected;
+        candidateOptions.randomSeed = candidateIndex;
+      }
       placements = GraphLayout::compute(circuit, components, candidateOptions);
     }
 
@@ -994,7 +1146,7 @@ CircuitAutoplacer::compute(const Circuit&                            circuit,
     if (options.isCancelled && options.isCancelled())
       break;
 
-    auto placements = GraphLayout::compute(circuit, components, options.graphLayout);
+    auto placements = GraphLayout::compute(circuit, components, primaryLayoutOptions);
     expandPlacements(placements, 1 + routingAttempt / 4);
     auto candidate =
         routeCandidate(resolvedConnections, std::move(placements), options,
@@ -1006,6 +1158,11 @@ CircuitAutoplacer::compute(const Circuit&                            circuit,
 
     if (options.progress)
       options.progress(candidateCount, candidateCount);
+  }
+
+  if (bestScore && !(options.isCancelled && options.isCancelled())) {
+    best = refinePlacementWithRouting(resolvedConnections, std::move(best), options,
+                                      static_cast<std::size_t>(candidateCount));
   }
 
   return best;
