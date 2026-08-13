@@ -22,6 +22,7 @@
 #include <cstddef>
 #include <limits>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include <QRectF>
@@ -40,6 +41,20 @@
 
 namespace SILICON::ui {
 using namespace SILICON::core;
+
+namespace {
+
+  QPointF orientedLayerPoint(const double x, const double y,
+                             const GraphLayoutDirection direction)
+  {
+    switch (direction) {
+      case GraphLayoutDirection::TopToBottom: return {x, y};
+      case GraphLayoutDirection::LeftToRight: return {y, x};
+    }
+    std::unreachable();
+  }
+
+}  // namespace
 
 GraphLayout::PlacementMap
 GraphLayout::compute(const Circuit&                            circuit,
@@ -96,12 +111,18 @@ GraphLayout::compute(const Circuit&                            circuit,
   ogdf::GraphAttributes attributes(graph, ogdf::GraphAttributes::nodeGraphics
                                               | ogdf::GraphAttributes::edgeGraphics);
 
+  const bool horizontalLayers = options.algorithm == GraphLayoutAlgorithm::Layered
+                                && options.direction == GraphLayoutDirection::LeftToRight;
   for (ogdf::node node : graph.nodes) {
     const QRectF bounds = nodeToGraphics.at(node)->sceneBoundingRect();
     attributes.width(node) =
-        std::max(static_cast<double>(options.fallbackNodeWidth), bounds.width());
+        std::max(static_cast<double>(horizontalLayers ? options.fallbackNodeHeight
+                                                      : options.fallbackNodeWidth),
+                 horizontalLayers ? bounds.height() : bounds.width());
     attributes.height(node) =
-        std::max(static_cast<double>(options.fallbackNodeHeight), bounds.height());
+        std::max(static_cast<double>(horizontalLayers ? options.fallbackNodeWidth
+                                                      : options.fallbackNodeHeight),
+                 horizontalLayers ? bounds.width() : bounds.height());
   }
 
   if (options.algorithm == GraphLayoutAlgorithm::ForceDirected) {
@@ -134,14 +155,19 @@ GraphLayout::compute(const Circuit&                            circuit,
   double minSceneTop  = std::numeric_limits<double>::infinity();
 
   for (ogdf::node node : graph.nodes) {
-    const double x = options.algorithm == GraphLayoutAlgorithm::Layered
-                         ? attributes.y(node)
-                         : attributes.x(node);
-    const double y = options.algorithm == GraphLayoutAlgorithm::Layered
-                         ? attributes.x(node)
-                         : attributes.y(node);
-    minSceneLeft   = std::min(minSceneLeft, x - attributes.width(node) / 2.0);
-    minSceneTop    = std::min(minSceneTop, y - attributes.height(node) / 2.0);
+    const QPointF layoutPoint =
+        options.algorithm == GraphLayoutAlgorithm::Layered
+            ? orientedLayerPoint(attributes.x(node), attributes.y(node),
+                                 options.direction)
+            : QPointF(attributes.x(node), attributes.y(node));
+    const double x = layoutPoint.x();
+    const double y = layoutPoint.y();
+    const double sceneWidth =
+        horizontalLayers ? attributes.height(node) : attributes.width(node);
+    const double sceneHeight =
+        horizontalLayers ? attributes.width(node) : attributes.height(node);
+    minSceneLeft = std::min(minSceneLeft, x - sceneWidth / 2.0);
+    minSceneTop  = std::min(minSceneTop, y - sceneHeight / 2.0);
   }
 
   PlacementMap placements;
@@ -153,12 +179,13 @@ GraphLayout::compute(const Circuit&                            circuit,
     const QPointF            centerOffset =
         bounds.isValid() ? bounds.center() - component->pos() : QPointF(0.0, 0.0);
 
-    const double  x = options.algorithm == GraphLayoutAlgorithm::Layered
-                          ? attributes.y(node)
-                          : attributes.x(node);
-    const double  y = options.algorithm == GraphLayoutAlgorithm::Layered
-                          ? attributes.x(node)
-                          : attributes.y(node);
+    const QPointF layoutPoint =
+        options.algorithm == GraphLayoutAlgorithm::Layered
+            ? orientedLayerPoint(attributes.x(node), attributes.y(node),
+                                 options.direction)
+            : QPointF(attributes.x(node), attributes.y(node));
+    const double  x = layoutPoint.x();
+    const double  y = layoutPoint.y();
     const QPointF arrangedCenter(options.origin.x() + x - minSceneLeft,
                                  options.origin.y() + y - minSceneTop);
 

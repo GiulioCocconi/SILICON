@@ -101,6 +101,7 @@ set(UI_SOURCE_FILES
         ${src_dir}/ui/common/inputDialogUtils.cpp
         ${src_dir}/ui/common/componentSearchMatcher.cpp
         ${src_dir}/ui/common/componentSearchBox.cpp
+        ${src_dir}/ui/common/boundaryIoPlacement.cpp
         ${src_dir}/ui/common/ogdfCircuit.cpp
         ${src_dir}/ui/common/circuitAutoplacer.cpp
         ${src_dir}/ui/common/diagramView.cpp

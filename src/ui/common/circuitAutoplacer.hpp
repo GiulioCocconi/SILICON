@@ -82,11 +82,11 @@ struct CircuitAutoplacement {
 /**
  * @brief Combines OGDF component layout with libavoid orthogonal wire routing.
  *
- * CircuitAutoplacer is a pure calculation helper. It compares deterministic layered and
- * force-directed placements, positions boundary I/O around connected logic, then routes
- * matched logical connections between their proposed port locations. Each logical net
- * is represented by terminal-to-junction branches on lanes distinct from every other
- * net.
+ * CircuitAutoplacer is a pure calculation helper. It ranks layered directions from the
+ * connected port geometry, compares cardinal and force-directed candidates, positions
+ * boundary I/O around connected logic, then routes matched logical connections between
+ * their proposed port locations. Each logical net is represented by
+ * terminal-to-junction branches on lanes distinct from every other net.
  */
 class CircuitAutoplacer {
 public:

@@ -37,6 +37,12 @@ enum class GraphLayoutAlgorithm {
   ForceDirected,
 };
 
+/** @brief Signal-flow direction used for a layered layout. */
+enum class GraphLayoutDirection {
+  TopToBottom,
+  LeftToRight,
+};
+
 /**
  * @brief Configuration for OGDF-based component placement.
  *
@@ -46,11 +52,13 @@ enum class GraphLayoutAlgorithm {
 struct GraphLayoutOptions {
   /** @brief Placement family used to generate the candidate. */
   GraphLayoutAlgorithm algorithm = GraphLayoutAlgorithm::Layered;
+  /** @brief Scene direction assigned to source-to-target ranks. */
+  GraphLayoutDirection direction = GraphLayoutDirection::TopToBottom;
   /** @brief Deterministic seed used by force-directed candidates. */
   int randomSeed = 0;
-  /** @brief Minimum vertical scene distance between nodes on the same OGDF layer. */
+  /** @brief Minimum horizontal scene distance between nodes on the same OGDF layer. */
   int nodeDistance = 6 * DiagramScene::GRID_SIZE;
-  /** @brief Minimum horizontal scene distance between neighboring OGDF layers. */
+  /** @brief Minimum vertical scene distance between neighboring OGDF layers. */
   int layerDistance = 10 * DiagramScene::GRID_SIZE;
   /** @brief Minimum distance between disconnected graph components. */
   int connectedComponentDistance = 12 * DiagramScene::GRID_SIZE;

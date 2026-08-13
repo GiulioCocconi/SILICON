@@ -31,7 +31,9 @@ add_executable(factory_tests factory.cpp)
 add_executable(subcircuit_tests subcircuit.cpp)
 add_executable(logger_tests logger.cpp)
 add_executable(yosys_tests yosys.cpp)
-add_executable(libavoid_tests libavoid.cpp ${CMAKE_SOURCE_DIR}/src/ui/common/wireRouting.cpp)
+add_executable(libavoid_tests libavoid.cpp boundaryIoPlacement.cpp
+        ${CMAKE_SOURCE_DIR}/src/ui/common/boundaryIoPlacement.cpp
+        ${CMAKE_SOURCE_DIR}/src/ui/common/wireRouting.cpp)
 
 foreach (target logic_tests register_tests arithmetic_tests multiplexer_tests utils_tests num_formatting_tests libfst_tests fstwrapper_tests silicon_waveform_tests project_file_tests project_document_tests project_dependency_graph_tests circuit_tests factory_tests subcircuit_tests logger_tests yosys_tests)
     set_target_properties(${target} PROPERTIES
