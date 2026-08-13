@@ -54,9 +54,14 @@ public:
   SvgIconEngine* clone() const override { return new SvgIconEngine(*this); }
 
   void paint(QPainter* painter, const QRect& rect, QIcon::Mode mode,
-             QIcon::State state) override
+              QIcon::State state) override
   {
-    painter->drawPixmap(rect, pixmap(rect.size(), mode, state));
+    const qreal dpr = painter && painter->device()
+                          ? painter->device()->devicePixelRatioF()
+                          : 1.0;
+    const qreal scale = dpr * (painter ? painter->worldTransform().m11() : 1.0);
+    QPixmap pm = pixmap(rect.size() * scale, mode, state);
+    painter->drawPixmap(rect, pm);
   }
 
   QPixmap pixmap(const QSize& size, QIcon::Mode mode, QIcon::State state) override
