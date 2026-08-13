@@ -243,6 +243,31 @@ void DiagramScene::finalizeWireCreation()
   clearWireShadow();
 }
 
+bool DiagramScene::isWireCompletionPoint(const QPointF scenePoint) const
+{
+  // Ending on an existing segment creates (or extends) a wire junction.
+  if (wireManager.segmentAtPoint(scenePoint, wireSegmentToBeDrawn))
+    return true;
+
+  // Use the same exact port positions as logical wire assignment does.
+  for (const QGraphicsItem* item : items(scenePoint)) {
+    const auto* component =
+        category_cast<GraphicalComponent>(item, ItemCategory::Component);
+    if (!component)
+      continue;
+
+    const auto portIsAtPoint = [component, scenePoint](const Port* port) {
+      return component->mapToScene(port->getPosition()) == scenePoint;
+    };
+
+    if (std::ranges::any_of(component->getInputPorts(), portIsAtPoint)
+        || std::ranges::any_of(component->getOutputPorts(), portIsAtPoint))
+      return true;
+  }
+
+  return false;
+}
+
 void DiagramScene::exitComponentPlacingMode()
 {
   hideCSB();
@@ -382,6 +407,13 @@ void DiagramScene::mousePressEvent(QGraphicsSceneMouseEvent* mouseEvent)
         addItem(wireSegmentToBeDrawn);
       } else {
         wireSegmentToBeDrawn->addPoints();
+        const QPointF endpoint =
+            wireSegmentToBeDrawn->mapToScene(wireSegmentToBeDrawn->lastPoint());
+
+        // Intermediate clicks remain available for routing bends. A port or existing
+        // wire completes the route while wire creation mode stays ready for another.
+        if (isWireCompletionPoint(endpoint))
+          finalizeWireCreation();
       }
       break;
     }
