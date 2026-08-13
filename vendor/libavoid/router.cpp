@@ -851,6 +851,63 @@ static double connectorGroupLength(const ConnRefList& group)
   return length;
 }
 
+static std::vector<Polygon> fixedEndpointStubs(const Polygon& route,
+                                               const double separation,
+                                               const bool fixedSource,
+                                               const bool fixedTarget)
+{
+  std::vector<Polygon> result;
+  if (route.size() < 2) {
+    return result;
+  }
+  if (fixedSource) {
+    const bool horizontal = route.ps[0].y == route.ps[1].y;
+    const Point stub =
+        horizontal
+            ? Point(route.ps.front().x
+                        + separation * directionSign(route.ps[1].x - route.ps.front().x),
+                    route.ps.front().y)
+            : Point(route.ps.front().x,
+                    route.ps.front().y
+                        + separation * directionSign(route.ps[1].y - route.ps.front().y));
+    Polygon sourceStub;
+    appendRoutePoint(sourceStub, route.ps.front());
+    appendRoutePoint(sourceStub, stub);
+    result.push_back(sourceStub);
+  }
+  if (fixedTarget) {
+    const size_t last       = route.size() - 1;
+    const bool   horizontal = route.ps[last - 1].y == route.ps[last].y;
+    const Point  stub =
+        horizontal
+             ? Point(route.ps.back().x
+                         + separation
+                               * directionSign(route.ps[last - 1].x - route.ps.back().x),
+                     route.ps.back().y)
+             : Point(route.ps.back().x,
+                     route.ps.back().y
+                         + separation
+                               * directionSign(route.ps[last - 1].y - route.ps.back().y));
+    Polygon targetStub;
+    appendRoutePoint(targetStub, stub);
+    appendRoutePoint(targetStub, route.ps.back());
+    result.push_back(targetStub);
+  }
+  return result;
+}
+
+static bool routeConflictsWithAny(const Polygon& route,
+                                  const std::vector<Polygon>& others)
+{
+  for (std::vector<Polygon>::const_iterator other = others.begin();
+       other != others.end(); ++other) {
+    if (orthogonalRoutesCreateJunction(route, *other)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void Router::separateOrthogonalRouteGroups(const ConnRefListVector& groups,
                                            const double             separation)
 {
@@ -860,15 +917,49 @@ void Router::separateOrthogonalRouteGroups(const ConnRefListVector& groups,
                    [](const ConnRefList& first, const ConnRefList& second) {
                      return connectorGroupLength(first) < connectorGroupLength(second);
                    });
+
+  // Endpoint stubs cannot move because their connection ends are fixed. Reserve the
+  // stubs of later groups before accepting an earlier route; otherwise a greedy zero-
+  // offset choice can make every possible offset of a later group conflict.
+  std::vector<std::vector<Polygon>> reservedStubs(orderedGroups.size());
+  for (size_t groupIndex = 0; groupIndex < orderedGroups.size(); ++groupIndex) {
+    const ConnRefList& group = orderedGroups[groupIndex];
+    for (ConnRefList::const_iterator connector = group.begin(); connector != group.end();
+         ++connector) {
+      const bool fixedSource =
+          !((*connector)->m_src_connend
+            && ((*connector)->m_src_connend->type() == ConnEndJunction));
+      const bool fixedTarget =
+          !((*connector)->m_dst_connend
+            && ((*connector)->m_dst_connend->type() == ConnEndJunction));
+      const std::vector<Polygon> stubs = fixedEndpointStubs(
+          (*connector)->displayRoute(), separation, fixedSource, fixedTarget);
+      reservedStubs[groupIndex].insert(reservedStubs[groupIndex].end(), stubs.begin(),
+                                       stubs.end());
+    }
+  }
+
   std::vector<Polygon> acceptedRoutes;
-  for (ConnRefListVector::const_iterator group = orderedGroups.begin();
-       group != orderedGroups.end(); ++group) {
-    if (group->empty()) {
+  static const size_t maximumSearchRing = 64;
+  for (size_t groupIndex = 0; groupIndex < orderedGroups.size(); ++groupIndex) {
+    const ConnRefList& group = orderedGroups[groupIndex];
+    if (group.empty()) {
       continue;
     }
 
+    bool immutableConflict = false;
+    for (std::vector<Polygon>::const_iterator stub = reservedStubs[groupIndex].begin();
+         stub != reservedStubs[groupIndex].end(); ++stub) {
+      if (routeConflictsWithAny(*stub, acceptedRoutes)) {
+        immutableConflict = true;
+        break;
+      }
+    }
+
     bool selected = false;
-    for (size_t ring = 0; !selected; ++ring) {
+    for (size_t ring = 0; !immutableConflict && !selected
+                          && ring <= maximumSearchRing;
+         ++ring) {
       std::vector<Point> offsets;
       if (ring == 0) {
         offsets.push_back(Point(0, 0));
@@ -885,8 +976,8 @@ void Router::separateOrthogonalRouteGroups(const ConnRefListVector& groups,
       for (std::vector<Point>::const_iterator offset = offsets.begin();
            offset != offsets.end(); ++offset) {
         std::vector<Polygon> candidates;
-        for (ConnRefList::const_iterator connector = group->begin();
-             connector != group->end(); ++connector) {
+        for (ConnRefList::const_iterator connector = group.begin();
+             connector != group.end(); ++connector) {
           const bool fixedSource =
               !((*connector)->m_src_connend
                 && ((*connector)->m_src_connend->type() == ConnEndJunction));
@@ -900,11 +991,11 @@ void Router::separateOrthogonalRouteGroups(const ConnRefListVector& groups,
         bool conflict = false;
         for (std::vector<Polygon>::const_iterator candidate = candidates.begin();
              (candidate != candidates.end()) && !conflict; ++candidate) {
-          for (std::vector<Polygon>::const_iterator accepted = acceptedRoutes.begin();
-               accepted != acceptedRoutes.end(); ++accepted) {
-            if (orthogonalRoutesCreateJunction(*candidate, *accepted)) {
+          conflict = routeConflictsWithAny(*candidate, acceptedRoutes);
+          for (size_t future = groupIndex + 1;
+               (future < reservedStubs.size()) && !conflict; ++future) {
+            if (routeConflictsWithAny(*candidate, reservedStubs[future])) {
               conflict = true;
-              break;
             }
           }
         }
@@ -912,13 +1003,23 @@ void Router::separateOrthogonalRouteGroups(const ConnRefListVector& groups,
           continue;
         }
 
-        ConnRefList::const_iterator connector = group->begin();
+        ConnRefList::const_iterator connector = group.begin();
         for (size_t i = 0; i < candidates.size(); ++i, ++connector) {
           (*connector)->set_route(candidates[i]);
           acceptedRoutes.push_back(candidates[i]);
         }
         selected = true;
         break;
+      }
+    }
+
+    // Some fixed endpoint configurations have no conflict-free translation. Keep the
+    // router's original route in that case; callers can reject the remaining conflict,
+    // but this search must always terminate.
+    if (!selected) {
+      for (ConnRefList::const_iterator connector = group.begin(); connector != group.end();
+           ++connector) {
+        acceptedRoutes.push_back((*connector)->displayRoute());
       }
     }
   }

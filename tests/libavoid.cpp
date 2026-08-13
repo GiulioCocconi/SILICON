@@ -329,6 +329,49 @@ TEST(LibavoidHyperedgeTest, NudgesDistinctNetsApartAfterGridSnapping)
   EXPECT_EQ(secondRoute.back(), QPointF(80, 0));
 }
 
+TEST(LibavoidHyperedgeTest, ReservesFixedEndpointStubsBeforeSeparatingGroups)
+{
+  Avoid::Router router(Avoid::OrthogonalRouting);
+  configureHyperedgeRouter(router);
+
+  auto connector = [&](const std::vector<Avoid::Point>& points) {
+    auto* result = new Avoid::ConnRef(&router, Avoid::ConnEnd(points.front()),
+                                      Avoid::ConnEnd(points.back()));
+    result->setRoutingType(Avoid::ConnType_Orthogonal);
+    return result;
+  };
+  auto* first  = connector({{20, 150}, {20, 170}, {60, 170}, {60, 190}});
+  auto* second = connector({{60, 320}, {90, 320}, {90, 430}, {170, 430}});
+  auto* third  = connector({{150, 150}, {130, 150}, {130, 430}, {110, 430}});
+  ASSERT_TRUE(router.processTransaction());
+
+  auto setRoute = [](Avoid::ConnRef* target, const std::vector<Avoid::Point>& points) {
+    Avoid::PolyLine route;
+    route.ps = points;
+    target->set_route(route);
+  };
+  setRoute(first, {{20, 150}, {20, 170}, {60, 170}, {60, 190}});
+  setRoute(second, {{60, 320}, {90, 320}, {90, 430}, {170, 430}});
+  setRoute(third, {{150, 150}, {130, 150}, {130, 430}, {110, 430}});
+
+  Avoid::ConnRefListVector groups(3);
+  groups[0].push_back(first);
+  groups[1].push_back(second);
+  groups[2].push_back(third);
+  router.separateOrthogonalRouteGroups(groups, 10.0);
+
+  const auto firstRoute  = snappedDisplayRoute(*first);
+  const auto secondRoute = snappedDisplayRoute(*second);
+  const auto thirdRoute  = snappedDisplayRoute(*third);
+  EXPECT_FALSE(orthogonalRoutesIntersect(firstRoute, secondRoute));
+  EXPECT_FALSE(orthogonalRoutesIntersect(firstRoute, thirdRoute));
+  EXPECT_FALSE(orthogonalRoutesIntersect(secondRoute, thirdRoute));
+  EXPECT_EQ(secondRoute.front(), QPointF(60, 320));
+  EXPECT_EQ(secondRoute.back(), QPointF(170, 430));
+  EXPECT_EQ(thirdRoute.front(), QPointF(150, 150));
+  EXPECT_EQ(thirdRoute.back(), QPointF(110, 430));
+}
+
 TEST(LibavoidTest, DirectionalPointEndpointsRemainAtGraphicalPorts)
 {
   Avoid::Router router(Avoid::OrthogonalRouting);
@@ -359,6 +402,47 @@ TEST(LibavoidTest, DirectionalPointEndpointsRemainAtGraphicalPorts)
     EXPECT_GE(point.y(), source.y());
     EXPECT_LE(point.y(), target.y());
   }
+}
+
+TEST(LibavoidTest, CentersFacingPortDoglegWhenChannelIsClear)
+{
+  Avoid::Router router(Avoid::OrthogonalRouting);
+  configureOrthogonalRouter(router, 10.0);
+
+  const QPointF source(20, 20);
+  const QPointF target(80, 100);
+  auto*         connector = new Avoid::ConnRef(
+      &router, Avoid::ConnEnd(Avoid::pointFromQPointF(source), Avoid::ConnDirDown),
+      Avoid::ConnEnd(Avoid::pointFromQPointF(target), Avoid::ConnDirUp));
+  connector->setRoutingType(Avoid::ConnType_Orthogonal);
+
+  ASSERT_TRUE(router.processTransaction());
+  const auto                 route    = snappedDisplayRoute(*connector);
+  const std::vector<QPointF> expected = {source, QPointF(source.x(), 60),
+                                         QPointF(target.x(), 60), target};
+  EXPECT_EQ(route, expected);
+}
+
+TEST(LibavoidTest, DoesNotCenterFacingPortDoglegThroughObstacle)
+{
+  Avoid::Router router(Avoid::OrthogonalRouting);
+  configureOrthogonalRouter(router, 10.0);
+
+  const QPointF source(20, 20);
+  const QPointF target(80, 100);
+  const QRectF  blockedMiddle(40, 50, 20, 20);
+  auto          blockedPolygon = Avoid::rectangleFromQRectF(blockedMiddle);
+  new Avoid::ShapeRef(&router, blockedPolygon);
+  auto* connector = new Avoid::ConnRef(
+      &router, Avoid::ConnEnd(Avoid::pointFromQPointF(source), Avoid::ConnDirDown),
+      Avoid::ConnEnd(Avoid::pointFromQPointF(target), Avoid::ConnDirUp));
+  connector->setRoutingType(Avoid::ConnType_Orthogonal);
+
+  ASSERT_TRUE(router.processTransaction());
+  const auto route = snappedDisplayRoute(*connector);
+  ASSERT_GE(route.size(), 2U);
+  for (size_t i = 1; i < route.size(); ++i)
+    EXPECT_FALSE(segmentCrossesRectInterior(route[i - 1], route[i], blockedMiddle));
 }
 
 TEST(LibavoidTest, ShapePinRoutesRetainExactPinCoordinates)

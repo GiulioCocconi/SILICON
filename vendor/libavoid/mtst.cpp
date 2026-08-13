@@ -89,9 +89,12 @@ MinimumTerminalSpanningTree::MinimumTerminalSpanningTree(Router *router,
 MinimumTerminalSpanningTree::~MinimumTerminalSpanningTree()
 {
     // Free the temporary hyperedge tree representation.
-    m_rootJunction->deleteEdgesExcept(nullptr);
-    delete m_rootJunction;
-    m_rootJunction = nullptr;
+    if (m_rootJunction)
+    {
+        m_rootJunction->deleteEdgesExcept(nullptr);
+        delete m_rootJunction;
+        m_rootJunction = nullptr;
+    }
 }
 
 
@@ -630,7 +633,7 @@ LayeredOrthogonalEdgeList MinimumTerminalSpanningTree::
     return edgeList;
 }
 
-void MinimumTerminalSpanningTree::constructInterleaved(void)
+bool MinimumTerminalSpanningTree::constructInterleaved(void)
 {
     // Perform an interleaved construction of the MTST and SPTF
     // ========================================================
@@ -813,7 +816,7 @@ void MinimumTerminalSpanningTree::constructInterleaved(void)
             }
         }
     }
-    COLA_ASSERT(origTerminals.size() == 1);
+    const bool connected = origTerminals.size() == 1;
     TIMER_STOP(router);
 
     // Free Root Vertex Points from all vertices.
@@ -827,6 +830,8 @@ void MinimumTerminalSpanningTree::constructInterleaved(void)
     // Free the dummy nodes and edges created earlier.
     for_each(extraVertices.begin(), extraVertices.end(), delete_vertex());
     extraVertices.clear();
+
+    return connected;
 }
 
 bool MinimumTerminalSpanningTree::connectsWithoutBend(VertInf *oldLeaf,
@@ -1006,6 +1011,8 @@ void MinimumTerminalSpanningTree::commitToBridgingEdge(EdgeInf *e)
         node1 = addNode(vert1, nullptr);
         node2 = addNode(vert2, node1);
         e->setHyperedgeSegment(true);
+        buildHyperedgeTreeToRoot(vert1->pathNext, node1, vert1, true);
+        buildHyperedgeTreeToRoot(vert2->pathNext, node2, vert2, true);
     }
 
 #ifdef DEBUGHANDLER
@@ -1019,9 +1026,6 @@ void MinimumTerminalSpanningTree::commitToBridgingEdge(EdgeInf *e)
         }
     }
 #endif
-
-    buildHyperedgeTreeToRoot(vert1->pathNext, node1, vert1, true);
-    buildHyperedgeTreeToRoot(vert2->pathNext, node2, vert2, true);
 
     // We are commmitting to a particular path and pruning back the shortest
     // path terminal forests from the roots of that path.  We do this by
