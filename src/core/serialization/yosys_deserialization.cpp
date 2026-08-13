@@ -980,8 +980,20 @@ namespace {
 
     void importPos(const Cell& cell)
     {
-      const auto [a, y] = equalWidthUnary(cell, "$pos");
-      auto merger       = std::make_shared<WireMerger>();
+      cell.requireConnections({"A", "Y"});
+      const auto aWidth = cell.width("A_WIDTH");
+      const auto yWidth = cell.width("Y_WIDTH");
+      const Bus  a      = cell.consumer("A", aWidth);
+      const Bus  y      = cell.driver("Y", yWidth);
+
+      if (aWidth != yWidth) {
+        components.push_back(std::make_shared<Extender>(
+            a, y, std::string(cell.flag("A_SIGNED") ? Extender::SignedMode
+                                                     : Extender::UnsignedMode)));
+        return;
+      }
+
+      auto merger = std::make_shared<WireMerger>();
       merger->setProperty("size", static_cast<int>(y.size()));
       connectAndAdd(std::move(merger), split(a, 1, a.size()), {y});
     }
@@ -1007,22 +1019,79 @@ namespace {
         return;
       }
 
-      // Yosys permits independently sized unsigned operands and truncates or extends
-      // the result to Y_WIDTH. A zero-extended ripple chain preserves that behavior
-      // using Silicon's existing one-bit full adder.
-      Wire_ptr carry = constantWire("0", cell.where());
-      for (std::size_t bit = 0; bit < yWidth; ++bit) {
-        const auto lhs       = bit < aWidth ? a[static_cast<unsigned short>(bit)]
-                                            : constantWire("0", cell.where());
-        const auto rhs       = bit < bWidth ? b[static_cast<unsigned short>(bit)]
-                                            : constantWire("0", cell.where());
-        auto       nextCarry = std::make_shared<Wire>(State::UNKNOWN);
-        auto       adder =
-            std::make_shared<FullAdder>(std::array<Wire_ptr, 2>{lhs, rhs}, carry,
-                                        y[static_cast<unsigned short>(bit)], nextCarry);
-        addWithZeroDelay(std::move(adder));
-        carry = std::move(nextCarry);
+      const auto arithmeticWidth = std::max({aWidth, bWidth, yWidth});
+      const Bus  extendedA = resizeArithmeticOperand(a, arithmeticWidth, false);
+      const Bus  extendedB = resizeArithmeticOperand(b, arithmeticWidth, false);
+
+      auto sumWires = static_cast<std::vector<Wire_ptr>>(y);
+      while (sumWires.size() < arithmeticWidth)
+        sumWires.push_back(std::make_shared<Wire>(State::UNKNOWN));
+
+      auto adder = std::make_shared<AdderNBits>(
+          std::array<Bus, 2>{extendedA, extendedB}, Bus(std::move(sumWires)),
+          std::make_shared<Wire>(State::UNKNOWN));
+      addWithZeroDelay(std::move(adder));
+    }
+
+    [[nodiscard]] Bus resizeArithmeticOperand(const Bus& operand,
+                                              const std::size_t width,
+                                              const bool signExtend)
+    {
+      if (operand.size() > width)
+        return slice(operand, 0, width);
+      if (operand.size() == width)
+        return operand;
+
+      Bus  result(static_cast<unsigned short>(width));
+      auto extender = std::make_shared<Extender>(
+          operand, result,
+          std::string(signExtend ? Extender::SignedMode : Extender::UnsignedMode));
+      components.push_back(std::move(extender));
+      return result;
+    }
+
+    void importSub(const Cell& cell)
+    {
+      cell.requireConnections({"A", "B", "Y"});
+      const auto aWidth           = cell.width("A_WIDTH");
+      const auto bWidth           = cell.width("B_WIDTH");
+      const auto yWidth           = cell.width("Y_WIDTH");
+      const bool signedArithmetic = cell.flag("A_SIGNED") && cell.flag("B_SIGNED");
+      const Bus  b                = cell.consumer("B", bWidth);
+      const Bus  y                = cell.driver("Y", yWidth);
+
+      // A complementer is serialized as 0 - B. Recover it directly so repeated
+      // Yosys round trips do not add a redundant zero-plus adder each time.
+      if (cell.rawConstant("A", "0", aWidth)) {
+        auto complementer = std::make_shared<Complementer>(
+            resizeArithmeticOperand(b, yWidth, signedArithmetic), y);
+        addWithZeroDelay(std::move(complementer));
+        return;
       }
+
+      const Bus a = cell.consumer("A", aWidth);
+
+      // Yosys evaluates binary arithmetic at the widest operand/result width, sign
+      // extending only when both operands are signed, and then truncates to Y_WIDTH.
+      const auto arithmeticWidth = std::max({aWidth, bWidth, yWidth});
+      const Bus  extendedA =
+          resizeArithmeticOperand(a, arithmeticWidth, signedArithmetic);
+      const Bus extendedB =
+          resizeArithmeticOperand(b, arithmeticWidth, signedArithmetic);
+
+      Bus  complementedB(static_cast<unsigned short>(arithmeticWidth));
+      auto complementer = std::make_shared<Complementer>(extendedB, complementedB);
+      addWithZeroDelay(std::move(complementer));
+
+      auto sumWires = static_cast<std::vector<Wire_ptr>>(y);
+      while (sumWires.size() < arithmeticWidth)
+        sumWires.push_back(std::make_shared<Wire>(State::UNKNOWN));
+      Bus sum(std::move(sumWires));
+
+      auto adder =
+          std::make_shared<AdderNBits>(std::array<Bus, 2>{extendedA, complementedB}, sum,
+                                       std::make_shared<Wire>(State::UNKNOWN));
+      addWithZeroDelay(std::move(adder));
     }
 
     void importMux(const Cell& cell)
@@ -1379,6 +1448,7 @@ namespace {
               {"$_NOR_", &Importer::importFineBinaryGate<NorGate>},
               {"$pos", &Importer::importPos},
               {"$add", &Importer::importAdd},
+              {"$sub", &Importer::importSub},
               {"$mux", &Importer::importMux},
               {"$bmux", &Importer::importBmux},
               {"$demux", &Importer::importDemux},

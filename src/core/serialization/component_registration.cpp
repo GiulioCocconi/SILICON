@@ -60,6 +60,8 @@ void registerAllComponents(ComponentRegistry& registry)
   registerComponent<Register>(registry);
   registerComponent<SubcircuitComponent>(registry);
 
+  registerComponent<Extender>(registry);
+  registerComponent<Complementer>(registry);
   registerComponent<HalfAdder>(registry);
   registerComponent<FullAdder>(registry);
   registerComponent<AdderNBits>(registry);

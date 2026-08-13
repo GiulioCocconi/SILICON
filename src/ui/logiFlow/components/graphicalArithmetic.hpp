@@ -18,13 +18,29 @@
 #pragma once
 
 #include <extraComponents/arithmetic.hpp>
-#include <ui/logiFlow/components/graphicalLogicComponent.hpp>
 
+#include <ui/logiFlow/components/graphicalLogicComponent.hpp>
 
 namespace SILICON {
 namespace ui {
 using namespace SILICON::core;
 using namespace SILICON::extra;
+
+class GraphicalExtender : public GraphicalLogicComponent {
+  Q_OBJECT
+public:
+  GraphicalExtender(QGraphicsItem* parent = nullptr);
+
+  int type() const override { return SiliconTypes::EXTENDER; }
+};
+
+class GraphicalComplementer : public GraphicalLogicComponent {
+  Q_OBJECT
+public:
+  GraphicalComplementer(QGraphicsItem* parent = nullptr);
+
+  int type() const override { return SiliconTypes::COMPLEMENTER; }
+};
 
 class GraphicalHalfAdder : public GraphicalLogicComponent {
   Q_OBJECT

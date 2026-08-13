@@ -19,6 +19,7 @@
 #pragma once
 
 #include <array>
+#include <string>
 #include <string_view>
 
 #include <core/component.hpp>
@@ -26,6 +27,56 @@
 
 namespace SILICON::extra {
 using namespace SILICON::core;
+
+/**
+ * @class Extender
+ * @brief Changes a bus width using signed or unsigned extension.
+ */
+class Extender : public Component {
+public:
+  static constexpr std::string_view Type         = "Extender";
+  static constexpr std::string_view SignedMode   = "signed";
+  static constexpr std::string_view UnsignedMode = "unsigned";
+
+  std::string_view  typeName() const override { return Type; }
+  ComponentMetadata metadata() const override
+  {
+    return {"Extender", "Changes a bus width using signed or unsigned extension.",
+            ComponentCategory::Arithmetic};
+  }
+
+  Extender();
+  Extender(Bus in, Bus out, std::string mode = std::string(UnsignedMode));
+
+  int setInputSize(int width);
+  int setOutputSize(int width);
+
+  void simulate(SILICON::simulation::Simulator& sim) override;
+  void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
+};
+
+/**
+ * @class Complementer
+ * @brief Gives the two's complement of a number
+ */
+class Complementer : public Component {
+public:
+  static constexpr std::string_view Type = "Complementer";
+
+  std::string_view  typeName() const override { return Type; }
+  ComponentMetadata metadata() const override
+  {
+    return {"Two's complement", "Gives the two's complement of a binary number",
+            ComponentCategory::Arithmetic};
+  }
+
+  Complementer();
+  Complementer(Bus in, Bus out);
+  int setSize(int width);
+
+  void simulate(SILICON::simulation::Simulator& sim) override;
+  void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
+};
 
 /**
  * @class HalfAdder

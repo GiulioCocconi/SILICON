@@ -31,11 +31,10 @@
 #include <ui/logiFlow/components/graphicalIO.hpp>
 #include <ui/logiFlow/components/graphicalMultiplexer.hpp>
 #include <ui/logiFlow/components/graphicalRegister.hpp>
-#include <ui/logiFlow/components/subcircuit/graphicalSubcircuit.hpp>
 #include <ui/logiFlow/components/graphicalUtils.hpp>
+#include <ui/logiFlow/components/subcircuit/graphicalSubcircuit.hpp>
 
 #include <utility>
-
 
 namespace SILICON {
 namespace ui {
@@ -90,6 +89,10 @@ void registerAllGUIComponents(GUIComponentFactory& factory)
   reg(std::string(WireMerger::Type),
       [](QGraphicsItem* p) { return std::make_unique<GraphicalWireMerger>(p); });
 
+  reg(std::string(Extender::Type),
+      [](QGraphicsItem* p) { return std::make_unique<GraphicalExtender>(p); });
+  reg(std::string(Complementer::Type),
+      [](QGraphicsItem* p) { return std::make_unique<GraphicalComplementer>(p); });
   reg(std::string(HalfAdder::Type),
       [](QGraphicsItem* p) { return std::make_unique<GraphicalHalfAdder>(p); });
   reg(std::string(FullAdder::Type),

@@ -117,6 +117,69 @@ using SILICON::yosys::Json;
 using SILICON::yosys::SerializationContext;
 using namespace SILICON::core::yosys_component_detail;
 
+void Extender::serializeYosys(SerializationContext& context) const
+{
+  if (inputBuses().size() != 1 || outputBuses().size() != 1)
+    throw std::runtime_error(
+        "Cannot export malformed 'Extender': expected 1 input and 1 output");
+
+  const auto& input   = requireBus(*this, true, 0);
+  const auto& output  = requireBus(*this, false, 0);
+  const auto  inSize  = getPropertyValue<int>("inSize");
+  const auto  outSize = getPropertyValue<int>("outSize");
+  const auto  mode    = getPropertyValue<std::string>("mode");
+  if (!inSize || !outSize || !mode || *inSize < 1 || *outSize < 1
+      || input.size() != static_cast<std::size_t>(*inSize)
+      || output.size() != static_cast<std::size_t>(*outSize)
+      || (*mode != SignedMode && *mode != UnsignedMode)
+      || std::ranges::contains(input, nullptr)
+      || std::ranges::contains(output, nullptr)) {
+    throw std::runtime_error(
+        "Cannot export malformed 'Extender': buses do not match its properties");
+  }
+
+  context.addCell(
+      "extend", "$pos",
+      Json{{"A_SIGNED", SerializationContext::parameter(*mode == SignedMode, 1)},
+           {"A_WIDTH", SerializationContext::parameter(*inSize)},
+           {"Y_WIDTH", SerializationContext::parameter(*outSize)}},
+      directions({{"A", "input"}, {"Y", "output"}}),
+      Json{{"A", context.bits(input)}, {"Y", context.bits(output)}});
+}
+
+void Complementer::serializeYosys(SerializationContext& context) const
+{
+  if (inputBuses().size() != 1 || outputBuses().size() != 1)
+    throw std::runtime_error(
+        "Cannot export malformed 'Complementer': expected 1 input and 1 output");
+
+  const auto& input  = requireBus(*this, true, 0);
+  const auto& output = requireBus(*this, false, 0);
+  const auto  width  = getPropertyValue<int>("size");
+  if (!width || *width < 1 || input.size() != static_cast<std::size_t>(*width)
+      || output.size() != static_cast<std::size_t>(*width)
+      || std::ranges::contains(input, nullptr)
+      || std::ranges::contains(output, nullptr)) {
+    throw std::runtime_error(
+        "Cannot export malformed 'Complementer': buses do not match its size property");
+  }
+
+  Json zero = Json::array();
+  for (int bit = 0; bit < *width; ++bit)
+    zero.push_back("0");
+
+  context.addCell("complement", "$sub",
+                  Json{{"A_SIGNED", SerializationContext::parameter(0, 1)},
+                       {"B_SIGNED", SerializationContext::parameter(0, 1)},
+                       {"A_WIDTH", SerializationContext::parameter(*width)},
+                       {"B_WIDTH", SerializationContext::parameter(*width)},
+                       {"Y_WIDTH", SerializationContext::parameter(*width)}},
+                  directions({{"A", "input"}, {"B", "input"}, {"Y", "output"}}),
+                  Json{{"A", std::move(zero)},
+                       {"B", context.bits(input)},
+                       {"Y", context.bits(output)}});
+}
+
 void HalfAdder::serializeYosys(SerializationContext& context) const
 {
   if (inputBuses().size() != 2 || outputBuses().size() != 2)

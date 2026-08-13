@@ -112,6 +112,75 @@ private:
   return nlohmann::json::parse(circuit.getYosysJson());
 }
 
+[[nodiscard]] nlohmann::json signalBits(int& nextSignal, const std::size_t width)
+{
+  auto bits = nlohmann::json::array();
+  for (std::size_t bit = 0; bit < width; ++bit)
+    bits.push_back(nextSignal++);
+  return bits;
+}
+
+[[nodiscard]] nlohmann::json subtractionDesign(const std::size_t aWidth,
+                                               const std::size_t bWidth,
+                                               const std::size_t yWidth,
+                                               const bool aSigned, const bool bSigned)
+{
+  using SILICON::yosys::Json;
+  using SILICON::yosys::SerializationContext;
+
+  int        nextSignal = 2;
+  const Json aBits      = signalBits(nextSignal, aWidth);
+  const Json bBits      = signalBits(nextSignal, bWidth);
+  const Json yBits      = signalBits(nextSignal, yWidth);
+  const Json parameters{
+      {"A_SIGNED", SerializationContext::parameter(aSigned, 1)},
+      {"B_SIGNED", SerializationContext::parameter(bSigned, 1)},
+      {"A_WIDTH", SerializationContext::parameter(aWidth)},
+      {"B_WIDTH", SerializationContext::parameter(bWidth)},
+      {"Y_WIDTH", SerializationContext::parameter(yWidth)},
+  };
+
+  return Json{{"creator", "test"},
+              {"modules",
+               {{"top",
+                 {{"attributes", Json::object()},
+                  {"ports",
+                   {{"a", {{"direction", "input"}, {"bits", aBits}}},
+                    {"b", {{"direction", "input"}, {"bits", bBits}}},
+                    {"y", {{"direction", "output"}, {"bits", yBits}}}}},
+                  {"cells",
+                   {{"subtract",
+                     {{"type", "$sub"},
+                      {"parameters", parameters},
+                      {"connections", {{"A", aBits}, {"B", bBits}, {"Y", yBits}}}}}}},
+                  {"netnames", Json::object()}}}}}};
+}
+
+[[nodiscard]] unsigned int evaluateBinaryCircuit(const std::shared_ptr<Circuit>& circuit,
+                                                 const unsigned int              a,
+                                                 const unsigned int              b)
+{
+  std::map<std::string, std::shared_ptr<DummyBusInputComponent>> inputs;
+  std::shared_ptr<DummyBusOutputComponent>                       output;
+  for (const auto vertex :
+       boost::make_iterator_range(boost::vertices(circuit->getGraph()))) {
+    const auto& component = circuit->getGraph()[vertex].component;
+    if (auto input = std::dynamic_pointer_cast<DummyBusInputComponent>(component))
+      inputs.emplace(input->getPropertyValue<std::string>("name").value_or(""), input);
+    if (auto candidate = std::dynamic_pointer_cast<DummyBusOutputComponent>(component))
+      output = std::move(candidate);
+  }
+
+  if (!inputs.contains("a") || !inputs.contains("b") || !output)
+    throw std::runtime_error("Expected named binary circuit boundary components");
+  inputs.at("a")->setState(a);
+  inputs.at("b")->setState(b);
+  Simulator simulator(circuit);
+  if (simulator.runUntilIdle() != Simulator::RunResult::Completed)
+    throw std::runtime_error("Binary circuit simulation did not complete");
+  return output->inputBuses()[0].getCurrentValue();
+}
+
 [[nodiscard]] std::multiset<std::string> cellTypes(const nlohmann::json& module)
 {
   std::multiset<std::string> result;
@@ -266,6 +335,10 @@ TEST(YosysTest, LowersCombinationalComponents)
   EXPECT_EQ(cellTypes(onlyModule(exportComponent(adder))),
             std::multiset<std::string>{"SILICON_ADDER"});
 
+  auto extender = std::make_shared<Extender>(Bus(3), Bus(5));
+  EXPECT_EQ(cellTypes(onlyModule(exportComponent(extender))),
+            std::multiset<std::string>{"$pos"});
+
   auto mux = std::make_shared<Multiplexer>(Bus(4), Bus(2), std::make_shared<Wire>());
   EXPECT_EQ(cellTypes(onlyModule(exportComponent(mux))),
             std::multiset<std::string>{"$bmux"});
@@ -285,6 +358,57 @@ TEST(YosysTest, LowersCombinationalComponents)
             std::multiset<std::string>{"$pos"});
   EXPECT_EQ(cellTypes(onlyModule(exportComponent(merger))),
             std::multiset<std::string>{"$pos"});
+}
+
+TEST(YosysTest, ExtenderLowersToPosAndRoundTripsWithItsModeAndWidths)
+{
+  auto extender = std::make_shared<Extender>(Bus(3), Bus(6),
+                                              std::string(Extender::SignedMode));
+  auto exported = exportComponent(extender);
+  EXPECT_EQ(cellTypes(onlyModule(exported)), std::multiset<std::string>{"$pos"});
+
+  const auto& cell = onlyCell(exported);
+  EXPECT_EQ(cell.at("parameters").at("A_SIGNED"),
+            SILICON::yosys::SerializationContext::parameter(1, 1));
+  EXPECT_EQ(cell.at("parameters").at("A_WIDTH"),
+            SILICON::yosys::SerializationContext::parameter(3));
+  EXPECT_EQ(cell.at("parameters").at("Y_WIDTH"),
+            SILICON::yosys::SerializationContext::parameter(6));
+
+  const Circuit imported = SILICON::yosys::deserialize(exported.dump());
+  const auto    restored = findComponent<Extender>(imported);
+  ASSERT_TRUE(restored);
+  EXPECT_EQ(restored->getPropertyValue<int>("inSize"), 3);
+  EXPECT_EQ(restored->getPropertyValue<int>("outSize"), 6);
+  EXPECT_EQ(restored->getPropertyValue<std::string>("mode"),
+            std::string(Extender::SignedMode));
+  EXPECT_EQ(cellTypes(onlyModule(nlohmann::json::parse(imported.getYosysJson()))),
+            std::multiset<std::string>{"$pos"});
+}
+
+TEST(YosysTest, ComplementerLowersToSubAndRoundTripsWithoutAnAdder)
+{
+  auto complementer = std::make_shared<Complementer>(Bus(5), Bus(5));
+  auto exported     = exportComponent(complementer);
+  EXPECT_EQ(cellTypes(onlyModule(exported)), std::multiset<std::string>{"$sub"});
+
+  const auto& cell = onlyCell(exported);
+  EXPECT_EQ(cell.at("parameters").at("A_WIDTH"),
+            SILICON::yosys::SerializationContext::parameter(5));
+  EXPECT_EQ(cell.at("parameters").at("B_WIDTH"),
+            SILICON::yosys::SerializationContext::parameter(5));
+  EXPECT_EQ(cell.at("parameters").at("Y_WIDTH"),
+            SILICON::yosys::SerializationContext::parameter(5));
+  EXPECT_TRUE(std::ranges::all_of(cell.at("connections").at("A"),
+                                  [](const auto& bit) { return bit == "0"; }));
+
+  const Circuit imported = SILICON::yosys::deserialize(exported.dump());
+  const auto    restored = findComponent<Complementer>(imported);
+  ASSERT_TRUE(restored);
+  EXPECT_EQ(restored->getPropertyValue<int>("size"), 5);
+  EXPECT_FALSE(findComponent<AdderNBits>(imported));
+  EXPECT_EQ(cellTypes(onlyModule(nlohmann::json::parse(imported.getYosysJson()))),
+            std::multiset<std::string>{"$sub"});
 }
 
 TEST(YosysTest, LowersSequentialComponents)
@@ -593,6 +717,60 @@ TEST(YosysTest, ImportsGeneralCombinationalNetlistWithConstants)
   EXPECT_EQ(outputComponent->inputBuses()[0].getCurrentValue(), 2U);
 }
 
+TEST(YosysTest, ImportsSubWithYosysWidthAndSignednessSemantics)
+{
+  const auto import = [](const std::size_t aWidth, const std::size_t bWidth,
+                         const std::size_t yWidth, const bool aSigned,
+                         const bool bSigned) {
+    return std::make_shared<Circuit>(SILICON::yosys::deserialize(
+        subtractionDesign(aWidth, bWidth, yWidth, aSigned, bSigned).dump()));
+  };
+
+  auto unsignedCircuit = import(3, 5, 4, false, false);
+  auto complementer    = findComponent<Complementer>(*unsignedCircuit);
+  auto adder           = findComponent<AdderNBits>(*unsignedCircuit);
+  ASSERT_TRUE(complementer);
+  ASSERT_TRUE(adder);
+  auto extender = findComponent<Extender>(*unsignedCircuit);
+  ASSERT_TRUE(extender);
+  EXPECT_EQ(complementer->getPropertyValue<int>("size"), 5);
+  EXPECT_EQ(adder->getPropertyValue<int>("size"), 5);
+  EXPECT_EQ(extender->getPropertyValue<int>("inSize"), 3);
+  EXPECT_EQ(extender->getPropertyValue<int>("outSize"), 5);
+  EXPECT_EQ(extender->getPropertyValue<std::string>("mode"),
+            std::string(Extender::UnsignedMode));
+  EXPECT_EQ(evaluateBinaryCircuit(unsignedCircuit, 2, 5), 13U);
+
+  // Both signed flags cause sign extension: 3'b110 (-2) - 5'b00011 (3) = -5.
+  auto signedCircuit = import(3, 5, 6, true, true);
+  auto signedExtender = findComponent<Extender>(*signedCircuit);
+  ASSERT_TRUE(signedExtender);
+  EXPECT_EQ(signedExtender->getPropertyValue<std::string>("mode"),
+            std::string(Extender::SignedMode));
+  EXPECT_EQ(evaluateBinaryCircuit(signedCircuit, 6, 3), 59U);
+
+  // A mixed signedness operation is unsigned in Yosys: 6 - 3 = 3.
+  auto mixedCircuit = import(3, 5, 6, true, false);
+  auto mixedExtender = findComponent<Extender>(*mixedCircuit);
+  ASSERT_TRUE(mixedExtender);
+  EXPECT_EQ(mixedExtender->getPropertyValue<std::string>("mode"),
+            std::string(Extender::UnsignedMode));
+  EXPECT_EQ(evaluateBinaryCircuit(mixedCircuit, 6, 3), 3U);
+
+  // Arithmetic is evaluated at the widest width and narrowed to the low Y bits.
+  auto narrowedCircuit = import(5, 4, 3, false, false);
+  EXPECT_EQ(evaluateBinaryCircuit(narrowedCircuit, 1, 3), 6U);
+
+  auto addDesign = subtractionDesign(3, 5, 4, false, false);
+  onlyModule(addDesign)["cells"].begin().value()["type"] = "$add";
+  auto addCircuit = std::make_shared<Circuit>(SILICON::yosys::deserialize(addDesign.dump()));
+  auto addExtender = findComponent<Extender>(*addCircuit);
+  ASSERT_TRUE(addExtender);
+  EXPECT_EQ(addExtender->getPropertyValue<int>("inSize"), 3);
+  EXPECT_EQ(addExtender->getPropertyValue<int>("outSize"), 5);
+  EXPECT_EQ(evaluateBinaryCircuit(addCircuit, 2, 5), 7U);
+}
+
 TEST(YosysTest, RaisesSharedConstantEqualityComparisonsToDecoder)
 {
   using SILICON::yosys::Json;
@@ -695,6 +873,8 @@ TEST(YosysTest, ConnectionReaderEnforcesRolesWidthsAndDriverOwnership)
 TEST(YosysTest, ImportsEveryCellShapeEmittedBySilicon)
 {
   std::vector<Component_ptr> components;
+  components.push_back(std::make_shared<Extender>(Bus(3), Bus(5)));
+  components.push_back(std::make_shared<Complementer>(Bus(4), Bus(4)));
   components.push_back(std::make_shared<FullAdder>(
       std::array<Wire_ptr, 2>{std::make_shared<Wire>(), std::make_shared<Wire>()},
       std::make_shared<Wire>(), std::make_shared<Wire>(), std::make_shared<Wire>()));
@@ -839,6 +1019,8 @@ TEST(YosysTest, YosysAcceptsEveryBuiltInLowering)
   components.push_back(std::make_shared<XorGate>(
       std::array<Wire_ptr, 2>{std::make_shared<Wire>(), std::make_shared<Wire>()},
       std::make_shared<Wire>()));
+  components.push_back(std::make_shared<Extender>(Bus(3), Bus(5)));
+  components.push_back(std::make_shared<Complementer>(Bus(4), Bus(4)));
   components.push_back(std::make_shared<HalfAdder>(
       std::array<Wire_ptr, 2>{std::make_shared<Wire>(), std::make_shared<Wire>()},
       std::make_shared<Wire>(), std::make_shared<Wire>()));
