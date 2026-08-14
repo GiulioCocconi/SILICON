@@ -40,17 +40,29 @@ using namespace SILICON::yosys::detail;
 
 namespace yosys_component_detail {
 
-[[nodiscard]] const Bus& requireScalarBus(const Component& component, const bool input,
-                                          const std::size_t index,
-                                          const bool allowDisconnected = false)
+[[nodiscard]] const Bus& requireBusWidth(const Component& component, const bool input,
+                                         const std::size_t index,
+                                         const std::size_t expectedWidth)
 {
   const auto& bus = requireBus(component, input, index);
-  if (bus.size() != 1 || (!allowDisconnected && !bus[0])) {
+  // A disconnected output is a valid unused pin. The serialization context gives it
+  // a private signal when the cell is emitted. Optional inputs are encoded through
+  // SerializationContext::inputBits(), which also applies their declared default.
+  const bool requiresConnection = input;
+  if (bus.size() != expectedWidth
+      || (requiresConnection && std::ranges::contains(bus, nullptr))) {
     throw std::runtime_error(std::format(
-        "Cannot export '{}': {} bus {} must be a {}scalar", component.typeName(),
-        input ? "input" : "output", index, allowDisconnected ? "" : "connected "));
+        "Cannot export '{}': {} bus {} must be a {}{}-bit bus", component.typeName(),
+        input ? "input" : "output", index, requiresConnection ? "connected " : "",
+        expectedWidth));
   }
   return bus;
+}
+
+[[nodiscard]] const Bus& requireScalarBus(const Component& component, const bool input,
+                                          const std::size_t index)
+{
+  return requireBusWidth(component, input, index, 1);
 }
 
 void requireBusCounts(const Component& component, const std::size_t expectedInputs,
@@ -123,20 +135,17 @@ void Extender::serializeYosys(SerializationContext& context) const
     throw std::runtime_error(
         "Cannot export malformed 'Extender': expected 1 input and 1 output");
 
-  const auto& input   = requireBus(*this, true, 0);
-  const auto& output  = requireBus(*this, false, 0);
   const auto  inSize  = getPropertyValue<int>("inSize");
   const auto  outSize = getPropertyValue<int>("outSize");
   const auto  mode    = getPropertyValue<std::string>("mode");
   if (!inSize || !outSize || !mode || *inSize < 1 || *outSize < 1
-      || input.size() != static_cast<std::size_t>(*inSize)
-      || output.size() != static_cast<std::size_t>(*outSize)
-      || (*mode != SignedMode && *mode != UnsignedMode)
-      || std::ranges::contains(input, nullptr)
-      || std::ranges::contains(output, nullptr)) {
+      || (*mode != SignedMode && *mode != UnsignedMode)) {
     throw std::runtime_error(
         "Cannot export malformed 'Extender': buses do not match its properties");
   }
+  const auto& input = requireBusWidth(*this, true, 0, static_cast<std::size_t>(*inSize));
+  const auto& output =
+      requireBusWidth(*this, false, 0, static_cast<std::size_t>(*outSize));
 
   context.addCell(
       "extend", "$pos",
@@ -153,16 +162,14 @@ void Complementer::serializeYosys(SerializationContext& context) const
     throw std::runtime_error(
         "Cannot export malformed 'Complementer': expected 1 input and 1 output");
 
-  const auto& input  = requireBus(*this, true, 0);
-  const auto& output = requireBus(*this, false, 0);
-  const auto  width  = getPropertyValue<int>("size");
-  if (!width || *width < 1 || input.size() != static_cast<std::size_t>(*width)
-      || output.size() != static_cast<std::size_t>(*width)
-      || std::ranges::contains(input, nullptr)
-      || std::ranges::contains(output, nullptr)) {
+  const auto width = getPropertyValue<int>("size");
+  if (!width || *width < 1) {
     throw std::runtime_error(
         "Cannot export malformed 'Complementer': buses do not match its size property");
   }
+  const auto busWidth = static_cast<std::size_t>(*width);
+  const auto& input   = requireBusWidth(*this, true, 0, busWidth);
+  const auto& output  = requireBusWidth(*this, false, 0, busWidth);
 
   Json zero = Json::array();
   for (int bit = 0; bit < *width; ++bit)
@@ -219,19 +226,16 @@ void AdderNBits::serializeYosys(SerializationContext& context) const
   if (inputBuses().size() != 2 || outputBuses().size() != 2)
     throw std::runtime_error(
         "Cannot export malformed 'AdderNBits': expected 2 inputs and 2 outputs");
-  const auto& a     = requireBus(*this, true, 0);
-  const auto& b     = requireBus(*this, true, 1);
-  const auto& sum   = requireBus(*this, false, 0);
-  const auto& carry = requireBus(*this, false, 1);
-  const auto  width = getPropertyValue<int>("size");
-  if (!width || *width < 1 || a.size() != static_cast<std::size_t>(*width)
-      || b.size() != static_cast<std::size_t>(*width)
-      || sum.size() != static_cast<std::size_t>(*width) || carry.size() != 1
-      || std::ranges::contains(a, nullptr) || std::ranges::contains(b, nullptr)
-      || std::ranges::contains(sum, nullptr) || !carry[0]) {
+  const auto width = getPropertyValue<int>("size");
+  if (!width || *width < 1) {
     throw std::runtime_error(
         "Cannot export malformed 'AdderNBits': buses do not match its size property");
   }
+  const auto busWidth = static_cast<std::size_t>(*width);
+  const auto& a       = requireBusWidth(*this, true, 0, busWidth);
+  const auto& b       = requireBusWidth(*this, true, 1, busWidth);
+  const auto& sum     = requireBusWidth(*this, false, 0, busWidth);
+  const auto& carry   = requireScalarBus(*this, false, 1);
 
   context.addCell(
       "adder", SILICON::yosys::cells::Adder,
@@ -335,9 +339,9 @@ namespace SILICON::core {
 
 namespace {
 
-[[nodiscard]] bool connected(const Bus& bus)
+[[nodiscard]] bool connected(const Json& bits)
 {
-  return bus.size() == 1 && bus[0] != nullptr;
+  return bits.size() == 1 && bits[0].is_number_integer();
 }
 
 [[nodiscard]] bool positiveClock(const Component& component)
@@ -350,9 +354,8 @@ namespace {
 }
 
 void emitDff(SerializationContext& context, const Component& component,
-             const Bus& data, const Bus* enable, const Bus& clock,
-             const Bus& clear, const Bus& preset, const Bus& q,
-             const Bus& qn, const std::string_view baseCell,
+             Json data, std::optional<Json> enable, Json clock, Json clear,
+             Json preset, const Bus& q, const Bus& qn, const std::string_view baseCell,
              const std::string_view controlledCell,
              const std::string_view instanceName)
 {
@@ -361,19 +364,19 @@ void emitDff(SerializationContext& context, const Component& component,
       {"CLK_POLARITY",
        SerializationContext::parameter(positiveClock(component), 1)}};
   Json portDirections = directions({{"D", "input"}, {"CLK", "input"}});
-  Json connections{{"D", context.bits(data)}, {"CLK", context.bits(clock)}};
+  Json connections{{"D", std::move(data)}, {"CLK", std::move(clock)}};
   if (enable) {
     parameters["EN_POLARITY"] = SerializationContext::parameter(1, 1);
     portDirections["EN"]      = "input";
-    connections["EN"]         = context.bits(*enable);
+    connections["EN"]         = std::move(*enable);
   }
   if (hasControls) {
     parameters["SET_POLARITY"] = SerializationContext::parameter(1, 1);
     parameters["CLR_POLARITY"] = SerializationContext::parameter(1, 1);
     portDirections["SET"]      = "input";
     portDirections["CLR"]      = "input";
-    connections["SET"]         = context.bits(preset, "0");
-    connections["CLR"]         = context.bits(clear, "0");
+    connections["SET"]         = std::move(preset);
+    connections["CLR"]         = std::move(clear);
   }
   portDirections["Q"]  = "output";
   portDirections["QN"] = "output";
@@ -389,27 +392,22 @@ void emitDff(SerializationContext& context, const Component& component,
 void DFlipFlop::serializeYosys(SerializationContext& context) const
 {
   requireBusCounts(*this, 4, 2);
-  const auto& d           = requireScalarBus(*this, true, 0);
-  const auto& clock       = requireScalarBus(*this, true, 1);
-  const auto& clear       = requireScalarBus(*this, true, 2, true);
-  const auto& preset      = requireScalarBus(*this, true, 3, true);
-  const auto& q           = requireScalarBus(*this, false, 0);
-  const auto& qn          = requireScalarBus(*this, false, 1);
-  emitDff(context, *this, d, nullptr, clock, clear, preset, q, qn,
+  const auto& q  = requireScalarBus(*this, false, 0);
+  const auto& qn = requireScalarBus(*this, false, 1);
+  emitDff(context, *this, context.inputBits(*this, 0, 1), std::nullopt,
+          context.inputBits(*this, 1, 1), context.inputBits(*this, 2, 1),
+          context.inputBits(*this, 3, 1), q, qn,
           SILICON::yosys::cells::Dff, SILICON::yosys::cells::Dffsr, "dff");
 }
 
 void EFlipFlop::serializeYosys(SerializationContext& context) const
 {
   requireBusCounts(*this, 5, 2);
-  const auto& d           = requireScalarBus(*this, true, 0);
-  const auto& enable      = requireScalarBus(*this, true, 1);
-  const auto& clock       = requireScalarBus(*this, true, 2);
-  const auto& clear       = requireScalarBus(*this, true, 3, true);
-  const auto& preset      = requireScalarBus(*this, true, 4, true);
-  const auto& q           = requireScalarBus(*this, false, 0);
-  const auto& qn          = requireScalarBus(*this, false, 1);
-  emitDff(context, *this, d, &enable, clock, clear, preset, q, qn,
+  const auto& q  = requireScalarBus(*this, false, 0);
+  const auto& qn = requireScalarBus(*this, false, 1);
+  emitDff(context, *this, context.inputBits(*this, 0, 1),
+          context.inputBits(*this, 1, 1), context.inputBits(*this, 2, 1),
+          context.inputBits(*this, 3, 1), context.inputBits(*this, 4, 1), q, qn,
           SILICON::yosys::cells::Dffe, SILICON::yosys::cells::Dffsre,
           "dffe");
 }
@@ -417,16 +415,14 @@ void EFlipFlop::serializeYosys(SerializationContext& context) const
 void DLatch::serializeYosys(SerializationContext& context) const
 {
   requireBusCounts(*this, 2, 2);
-  const auto& d      = requireScalarBus(*this, true, 0);
-  const auto& enable = requireScalarBus(*this, true, 1);
   const auto& q      = requireScalarBus(*this, false, 0);
   const auto& qn     = requireScalarBus(*this, false, 1);
   context.addCell(
       "dlatch", SILICON::yosys::cells::Dlatch,
       Json{{"EN_POLARITY", SerializationContext::parameter(1, 1)}},
       directions({{"D", "input"}, {"EN", "input"}, {"Q", "output"}, {"QN", "output"}}),
-      Json{{"D", context.bits(d)},
-           {"EN", context.bits(enable)},
+      Json{{"D", context.inputBits(*this, 0, 1)},
+           {"EN", context.inputBits(*this, 1, 1)},
            {"Q", context.bits(q)},
            {"QN", context.bits(qn)}});
 }
@@ -434,11 +430,6 @@ void DLatch::serializeYosys(SerializationContext& context) const
 void JKFlipFlop::serializeYosys(SerializationContext& context) const
 {
   requireBusCounts(*this, 5, 2);
-  const auto& j      = requireScalarBus(*this, true, 0);
-  const auto& k      = requireScalarBus(*this, true, 1);
-  const auto& clock  = requireScalarBus(*this, true, 2);
-  const auto& clear  = requireScalarBus(*this, true, 3, true);
-  const auto& preset = requireScalarBus(*this, true, 4, true);
   const auto& q      = requireScalarBus(*this, false, 0);
   const auto& qn     = requireScalarBus(*this, false, 1);
   context.addCell(
@@ -453,11 +444,11 @@ void JKFlipFlop::serializeYosys(SerializationContext& context) const
                   {"CLR", "input"},
                   {"Q", "output"},
                   {"QN", "output"}}),
-      Json{{"J", context.bits(j)},
-           {"K", context.bits(k)},
-           {"CLK", context.bits(clock)},
-           {"SET", context.bits(preset, "0")},
-           {"CLR", context.bits(clear, "0")},
+      Json{{"J", context.inputBits(*this, 0, 1)},
+           {"K", context.inputBits(*this, 1, 1)},
+           {"CLK", context.inputBits(*this, 2, 1)},
+           {"SET", context.inputBits(*this, 4, 1)},
+           {"CLR", context.inputBits(*this, 3, 1)},
            {"Q", context.bits(q)},
            {"QN", context.bits(qn)}});
 }
@@ -479,18 +470,13 @@ void Register::serializeYosys(SerializationContext& context) const
   if (inputBuses().size() != expectedInputs || outputBuses().size() != 1)
     throw std::runtime_error("Cannot export malformed 'Register': unexpected bus count");
 
-  const auto& data                = requireBus(*this, true, 0);
-  const auto& clock               = requireScalarBus(*this, true, 1);
-  const auto& enable              = requireScalarBus(*this, true, 2);
-  const auto& clear               = requireScalarBus(*this, true, 3);
-  const auto& output              = requireBus(*this, false, 0);
   const auto  expectedDataWidth   = parallelIn ? width : 1;
   const auto  expectedOutputWidth = parallelOut ? width : 1;
-  if (data.size() != expectedDataWidth || output.size() != expectedOutputWidth
-      || std::ranges::contains(data, nullptr) || std::ranges::contains(output, nullptr)) {
-    throw std::runtime_error(
-        "Cannot export malformed 'Register': bus widths do not match its properties");
-  }
+  const auto& data   = requireBusWidth(*this, true, 0, expectedDataWidth);
+  const auto& clock  = requireScalarBus(*this, true, 1);
+  const auto& enable = requireScalarBus(*this, true, 2);
+  const auto& clear  = requireScalarBus(*this, true, 3);
+  const auto& output = requireBusWidth(*this, false, 0, expectedOutputWidth);
   Json parameters{{"WIDTH", SerializationContext::parameter(width)},
                   {"CLK_POLARITY", SerializationContext::parameter(1, 1)},
                   {"EN_POLARITY", SerializationContext::parameter(1, 1)},

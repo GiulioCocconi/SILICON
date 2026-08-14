@@ -194,6 +194,9 @@ protected:
   /** @brief Output buses produced by this component */
   std::vector<Bus> outputs;
 
+  /** @brief Per-input state used when a bus bit has no connected wire. */
+  std::unordered_map<unsigned int, State> unconnectedInputDefaults;
+
   /** @brief Map of configurable properties for this component */
   PropertyMap properties;
 
@@ -286,12 +289,22 @@ protected:
     return std::to_underlying(value);
   }
 
+  /**
+   * @brief Defines the state read from an input when its wire is unconnected.
+   * @param input Input bus index
+   * @param value State used for every unconnected bit on that input bus
+   */
+  void defineUnconnectedInputDefault(unsigned int input, State value)
+  {
+    unconnectedInputDefaults.insert_or_assign(input, value);
+  }
+
   [[nodiscard]] State inputState(unsigned int input, unsigned short bit = 0) const
   {
-    if (input >= inputs.size() || bit >= inputs[input].size())
-      return State::ERROR;
+    if (input < inputs.size() && bit < inputs[input].size() && inputs[input][bit])
+      return Wire::safeGetCurrentState(inputs[input][bit]);
 
-    return Wire::safeGetCurrentState(inputs[input][bit]);
+    return unconnectedInputDefault(input).value_or(State::ERROR);
   }
 
   [[nodiscard]] Wire_ptr inputWire(unsigned int input, unsigned short bit = 0) const
@@ -543,6 +556,21 @@ public:
    * @return Const reference to the input bus vector
    */
   [[nodiscard]] const std::vector<Bus>& inputBuses() const { return inputs; }
+
+  /**
+   * @brief Gets the state used when an input has no connected wire.
+   * @param input Input bus index
+   * @return Declared default, or no value when the input is required
+   */
+  [[nodiscard]] std::optional<State>
+  unconnectedInputDefault(unsigned int input) const
+  {
+    if (const auto it = unconnectedInputDefaults.find(input);
+        it != unconnectedInputDefaults.end()) {
+      return it->second;
+    }
+    return std::nullopt;
+  }
 
   /**
    * @brief Gets all output buses.

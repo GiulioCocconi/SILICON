@@ -55,6 +55,18 @@ public:
   void             simulate(Simulator& sim) override {}
 };
 
+class DefaultedInputTestComponent : public Component {
+public:
+  DefaultedInputTestComponent() : Component({Bus{Wire_ptr{}}}, {})
+  {
+    defineUnconnectedInputDefault(0, State::HIGH);
+  }
+
+  [[nodiscard]] State readInput() const { return inputState(0); }
+  std::string_view   typeName() const override { return "DefaultedInputTest"; }
+  void               simulate(Simulator&) override {}
+};
+
 class CountingNotGate : public NotGate {
 public:
   using NotGate::NotGate;
@@ -715,6 +727,12 @@ TEST(FlipFlopTest, UnconnectedAsyncControlsDefaultInactive)
 
   auto flipFlop = std::make_shared<DFlipFlop>(d, clock, Wire_ptr{}, Wire_ptr{}, q, notQ);
   flipFlop->setProperty("propagationDelay", 0);
+  EXPECT_EQ(flipFlop->unconnectedInputDefault(
+                std::to_underlying(DFlipFlop::Inputs::Clear)),
+            State::LOW);
+  EXPECT_EQ(flipFlop->unconnectedInputDefault(
+                std::to_underlying(DFlipFlop::Inputs::Preset)),
+            State::LOW);
 
   auto      circuit = std::make_shared<Circuit>(Component_set{flipFlop});
   Simulator simulator(circuit);
@@ -1517,6 +1535,17 @@ TEST(ComponentTest, SetAndGetIntProperty)
   c->setProperty("value", 20);
   prop = c->getProperty("value");
   EXPECT_EQ(std::get<int>(*prop), 20);
+}
+
+TEST(ComponentTest, UnconnectedInputMayDeclareDefaultState)
+{
+  DefaultedInputTestComponent component;
+  EXPECT_EQ(component.unconnectedInputDefault(0), State::HIGH);
+  EXPECT_EQ(component.readInput(), State::HIGH);
+
+  auto low = std::make_shared<Wire>(State::LOW);
+  component.setInput(0, Bus{low});
+  EXPECT_EQ(component.readInput(), State::LOW);
 }
 
 TEST(ComponentTest, SetAndGetIntPropertyTemplated)
