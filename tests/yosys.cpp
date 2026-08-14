@@ -1269,6 +1269,24 @@ TEST(YosysToolTest, ImportsCombinationalVerilogAndFlattensHelpers)
                std::runtime_error);
 }
 
+TEST(YosysToolTest, ImportsZeroExtendedOutputAsUnsignedExtender)
+{
+  constexpr std::string_view source = R"(
+    module a(output [7:0] bus_out, input in);
+      assign bus_out = { 7'h00, in };
+    endmodule
+  )";
+
+  const Circuit circuit  = SILICON::yosys::importVerilog(source, "a");
+  const auto    extender = findComponent<Extender>(circuit);
+  ASSERT_TRUE(extender);
+  EXPECT_EQ(extender->getPropertyValue<int>("inSize"), 1);
+  EXPECT_EQ(extender->getPropertyValue<int>("outSize"), 8);
+  EXPECT_EQ(extender->getPropertyValue<std::string>("mode"),
+            std::string(Extender::UnsignedMode));
+  EXPECT_FALSE(findComponent<ConstantComponent>(circuit));
+}
+
 TEST(YosysToolTest, LowersPriorityMuxCellsBeforeImport)
 {
   constexpr std::string_view source = R"(

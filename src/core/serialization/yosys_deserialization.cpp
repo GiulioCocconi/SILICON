@@ -477,11 +477,9 @@ namespace {
         if (direction != "input" && direction != "output")
           fail(context, std::format("invalid port direction '{}'", direction));
 
-        const Bus bus = readBus(bitsJson,
-                                direction == "input" ? ConnectionRole::Driver
-                                                     : ConnectionRole::Consumer,
-                                std::format("{}.bits", context));
         if (direction == "input") {
+          const Bus bus = readBus(bitsJson, ConnectionRole::Driver,
+                                  std::format("{}.bits", context));
           if (bus.size() == 1)
             components.push_back(std::make_shared<DummyInputComponent>(bus, name));
           else
@@ -489,6 +487,40 @@ namespace {
         } else {
           for (const auto& bit : bitsJson)
             boundaryOutputSignals.insert(bit.dump());
+
+          // Yosys flattens a zero-extension assignment into a cell-free output
+          // connection whose most-significant bits are literal zeroes. Restore the
+          // word-level component when the remaining least-significant bits are all
+          // signals; mixed concatenations keep using the generic connection path.
+          Bus         bus;
+          std::size_t inputWidth = bitsJson.size();
+          while (inputWidth > 0 && bitsJson[inputWidth - 1].is_string()
+                 && bitsJson[inputWidth - 1].get_ref<const std::string&>() == "0") {
+            --inputWidth;
+          }
+
+          const bool isUnsignedExtension =
+              inputWidth > 0 && inputWidth < bitsJson.size()
+              && std::ranges::all_of(
+                  bitsJson.begin(), bitsJson.begin() + inputWidth,
+                  [](const Json& bit) {
+                    return bit.is_number_integer() || bit.is_number_unsigned();
+                  });
+          if (isUnsignedExtension) {
+            Json inputBits = Json::array();
+            for (std::size_t bit = 0; bit < inputWidth; ++bit)
+              inputBits.push_back(bitsJson[bit]);
+
+            const Bus input = readBus(inputBits, ConnectionRole::Consumer,
+                                      std::format("{}.bits", context));
+            bus             = Bus(static_cast<unsigned short>(bitsJson.size()));
+            components.push_back(std::make_shared<Extender>(
+                input, bus, std::string(Extender::UnsignedMode)));
+          } else {
+            bus = readBus(bitsJson, ConnectionRole::Consumer,
+                          std::format("{}.bits", context));
+          }
+
           if (bus.size() == 1)
             components.push_back(std::make_shared<DummyOutputComponent>(bus, name));
           else
