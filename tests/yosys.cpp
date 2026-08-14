@@ -680,9 +680,13 @@ TEST(YosysTest, ImportsGeneralCombinationalNetlistWithConstants)
   EXPECT_EQ(imported.getName(), "logic_top");
   EXPECT_EQ(
       componentTypes(imported),
-      (std::multiset<std::string>{"AndGate", "ConstantComponent", "ConstantComponent",
+      (std::multiset<std::string>{"AndGate", "ConstantComponent",
                                   "DummyBusInputComponent", "DummyBusOutputComponent",
                                   "NotGate", "NotGate"}));
+  auto importedConstant = findComponent<ConstantComponent>(imported);
+  ASSERT_TRUE(importedConstant);
+  EXPECT_EQ(importedConstant->getPropertyValue<int>("size"), 2);
+  EXPECT_EQ(importedConstant->getPropertyValue<std::string>("value"), "01");
 
   imported.setName("top");
   auto registry = ComponentRegistry::empty();

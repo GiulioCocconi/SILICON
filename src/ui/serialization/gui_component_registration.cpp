@@ -71,6 +71,9 @@ void registerAllGUIComponents(GUIComponentFactory& factory)
   reg(std::string(JKFlipFlop::Type),
       [](QGraphicsItem* p) { return std::make_unique<GraphicalJKFlipFlop>(p); });
 
+  reg(std::string(ConstantComponent::Type),
+      [](QGraphicsItem* p) { return std::make_unique<GraphicalConstant>(p); });
+
   regMapped(std::string(GraphicalInput::ComponentType),
             std::string(DummyInputComponent::Type),
             [](QGraphicsItem* p) { return std::make_unique<GraphicalInput>(p); });

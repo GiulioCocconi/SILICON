@@ -304,6 +304,7 @@ namespace {
     std::string                                  moduleName;
     std::map<std::uint64_t, Wire_ptr>            signals;
     std::map<std::string, Wire_ptr, std::less<>> constants;
+    std::map<std::string, Bus, std::less<>>      constantBuses;
     std::set<std::uint64_t>                      drivenSignals;
     std::set<std::string, std::less<>>           boundaryOutputSignals;
     std::vector<Component_ptr>                   components;
@@ -394,6 +395,31 @@ namespace {
       return wire;
     }
 
+    [[nodiscard]] Bus constantBus(const Json& bits, const std::string_view context)
+    {
+      std::string value;
+      value.reserve(bits.size());
+      for (std::size_t bit = bits.size(); bit > 0; --bit) {
+        const auto& digitJson = bits[bit - 1];
+        if (!digitJson.is_string())
+          fail(context, "expected a fully literal bus");
+        const auto& digit = digitJson.get_ref<const std::string&>();
+        if (digit == "z")
+          fail(context, "high-impedance 'z' has no Silicon equivalent");
+        if (digit != "0" && digit != "1" && digit != "x")
+          fail(context, std::format("unsupported signal literal '{}'", digit));
+        value += digit;
+      }
+
+      auto [it, inserted] = constantBuses.try_emplace(value);
+      if (inserted) {
+        it->second = Bus(static_cast<unsigned short>(bits.size()));
+        components.push_back(
+            std::make_shared<ConstantComponent>(it->second, value));
+      }
+      return it->second;
+    }
+
     [[nodiscard]] Bus
     readBus(const Json& bits, const ConnectionRole role, const std::string_view context,
             const std::optional<std::size_t> expectedWidth = std::nullopt)
@@ -403,6 +429,12 @@ namespace {
       if (expectedWidth && bits.size() != *expectedWidth)
         fail(context, std::format("expected {} bit{}", *expectedWidth,
                                   *expectedWidth == 1 ? "" : "s"));
+
+      const bool fullyLiteralConsumer =
+          role == ConnectionRole::Consumer && bits.size() > 1
+          && std::ranges::all_of(bits, [](const Json& bit) { return bit.is_string(); });
+      if (fullyLiteralConsumer)
+        return constantBus(bits, context);
 
       std::vector<Wire_ptr> wires;
       wires.reserve(bits.size());

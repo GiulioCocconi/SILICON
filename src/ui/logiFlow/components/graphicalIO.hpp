@@ -39,6 +39,25 @@ namespace ui {
 using namespace SILICON::core;
 
 /**
+ * @class GraphicalConstant
+ * @brief Displays a fixed-width value produced by an imported HDL netlist.
+ */
+class GraphicalConstant : public GraphicalLogicComponent {
+  Q_OBJECT
+public:
+  explicit GraphicalConstant(QGraphicsItem* parent = nullptr);
+
+  int type() const override { return SiliconTypes::CONSTANT; }
+
+  void setComponent(const Component_ptr& component) override;
+
+private:
+  void setupCallbacks();
+  void updateLayout();
+  void updateLayout(std::string_view value);
+};
+
+/**
  * @class GraphicalIO
  * @brief Abstract base class for all graphical Input and Output components.
  */
