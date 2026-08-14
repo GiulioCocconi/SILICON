@@ -46,6 +46,8 @@ constexpr int              BusIoPaddingX     = DiagramScene::GRID_SIZE;
 constexpr int              BusIoValueTextGap = 8;
 constexpr int              MaxEditableBus = std::numeric_limits<unsigned int>::digits - 1;
 constexpr int              IoPortExtension         = 2 * DiagramScene::GRID_SIZE;
+constexpr int              ConstantSize            = 4 * DiagramScene::GRID_SIZE;
+constexpr int              ConstantPortExtension   = 2 * DiagramScene::GRID_SIZE;
 constexpr std::string_view PortOrientationProperty = "portOrientation";
 constexpr std::string_view PortOrientationUp       = "UP";
 constexpr std::string_view PortOrientationDown     = "DOWN";
@@ -215,6 +217,62 @@ private:
   int     cachedWidthTextWidth = 0;
 };
 
+class ConstantShape : public QGraphicsItem {
+public:
+  QRectF boundingRect() const override
+  {
+    return {0, 0, static_cast<qreal>(cachedWidth), static_cast<qreal>(ConstantSize)};
+  }
+
+  void setValue(QString newValue)
+  {
+    if (value == newValue)
+      return;
+    prepareGeometryChange();
+    value = std::move(newValue);
+    const QString label = displayValue();
+    const int contentWidth = QFontMetrics(GraphicalIO::UI_FONT).horizontalAdvance(label)
+                             + 2 * DiagramScene::GRID_SIZE;
+    cachedWidth = std::max(
+        ConstantSize,
+        ((contentWidth + 2 * DiagramScene::GRID_SIZE - 1)
+         / (2 * DiagramScene::GRID_SIZE))
+            * (2 * DiagramScene::GRID_SIZE));
+    update();
+  }
+
+  void paint(QPainter* painter, const QStyleOptionGraphicsItem* /*option*/,
+             QWidget* /*widget*/) override
+  {
+    const QColor ink = ThemeEngine::getColor("SILICON_INK");
+
+    painter->setRenderHint(QPainter::Antialiasing, false);
+    painter->setPen(QPen(ink, 3));
+    painter->setBrush(ThemeEngine::getColor("SILICON_INTERNAL"));
+    painter->drawRect(boundingRect().adjusted(1.5, 1.5, -1.5, -1.5));
+
+    painter->setPen(ink);
+    painter->setFont(GraphicalIO::UI_FONT);
+    painter->drawText(boundingRect(), Qt::AlignCenter, displayValue());
+  }
+
+private:
+  [[nodiscard]] QString displayValue() const
+  {
+    return (value.size() > 1 ? QStringLiteral("0b") : QString()) + value.toUpper();
+  }
+
+  QString value = QStringLiteral("0");
+  int     cachedWidth = ConstantSize;
+};
+
+ConstantShape* getConstantShape(QGraphicsItem* itemShape, const char* context)
+{
+  auto* shape = dynamic_cast<ConstantShape*>(itemShape);
+  Q_ASSERT_X(shape != nullptr, context, "Constant item is missing its ConstantShape");
+  return shape;
+}
+
 BusIoShape* getBusIoShape(QGraphicsItem* itemShape, const char* context)
 {
   auto* shape = dynamic_cast<BusIoShape*>(itemShape);
@@ -290,6 +348,80 @@ std::string_view portOrientationName(const PortSide side)
 }
 
 }  // namespace
+
+// --- Constant -------------------------------------------------------------------------
+
+GraphicalConstant::GraphicalConstant(QGraphicsItem* parent)
+  : GraphicalLogicComponent(
+        std::make_shared<ConstantComponent>(std::make_shared<Wire>(), "0"),
+        new ConstantShape(), parent)
+{
+  isEditable = true;
+  setupCallbacks();
+  updateLayout();
+}
+
+void GraphicalConstant::setupCallbacks()
+{
+  if (!associatedComponent)
+    return;
+
+  QPointer<GraphicalConstant> safeThis(this);
+  std::weak_ptr<Component>    boundComponent = associatedComponent;
+  associatedComponent->setPropertyCallback(
+      "value", [safeThis, boundComponent](const PropertyValue& value) {
+        auto component = boundComponent.lock();
+        auto* constant = dynamic_cast<ConstantComponent*>(component.get());
+        const auto applied =
+            constant ? constant->setValue(std::get<std::string>(value))
+                     : std::get<std::string>(value);
+        if (safeThis && safeThis->getComponent() == component)
+          safeThis->updateLayout(applied);
+        return applied;
+      });
+
+  associatedComponent->setPropertyCallback(
+      "size", [safeThis, boundComponent](const PropertyValue& value) {
+        auto component = boundComponent.lock();
+        auto* constant = dynamic_cast<ConstantComponent*>(component.get());
+        const int applied =
+            constant ? constant->setSize(std::get<int>(value)) : std::get<int>(value);
+        if (safeThis && safeThis->getComponent() == component)
+          safeThis->updateLayout();
+        return applied;
+      });
+}
+
+void GraphicalConstant::updateLayout()
+{
+  if (!associatedComponent)
+    return;
+
+  const auto value = associatedComponent->getPropertyValue<std::string>("value")
+                         .value_or("x");
+  updateLayout(value);
+}
+
+void GraphicalConstant::updateLayout(const std::string_view value)
+{
+  auto* shape = getConstantShape(getItemShape(), "GraphicalConstant::updateLayout");
+  if (!shape)
+    return;
+
+  prepareGeometryChange();
+  shape->setValue(QString::fromUtf8(value.data(), static_cast<qsizetype>(value.size())));
+  const QRectF bounds = shape->boundingRect();
+  setPorts({}, {PortPair{"o", QPoint(static_cast<int>(bounds.right())
+                                         + ConstantPortExtension,
+                                     static_cast<int>(bounds.center().y()))}});
+}
+
+void GraphicalConstant::setComponent(const Component_ptr& component)
+{
+  GraphicalLogicComponent::setComponent(component);
+  setupCallbacks();
+  updateLayout();
+}
 
 GraphicalIO::GraphicalIO(ItemCategory category, const Component_ptr& component,
                          QGraphicsItem* shape, QGraphicsItem* parent, bool scanShape)

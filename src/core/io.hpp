@@ -32,6 +32,10 @@ public:
 
   ConstantComponent();
   ConstantComponent(Wire_ptr output, std::string value);
+  ConstantComponent(Bus output, std::string value);
+
+  int         setSize(int newSize);
+  std::string setValue(std::string value);
 
   std::string_view  typeName() const override { return Type; }
   ComponentMetadata metadata() const override

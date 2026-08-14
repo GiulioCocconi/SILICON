@@ -19,6 +19,7 @@
 #include "tests.hpp"
 #include <core/circuit.hpp>
 #include <core/flipflops.hpp>
+#include <core/io.hpp>
 #include <core/simulator.hpp>
 
 #include <limits>
@@ -100,6 +101,23 @@ public:
   std::vector<Record> records;
 };
 }  // namespace
+
+TEST(ConstantComponentTest, DrivesAndResizesBinaryBusValue)
+{
+  Bus  output(4);
+  auto constant = std::make_shared<ConstantComponent>(output, "10x1");
+  auto circuit  = std::make_shared<Circuit>(Component_set{constant}, false);
+
+  Simulator simulator(circuit);
+  ASSERT_EQ(simulator.runUntilIdle(), Simulator::RunResult::Completed);
+  expectBusStates(output, {State::HIGH, State::UNKNOWN, State::LOW, State::HIGH});
+
+  constant->setProperty("size", 6);
+  EXPECT_EQ(constant->outputBuses()[0].size(), 6);
+  EXPECT_EQ(constant->getPropertyValue<std::string>("value"), "0010x1");
+  EXPECT_THROW(constant->setProperty("value", std::string("10q1")),
+               std::invalid_argument);
+}
 
 TEST(LogicTest, And)
 {

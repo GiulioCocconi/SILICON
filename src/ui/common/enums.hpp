@@ -84,6 +84,7 @@ enum SiliconTypes {
   SINGLE_OUTPUT,
   BUS_INPUT,
   BUS_OUTPUT,
+  CONSTANT,
 
   /* Components */
   WIRE_SPLITTER,

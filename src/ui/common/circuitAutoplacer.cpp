@@ -31,6 +31,7 @@
 #include <numeric>
 #include <optional>
 #include <ranges>
+#include <stdexcept>
 #include <tuple>
 #include <unordered_map>
 #include <utility>
@@ -1138,11 +1139,13 @@ CircuitAutoplacer::compute(const Circuit&                            circuit,
   }
 
   // Constraint failures are search feedback, not a valid final result. If the graph
-  // candidates all choose the same congested corridors, keep widening a deterministic
-  // base placement and rotate the order in which libavoid fixes complete nets. The
-  // drawing plane is unbounded, so this eventually supplies a separate lane for every
-  // finite set of nets.
-  for (int routingAttempt = 0; !bestScore; ++routingAttempt) {
+  // candidates all choose the same congested corridors, widen a deterministic base
+  // placement and rotate the order in which libavoid fixes complete nets. Keep this
+  // fallback bounded because a structurally unrepresentable topology cannot be fixed
+  // by adding space.
+  constexpr int MaxFallbackRoutingAttempts = 64;
+  for (int routingAttempt = 0;
+       !bestScore && routingAttempt < MaxFallbackRoutingAttempts; ++routingAttempt) {
     if (options.isCancelled && options.isCancelled())
       break;
 
@@ -1158,6 +1161,11 @@ CircuitAutoplacer::compute(const Circuit&                            circuit,
 
     if (options.progress)
       options.progress(candidateCount, candidateCount);
+  }
+
+  if (!bestScore && !(options.isCancelled && options.isCancelled())) {
+    throw std::runtime_error(
+        "Circuit autoplacement could not produce a non-intersecting route");
   }
 
   if (bestScore && !(options.isCancelled && options.isCancelled())) {

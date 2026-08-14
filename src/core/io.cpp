@@ -51,42 +51,112 @@ namespace {
     return std::clamp(size, 1, MaxEditableBus);
   }
 
+  [[nodiscard]] std::string normalizedConstantValue(std::string value,
+                                                    const std::size_t width)
+  {
+    if (value.starts_with("0b") || value.starts_with("0B"))
+      value.erase(0, 2);
+    if (value.empty())
+      throw std::invalid_argument("Constant value must not be empty");
+
+    std::ranges::transform(value, value.begin(), [](const char digit) {
+      return digit == 'X' ? 'x' : digit;
+    });
+    if (!std::ranges::all_of(value, [](const char digit) {
+          return digit == '0' || digit == '1' || digit == 'x';
+        })) {
+      throw std::invalid_argument(
+          "Constant value must contain only binary or unknown digits");
+    }
+
+    if (value.size() > width)
+      value.erase(0, value.size() - width);
+    if (value.size() < width) {
+      const char extension = value == "x" ? 'x' : '0';
+      value.insert(0, width - value.size(), extension);
+    }
+    return value;
+  }
+
 }  // namespace
 
 ConstantComponent::ConstantComponent()
 {
-  defineStringListProperty("value", "0", {"0", "1", "x"});
+  defineProperty("size", 1, [this](const PropertyValue& value) {
+    return setSize(std::get<int>(value));
+  });
+  defineProperty("value", "0", [this](const PropertyValue& value) {
+    return setValue(std::get<std::string>(value));
+  });
 }
 
 ConstantComponent::ConstantComponent(Wire_ptr output, std::string value)
+  : ConstantComponent(Bus{std::move(output)}, std::move(value))
+{
+}
+
+ConstantComponent::ConstantComponent(Bus output, std::string value)
   : ConstantComponent()
 {
-  outputs = {{std::move(output)}};
+  if (output.size() == 0)
+    throw std::invalid_argument("Constant output bus must not be empty");
+  outputs = {std::move(output)};
+  setProperty("size", static_cast<int>(outputs[0].size()));
   setProperty("value", std::move(value));
+}
+
+int ConstantComponent::setSize(const int newSize)
+{
+  const int normalizedSize = std::clamp(
+      newSize, 1, static_cast<int>(std::numeric_limits<unsigned short>::max()));
+  if (!outputs.empty()) {
+    outputs[0].setSize(static_cast<unsigned short>(normalizedSize));
+    notifyIOListeners();
+  }
+  if (const auto value = getPropertyValue<std::string>("value"))
+    setProperty("value", *value);
+  return normalizedSize;
+}
+
+std::string ConstantComponent::setValue(std::string value)
+{
+  const std::size_t width = outputs.empty()
+                                ? static_cast<std::size_t>(
+                                      getPropertyValue<int>("size").value_or(1))
+                                : outputs[0].size();
+  return normalizedConstantValue(std::move(value), width);
 }
 
 void ConstantComponent::simulate(SILICON::simulation::Simulator& sim)
 {
-  if (outputs.empty() || outputs[0].size() != 1)
+  if (outputs.empty())
     return;
 
-  const auto value = getPropertyValue<std::string>("value").value_or("x");
-  const auto state = value == "0"   ? State::LOW
-                     : value == "1" ? State::HIGH
-                                    : State::UNKNOWN;
-  sim.updateWire(outputs[0][0], state, 0, weak_from_this());
+  const auto value = normalizedConstantValue(
+      getPropertyValue<std::string>("value").value_or("x"), outputs[0].size());
+  for (std::size_t bit = 0; bit < outputs[0].size(); ++bit) {
+    const char digit = value[value.size() - bit - 1];
+    const auto state = digit == '0'   ? State::LOW
+                       : digit == '1' ? State::HIGH
+                                      : State::UNKNOWN;
+    sim.updateWire(outputs[0][static_cast<unsigned short>(bit)], state, 0,
+                   weak_from_this());
+  }
 }
 
 void ConstantComponent::serializeYosys(
     SILICON::yosys::SerializationContext& context) const
 {
-  if (outputs.empty() || outputs[0].size() != 1)
+  if (outputs.empty())
     throw std::runtime_error("Cannot export a malformed constant component");
 
-  const auto value = getPropertyValue<std::string>("value").value_or("x");
+  const auto value = normalizedConstantValue(
+      getPropertyValue<std::string>("value").value_or("x"), outputs[0].size());
+  SILICON::yosys::Json bits = SILICON::yosys::Json::array();
+  for (auto digit = value.rbegin(); digit != value.rend(); ++digit)
+    bits.push_back(std::string(1, *digit));
   SILICON::yosys::detail::emitUnary(context, "constant", "$pos",
-                                    SILICON::yosys::Json::array({value}),
-                                    context.bits(outputs[0]));
+                                    std::move(bits), context.bits(outputs[0]));
 }
 
 BoundaryIoComponent::BoundaryIoComponent(std::vector<Bus> inputs,
