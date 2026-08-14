@@ -32,6 +32,7 @@
 
 namespace SILICON::core {
 class Circuit;
+class Component;
 }
 
 namespace SILICON::yosys {
@@ -102,6 +103,15 @@ public:
 
   /** @brief Convert a Silicon bus to a Yosys least-significant-bit-first vector. */
   [[nodiscard]] Json bits(const core::Bus& bus, std::string_view nullValue = "x") const;
+
+  /**
+   * @brief Encode a component input, applying its declared unconnected-input default.
+   * @param component Component that owns the input
+   * @param index Input bus index
+   * @param expectedWidth Required bus width
+   */
+  [[nodiscard]] Json inputBits(const core::Component& component, std::size_t index,
+                               std::size_t expectedWidth) const;
 
   /** @brief Allocate module-local temporary signal bits. */
   [[nodiscard]] Json allocateBits(std::size_t width);

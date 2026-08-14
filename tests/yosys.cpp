@@ -82,6 +82,31 @@ private:
   Logger::SinkHandle      handle;
 };
 
+class DefaultedInputYosysComponent : public Component {
+public:
+  DefaultedInputYosysComponent() : Component({Bus{Wire_ptr{}}}, {Bus(1)})
+  {
+    defineUnconnectedInputDefault(0, State::HIGH);
+  }
+
+  std::string_view typeName() const override { return "DefaultedInputYosys"; }
+  void             simulate(Simulator&) override {}
+
+  void serializeYosys(SILICON::yosys::SerializationContext& context) const override
+  {
+    using SILICON::yosys::Json;
+    using SILICON::yosys::SerializationContext;
+    context.addCell(
+        "default_input", "$pos",
+        Json{{"A_SIGNED", SerializationContext::parameter(0, 1)},
+             {"A_WIDTH", SerializationContext::parameter(1)},
+             {"Y_WIDTH", SerializationContext::parameter(1)}},
+        Json{{"A", "input"}, {"Y", "output"}},
+        Json{{"A", context.inputBits(*this, 0, 1)},
+             {"Y", context.bits(outputBuses().at(0))}});
+  }
+};
+
 #if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
 class PathEnvironmentGuard {
 public:
@@ -358,6 +383,27 @@ TEST(YosysTest, LowersCombinationalComponents)
             std::multiset<std::string>{"$pos"});
   EXPECT_EQ(cellTypes(onlyModule(exportComponent(merger))),
             std::multiset<std::string>{"$pos"});
+}
+
+TEST(YosysTest, ExportsUnusedAdderCarryOutput)
+{
+  auto adder =
+      std::make_shared<AdderNBits>(std::array<Bus, 2>{Bus(4), Bus(4)}, Bus(4), nullptr);
+
+  const auto  exported = exportComponent(adder);
+  const auto& carry    = onlyCell(exported).at("connections").at("COUT");
+  ASSERT_EQ(carry.size(), 1);
+  EXPECT_TRUE(carry.at(0).is_number_integer());
+  EXPECT_NO_THROW((void)SILICON::yosys::deserialize(exported.dump()));
+}
+
+TEST(YosysTest, EncodesDeclaredUnconnectedInputDefault)
+{
+  const auto exported = exportComponent(std::make_shared<DefaultedInputYosysComponent>());
+  const auto& input    = onlyCell(exported).at("connections").at("A");
+  ASSERT_EQ(input.size(), 1);
+  EXPECT_EQ(input.at(0), "1");
+  EXPECT_NO_THROW((void)SILICON::yosys::deserialize(exported.dump()));
 }
 
 TEST(YosysTest, ExtenderLowersToPosAndRoundTripsWithItsModeAndWidths)
@@ -1663,6 +1709,23 @@ TEST(YosysToolTest, ExportsAdderAsBehavioralExpression)
   const auto    restoredAdder = findComponent<AdderNBits>(restored);
   ASSERT_TRUE(restoredAdder);
   EXPECT_EQ(restoredAdder->getPropertyValue<int>("size"), 4);
+}
+
+TEST(YosysToolTest, ExportsAdderWithUnusedCarryOutput)
+{
+  Bus     a(4);
+  Bus     b(4);
+  Bus     sum(4);
+  auto    adder = std::make_shared<AdderNBits>(std::array<Bus, 2>{a, b}, sum, nullptr);
+  Circuit circuit(Component_set{adder, std::make_shared<DummyBusInputComponent>(a, "a"),
+                                std::make_shared<DummyBusInputComponent>(b, "b"),
+                                std::make_shared<DummyBusOutputComponent>(sum, "sum")},
+                  false);
+  circuit.setName("top");
+
+  const auto verilog = SILICON::yosys::exportVerilog(circuit);
+  EXPECT_NE(verilog.find(" + "), std::string::npos);
+  EXPECT_NO_THROW((void)SILICON::yosys::importVerilog(verilog, "top"));
 }
 
 TEST(YosysToolTest, TechnologyCellsExportAsBehavioralVerilog)

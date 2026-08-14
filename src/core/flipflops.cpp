@@ -44,6 +44,8 @@ FlipFlop::FlipFlop(const unsigned int clockIndex, const unsigned int clearIndex,
                    const unsigned int presetIndex)
   : clockIndex(clockIndex), clearIndex(clearIndex), presetIndex(presetIndex)
 {
+  defineUnconnectedInputDefault(clearIndex, State::LOW);
+  defineUnconnectedInputDefault(presetIndex, State::LOW);
   initializeProperties();
 }
 
@@ -67,10 +69,8 @@ void FlipFlop::simulate(SILICON::simulation::Simulator&     sim,
                         const SILICON::simulation::Context& context)
 {
   const State clock = inputState(clockIndex);
-  const State clear =
-      SILICON::wireUtils::optionalControlStateOrInactive(inputs, clearIndex, State::LOW);
-  const State preset =
-      SILICON::wireUtils::optionalControlStateOrInactive(inputs, presetIndex, State::LOW);
+  const State clear  = inputState(clearIndex);
+  const State preset = inputState(presetIndex);
   const Wire_ptr clockWire = inputWire(clockIndex);
 
   const auto clockEdge     = SILICON::simulation::Simulator::edgeType(context, clockWire);
@@ -121,28 +121,6 @@ void FlipFlop::simulate(SILICON::simulation::Simulator&     sim,
   }
 
   driveOutput(sim, State::UNKNOWN);
-}
-
-void FlipFlop::clearWires()
-{
-  auto disconnectedBus = [](const Bus& bus) {
-    return Bus(std::vector<Wire_ptr>(bus.size()));
-  };
-
-  for (size_t index = 0; index < outputs.size(); ++index)
-    replaceBus(outputs, static_cast<unsigned int>(index), disconnectedBus(outputs[index]),
-               false);
-
-  for (size_t index = 0; index < inputs.size(); ++index)
-    replaceBus(inputs, static_cast<unsigned int>(index), disconnectedBus(inputs[index]),
-               true);
-
-  if (clearIndex < inputs.size())
-    replaceBus(inputs, clearIndex, Bus{Wire_ptr{}}, true);
-  if (presetIndex < inputs.size())
-    replaceBus(inputs, presetIndex, Bus{Wire_ptr{}}, true);
-
-  notifyIOListeners();
 }
 
 void FlipFlop::initializeProperties()

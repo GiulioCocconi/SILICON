@@ -62,15 +62,4 @@ namespace SILICON::wireUtils {
  */
 [[nodiscard]] core::State normalizeBinaryOrUnknown(core::State state);
 
-/**
- * @brief Reads an optional control input, defaulting to inactive when unconnected.
- * @param inputs Component input buses.
- * @param index Input bus index.
- * @param inactiveState State returned when the control pin is unconnected.
- * @return Current wire state, or inactiveState when the pin is unconnected.
- */
-[[nodiscard]] core::State
-optionalControlStateOrInactive(const std::vector<core::Bus>& inputs, unsigned int index,
-                               core::State inactiveState);
-
 }  // namespace SILICON::wireUtils

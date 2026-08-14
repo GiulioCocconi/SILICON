@@ -81,23 +81,6 @@ public:
 
   [[nodiscard]] bool usesStagedSequentialOutputs() const override { return true; }
 
-  /**
-   * @brief Clears wire connections while keeping optional async controls unconnected.
-   *
-   * @details Graphical simulation rebuilds component wiring by clearing every
-   * component and then reconnecting only ports that touch a graphical wire. Generic
-   * clearing replaces each bus slot with a placeholder UNKNOWN wire, which is correct
-   * for required signal pins because an unwired input is unknown.
-   *
-   * CLR and PRE are optional active-high controls. When they are not connected, they
-   * must remain null rather than become UNKNOWN placeholders so
-   * optionalControlStateOrInactive() reads them as inactive LOW.
-   *
-   * @note Connected CLR/PRE ports are still replaced later by the graphical wiring
-   * pass, so this only defines the default state for unconnected async controls.
-   */
-  void clearWires() override;
-
 protected:
   /**
    * @brief Returns the currently stored state.

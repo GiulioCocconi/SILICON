@@ -284,6 +284,31 @@ Json SerializationContext::bits(const Bus& bus, const std::string_view nullValue
   return result;
 }
 
+Json SerializationContext::inputBits(const Component& component, const std::size_t index,
+                                     const std::size_t expectedWidth) const
+{
+  const auto& buses = component.inputBuses();
+  if (index >= buses.size() || buses[index].size() != expectedWidth) {
+    throw std::runtime_error(std::format(
+        "Cannot export '{}': input bus {} must be a {}-bit bus", component.typeName(),
+        index, expectedWidth));
+  }
+
+  const auto defaultState = component.unconnectedInputDefault(index);
+  if (!defaultState && std::ranges::contains(buses[index], nullptr)) {
+    throw std::runtime_error(std::format(
+        "Cannot export '{}': input bus {} must be connected", component.typeName(),
+        index));
+  }
+
+  const std::string_view defaultBit =
+      !defaultState                 ? "x"
+      : *defaultState == State::LOW ? "0"
+      : *defaultState == State::HIGH ? "1"
+                                     : "x";
+  return bits(buses[index], defaultBit);
+}
+
 Json SerializationContext::allocateBits(const std::size_t width)
 {
   Json result = Json::array();
@@ -337,6 +362,20 @@ void SerializationContext::addCell(const std::string_view suffix,
         name = std::move(candidate);
         break;
       }
+    }
+  }
+
+  // Yosys input connections may contain constants such as "x", but output
+  // connections must be signals. Silicon represents an unused pin with a null wire,
+  // which bits() encodes as "x" without knowing the port direction. Give every such
+  // output bit an anonymous module-local signal so disconnected outputs remain valid
+  // without becoming visible circuit ports.
+  for (const auto& [port, direction] : portDirections.items()) {
+    if (direction != "output" || !connections.contains(port))
+      continue;
+    for (auto& bit : connections.at(port)) {
+      if (bit.is_string())
+        bit = impl.nextSignal++;
     }
   }
 
