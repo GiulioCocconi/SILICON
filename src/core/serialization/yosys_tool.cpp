@@ -619,6 +619,7 @@ Circuit importVerilog(const std::string_view source, const std::string_view topM
                               "read_verilog {}\n"
                               "hierarchy -check -top {}\n"
                               "proc\n"
+                              "muxpack\n"
                               "{}"
                               "pmuxtree\n"
                               "flatten\n"

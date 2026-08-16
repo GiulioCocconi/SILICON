@@ -61,7 +61,7 @@ std::optional<DecodedChoice> decodedChoice(RTLIL::Cell* cell, SigMap& sigmap)
 
 struct SiliconPmuxBmuxPass : public Pass {
   SiliconPmuxBmuxPass()
-    : Pass("silicon_pmux_bmux", "raise exhaustive decoded $pmux cells to $bmux")
+    : Pass("silicon_pmux_bmux", "raise decoded $pmux cells to $bmux")
   {
   }
 
@@ -70,9 +70,10 @@ struct SiliconPmuxBmuxPass : public Pass {
     log("\n");
     log("    silicon_pmux_bmux [selection]\n");
     log("\n");
-    log("Replace exhaustive $pmux cells whose select inputs compare one binary\n");
-    log("selector against every possible value with an equivalent $bmux.\n");
-    log("Sparse and priority muxes are left unchanged.\n");
+    log("Replace $pmux cells whose mutually-exclusive select inputs compare one\n");
+    log("binary selector against constant values with an equivalent $bmux. Sparse\n");
+    log("choices are filled from the $pmux default input. Priority muxes are left\n");
+    log("unchanged.\n");
     log("\n");
   }
 
@@ -97,9 +98,11 @@ struct SiliconPmuxBmuxPass : public Pass {
           continue;
 
         const int  width   = cell->getParam(ID::WIDTH).as_int();
+        const auto fallback = cell->getPort(ID::A);
         const auto data    = cell->getPort(ID::B);
         const auto choices = sigmap(cell->getPort(ID::S));
-        if (width <= 0 || choices.empty() || data.size() != width * choices.size())
+        if (width <= 0 || fallback.size() != width || choices.empty()
+            || data.size() != width * choices.size())
           continue;
 
         RTLIL::SigSpec              selector;
@@ -121,15 +124,14 @@ struct SiliconPmuxBmuxPass : public Pass {
           }
           selector = decoded->selector;
           if (lanes.empty())
-            lanes.resize(std::size_t{1} << selector.size());
+            lanes.assign(std::size_t{1} << selector.size(), fallback);
           if (decoded->value < 0 || decoded->value >= static_cast<int>(lanes.size())) {
             valid = false;
             break;
           }
           lanes[decoded->value] = data.extract(choice * width, width);
         }
-        if (!valid || choices.size() != static_cast<int>(lanes.size())
-            || seen_values.size() != lanes.size()) {
+        if (!valid) {
           continue;
         }
 
@@ -137,7 +139,7 @@ struct SiliconPmuxBmuxPass : public Pass {
         for (const auto& lane : lanes)
           packed_data.append(lane);
 
-        log("Raised exhaustive $pmux cell %s.%s to $bmux.\n", log_id(module),
+        log("Raised decoded $pmux cell %s.%s to $bmux.\n", log_id(module),
             log_id(cell));
         cell->type = ID($bmux);
         cell->setParam(ID::S_WIDTH, selector.size());
