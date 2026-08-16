@@ -286,6 +286,113 @@ namespace {
     return result;
   }
 
+  void compactOrderedFanIns(std::span<const RoutableConnection> connections,
+                            GraphLayout::PlacementMap&          placements)
+  {
+    struct OrderedSource {
+      GraphicalLogicComponent* component;
+      qreal                    targetCoordinate = 0.0;
+      qreal                    sourceCoordinate = 0.0;
+      std::size_t              connectionCount  = 0;
+    };
+    struct FanInGroup {
+      GraphicalLogicComponent*   target;
+      PortSide                   side;
+      std::vector<OrderedSource> sources;
+      std::size_t                connectionCount = 0;
+    };
+
+    constexpr std::array    portSides = {PortSide::LEFT, PortSide::RIGHT, PortSide::UP,
+                                         PortSide::DOWN};
+    std::vector<FanInGroup> groups;
+
+    for (GraphicalLogicComponent* target : orderedComponents(placements, false)) {
+      for (const PortSide side : portSides) {
+        std::vector<OrderedSource> sources;
+        std::size_t                connectionCount = 0;
+        for (const RoutableConnection& connection : connections) {
+          if (connection.target != target || connection.targetPort->getDirection() != side
+              || connection.source == target || !placements.contains(connection.source)
+              || hasCategory(connection.source, ItemCategory::IO))
+            continue;
+
+          ++connectionCount;
+          auto source =
+              std::ranges::find_if(sources, [&](const OrderedSource& candidate) {
+                return candidate.component == connection.source;
+              });
+          if (source == sources.end()) {
+            sources.push_back({.component = connection.source});
+            source = std::prev(sources.end());
+          }
+
+          const QPointF targetPort =
+              movedPortPosition(target, connection.targetPort, placements.at(target));
+          const QPointF sourcePort = movedPortPosition(
+              connection.source, connection.sourcePort, placements.at(connection.source));
+          source->targetCoordinate += side == PortSide::LEFT || side == PortSide::RIGHT
+                                          ? targetPort.y()
+                                          : targetPort.x();
+          source->sourceCoordinate += side == PortSide::LEFT || side == PortSide::RIGHT
+                                          ? sourcePort.y()
+                                          : sourcePort.x();
+          ++source->connectionCount;
+        }
+
+        // Four or more ordered terminals indicate a bus selector, decoder, or similar
+        // high-fan-in block. OGDF lays out plain graph edges and cannot otherwise know
+        // that the terminal order is visually meaningful.
+        if (connectionCount >= 4 && sources.size() >= 3)
+          groups.push_back({.target          = target,
+                            .side            = side,
+                            .sources         = std::move(sources),
+                            .connectionCount = connectionCount});
+      }
+    }
+
+    std::ranges::sort(groups, [](const FanInGroup& lhs, const FanInGroup& rhs) {
+      if (lhs.connectionCount != rhs.connectionCount)
+        return lhs.connectionCount > rhs.connectionCount;
+      return lhs.target->getUiId() < rhs.target->getUiId();
+    });
+
+    std::unordered_set<GraphicalLogicComponent*> alreadyOrdered;
+    for (FanInGroup& group : groups) {
+      std::erase_if(group.sources, [&](const OrderedSource& source) {
+        return alreadyOrdered.contains(source.component);
+      });
+      if (group.sources.size() < 3)
+        continue;
+
+      std::ranges::sort(
+          group.sources, [](const OrderedSource& lhs, const OrderedSource& rhs) {
+            const qreal lhsCoordinate =
+                lhs.targetCoordinate / static_cast<qreal>(lhs.connectionCount);
+            const qreal rhsCoordinate =
+                rhs.targetCoordinate / static_cast<qreal>(rhs.connectionCount);
+            if (lhsCoordinate != rhsCoordinate)
+              return lhsCoordinate < rhsCoordinate;
+            return lhs.component->getUiId() < rhs.component->getUiId();
+          });
+
+      const bool verticalOrder =
+          group.side == PortSide::LEFT || group.side == PortSide::RIGHT;
+      for (const OrderedSource& source : group.sources) {
+        QPointF&    position = placements.at(source.component);
+        const qreal targetCoordinate =
+            source.targetCoordinate / static_cast<qreal>(source.connectionCount);
+        const qreal sourceCoordinate =
+            source.sourceCoordinate / static_cast<qreal>(source.connectionCount);
+        if (verticalOrder)
+          position.ry() += targetCoordinate - sourceCoordinate;
+        else
+          position.rx() += targetCoordinate - sourceCoordinate;
+        position = DiagramScene::snapToGrid(position);
+        alreadyOrdered.insert(source.component);
+      }
+    }
+  }
+
   void stackSymmetricFeedbackPairs(std::span<const RoutableConnection> connections,
                                    GraphLayout::PlacementMap&          placements)
   {
@@ -763,18 +870,6 @@ namespace {
     return wires;
   }
 
-  bool distinctWiresIntersect(const std::span<const RoutedWire> wires)
-  {
-    for (std::size_t i = 0; i < wires.size(); ++i) {
-      for (std::size_t j = i + 1; j < wires.size(); ++j) {
-        if (wires[i].bus != wires[j].bus
-            && orthogonalRoutesIntersect(wires[i].points, wires[j].points))
-          return true;
-      }
-    }
-    return false;
-  }
-
   std::optional<CircuitAutoplacement>
   routePreparedCandidate(std::span<const RoutableConnection> connections,
                          GraphLayout::PlacementMap           placements,
@@ -800,8 +895,6 @@ namespace {
     if (!pendingNets)
       return std::nullopt;
     result.wires = buildWires(std::move(*pendingNets));
-    if (distinctWiresIntersect(result.wires))
-      return std::nullopt;
     return result;
   }
 
@@ -812,6 +905,8 @@ namespace {
                  const std::size_t                   routingOrder = 0)
   {
     stackSymmetricFeedbackPairs(connections, placements);
+    separateLogicComponents(placements);
+    compactOrderedFanIns(connections, placements);
     separateLogicComponents(placements);
     return routePreparedCandidate(connections, std::move(placements), options,
                                   routingOrder);
@@ -1144,12 +1239,29 @@ CircuitAutoplacer::compute(const Circuit&                            circuit,
   // fallback bounded because a structurally unrepresentable topology cannot be fixed
   // by adding space.
   constexpr int MaxFallbackRoutingAttempts = 64;
-  for (int routingAttempt = 0;
-       !bestScore && routingAttempt < MaxFallbackRoutingAttempts; ++routingAttempt) {
+  for (int routingAttempt = 0; !bestScore && routingAttempt < MaxFallbackRoutingAttempts;
+       ++routingAttempt) {
     if (options.isCancelled && options.isCancelled())
       break;
 
-    auto placements = GraphLayout::compute(circuit, components, primaryLayoutOptions);
+    // A non-interactive HDL import requests only one ranked candidate. Recomputing that
+    // same deterministic layered placement on every fallback attempt merely scales the
+    // same congested corridors and can never change their topology. Continue the normal
+    // candidate sequence here: try the other layered direction first, then deterministic
+    // force-directed seeds. Interactive placement also benefits by continuing after the
+    // candidates it has already examined instead of repeating them.
+    const int          fallbackCandidateIndex = candidateCount + routingAttempt;
+    GraphLayoutOptions fallbackLayoutOptions  = options.graphLayout;
+    if (fallbackCandidateIndex < static_cast<int>(layoutDirections.size())) {
+      fallbackLayoutOptions.algorithm = GraphLayoutAlgorithm::Layered;
+      fallbackLayoutOptions.direction =
+          layoutDirections[static_cast<std::size_t>(fallbackCandidateIndex)];
+    } else {
+      fallbackLayoutOptions.algorithm  = GraphLayoutAlgorithm::ForceDirected;
+      fallbackLayoutOptions.randomSeed = fallbackCandidateIndex;
+    }
+
+    auto placements = GraphLayout::compute(circuit, components, fallbackLayoutOptions);
     expandPlacements(placements, 1 + routingAttempt / 4);
     auto candidate =
         routeCandidate(resolvedConnections, std::move(placements), options,
@@ -1164,11 +1276,15 @@ CircuitAutoplacer::compute(const Circuit&                            circuit,
   }
 
   if (!bestScore && !(options.isCancelled && options.isCancelled())) {
-    throw std::runtime_error(
-        "Circuit autoplacement could not produce a non-intersecting route");
+    throw std::runtime_error("Circuit autoplacement could not produce a complete route");
   }
 
-  if (bestScore && !(options.isCancelled && options.isCancelled())) {
+  // The single-candidate path is used while materialising an HDL-backed circuit. Keep
+  // that conversion bounded: refinement reroutes several proposals per component and is
+  // intended for the explicit interactive "Auto place" command, which requests many
+  // candidates and exposes cancellation progress.
+  if (bestScore && candidateCount > 1
+      && !(options.isCancelled && options.isCancelled())) {
     best = refinePlacementWithRouting(resolvedConnections, std::move(best), options,
                                       static_cast<std::size_t>(candidateCount));
   }
