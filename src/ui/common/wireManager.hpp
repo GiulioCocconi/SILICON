@@ -73,8 +73,9 @@ public:
   }
 
   // Register an existing segment. If it has no GraphicalWire, a new one is
-  // created for it.
-  void addSegment(GraphicalWireSegment* segment);
+  // created for it. Authoritative deserialization can skip geometric topology
+  // inference so intentional crossings retain their serialized bus identities.
+  void addSegment(GraphicalWireSegment* segment, bool updateTopology = true);
 
   // Unregister a segment. If its GraphicalWire becomes empty, the wire is
   // removed.

@@ -285,8 +285,8 @@ void addVisualWires(QGraphicsScene& scene, WireManager& wireManager,
       wire = wireManager.createWire(1);
 
     scene.addItem(segment);
-    segment->setGraphicalWire(wire.get());
-    wireManager.addSegment(segment);
+    segment->setGraphicalWire(wire.get(), false);
+    wireManager.addSegment(segment, false);
     segment->setSelected(selectInserted);
   }
 }

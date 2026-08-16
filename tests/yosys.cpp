@@ -1372,7 +1372,7 @@ TEST(YosysToolTest, ImportsSequentialVerilog)
   EXPECT_TRUE(componentTypes(circuit).contains("DFlipFlop"));
 }
 
-TEST(YosysToolTest, RaisesCaseDecoderAndImportsItsMuxTree)
+TEST(YosysToolTest, FoldsSparseCaseIntoOneWideMultiplexer)
 {
   constexpr std::string_view source = R"(
     module top(
@@ -1393,8 +1393,9 @@ TEST(YosysToolTest, RaisesCaseDecoderAndImportsItsMuxTree)
   )";
 
   const Circuit circuit = SILICON::yosys::importVerilog(source, "top");
-  EXPECT_EQ(componentTypes(circuit).count("Decoder"), 1);
-  EXPECT_GT(componentTypes(circuit).count("Multiplexer"), 0);
+  EXPECT_EQ(componentTypes(circuit).count("Multiplexer"), 1);
+  EXPECT_EQ(componentTypes(circuit).count("Decoder"), 0);
+  EXPECT_EQ(componentTypes(circuit).count("OrGate"), 0);
 }
 
 TEST(YosysToolTest, FoldsExhaustiveCaseIntoOneWideMultiplexer)

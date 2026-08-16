@@ -313,10 +313,12 @@ public:
   GraphicalWire* getGraphicalWire() const { return graphicalWire; }
 
   /**
-   * @brief Sets the logical wire, propagating to siblings.
+   * @brief Sets the logical wire, optionally propagating to touching siblings.
    * @param graphicalWire The wire to set
+   * @param propagateToTouchingSegments Whether geometric contact should merge siblings
    */
-  void setGraphicalWire(GraphicalWire* graphicalWire);
+  void setGraphicalWire(GraphicalWire* graphicalWire,
+                        bool           propagateToTouchingSegments = true);
 
   /**
    * @brief Detaches from the logical wire without side effects.
