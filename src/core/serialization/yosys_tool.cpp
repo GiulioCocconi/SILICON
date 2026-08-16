@@ -625,8 +625,16 @@ Circuit importVerilog(const std::string_view source, const std::string_view topM
                               "flatten\n"
                               "delete t:$scopeinfo\n"
                               "opt\n"
-                              "simplemap t:$and t:$or t:$xor t:$not t:$logic_not "
-                              "t:$reduce_and t:$reduce_or t:$reduce_xor\n"
+                              // Preserve vector bitwise operations as one native Silicon
+                              // gate. Only scalar forms participate in full/half-adder
+                              // extraction; otherwise unrelated ALU result lanes such as
+                              // A&B and A^B are incorrectly expanded into many adder
+                              // primitives merely because they share operands.
+                              "simplemap t:$and r:Y_WIDTH=1 %i "
+                              "t:$or r:Y_WIDTH=1 %i "
+                              "t:$xor r:Y_WIDTH=1 %i "
+                              "t:$not r:Y_WIDTH=1 %i "
+                              "t:$logic_not t:$reduce_and t:$reduce_or t:$reduce_xor\n"
                               "extract_fa\n"
                               "techmap -map {}\n"
                               "opt_clean\n"

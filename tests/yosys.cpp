@@ -1567,6 +1567,18 @@ TEST(YosysToolTest, MapsVerilogToSiliconTechnologyCells)
                         "top"),
             std::multiset<std::string>{"SILICON_ADDER"});
   EXPECT_EQ(mappedTypes(R"(
+      module top(
+        input [3:0] a, input [3:0] b,
+        output [3:0] and_y, output [3:0] or_y, output [3:0] xor_y
+      );
+        assign and_y = a & b;
+        assign or_y = a | b;
+        assign xor_y = a ^ b;
+      endmodule
+    )",
+                        "top"),
+            (std::multiset<std::string>{"$and", "$or", "$xor"}));
+  EXPECT_EQ(mappedTypes(R"(
       module top(input a, input b, output sum, output cout);
         assign sum = a ^ b;
         assign cout = a & b;
