@@ -101,7 +101,7 @@ void WireManager::replaceSegments(QGraphicsScene&             scene,
     auto* segment = new GraphicalWireSegment(routed.points.front());
     segment->setPoints(routed.points);
     scene.addItem(segment);
-    segment->setGraphicalWire(wire.get());
+    segment->setGraphicalWire(wire.get(), false);
     allSegments.push_back(segment);
   }
 
@@ -129,7 +129,7 @@ void WireManager::removeWire(GraphicalWire* wire)
   std::erase_if(managedWires, [wire](const auto& uptr) { return uptr.get() == wire; });
 }
 
-void WireManager::addSegment(GraphicalWireSegment* segment)
+void WireManager::addSegment(GraphicalWireSegment* segment, const bool updateTopology)
 {
   if (!segment)
     throw std::invalid_argument("addSegment() called with null segment");
@@ -145,7 +145,8 @@ void WireManager::addSegment(GraphicalWireSegment* segment)
     segment->setGraphicalWire(wire.get());
   }
 
-  updateSegmentTopology(segment);
+  if (updateTopology)
+    updateSegmentTopology(segment);
 }
 
 void WireManager::removeSegment(GraphicalWireSegment* segment)

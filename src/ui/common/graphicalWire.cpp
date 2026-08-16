@@ -146,7 +146,8 @@ void GraphicalWireSegment::updateTopology()
   }
 }
 
-void GraphicalWireSegment::setGraphicalWire(GraphicalWire* newWire)
+void GraphicalWireSegment::setGraphicalWire(GraphicalWire* newWire,
+                                            const bool propagateToTouchingSegments)
 {
   if (graphicalWire == newWire)
     return;
@@ -176,10 +177,14 @@ void GraphicalWireSegment::setGraphicalWire(GraphicalWire* newWire)
     throw std::logic_error("setGraphicalWire: failed to create wire");
   graphicalWire->addSegment(this);
 
-  // Propagate the new wire to all touching sibling segments
-  for (auto* sibling : WireManager::segmentNeighbors(this)) {
-    if (sibling != this) {
-      sibling->setGraphicalWire(graphicalWire);
+  // Interactive wire construction uses geometric contact to establish connectivity.
+  // Deserialization and autoplacement already carry authoritative bus identities, so
+  // their callers disable propagation to preserve intentional crossings and overlaps.
+  if (propagateToTouchingSegments) {
+    for (auto* sibling : WireManager::segmentNeighbors(this)) {
+      if (sibling != this) {
+        sibling->setGraphicalWire(graphicalWire);
+      }
     }
   }
 }
