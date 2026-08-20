@@ -137,9 +137,9 @@ concept HasType = requires {
 /**
  * @brief Variant type for component properties.
  *
- * Supports integer, boolean, and string property values.
+ * Supports configuration scalars, strings, and native logic-bus values.
  */
-using PropertyValue = std::variant<int, bool, std::string>;
+using PropertyValue = std::variant<int, bool, std::string, BusValue>;
 
 /** @brief Map from property names to their values */
 using PropertyMap = std::unordered_map<std::string, PropertyValue, TransparentStringHash,
@@ -512,7 +512,7 @@ public:
    * @brief Replaces all input buses.
    * @param newInputs The new input buses
    */
-  void setInputs(std::vector<Bus>& newInputs);
+  void setInputs(const std::vector<Bus>& newInputs);
 
   /**
    * @brief Sets an output bus at a specific index.
@@ -525,7 +525,7 @@ public:
    * @brief Replaces all output buses.
    * @param newOutputs The new output buses
    */
-  void setOutputs(std::vector<Bus>& newOutputs);
+  void setOutputs(const std::vector<Bus>& newOutputs);
 
   /**
    * @brief Checks if this component is connected to a bus.

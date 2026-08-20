@@ -908,6 +908,90 @@ TEST(CircuitTest, DeserializeSingleGate)
   EXPECT_EQ(numVertices, 1);
 }
 
+TEST(CircuitTest, BusValuePropertiesRoundTripAsRawStringsAndRejectIntegers)
+{
+  ComponentRegistry registry;
+  registerAllComponents(registry);
+
+  auto constant = std::make_shared<ConstantComponent>(
+      Bus(4), busValueFromBits("10X1"));
+  auto input = std::make_shared<DummyBusInputComponent>(Bus(5), "input");
+  input->setProperty("startValue", busValueFromBits("00101"));
+  Circuit original(Component_set{constant, input}, false);
+
+  auto serialized = nlohmann::json::parse(original.serialize());
+  for (auto& component : serialized["components"]) {
+    if (component["type"] == ConstantComponent::Type) {
+      EXPECT_EQ(component["properties"]["value"], "10X1");
+    }
+    if (component["type"] == DummyBusInputComponent::Type) {
+      EXPECT_EQ(component["properties"]["startValue"], "00101");
+    }
+  }
+
+  const auto restored = Circuit::deserialize(serialized.dump(), registry);
+  std::shared_ptr<ConstantComponent> restoredConstant;
+  std::shared_ptr<DummyBusInputComponent> restoredInput;
+  for (const auto vertex :
+       boost::make_iterator_range(boost::vertices(restored.getGraph()))) {
+    const auto& component = restored.getGraph()[vertex].component;
+    if (auto candidate = std::dynamic_pointer_cast<ConstantComponent>(component))
+      restoredConstant = std::move(candidate);
+    if (auto candidate =
+            std::dynamic_pointer_cast<DummyBusInputComponent>(component))
+      restoredInput = std::move(candidate);
+  }
+  ASSERT_TRUE(restoredConstant);
+  ASSERT_TRUE(restoredInput);
+  EXPECT_EQ(restoredConstant->getPropertyValue<BusValue>("value"),
+            busValueFromBits("10X1"));
+  EXPECT_EQ(restoredInput->getPropertyValue<BusValue>("startValue"),
+            busValueFromBits("00101"));
+
+  for (auto& component : serialized["components"]) {
+    if (component["type"] == ConstantComponent::Type)
+      component["properties"]["value"] = 3;
+    if (component["type"] == DummyBusInputComponent::Type)
+      component["properties"]["startValue"] = 3;
+  }
+  EXPECT_THROW((void)Circuit::deserialize(serialized.dump(), registry),
+               std::runtime_error);
+}
+
+TEST(CircuitTest, BusValuePropertiesRoundTripZeroAndWideFourStateValues)
+{
+  ComponentRegistry registry;
+  registerAllComponents(registry);
+
+  BusValue wide(130, State::LOW);
+  wide.front() = State::HIGH;
+  wide[64]     = State::UNKNOWN;
+  wide.back()  = State::HIGH;
+
+  auto wideConstant = std::make_shared<ConstantComponent>(Bus(130), wide);
+  auto zeroConstant = std::make_shared<ConstantComponent>(
+      Bus(130), BusValue{State::LOW});
+  Circuit original(Component_set{wideConstant, zeroConstant}, false);
+
+  const auto serialized = original.serialize();
+  EXPECT_NE(serialized.find(formatValue(wide, BusValueFormat::Raw)),
+            std::string::npos);
+
+  const auto restored = Circuit::deserialize(serialized, registry);
+  std::vector<BusValue> restoredValues;
+  for (const auto vertex :
+       boost::make_iterator_range(boost::vertices(restored.getGraph()))) {
+    const auto constant = std::dynamic_pointer_cast<ConstantComponent>(
+        restored.getGraph()[vertex].component);
+    if (constant)
+      restoredValues.push_back(*constant->getPropertyValue<BusValue>("value"));
+  }
+
+  EXPECT_TRUE(std::ranges::contains(restoredValues, wide));
+  EXPECT_TRUE(std::ranges::contains(restoredValues,
+                                    BusValue(130, State::LOW)));
+}
+
 TEST(CircuitTest, DeserializePreservesWireIds)
 {
   ComponentRegistry registry;

@@ -45,6 +45,7 @@
 #include <ui/common/wireRouting.hpp>
 #include <ui/logiFlow/components/graphicalIO.hpp>
 #include <ui/logiFlow/logiFlowWindow.hpp>
+#include <utils/num_formatting.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
 
 namespace SILICON {
@@ -505,7 +506,7 @@ void DiagramScene::hideCSB()
     removeItem(csb);
 }
 
-void DiagramScene::handleInputToggled(Bus targetBus, unsigned int value,
+void DiagramScene::handleInputToggled(Bus targetBus, BusValue value,
                                       Component_weakPtr source)
 {
   simulationController->handleInputToggled(targetBus, value, source);

@@ -31,11 +31,11 @@ public:
   static constexpr std::string_view Type = "ConstantComponent";
 
   ConstantComponent();
-  ConstantComponent(Wire_ptr output, std::string value);
-  ConstantComponent(Bus output, std::string value);
+  ConstantComponent(Wire_ptr output, BusValue value);
+  ConstantComponent(Bus output, BusValue value);
 
-  int         setSize(int newSize);
-  std::string setValue(std::string value);
+  int      setSize(int newSize);
+  BusValue setValue(const BusValue& value) const;
 
   std::string_view  typeName() const override { return Type; }
   ComponentMetadata metadata() const override
@@ -65,7 +65,10 @@ public:
   DummyInputComponent();
   DummyInputComponent(Bus bus, std::string name);
 
-  void setState(int value) { outputs[0].forceSetCurrentValue(value, weak_from_this()); }
+  void setState(const State s)
+  {
+    (void)outputs[0].forceSetCurrentValue({s}, weak_from_this());
+  }
 
   std::string_view  typeName() const override { return Type; }
   ComponentMetadata metadata() const override
@@ -85,9 +88,9 @@ public:
   DummyBusInputComponent(Bus bus, std::string name);
 
   int  setSize(int newSize);
-  void setState(unsigned int value)
+  void setBusValue(const BusValue& value)
   {
-    outputs[0].forceSetCurrentValue(value, weak_from_this());
+    (void)outputs[0].forceSetCurrentValue(value, weak_from_this());
   }
 
   std::string_view  typeName() const override { return Type; }

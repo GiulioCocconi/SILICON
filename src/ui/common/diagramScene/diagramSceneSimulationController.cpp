@@ -19,6 +19,11 @@
 #include "diagramSceneSimulationController.hpp"
 
 #include <algorithm>
+#include <ranges>
+
+#include <utils/num_formatting.hpp>
+
+#include <algorithm>
 #include <format>
 #include <string>
 
@@ -186,7 +191,7 @@ void DiagramSceneSimulationController::exitSimulationMode()
 }
 
 void DiagramSceneSimulationController::handleInputToggled(Bus               targetBus,
-                                                          unsigned int      value,
+                                                          const BusValue&   value,
                                                           Component_weakPtr source)
 {
   if (!simulator || !isJobFinished())
@@ -240,7 +245,10 @@ void DiagramSceneSimulationController::refreshGraphicalOutputs()
       if (bus.isInErrorState())
         s = State::ERROR;
       else if (!bus.hasUnknowns())
-        s = (bus.getCurrentValue() > 0) ? State::HIGH : State::LOW;
+        s = std::ranges::any_of(bus.getCurrentValue(),
+                                [](const State st) { return st == State::HIGH; })
+                ? State::HIGH
+                : State::LOW;
 
       out->setState(s);
     } else if (auto* busOut = dynamic_cast<GraphicalBusOutput*>(output)) {
@@ -381,15 +389,10 @@ void DiagramSceneSimulationController::configureSimulatorTrace(
     const TraceConfiguration& trace, const std::optional<std::string>& traceFile)
 {
   simulator->setTraceBuses(trace.buses);
-  simulator->setTraceSink([this](uint64_t time, const std::vector<std::string>& values) {
-    QStringList qtValues;
-    qtValues.reserve(values.size());
-    for (const auto& value : values)
-      qtValues.push_back(QString::fromStdString(value));
-
+  simulator->setTraceSink([this](uint64_t time, const std::vector<BusValue>& values) {
     // Collect snapshots on the worker instead of posting one GUI event per timestamp.
     // finishJob() publishes the completed batch after joining the worker.
-    pendingWaveformSnapshots.emplaceBack(time, std::move(qtValues));
+    pendingWaveformSnapshots.emplaceBack(time, values);
   });
 
   if (!traceFile) {

@@ -203,7 +203,7 @@ void Component::setOutput(const unsigned int index, const Bus& bus)
   notifyIOListeners();
 }
 
-void Component::setInputs(std::vector<Bus>& newInputs)
+void Component::setInputs(const std::vector<Bus>& newInputs)
 {
   if (this->inputs == newInputs)
     return;
@@ -214,7 +214,7 @@ void Component::setInputs(std::vector<Bus>& newInputs)
   notifyIOListeners();
 }
 
-void Component::setOutputs(std::vector<Bus>& newOutputs)
+void Component::setOutputs(const std::vector<Bus>& newOutputs)
 {
   if (this->outputs == newOutputs)
     return;

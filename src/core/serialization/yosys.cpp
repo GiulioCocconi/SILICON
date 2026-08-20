@@ -36,6 +36,7 @@
 #include <core/serialization/component_registry.hpp>
 #include <core/subcircuit.hpp>
 #include <core/subcircuitDefinition.hpp>
+#include <utils/num_formatting.hpp>
 
 namespace SILICON::yosys {
 
@@ -289,23 +290,23 @@ Json SerializationContext::inputBits(const Component& component, const std::size
 {
   const auto& buses = component.inputBuses();
   if (index >= buses.size() || buses[index].size() != expectedWidth) {
-    throw std::runtime_error(std::format(
-        "Cannot export '{}': input bus {} must be a {}-bit bus", component.typeName(),
-        index, expectedWidth));
+    throw std::runtime_error(
+        std::format("Cannot export '{}': input bus {} must be a {}-bit bus",
+                    component.typeName(), index, expectedWidth));
   }
 
   const auto defaultState = component.unconnectedInputDefault(index);
   if (!defaultState && std::ranges::contains(buses[index], nullptr)) {
-    throw std::runtime_error(std::format(
-        "Cannot export '{}': input bus {} must be connected", component.typeName(),
-        index));
+    throw std::runtime_error(
+        std::format("Cannot export '{}': input bus {} must be connected",
+                    component.typeName(), index));
   }
 
-  const std::string_view defaultBit =
-      !defaultState                 ? "x"
-      : *defaultState == State::LOW ? "0"
-      : *defaultState == State::HIGH ? "1"
-                                     : "x";
+  const bool binaryDefault =
+      defaultState
+      && (*defaultState == State::LOW || *defaultState == State::HIGH);
+  const std::string defaultBit =
+      binaryDefault ? formatValue(BusValue{*defaultState}, BusValueFormat::Raw) : "x";
   return bits(buses[index], defaultBit);
 }
 
@@ -331,14 +332,9 @@ std::string SerializationContext::parameter(const std::uint64_t value,
 {
   if (width == 0)
     throw std::invalid_argument("Yosys parameter width must be positive");
-  std::string result(width, '0');
   // write_json serializes RTLIL constants MSB-first even though connection arrays are
   // LSB-first. Keeping this distinction here avoids duplicating bit-order logic.
-  for (std::size_t bit = 0; bit < std::min(width, std::size_t{64}); ++bit) {
-    if ((value >> bit) & 1U)
-      result[width - bit - 1] = '1';
-  }
-  return result;
+  return formatValue(busValueFromInteger(value, width), BusValueFormat::Raw);
 }
 
 void SerializationContext::addCell(const std::string_view suffix,

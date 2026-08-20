@@ -117,7 +117,8 @@ public:
 TEST(ConstantComponentTest, DrivesAndResizesBinaryBusValue)
 {
   Bus  output(4);
-  auto constant = std::make_shared<ConstantComponent>(output, "10x1");
+  auto constant =
+      std::make_shared<ConstantComponent>(output, busValueFromBits("10X1"));
   auto circuit  = std::make_shared<Circuit>(Component_set{constant}, false);
 
   Simulator simulator(circuit);
@@ -126,9 +127,52 @@ TEST(ConstantComponentTest, DrivesAndResizesBinaryBusValue)
 
   constant->setProperty("size", 6);
   EXPECT_EQ(constant->outputBuses()[0].size(), 6);
-  EXPECT_EQ(constant->getPropertyValue<std::string>("value"), "0010x1");
-  EXPECT_THROW(constant->setProperty("value", std::string("10q1")),
+  EXPECT_EQ(constant->getPropertyValue<BusValue>("value"),
+            busValueFromBits("0010X1"));
+  constant->setProperty("value", BusValue{State::UNKNOWN});
+  EXPECT_EQ(constant->getPropertyValue<BusValue>("value"),
+            BusValue(6, State::UNKNOWN));
+  EXPECT_THROW(constant->setProperty("value", BusValue{State::ERROR}),
                std::invalid_argument);
+}
+
+TEST(DummyBusInputComponentTest, ResizesValuesWithoutIntegerConversion)
+{
+  auto input = std::make_shared<DummyBusInputComponent>(Bus(4), "input");
+
+  input->setBusValue(busValueFromBits("1"));
+  EXPECT_EQ(input->outputBuses()[0].getCurrentValue(), busValueFromBits("0001"));
+
+  input->setProperty("size", 70);
+  const BusValue wide(70, State::HIGH);
+  input->setBusValue(wide);
+  EXPECT_EQ(input->outputBuses()[0].getCurrentValue(), wide);
+}
+
+TEST(BusValueArithmeticTest, AddsKnownAndFourStateValues)
+{
+  EXPECT_EQ(busValueFromBits("0011") + busValueFromBits("0101"),
+            busValueFromBits("01000"));
+  EXPECT_EQ(busValueFromBits("1111") + busValueFromBits("0001"),
+            busValueFromBits("10000"));
+  EXPECT_EQ(busValueFromBits("11") + busValueFromBits("0001"),
+            busValueFromBits("00100"));
+
+  EXPECT_EQ(BusValue{State::UNKNOWN} + BusValue{State::LOW},
+            busValueFromBits("0X"));
+  EXPECT_EQ(BusValue{State::ERROR} + BusValue{State::LOW},
+            busValueFromBits("EE"));
+}
+
+TEST(BusValueArithmeticTest, TwosComplementUsesFourStateOperators)
+{
+  EXPECT_EQ(twosComplement(busValueFromBits("0010")),
+            busValueFromBits("1110"));
+  EXPECT_EQ(twosComplement(BusValue{State::UNKNOWN}),
+            BusValue{State::UNKNOWN});
+  EXPECT_EQ(twosComplement(BusValue{State::ERROR}), BusValue{State::ERROR});
+  EXPECT_EQ(twosComplement(busValueFromBits("0X")), busValueFromBits("XX"));
+  EXPECT_EQ(twosComplement(busValueFromBits("0E")), busValueFromBits("EE"));
 }
 
 TEST(LogicTest, And)
@@ -159,18 +203,18 @@ TEST(LogicTest, And)
       << "AND(ERROR, LOW) = " << to_str(o->getCurrentState());
 
   // Using setBus to reactively propagate inputs through the forward subgraph
-  sim.setBus(Bus{a}, 0);  // LOW
-  sim.setBus(Bus{b}, 0);  // LOW
+  sim.setBus(Bus{a}, valueFor(Bus{a}, 0));  // LOW
+  sim.setBus(Bus{b}, valueFor(Bus{b}, 0));  // LOW
   sim.run(20);
   EXPECT_EQ(o->getCurrentState(), State::LOW)
       << "AND(LOW, LOW) = " << to_str(o->getCurrentState());
 
-  sim.setBus(Bus{a}, 1);  // HIGH
+  sim.setBus(Bus{a}, valueFor(Bus{a}, 1));  // HIGH
   sim.run(20);
   EXPECT_EQ(o->getCurrentState(), State::LOW)
       << "AND(HIGH, LOW) = " << to_str(o->getCurrentState());
 
-  sim.setBus(Bus{b}, 1);  // HIGH
+  sim.setBus(Bus{b}, valueFor(Bus{b}, 1));  // HIGH
   sim.run(20);
   EXPECT_EQ(o->getCurrentState(), State::HIGH)
       << "AND(HIGH, HIGH) = " << to_str(o->getCurrentState());
@@ -204,7 +248,7 @@ TEST(SimulatorTest, CancellationStopsBusPropagation)
   auto      circuit = std::make_shared<Circuit>(Component_set{gate});
   Simulator simulator(circuit);
 
-  EXPECT_EQ(simulator.setBus(Bus{a}, 1, []() { return true; }),
+  EXPECT_EQ(simulator.setBus(Bus{a}, valueFor(Bus{a}, 1), []() { return true; }),
             Simulator::RunResult::Cancelled);
   EXPECT_EQ(a->getCurrentState(), State::LOW);
 }
@@ -224,7 +268,7 @@ TEST(SimulatorTest, PassesSimulationContextToComponents)
   EXPECT_TRUE(recorder->records[0].changedBuses.empty());
   EXPECT_EQ(recorder->legacyCallCount, 0);
 
-  EXPECT_EQ(simulator.setBus(input, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(input, valueFor(input, 1)), Simulator::RunResult::Completed);
 
   ASSERT_EQ(recorder->records.size(), 2);
   EXPECT_FALSE(recorder->records[1].initialEvaluation);
@@ -242,7 +286,7 @@ TEST(SimulatorTest, PassesSimulationContextToComponents)
             (std::vector<Simulator::EdgeType>{Simulator::EdgeType::RISE,
                                               Simulator::EdgeType::NO_CHANGE}));
 
-  EXPECT_EQ(simulator.setBus(input, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(input, valueFor(input, 0)), Simulator::RunResult::Completed);
 
   ASSERT_EQ(recorder->records.size(), 3);
   EXPECT_EQ(recorder->records[2].inputEdges,
@@ -295,8 +339,8 @@ TEST(SimulatorTest, SimulatesInternalInputWaveform)
   Simulator simulator(circuit);
 
   const std::vector<Sample> inputSnapshots{
-      {0, {"0", "0"}},
-      {3, {"1", "1"}},
+      {0, {busValueFromBits("0"), busValueFromBits("0")}},
+      {3, {busValueFromBits("1"), busValueFromBits("1")}},
   };
   const std::vector<Simulator::WaveformInputDriver> inputDrivers{
       {Bus{a}, {}},
@@ -319,7 +363,7 @@ TEST(SimulatorTest, WaveformInputSampleCapturesPreviousWireStates)
   auto      circuit  = std::make_shared<Circuit>(Component_set{recorder});
   Simulator simulator(circuit);
 
-  const std::vector<Sample>          inputSnapshots{{0, {"01"}}};
+  const std::vector<Sample> inputSnapshots{{0, {busValueFromBits("01")}}};
   const std::vector<Simulator::WaveformInputDriver> inputDrivers{{input, {}}};
 
   EXPECT_EQ(simulator.simulateWaveform(1, inputSnapshots, inputDrivers),
@@ -351,9 +395,9 @@ TEST(SimulatorTest, DelayedGateRejectsShortInputPulse)
   auto      circuit = std::make_shared<Circuit>(Component_set{gate});
   Simulator simulator(circuit);
 
-  EXPECT_EQ(simulator.setBus(Bus{a}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{a}, valueFor(Bus{a}, 1)), Simulator::RunResult::Completed);
   EXPECT_EQ(simulator.run(5), Simulator::RunResult::Completed);
-  EXPECT_EQ(simulator.setBus(Bus{a}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{a}, valueFor(Bus{a}, 0)), Simulator::RunResult::Completed);
   EXPECT_EQ(simulator.run(20), Simulator::RunResult::Completed);
 
   EXPECT_EQ(o->getCurrentState(), State::LOW);
@@ -372,7 +416,7 @@ TEST(SimulatorTest, DelayedGateReplacesPendingTransition)
   Simulator simulator(circuit);
 
   EXPECT_EQ(simulator.run(5), Simulator::RunResult::Completed);
-  EXPECT_EQ(simulator.setBus(Bus{a}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{a}, valueFor(Bus{a}, 1)), Simulator::RunResult::Completed);
   EXPECT_EQ(simulator.run(5), Simulator::RunResult::Completed);
   EXPECT_EQ(o->getCurrentState(), State::UNKNOWN);
 
@@ -426,7 +470,7 @@ TEST(SimulatorTest, ForwardPropagationDoesNotRescheduleIndependentDelayedBranch)
   Simulator simulator(circuit);
 
   EXPECT_EQ(simulator.run(5), Simulator::RunResult::Completed);
-  EXPECT_EQ(simulator.setBus(Bus{a1}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{a1}, valueFor(Bus{a1}, 0)), Simulator::RunResult::Completed);
 
   EXPECT_EQ(simulator.run(5), Simulator::RunResult::Completed);
   EXPECT_EQ(o1->getCurrentState(), State::UNKNOWN);
@@ -488,20 +532,20 @@ TEST(FlipFlopTest, DFlipFlopCapturesOnPositiveEdge)
   auto      circuit = std::make_shared<Circuit>(Component_set{flipFlop});
   Simulator simulator(circuit);
 
-  EXPECT_EQ(simulator.setBus(Bus{d}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{d}, valueFor(Bus{d}, 1)), Simulator::RunResult::Completed);
   EXPECT_EQ(q->getCurrentState(), State::UNKNOWN);
 
-  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, valueFor(Bus{clock}, 1)), Simulator::RunResult::Completed);
   EXPECT_EQ(q->getCurrentState(), State::HIGH);
   EXPECT_EQ(notQ->getCurrentState(), State::LOW);
 
-  EXPECT_EQ(simulator.setBus(Bus{d}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{d}, valueFor(Bus{d}, 0)), Simulator::RunResult::Completed);
   EXPECT_EQ(q->getCurrentState(), State::HIGH);
 
-  EXPECT_EQ(simulator.setBus(Bus{clock}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, valueFor(Bus{clock}, 0)), Simulator::RunResult::Completed);
   EXPECT_EQ(q->getCurrentState(), State::HIGH);
 
-  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, valueFor(Bus{clock}, 1)), Simulator::RunResult::Completed);
   EXPECT_EQ(q->getCurrentState(), State::LOW);
   EXPECT_EQ(notQ->getCurrentState(), State::HIGH);
 }
@@ -522,16 +566,16 @@ TEST(FlipFlopTest, DFlipFlopCapturesOnNegativeEdge)
   auto      circuit = std::make_shared<Circuit>(Component_set{flipFlop});
   Simulator simulator(circuit);
 
-  EXPECT_EQ(simulator.setBus(Bus{d}, 1), Simulator::RunResult::Completed);
-  EXPECT_EQ(simulator.setBus(Bus{clock}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{d}, valueFor(Bus{d}, 1)), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, valueFor(Bus{clock}, 0)), Simulator::RunResult::Completed);
   EXPECT_EQ(q->getCurrentState(), State::HIGH);
   EXPECT_EQ(notQ->getCurrentState(), State::LOW);
 
-  EXPECT_EQ(simulator.setBus(Bus{d}, 0), Simulator::RunResult::Completed);
-  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{d}, valueFor(Bus{d}, 0)), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, valueFor(Bus{clock}, 1)), Simulator::RunResult::Completed);
   EXPECT_EQ(q->getCurrentState(), State::HIGH);
 
-  EXPECT_EQ(simulator.setBus(Bus{clock}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, valueFor(Bus{clock}, 0)), Simulator::RunResult::Completed);
   EXPECT_EQ(q->getCurrentState(), State::LOW);
   EXPECT_EQ(notQ->getCurrentState(), State::HIGH);
 }
@@ -551,19 +595,19 @@ TEST(FlipFlopTest, EFlipFlopHonorsEnable)
   auto      circuit = std::make_shared<Circuit>(Component_set{flipFlop});
   Simulator simulator(circuit);
 
-  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, valueFor(Bus{clock}, 1)), Simulator::RunResult::Completed);
   EXPECT_EQ(q->getCurrentState(), State::UNKNOWN);
 
-  EXPECT_EQ(simulator.setBus(Bus{clock}, 0), Simulator::RunResult::Completed);
-  EXPECT_EQ(simulator.setBus(Bus{enable}, 1), Simulator::RunResult::Completed);
-  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, valueFor(Bus{clock}, 0)), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{enable}, valueFor(Bus{enable}, 1)), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, valueFor(Bus{clock}, 1)), Simulator::RunResult::Completed);
   EXPECT_EQ(q->getCurrentState(), State::HIGH);
   EXPECT_EQ(notQ->getCurrentState(), State::LOW);
 
-  EXPECT_EQ(simulator.setBus(Bus{clock}, 0), Simulator::RunResult::Completed);
-  EXPECT_EQ(simulator.setBus(Bus{enable}, 0), Simulator::RunResult::Completed);
-  EXPECT_EQ(simulator.setBus(Bus{d}, 0), Simulator::RunResult::Completed);
-  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, valueFor(Bus{clock}, 0)), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{enable}, valueFor(Bus{enable}, 0)), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{d}, valueFor(Bus{d}, 0)), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, valueFor(Bus{clock}, 1)), Simulator::RunResult::Completed);
   EXPECT_EQ(q->getCurrentState(), State::HIGH);
   EXPECT_EQ(notQ->getCurrentState(), State::LOW);
 }
@@ -581,20 +625,20 @@ TEST(FlipFlopTest, DLatchIsTransparentWhileEnabledAndHoldsWhileDisabled)
   auto      circuit = std::make_shared<Circuit>(Component_set{latch});
   Simulator simulator(circuit);
 
-  EXPECT_EQ(simulator.setBus(Bus{d}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{d}, valueFor(Bus{d}, 1)), Simulator::RunResult::Completed);
   EXPECT_EQ(q->getCurrentState(), State::UNKNOWN);
   EXPECT_EQ(notQ->getCurrentState(), State::UNKNOWN);
 
-  EXPECT_EQ(simulator.setBus(Bus{enable}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{enable}, valueFor(Bus{enable}, 1)), Simulator::RunResult::Completed);
   EXPECT_EQ(q->getCurrentState(), State::HIGH);
   EXPECT_EQ(notQ->getCurrentState(), State::LOW);
 
-  EXPECT_EQ(simulator.setBus(Bus{d}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{d}, valueFor(Bus{d}, 0)), Simulator::RunResult::Completed);
   EXPECT_EQ(q->getCurrentState(), State::LOW);
   EXPECT_EQ(notQ->getCurrentState(), State::HIGH);
 
-  EXPECT_EQ(simulator.setBus(Bus{enable}, 0), Simulator::RunResult::Completed);
-  EXPECT_EQ(simulator.setBus(Bus{d}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{enable}, valueFor(Bus{enable}, 0)), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{d}, valueFor(Bus{d}, 1)), Simulator::RunResult::Completed);
   EXPECT_EQ(q->getCurrentState(), State::LOW);
   EXPECT_EQ(notQ->getCurrentState(), State::HIGH);
 }
@@ -636,7 +680,7 @@ TEST(FlipFlopTest, DLatchPropagationDelayDefersTransparentUpdates)
   auto      circuit = std::make_shared<Circuit>(Component_set{latch});
   Simulator simulator(circuit);
 
-  EXPECT_EQ(simulator.setBus(Bus{enable}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{enable}, valueFor(Bus{enable}, 1)), Simulator::RunResult::Completed);
   EXPECT_EQ(q->getCurrentState(), State::UNKNOWN);
   EXPECT_EQ(simulator.run(4), Simulator::RunResult::Completed);
   EXPECT_EQ(q->getCurrentState(), State::UNKNOWN);
@@ -661,30 +705,30 @@ TEST(FlipFlopTest, JKFlipFlopImplementsTruthTable)
   auto      circuit = std::make_shared<Circuit>(Component_set{flipFlop});
   Simulator simulator(circuit);
 
-  EXPECT_EQ(simulator.setBus(Bus{j}, 1), Simulator::RunResult::Completed);
-  EXPECT_EQ(simulator.setBus(Bus{k}, 0), Simulator::RunResult::Completed);
-  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{j}, valueFor(Bus{j}, 1)), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{k}, valueFor(Bus{k}, 0)), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, valueFor(Bus{clock}, 1)), Simulator::RunResult::Completed);
   EXPECT_EQ(q->getCurrentState(), State::HIGH);
 
-  EXPECT_EQ(simulator.setBus(Bus{clock}, 0), Simulator::RunResult::Completed);
-  EXPECT_EQ(simulator.setBus(Bus{j}, 0), Simulator::RunResult::Completed);
-  EXPECT_EQ(simulator.setBus(Bus{k}, 0), Simulator::RunResult::Completed);
-  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, valueFor(Bus{clock}, 0)), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{j}, valueFor(Bus{j}, 0)), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{k}, valueFor(Bus{k}, 0)), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, valueFor(Bus{clock}, 1)), Simulator::RunResult::Completed);
   EXPECT_EQ(q->getCurrentState(), State::HIGH);
 
-  EXPECT_EQ(simulator.setBus(Bus{clock}, 0), Simulator::RunResult::Completed);
-  EXPECT_EQ(simulator.setBus(Bus{k}, 1), Simulator::RunResult::Completed);
-  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, valueFor(Bus{clock}, 0)), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{k}, valueFor(Bus{k}, 1)), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, valueFor(Bus{clock}, 1)), Simulator::RunResult::Completed);
   EXPECT_EQ(q->getCurrentState(), State::LOW);
 
-  EXPECT_EQ(simulator.setBus(Bus{clock}, 0), Simulator::RunResult::Completed);
-  EXPECT_EQ(simulator.setBus(Bus{j}, 1), Simulator::RunResult::Completed);
-  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, valueFor(Bus{clock}, 0)), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{j}, valueFor(Bus{j}, 1)), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, valueFor(Bus{clock}, 1)), Simulator::RunResult::Completed);
   EXPECT_EQ(q->getCurrentState(), State::HIGH);
   EXPECT_EQ(notQ->getCurrentState(), State::LOW);
 
-  EXPECT_EQ(simulator.setBus(Bus{clock}, 0), Simulator::RunResult::Completed);
-  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, valueFor(Bus{clock}, 0)), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, valueFor(Bus{clock}, 1)), Simulator::RunResult::Completed);
   EXPECT_EQ(q->getCurrentState(), State::LOW);
   EXPECT_EQ(notQ->getCurrentState(), State::HIGH);
 }
@@ -704,16 +748,16 @@ TEST(FlipFlopTest, AsyncClearAndPresetOverrideInputs)
   auto      circuit = std::make_shared<Circuit>(Component_set{flipFlop});
   Simulator simulator(circuit);
 
-  EXPECT_EQ(simulator.setBus(Bus{clear}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clear}, valueFor(Bus{clear}, 1)), Simulator::RunResult::Completed);
   EXPECT_EQ(q->getCurrentState(), State::LOW);
   EXPECT_EQ(notQ->getCurrentState(), State::HIGH);
 
-  EXPECT_EQ(simulator.setBus(Bus{clear}, 0), Simulator::RunResult::Completed);
-  EXPECT_EQ(simulator.setBus(Bus{preset}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clear}, valueFor(Bus{clear}, 0)), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{preset}, valueFor(Bus{preset}, 1)), Simulator::RunResult::Completed);
   EXPECT_EQ(q->getCurrentState(), State::HIGH);
   EXPECT_EQ(notQ->getCurrentState(), State::LOW);
 
-  EXPECT_EQ(simulator.setBus(Bus{clear}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clear}, valueFor(Bus{clear}, 1)), Simulator::RunResult::Completed);
   EXPECT_EQ(q->getCurrentState(), State::UNKNOWN);
   EXPECT_EQ(notQ->getCurrentState(), State::UNKNOWN);
 }
@@ -737,7 +781,7 @@ TEST(FlipFlopTest, UnconnectedAsyncControlsDefaultInactive)
   auto      circuit = std::make_shared<Circuit>(Component_set{flipFlop});
   Simulator simulator(circuit);
 
-  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, valueFor(Bus{clock}, 1)), Simulator::RunResult::Completed);
   EXPECT_EQ(q->getCurrentState(), State::HIGH);
   EXPECT_EQ(notQ->getCurrentState(), State::LOW);
 }
@@ -761,7 +805,7 @@ TEST(FlipFlopTest, UnconnectedAsyncControlsRemainInactiveAfterClearingWires)
   auto      circuit = std::make_shared<Circuit>(Component_set{flipFlop});
   Simulator simulator(circuit);
 
-  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, valueFor(Bus{clock}, 1)), Simulator::RunResult::Completed);
   EXPECT_EQ(q->getCurrentState(), State::HIGH);
   EXPECT_EQ(notQ->getCurrentState(), State::LOW);
 }
@@ -781,7 +825,7 @@ TEST(FlipFlopTest, UnknownDataCapturesAsUnknown)
   auto      circuit = std::make_shared<Circuit>(Component_set{flipFlop});
   Simulator simulator(circuit);
 
-  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, valueFor(Bus{clock}, 1)), Simulator::RunResult::Completed);
   EXPECT_EQ(q->getCurrentState(), State::UNKNOWN);
   EXPECT_EQ(notQ->getCurrentState(), State::UNKNOWN);
 }
@@ -801,7 +845,7 @@ TEST(FlipFlopTest, ZeroPropagationDelayUpdatesImmediately)
   auto      circuit = std::make_shared<Circuit>(Component_set{flipFlop});
   Simulator simulator(circuit);
 
-  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, valueFor(Bus{clock}, 1)), Simulator::RunResult::Completed);
   EXPECT_EQ(q->getCurrentState(), State::HIGH);
   EXPECT_EQ(notQ->getCurrentState(), State::LOW);
 }
@@ -829,21 +873,21 @@ TEST(FlipFlopTest, ZeroDelayChainCapturesFromPreEdgeSnapshot)
   auto      circuit = std::make_shared<Circuit>(Component_set{ff0, ff1, ff2});
   Simulator simulator(circuit);
 
-  EXPECT_EQ(simulator.setBus(Bus{clear}, 1), Simulator::RunResult::Completed);
-  EXPECT_EQ(simulator.setBus(Bus{clear}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clear}, valueFor(Bus{clear}, 1)), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clear}, valueFor(Bus{clear}, 0)), Simulator::RunResult::Completed);
   EXPECT_EQ(q0->getCurrentState(), State::LOW);
   EXPECT_EQ(q1->getCurrentState(), State::LOW);
   EXPECT_EQ(q2->getCurrentState(), State::LOW);
 
-  EXPECT_EQ(simulator.setBus(Bus{d}, 1), Simulator::RunResult::Completed);
-  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{d}, valueFor(Bus{d}, 1)), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, valueFor(Bus{clock}, 1)), Simulator::RunResult::Completed);
 
   EXPECT_EQ(q0->getCurrentState(), State::HIGH);
   EXPECT_EQ(q1->getCurrentState(), State::LOW);
   EXPECT_EQ(q2->getCurrentState(), State::LOW);
 
-  EXPECT_EQ(simulator.setBus(Bus{clock}, 0), Simulator::RunResult::Completed);
-  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, valueFor(Bus{clock}, 0)), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, valueFor(Bus{clock}, 1)), Simulator::RunResult::Completed);
 
   EXPECT_EQ(q0->getCurrentState(), State::HIGH);
   EXPECT_EQ(q1->getCurrentState(), State::HIGH);
@@ -874,14 +918,14 @@ TEST(FlipFlopTest, ZeroDelayChainSamplesPreEdgeCombinationalValue)
   auto      circuit = std::make_shared<Circuit>(Component_set{ff0, inverter, ff1});
   Simulator simulator(circuit);
 
-  EXPECT_EQ(simulator.setBus(Bus{clear}, 1), Simulator::RunResult::Completed);
-  EXPECT_EQ(simulator.setBus(Bus{clear}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clear}, valueFor(Bus{clear}, 1)), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clear}, valueFor(Bus{clear}, 0)), Simulator::RunResult::Completed);
   EXPECT_EQ(q0->getCurrentState(), State::LOW);
   EXPECT_EQ(invQ0->getCurrentState(), State::HIGH);
   EXPECT_EQ(q1->getCurrentState(), State::LOW);
 
-  EXPECT_EQ(simulator.setBus(Bus{d}, 1), Simulator::RunResult::Completed);
-  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{d}, valueFor(Bus{d}, 1)), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, valueFor(Bus{clock}, 1)), Simulator::RunResult::Completed);
 
   EXPECT_EQ(q0->getCurrentState(), State::HIGH);
   EXPECT_EQ(invQ0->getCurrentState(), State::LOW);
@@ -903,7 +947,7 @@ TEST(FlipFlopTest, DefaultPropagationDelayDefersOutputUpdates)
   auto      circuit = std::make_shared<Circuit>(Component_set{flipFlop});
   Simulator simulator(circuit);
 
-  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, valueFor(Bus{clock}, 1)), Simulator::RunResult::Completed);
   EXPECT_EQ(q->getCurrentState(), State::UNKNOWN);
   EXPECT_EQ(notQ->getCurrentState(), State::UNKNOWN);
 
@@ -932,14 +976,14 @@ TEST(FlipFlopTest, SetupViolationCapturesUnknown)
   auto      circuit = std::make_shared<Circuit>(Component_set{flipFlop});
   Simulator simulator(circuit);
 
-  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, valueFor(Bus{clock}, 1)), Simulator::RunResult::Completed);
   EXPECT_EQ(q->getCurrentState(), State::LOW);
 
-  EXPECT_EQ(simulator.setBus(Bus{clock}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, valueFor(Bus{clock}, 0)), Simulator::RunResult::Completed);
   EXPECT_EQ(simulator.run(10), Simulator::RunResult::Completed);
-  EXPECT_EQ(simulator.setBus(Bus{d}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{d}, valueFor(Bus{d}, 1)), Simulator::RunResult::Completed);
   EXPECT_EQ(simulator.run(2), Simulator::RunResult::Completed);
-  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, valueFor(Bus{clock}, 1)), Simulator::RunResult::Completed);
 
   EXPECT_EQ(q->getCurrentState(), State::UNKNOWN);
   EXPECT_EQ(notQ->getCurrentState(), State::UNKNOWN);
@@ -961,11 +1005,11 @@ TEST(FlipFlopTest, HoldViolationInvalidatesLatchedState)
   auto      circuit = std::make_shared<Circuit>(Component_set{flipFlop});
   Simulator simulator(circuit);
 
-  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, valueFor(Bus{clock}, 1)), Simulator::RunResult::Completed);
   EXPECT_EQ(q->getCurrentState(), State::HIGH);
 
   EXPECT_EQ(simulator.run(2), Simulator::RunResult::Completed);
-  EXPECT_EQ(simulator.setBus(Bus{d}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{d}, valueFor(Bus{d}, 0)), Simulator::RunResult::Completed);
 
   EXPECT_EQ(q->getCurrentState(), State::UNKNOWN);
   EXPECT_EQ(notQ->getCurrentState(), State::UNKNOWN);
@@ -988,14 +1032,14 @@ TEST(FlipFlopTest, EnabledFlipFlopAppliesSetupTimeToEnable)
   auto      circuit = std::make_shared<Circuit>(Component_set{flipFlop});
   Simulator simulator(circuit);
 
-  EXPECT_EQ(simulator.setBus(Bus{clear}, 1), Simulator::RunResult::Completed);
-  EXPECT_EQ(simulator.setBus(Bus{clear}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clear}, valueFor(Bus{clear}, 1)), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clear}, valueFor(Bus{clear}, 0)), Simulator::RunResult::Completed);
   EXPECT_EQ(q->getCurrentState(), State::LOW);
 
   EXPECT_EQ(simulator.run(10), Simulator::RunResult::Completed);
-  EXPECT_EQ(simulator.setBus(Bus{enable}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{enable}, valueFor(Bus{enable}, 1)), Simulator::RunResult::Completed);
   EXPECT_EQ(simulator.run(3), Simulator::RunResult::Completed);
-  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, valueFor(Bus{clock}, 1)), Simulator::RunResult::Completed);
 
   EXPECT_EQ(q->getCurrentState(), State::UNKNOWN);
   EXPECT_EQ(notQ->getCurrentState(), State::UNKNOWN);
@@ -1018,11 +1062,11 @@ TEST(FlipFlopTest, JKFlipFlopAppliesHoldTimeToInputs)
   auto      circuit = std::make_shared<Circuit>(Component_set{flipFlop});
   Simulator simulator(circuit);
 
-  EXPECT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{clock}, valueFor(Bus{clock}, 1)), Simulator::RunResult::Completed);
   EXPECT_EQ(q->getCurrentState(), State::HIGH);
 
   EXPECT_EQ(simulator.run(4), Simulator::RunResult::Completed);
-  EXPECT_EQ(simulator.setBus(Bus{k}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{k}, valueFor(Bus{k}, 1)), Simulator::RunResult::Completed);
 
   EXPECT_EQ(q->getCurrentState(), State::UNKNOWN);
   EXPECT_EQ(notQ->getCurrentState(), State::UNKNOWN);
@@ -1052,7 +1096,7 @@ TEST(SimulatorTest, InteractiveSettlingKeepsWaveformChangesAtDistinctTimes)
   Simulator simulator(circuit);
 
   std::vector<Sample> samples;
-  auto appendSnapshot = [&samples](uint64_t time, std::vector<std::string> values) {
+  auto appendSnapshot = [&samples](uint64_t time, std::vector<BusValue> values) {
     if (!samples.empty() && samples.back().time == time) {
       samples.back().values = std::move(values);
       return;
@@ -1061,7 +1105,7 @@ TEST(SimulatorTest, InteractiveSettlingKeepsWaveformChangesAtDistinctTimes)
   };
 
   simulator.setTraceBuses({{"input", Bus{a}}, {"output", Bus{o}}});
-  simulator.setTraceSink([&](uint64_t time, const std::vector<std::string>& values) {
+  simulator.setTraceSink([&](uint64_t time, const std::vector<BusValue>& values) {
     appendSnapshot(time, values);
   });
 
@@ -1073,9 +1117,9 @@ TEST(SimulatorTest, InteractiveSettlingKeepsWaveformChangesAtDistinctTimes)
   };
 
   EXPECT_EQ(settleInteractive(), Simulator::RunResult::Completed);
-  EXPECT_EQ(simulator.setBus(Bus{a}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{a}, valueFor(Bus{a}, 1)), Simulator::RunResult::Completed);
   EXPECT_EQ(settleInteractive(), Simulator::RunResult::Completed);
-  EXPECT_EQ(simulator.setBus(Bus{a}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{a}, valueFor(Bus{a}, 0)), Simulator::RunResult::Completed);
   EXPECT_EQ(settleInteractive(), Simulator::RunResult::Completed);
 
   ASSERT_GE(samples.size(), 4U);
@@ -1083,8 +1127,10 @@ TEST(SimulatorTest, InteractiveSettlingKeepsWaveformChangesAtDistinctTimes)
   EXPECT_EQ(samples[1].time, 1);
   EXPECT_EQ(samples[2].time, 2);
   EXPECT_EQ(samples[3].time, 3);
-  EXPECT_EQ(samples[1].values, (std::vector<std::string>{"1", "1"}));
-  EXPECT_EQ(samples[2].values, (std::vector<std::string>{"0", "0"}));
+  EXPECT_EQ(samples[1].values,
+            (std::vector<BusValue>{busValueFromBits("1"), busValueFromBits("1")}));
+  EXPECT_EQ(samples[2].values,
+            (std::vector<BusValue>{busValueFromBits("0"), busValueFromBits("0")}));
 }
 
 TEST(SimulatorTest, WaveformAppliesSameTimestampInputsTogether)
@@ -1099,17 +1145,17 @@ TEST(SimulatorTest, WaveformAppliesSameTimestampInputsTogether)
   auto      circuit = std::make_shared<Circuit>(Component_set{gate});
   Simulator simulator(circuit);
 
-  std::vector<std::string> tracedValues;
+  std::vector<BusValue> tracedValues;
   simulator.setTraceBuses({{"xor", Bus{o}}});
-  simulator.setTraceSink([&](uint64_t, const std::vector<std::string>& values) {
+  simulator.setTraceSink([&](uint64_t, const std::vector<BusValue>& values) {
     if (!values.empty())
       tracedValues.push_back(values[0]);
   });
   tracedValues.clear();
 
   const std::vector<Sample> inputSnapshots{
-      {0, {"0", "0"}},
-      {3, {"1", "1"}},
+      {0, {busValueFromBits("0"), busValueFromBits("0")}},
+      {3, {busValueFromBits("1"), busValueFromBits("1")}},
   };
   const std::vector<Simulator::WaveformInputDriver> inputDrivers{
       {Bus{a}, {}},
@@ -1120,7 +1166,8 @@ TEST(SimulatorTest, WaveformAppliesSameTimestampInputsTogether)
             Simulator::RunResult::Completed);
   EXPECT_EQ(o->getCurrentState(), State::LOW);
   EXPECT_TRUE(std::ranges::none_of(
-      tracedValues, [](const std::string& value) { return value == "1"; }));
+      tracedValues,
+      [](const BusValue& value) { return value == busValueFromBits("1"); }));
 }
 
 TEST(LogicTest, Nand)
@@ -1136,7 +1183,7 @@ TEST(LogicTest, Nand)
 
   EXPECT_EQ(o->getCurrentState(), State::LOW);
 
-  sim.setBus(Bus{b}, 0);
+  sim.setBus(Bus{b}, valueFor(Bus{b}, 0));
   sim.run(20);
   EXPECT_EQ(o->getCurrentState(), State::HIGH);
 }
@@ -1167,18 +1214,18 @@ TEST(LogicTest, Or)
   EXPECT_EQ(o->getCurrentState(), State::ERROR)
       << "OR(ERROR, LOW) = " << to_str(o->getCurrentState());
 
-  sim.setBus(Bus{a}, 0);
-  sim.setBus(Bus{b}, 0);
+  sim.setBus(Bus{a}, valueFor(Bus{a}, 0));
+  sim.setBus(Bus{b}, valueFor(Bus{b}, 0));
   sim.run(20);
   EXPECT_EQ(o->getCurrentState(), State::LOW)
       << "OR(LOW, LOW) = " << to_str(o->getCurrentState());
 
-  sim.setBus(Bus{a}, 1);
+  sim.setBus(Bus{a}, valueFor(Bus{a}, 1));
   sim.run(20);
   EXPECT_EQ(o->getCurrentState(), State::HIGH)
       << "OR(HIGH, LOW) = " << to_str(o->getCurrentState());
 
-  sim.setBus(Bus{b}, 1);
+  sim.setBus(Bus{b}, valueFor(Bus{b}, 1));
   sim.run(20);
   EXPECT_EQ(o->getCurrentState(), State::HIGH)
       << "OR(HIGH, HIGH) = " << to_str(o->getCurrentState());
@@ -1197,7 +1244,7 @@ TEST(LogicTest, Nor)
 
   EXPECT_EQ(o->getCurrentState(), State::HIGH);
 
-  sim.setBus(Bus{a}, 1);
+  sim.setBus(Bus{a}, valueFor(Bus{a}, 1));
   sim.run(20);
   EXPECT_EQ(o->getCurrentState(), State::LOW);
 }
@@ -1228,18 +1275,18 @@ TEST(LogicTest, Xor)
   EXPECT_EQ(o->getCurrentState(), State::ERROR)
       << "XOR(ERROR, LOW) = " << to_str(o->getCurrentState());
 
-  sim.setBus(Bus{a}, 0);
-  sim.setBus(Bus{b}, 0);
+  sim.setBus(Bus{a}, valueFor(Bus{a}, 0));
+  sim.setBus(Bus{b}, valueFor(Bus{b}, 0));
   sim.run(20);
   EXPECT_EQ(o->getCurrentState(), State::LOW)
       << "XOR(LOW, LOW) = " << to_str(o->getCurrentState());
 
-  sim.setBus(Bus{a}, 1);
+  sim.setBus(Bus{a}, valueFor(Bus{a}, 1));
   sim.run(20);
   EXPECT_EQ(o->getCurrentState(), State::HIGH)
       << "XOR(HIGH, LOW) = " << to_str(o->getCurrentState());
 
-  sim.setBus(Bus{b}, 1);
+  sim.setBus(Bus{b}, valueFor(Bus{b}, 1));
   sim.run(20);
   EXPECT_EQ(o->getCurrentState(), State::LOW)
       << "XOR(HIGH, HIGH) = " << to_str(o->getCurrentState());
@@ -1302,7 +1349,7 @@ TEST(LogicTest, CircuitEditing2)
 
   EXPECT_EQ(o->getCurrentState(), State::HIGH);
 
-  sim2.setBus(Bus{c}, 0);
+  sim2.setBus(Bus{c}, valueFor(Bus{c}, 0));
   sim2.run(20);
   EXPECT_EQ(o->getCurrentState(), State::LOW);
 }
@@ -1327,7 +1374,7 @@ TEST(LogicTest, InteractiveTopologyEditRecompilesSimulatorPlan)
   gate->setInputs(newInputs);
 
   a->forceSetCurrentState(State::LOW);
-  EXPECT_EQ(simulator.setBus(Bus{c}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{c}, valueFor(Bus{c}, 0)), Simulator::RunResult::Completed);
   EXPECT_EQ(o->getCurrentState(), State::LOW);
 }
 
@@ -1335,8 +1382,8 @@ TEST(LogicTest, BusSettingReading)
 {
   auto a = Bus(4);
   for (int i = 0; i <= 0b1111; i++) {
-    a.forceSetCurrentValue(i);
-    EXPECT_EQ(a.getCurrentValue(), i);
+    (void)a.forceSetCurrentValue(valueFor(a, static_cast<std::uint64_t>(i)));
+    EXPECT_EQ(a.getCurrentValue(), valueFor(a, static_cast<std::uint64_t>(i)));
   }
 }
 
@@ -1344,11 +1391,30 @@ TEST(LogicTest, BusSettingReadingAtUnsignedIntWidth)
 {
   Bus bus(std::numeric_limits<unsigned int>::digits);
 
-  EXPECT_EQ(bus.forceSetCurrentValue(std::numeric_limits<unsigned int>::max()), 0);
-  EXPECT_EQ(bus.getCurrentValue(), std::numeric_limits<unsigned int>::max());
+  EXPECT_FALSE(bus.forceSetCurrentValue(
+      valueFor(bus, std::numeric_limits<unsigned int>::max())));
+  EXPECT_EQ(bus.getCurrentValue(),
+            valueFor(bus, std::numeric_limits<unsigned int>::max()));
 
-  EXPECT_EQ(bus.setCurrentValue(0, {}), 0);
-  EXPECT_EQ(bus.getCurrentValue(), 0U);
+  EXPECT_FALSE(bus.setCurrentValue(valueFor(bus, 0), {}));
+  EXPECT_EQ(bus.getCurrentValue(), valueFor(bus, 0));
+}
+
+TEST(LogicTest, BusAssignmentsNormalizeWidthAndReportMeaningfulOverflow)
+{
+  Bus bus(4);
+
+  EXPECT_FALSE(bus.forceSetCurrentValue(BusValue{State::HIGH}));
+  EXPECT_EQ(bus.getCurrentValue(), busValueFromBits("0001"));
+
+  EXPECT_FALSE(bus.forceSetCurrentValue(busValueFromBits("000001")));
+  EXPECT_EQ(bus.getCurrentValue(), busValueFromBits("0001"));
+
+  EXPECT_TRUE(bus.forceSetCurrentValue(busValueFromBits("100001")));
+  EXPECT_EQ(bus.getCurrentValue(), busValueFromBits("0001"));
+
+  EXPECT_TRUE(bus.forceSetCurrentValue(busValueFromBits("X00001")));
+  EXPECT_EQ(bus.getCurrentValue(), busValueFromBits("0001"));
 }
 
 TEST(LogicTest, DisconnectedBusStateQueriesDoNotDereferenceNullWires)
@@ -1357,12 +1423,12 @@ TEST(LogicTest, DisconnectedBusStateQueriesDoNotDereferenceNullWires)
 
   EXPECT_TRUE(bus.isInErrorState());
   EXPECT_FALSE(bus.hasUnknowns());
-  EXPECT_EQ(bus.getCurrentValueString(), "E");
+  EXPECT_EQ(formatValue(bus.getCurrentValue(), BusValueFormat::Raw), "E");
 
   bus.setSize(2);
   EXPECT_TRUE(bus.isInErrorState());
   EXPECT_TRUE(bus.hasUnknowns());
-  EXPECT_EQ(bus.getCurrentValueString(), "XE");
+  EXPECT_EQ(formatValue(bus.getCurrentValue(), BusValueFormat::Raw), "XE");
 }
 
 TEST(LogicTest, GateBitwiseDefaultsAndValidation)
@@ -1428,8 +1494,8 @@ TEST(LogicTest, AndBitwiseSimulation)
 
   auto      circ = std::make_shared<Circuit>(Component_set{gate});
   Simulator sim(circ);
-  sim.setBus(gate->getInputs()[0], 0b1101);
-  sim.setBus(gate->getInputs()[1], 0b1011);
+  sim.setBus(gate->getInputs()[0], valueFor(gate->getInputs()[0], 0b1101));
+  sim.setBus(gate->getInputs()[1], valueFor(gate->getInputs()[1], 0b1011));
   sim.run(20);
 
   expectBusStates(gate->getOutputs()[0],
@@ -1446,8 +1512,8 @@ TEST(LogicTest, OrBitwiseSimulation)
 
   auto      circ = std::make_shared<Circuit>(Component_set{gate});
   Simulator sim(circ);
-  sim.setBus(gate->getInputs()[0], 0b0101);
-  sim.setBus(gate->getInputs()[1], 0b1010);
+  sim.setBus(gate->getInputs()[0], valueFor(gate->getInputs()[0], 0b0101));
+  sim.setBus(gate->getInputs()[1], valueFor(gate->getInputs()[1], 0b1010));
   sim.run(20);
 
   expectBusStates(gate->getOutputs()[0],
@@ -1464,8 +1530,8 @@ TEST(LogicTest, NandBitwiseSimulation)
 
   auto      circ = std::make_shared<Circuit>(Component_set{gate});
   Simulator sim(circ);
-  sim.setBus(gate->getInputs()[0], 0b1101);
-  sim.setBus(gate->getInputs()[1], 0b1011);
+  sim.setBus(gate->getInputs()[0], valueFor(gate->getInputs()[0], 0b1101));
+  sim.setBus(gate->getInputs()[1], valueFor(gate->getInputs()[1], 0b1011));
   sim.run(20);
 
   expectBusStates(gate->getOutputs()[0],
@@ -1482,8 +1548,8 @@ TEST(LogicTest, NorBitwiseSimulation)
 
   auto      circ = std::make_shared<Circuit>(Component_set{gate});
   Simulator sim(circ);
-  sim.setBus(gate->getInputs()[0], 0b0101);
-  sim.setBus(gate->getInputs()[1], 0b1000);
+  sim.setBus(gate->getInputs()[0], valueFor(gate->getInputs()[0], 0b0101));
+  sim.setBus(gate->getInputs()[1], valueFor(gate->getInputs()[1], 0b1000));
   sim.run(20);
 
   expectBusStates(gate->getOutputs()[0],
@@ -1606,6 +1672,23 @@ TEST(ComponentTest, SetAndGetStringProperty)
   c->setProperty("name", std::string("custom"));
   prop = c->getProperty("name");
   EXPECT_EQ(std::get<std::string>(*prop), "custom");
+}
+
+TEST(ComponentTest, SetAndGetBusValueProperty)
+{
+  struct TestComponent : public Component {
+    TestComponent() : Component({}, {})
+    { defineProperty("value", BusValue{State::LOW}); }
+    std::string_view typeName() const override { return "TestComponent"; }
+    void             simulate(Simulator&) override {}
+  };
+
+  auto component = std::make_shared<TestComponent>();
+  const auto value = busValueFromBits("10X1");
+  component->setProperty("value", value);
+  EXPECT_EQ(component->getPropertyValue<BusValue>("value"), value);
+  EXPECT_THROW(component->setProperty("value", std::string("10X1")),
+               std::invalid_argument);
 }
 
 TEST(ComponentTest, SetAndGetStringListProperty)

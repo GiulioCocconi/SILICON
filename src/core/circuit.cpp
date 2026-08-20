@@ -27,6 +27,7 @@
 #include <core/component.hpp>
 #include <core/serialization/component_registry.hpp>
 #include <core/serialization/yosys.hpp>
+#include <utils/num_formatting.hpp>
 
 #include <logging/logger.hpp>
 
@@ -785,7 +786,15 @@ std::string Circuit::serialize() const
     if (auto cPtr = graph[v].component) {
       nlohmann::ordered_json propsJson = nlohmann::ordered_json::object();
       for (const auto& [key, val] : cPtr->getProperties()) {
-        std::visit([&](auto&& arg) { propsJson[key] = arg; }, val);
+        std::visit(
+            [&](const auto& arg) {
+              using Value = std::remove_cvref_t<decltype(arg)>;
+              if constexpr (std::same_as<Value, BusValue>)
+                propsJson[key] = formatValue(arg, BusValueFormat::Raw);
+              else
+                propsJson[key] = arg;
+            },
+            val);
       }
 
       j["components"].push_back(
@@ -813,7 +822,7 @@ Circuit Circuit::deserializeYosys(const std::string_view                json,
 
 Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry& reg)
 {
-  auto j = nlohmann::json::parse(jsonStr);
+  const auto j = nlohmann::json::parse(jsonStr);
 
   if (j.value("version", "") != SILICON_VERSION) {
     throw std::runtime_error(std::format("The version must be {}", SILICON_VERSION));
@@ -821,7 +830,7 @@ Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry
 
   std::unordered_map<uint64_t, Wire_ptr> wireMap;
 
-  auto deserializeBusList = [&wireMap](const nlohmann::json& busListJson) {
+  const auto deserializeBusList = [&wireMap](const nlohmann::json& busListJson) {
     std::vector<Bus> buses;
     buses.reserve(busListJson.size());
 
@@ -835,71 +844,92 @@ Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry
           continue;
         }
 
-        const uint64_t w_id = wireJson.get<uint64_t>();
+        const auto id = wireJson.get<uint64_t>();
+        auto&      wire = wireMap[id];
 
-        auto& wire = wireMap[w_id];
-        if (!wire) {
-          wire = std::make_shared<Wire>(w_id, State::UNKNOWN);
-        }
+        if (!wire)
+          wire = std::make_shared<Wire>(id, State::UNKNOWN);
+
         wires.push_back(wire);
       }
+
       buses.emplace_back(std::move(wires));
     }
+
     return buses;
+  };
+
+  const auto applyProperty = [](const Component_ptr& component,
+                                const std::string&   key,
+                                const nlohmann::json& value,
+                                bool                  busValue) {
+    const auto current = component->getProperty(key);
+    if (!current || std::holds_alternative<BusValue>(*current) != busValue)
+      return;
+
+    if (busValue) {
+      if (!value.is_string())
+        throw std::runtime_error(
+            std::format("BusValue property '{}' must be a string", key));
+
+      component->setProperty(
+          key, busValueFromBits(value.get_ref<const std::string&>()));
+      return;
+    }
+
+    if (value.is_string())
+      component->setProperty(key, value.get<std::string>());
+    else if (value.is_boolean())
+      component->setProperty(key, value.get<bool>());
+    else if (value.is_number_integer())
+      component->setProperty(key, value.get<int>());
   };
 
   std::vector<std::pair<int, Component_ptr>> parsedComponents;
 
-  if (auto it = j.find("components"); it != j.end() && it->is_array()) {
+  if (const auto it = j.find("components"); it != j.end() && it->is_array()) {
     parsedComponents.reserve(it->size());
+
     for (const auto& compJson : *it) {
-      auto type_it = compJson.find("type");
-      if (type_it == compJson.end())
+      const auto typeIt = compJson.find("type");
+      if (typeIt == compJson.end())
         continue;
 
-      auto type = type_it->get<std::string>();
-      auto cPtr = reg.create(type);
-      if (!cPtr) {
+      const auto type = typeIt->get<std::string>();
+      auto       component = reg.create(type);
+
+      if (!component) {
         throw std::runtime_error(
             std::format("Failed to create unknown component type: {}", type));
       }
+
       const bool reconcileInterface = hasRegistryDefinedInterface(type);
 
-      if (auto props_it = compJson.find("properties");
-          props_it != compJson.end() && props_it->is_object()) {
-        for (const auto& [key, val] : props_it->items()) {
-          if (!cPtr->getProperty(key).has_value())
-            continue;
+      if (const auto propsIt = compJson.find("properties");
+          propsIt != compJson.end() && propsIt->is_object()) {
+        // Width and other scalar properties must settle before value normalization.
+        for (const auto& [key, value] : propsIt->items())
+          applyProperty(component, key, value, false);
 
-          PropertyValue propValue;
-          if (val.is_string()) {
-            propValue = val.get<std::string>();
-          } else if (val.is_boolean()) {
-            propValue = val.get<bool>();
-          } else if (val.is_number_integer()) {
-            propValue = val.get<int>();
-          } else {
-            continue;
-          }
-          cPtr->setProperty(key, propValue);
-        }
+        for (const auto& [key, value] : propsIt->items())
+          applyProperty(component, key, value, true);
       }
 
-      if (auto in_it = compJson.find("inputs");
-          in_it != compJson.end() && in_it->is_array()) {
-        auto inputs = deserializeBusList(*in_it);
-        if (reconcileInterface)
-          inputs = reconcileBuses(cPtr->getInputs(), inputs);
-        cPtr->setInputs(inputs);
-      }
+      const auto deserializeInterface =
+          [&](std::string_view name, const std::vector<Bus>& current) {
+            const auto it = compJson.find(name);
+            if (it == compJson.end() || !it->is_array())
+              return current;
 
-      if (auto out_it = compJson.find("outputs");
-          out_it != compJson.end() && out_it->is_array()) {
-        auto outputs = deserializeBusList(*out_it);
-        if (reconcileInterface)
-          outputs = reconcileBuses(cPtr->getOutputs(), outputs);
-        cPtr->setOutputs(outputs);
-      }
+            auto buses = deserializeBusList(*it);
+            return reconcileInterface ? reconcileBuses(current, buses)
+                                      : std::move(buses);
+          };
+
+      component->setInputs(
+          deserializeInterface("inputs", component->getInputs()));
+      component->setOutputs(
+          deserializeInterface("outputs", component->getOutputs()));
 
       /* --- CRITICAL ORDERING STEP ------------------------------------------------------
        * Boost.Graph (using boost::vecS) assigns VertexDescriptors strictly as sequential
@@ -912,38 +942,44 @@ Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry
 
       // Extract the serialized ID so we know what VertexDescriptor this component
       // originally had
-      int id = compJson["id"].get<int>();
-      parsedComponents.emplace_back(id, std::move(cPtr));
+      const auto id = compJson.at("id").get<int>();
+      parsedComponents.emplace_back(id, std::move(component));
     }
   }
 
   std::ranges::sort(parsedComponents,
-                    [](const auto& a, const auto& b) { return a.first < b.first; });
+                    [](const auto& lhs, const auto& rhs) {
+                      return lhs.first < rhs.first;
+                    });
 
   Circuit result;
   result.ownedComponents.reserve(parsedComponents.size());
 
   // Insert components in strict serialized order
-  for (auto& [id, cPtr] : parsedComponents) {
-    result.getOrAddVertex(cPtr);  // Boost assigns ID: 0, then 1, then 2...
-    result.ownedComponents.push_back(std::move(cPtr));
+  for (auto& [id, component] : parsedComponents) {
+    result.getOrAddVertex(component);  // Boost assigns ID: 0, then 1, then 2...
+    result.ownedComponents.push_back(std::move(component));
   }
 
   // Rebuild the edges for the correctly-aligned vertices
-  for (auto v : boost::make_iterator_range(boost::vertices(result.graph))) {
-    result.rebuildEdges(v);
+  for (const auto vertex :
+       boost::make_iterator_range(boost::vertices(result.graph))) {
+    result.rebuildEdges(vertex);
   }
 
-  result.ownedWires = wireMap | std::views::values | std::ranges::to<std::vector>();
+  result.ownedWires =
+      wireMap | std::views::values | std::ranges::to<std::vector>();
 
-  if (auto it = j.find("name"); it != j.end() && it->is_string()) {
+  if (const auto it = j.find("name"); it != j.end() && it->is_string())
     result.name = it->get<std::string>();
-  }
-  if (auto it = j.find("description"); it != j.end() && it->is_string()) {
+
+  if (const auto it = j.find("description");
+      it != j.end() && it->is_string()) {
     result.description = it->get<std::string>();
   }
 
   result.buildTopologyMap();
   return result;
 }
+
 }  // namespace SILICON::core

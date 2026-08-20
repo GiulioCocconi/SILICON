@@ -44,14 +44,14 @@ void expectBusStates(const Bus& bus, std::initializer_list<State> expected)
 
 void clockCycle(Simulator& simulator, const Wire_ptr& clock)
 {
-  ASSERT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
-  ASSERT_EQ(simulator.setBus(Bus{clock}, 0), Simulator::RunResult::Completed);
+  ASSERT_EQ(simulator.setBus(Bus{clock}, valueFor(Bus{clock}, 1)), Simulator::RunResult::Completed);
+  ASSERT_EQ(simulator.setBus(Bus{clock}, valueFor(Bus{clock}, 0)), Simulator::RunResult::Completed);
 }
 
 void resetRegister(Simulator& simulator, const Wire_ptr& clear)
 {
-  ASSERT_EQ(simulator.setBus(Bus{clear}, 1), Simulator::RunResult::Completed);
-  ASSERT_EQ(simulator.setBus(Bus{clear}, 0), Simulator::RunResult::Completed);
+  ASSERT_EQ(simulator.setBus(Bus{clear}, valueFor(Bus{clear}, 1)), Simulator::RunResult::Completed);
+  ASSERT_EQ(simulator.setBus(Bus{clear}, valueFor(Bus{clear}, 0)), Simulator::RunResult::Completed);
 }
 
 std::vector<Component_ptr> componentsIn(const Circuit& circuit)
@@ -128,7 +128,7 @@ TEST(RegisterTest, ParallelInParallelOutCapturesOnRisingEdge)
   auto      circuit = std::make_shared<Circuit>(Component_set{reg});
   Simulator simulator(circuit);
 
-  ASSERT_EQ(simulator.setBus(data, 0b1010), Simulator::RunResult::Completed);
+  ASSERT_EQ(simulator.setBus(data, valueFor(data, 0b1010)), Simulator::RunResult::Completed);
   clockCycle(simulator, clock);
 
   expectBusStates(out, {State::LOW, State::HIGH, State::LOW, State::HIGH});
@@ -148,11 +148,11 @@ TEST(RegisterTest, ClearIsActiveHighAndAsynchronous)
   auto      circuit = std::make_shared<Circuit>(Component_set{reg});
   Simulator simulator(circuit);
 
-  ASSERT_EQ(simulator.setBus(data, 0b111), Simulator::RunResult::Completed);
+  ASSERT_EQ(simulator.setBus(data, valueFor(data, 0b111)), Simulator::RunResult::Completed);
   clockCycle(simulator, clock);
   expectBusStates(out, {State::HIGH, State::HIGH, State::HIGH});
 
-  ASSERT_EQ(simulator.setBus(Bus{clear}, 1), Simulator::RunResult::Completed);
+  ASSERT_EQ(simulator.setBus(Bus{clear}, valueFor(Bus{clear}, 1)), Simulator::RunResult::Completed);
   expectBusStates(out, {State::LOW, State::LOW, State::LOW});
 }
 
@@ -170,16 +170,16 @@ TEST(RegisterTest, EnableLowHoldsStateButClearStillOverrides)
   auto      circuit = std::make_shared<Circuit>(Component_set{reg});
   Simulator simulator(circuit);
 
-  ASSERT_EQ(simulator.setBus(data, 0b11), Simulator::RunResult::Completed);
+  ASSERT_EQ(simulator.setBus(data, valueFor(data, 0b11)), Simulator::RunResult::Completed);
   clockCycle(simulator, clock);
   expectBusStates(out, {State::HIGH, State::HIGH});
 
-  ASSERT_EQ(simulator.setBus(Bus{enable}, 0), Simulator::RunResult::Completed);
-  ASSERT_EQ(simulator.setBus(data, 0b00), Simulator::RunResult::Completed);
+  ASSERT_EQ(simulator.setBus(Bus{enable}, valueFor(Bus{enable}, 0)), Simulator::RunResult::Completed);
+  ASSERT_EQ(simulator.setBus(data, valueFor(data, 0b00)), Simulator::RunResult::Completed);
   clockCycle(simulator, clock);
   expectBusStates(out, {State::HIGH, State::HIGH});
 
-  ASSERT_EQ(simulator.setBus(Bus{clear}, 1), Simulator::RunResult::Completed);
+  ASSERT_EQ(simulator.setBus(Bus{clear}, valueFor(Bus{clear}, 1)), Simulator::RunResult::Completed);
   expectBusStates(out, {State::LOW, State::LOW});
 }
 
@@ -200,15 +200,15 @@ TEST(RegisterTest, SerialInSerialOutShiftsLsbFirst)
   Simulator simulator(circuit);
   resetRegister(simulator, clear);
 
-  ASSERT_EQ(simulator.setBus(serialIn, 1), Simulator::RunResult::Completed);
+  ASSERT_EQ(simulator.setBus(serialIn, valueFor(serialIn, 1)), Simulator::RunResult::Completed);
   clockCycle(simulator, clock);
   EXPECT_EQ(serialOut[0]->getCurrentState(), State::LOW);
 
-  ASSERT_EQ(simulator.setBus(serialIn, 0), Simulator::RunResult::Completed);
+  ASSERT_EQ(simulator.setBus(serialIn, valueFor(serialIn, 0)), Simulator::RunResult::Completed);
   clockCycle(simulator, clock);
   EXPECT_EQ(serialOut[0]->getCurrentState(), State::LOW);
 
-  ASSERT_EQ(simulator.setBus(serialIn, 1), Simulator::RunResult::Completed);
+  ASSERT_EQ(simulator.setBus(serialIn, valueFor(serialIn, 1)), Simulator::RunResult::Completed);
   clockCycle(simulator, clock);
   EXPECT_EQ(serialOut[0]->getCurrentState(), State::HIGH);
 }
@@ -230,11 +230,11 @@ TEST(RegisterTest, SerialInParallelOutAccumulatesBits)
   Simulator simulator(circuit);
   resetRegister(simulator, clear);
 
-  ASSERT_EQ(simulator.setBus(serialIn, 1), Simulator::RunResult::Completed);
+  ASSERT_EQ(simulator.setBus(serialIn, valueFor(serialIn, 1)), Simulator::RunResult::Completed);
   clockCycle(simulator, clock);
-  ASSERT_EQ(simulator.setBus(serialIn, 0), Simulator::RunResult::Completed);
+  ASSERT_EQ(simulator.setBus(serialIn, valueFor(serialIn, 0)), Simulator::RunResult::Completed);
   clockCycle(simulator, clock);
-  ASSERT_EQ(simulator.setBus(serialIn, 1), Simulator::RunResult::Completed);
+  ASSERT_EQ(simulator.setBus(serialIn, valueFor(serialIn, 1)), Simulator::RunResult::Completed);
   clockCycle(simulator, clock);
 
   expectBusStates(out, {State::HIGH, State::LOW, State::HIGH});
@@ -260,13 +260,13 @@ TEST(RegisterTest, ParallelInSerialOutLoadsThenShiftsLsbFirst)
   Simulator simulator(circuit);
   resetRegister(simulator, clear);
 
-  ASSERT_EQ(simulator.setBus(data, 0b101), Simulator::RunResult::Completed);
-  ASSERT_EQ(simulator.setBus(Bus{load}, 1), Simulator::RunResult::Completed);
+  ASSERT_EQ(simulator.setBus(data, valueFor(data, 0b101)), Simulator::RunResult::Completed);
+  ASSERT_EQ(simulator.setBus(Bus{load}, valueFor(Bus{load}, 1)), Simulator::RunResult::Completed);
   clockCycle(simulator, clock);
   EXPECT_EQ(serialOut[0]->getCurrentState(), State::HIGH);
 
-  ASSERT_EQ(simulator.setBus(Bus{load}, 0), Simulator::RunResult::Completed);
-  ASSERT_EQ(simulator.setBus(data, 0b010), Simulator::RunResult::Completed);
+  ASSERT_EQ(simulator.setBus(Bus{load}, valueFor(Bus{load}, 0)), Simulator::RunResult::Completed);
+  ASSERT_EQ(simulator.setBus(data, valueFor(data, 0b010)), Simulator::RunResult::Completed);
   clockCycle(simulator, clock);
   EXPECT_EQ(serialOut[0]->getCurrentState(), State::LOW);
 
@@ -293,23 +293,23 @@ TEST(RegisterTest, ParallelInSerialOutHonorsExplicitLoadControlPriority)
   Simulator simulator(circuit);
   resetRegister(simulator, clear);
 
-  ASSERT_EQ(simulator.setBus(data, 0b010), Simulator::RunResult::Completed);
-  ASSERT_EQ(simulator.setBus(Bus{load}, 1), Simulator::RunResult::Completed);
+  ASSERT_EQ(simulator.setBus(data, valueFor(data, 0b010)), Simulator::RunResult::Completed);
+  ASSERT_EQ(simulator.setBus(Bus{load}, valueFor(Bus{load}, 1)), Simulator::RunResult::Completed);
   clockCycle(simulator, clock);
   EXPECT_EQ(serialOut[0]->getCurrentState(), State::LOW);
 
-  ASSERT_EQ(simulator.setBus(Bus{enable}, 0), Simulator::RunResult::Completed);
-  ASSERT_EQ(simulator.setBus(data, 0b111), Simulator::RunResult::Completed);
+  ASSERT_EQ(simulator.setBus(Bus{enable}, valueFor(Bus{enable}, 0)), Simulator::RunResult::Completed);
+  ASSERT_EQ(simulator.setBus(data, valueFor(data, 0b111)), Simulator::RunResult::Completed);
   clockCycle(simulator, clock);
   EXPECT_EQ(serialOut[0]->getCurrentState(), State::LOW);
 
-  ASSERT_EQ(simulator.setBus(Bus{clear}, 1), Simulator::RunResult::Completed);
+  ASSERT_EQ(simulator.setBus(Bus{clear}, valueFor(Bus{clear}, 1)), Simulator::RunResult::Completed);
   EXPECT_EQ(serialOut[0]->getCurrentState(), State::LOW);
 
-  ASSERT_EQ(simulator.setBus(Bus{clear}, 0), Simulator::RunResult::Completed);
-  ASSERT_EQ(simulator.setBus(Bus{enable}, 1), Simulator::RunResult::Completed);
-  ASSERT_EQ(simulator.setBus(Bus{load}, 1), Simulator::RunResult::Completed);
-  ASSERT_EQ(simulator.setBus(data, 0b111), Simulator::RunResult::Completed);
+  ASSERT_EQ(simulator.setBus(Bus{clear}, valueFor(Bus{clear}, 0)), Simulator::RunResult::Completed);
+  ASSERT_EQ(simulator.setBus(Bus{enable}, valueFor(Bus{enable}, 1)), Simulator::RunResult::Completed);
+  ASSERT_EQ(simulator.setBus(Bus{load}, valueFor(Bus{load}, 1)), Simulator::RunResult::Completed);
+  ASSERT_EQ(simulator.setBus(data, valueFor(data, 0b111)), Simulator::RunResult::Completed);
   clockCycle(simulator, clock);
   EXPECT_EQ(serialOut[0]->getCurrentState(), State::HIGH);
 }
@@ -328,8 +328,8 @@ TEST(RegisterTest, DelayAppliesToOutputUpdates)
   auto      circuit = std::make_shared<Circuit>(Component_set{reg});
   Simulator simulator(circuit);
 
-  ASSERT_EQ(simulator.setBus(data, 1), Simulator::RunResult::Completed);
-  ASSERT_EQ(simulator.setBus(Bus{clock}, 1), Simulator::RunResult::Completed);
+  ASSERT_EQ(simulator.setBus(data, valueFor(data, 1)), Simulator::RunResult::Completed);
+  ASSERT_EQ(simulator.setBus(Bus{clock}, valueFor(Bus{clock}, 1)), Simulator::RunResult::Completed);
   EXPECT_NE(out[0]->getCurrentState(), State::HIGH);
 
   ASSERT_EQ(simulator.run(5), Simulator::RunResult::Completed);

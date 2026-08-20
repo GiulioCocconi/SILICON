@@ -60,14 +60,14 @@ std::string graphicalAndSubcircuitDocument()
         {
           "id": 0,
           "type": "DummyInputComponent",
-          "properties": {"name": "a", "portOrientation": "DOWN", "startValue": 0},
+          "properties": {"name": "a", "portOrientation": "DOWN", "startValue": "0"},
           "inputs": [],
           "outputs": [[1]]
         },
         {
           "id": 1,
           "type": "DummyInputComponent",
-          "properties": {"name": "b", "portOrientation": "DOWN", "startValue": 0},
+          "properties": {"name": "b", "portOrientation": "DOWN", "startValue": "0"},
           "inputs": [],
           "outputs": [[2]]
         },
@@ -115,7 +115,7 @@ std::string graphicalBusSubcircuitDocument()
         {
           "id": 0,
           "type": "DummyBusInputComponent",
-          "properties": {"name": "data", "size": 8, "portOrientation": "DOWN", "startValue": 0},
+          "properties": {"name": "data", "size": 8, "portOrientation": "DOWN", "startValue": "00000000"},
           "inputs": [],
           "outputs": [[1, 2, 3, 4, 5, 6, 7, 8]]
         },
@@ -284,14 +284,14 @@ std::string feedbackLatchCoreDocument()
         {
           "id": 2,
           "type": "DummyInputComponent",
-          "properties": {"name": "set", "portOrientation": "DOWN", "startValue": 0},
+          "properties": {"name": "set", "portOrientation": "DOWN", "startValue": "0"},
           "inputs": [],
           "outputs": [[778]]
         },
         {
           "id": 3,
           "type": "DummyInputComponent",
-          "properties": {"name": "reset", "portOrientation": "DOWN", "startValue": 0},
+          "properties": {"name": "reset", "portOrientation": "DOWN", "startValue": "0"},
           "inputs": [],
           "outputs": [[779]]
         },
@@ -418,11 +418,11 @@ TEST_F(SubcircuitTest, SimulatesCombinationalSubcircuit)
   auto circuit = std::make_shared<Circuit>(component, false);
   SILICON::simulation::Session simulator(circuit);
 
-  EXPECT_EQ(simulator.setBus(Bus{inputA}, 1), Simulator::RunResult::Completed);
-  EXPECT_EQ(simulator.setBus(Bus{inputB}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{inputA}, valueFor(Bus{inputA}, 1)), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{inputB}, valueFor(Bus{inputB}, 1)), Simulator::RunResult::Completed);
   EXPECT_EQ(output->getCurrentState(), State::HIGH);
 
-  EXPECT_EQ(simulator.setBus(Bus{inputB}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{inputB}, valueFor(Bus{inputB}, 0)), Simulator::RunResult::Completed);
   EXPECT_EQ(output->getCurrentState(), State::LOW);
 }
 
@@ -514,8 +514,8 @@ TEST_F(SubcircuitTest, RemapsTwoInstancesOfSameSubcircuitIndependently)
 
   SILICON::simulation::Session simulator(circuit);
 
-  EXPECT_EQ(simulator.setBus(firstInput, 0), Simulator::RunResult::Completed);
-  EXPECT_EQ(simulator.setBus(secondInput, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(firstInput, valueFor(firstInput, 0)), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(secondInput, valueFor(secondInput, 1)), Simulator::RunResult::Completed);
   EXPECT_EQ(simulator.runUntilIdle(), Simulator::RunResult::Completed);
 
   EXPECT_EQ(firstOutput->getCurrentState(), State::HIGH);
@@ -586,8 +586,8 @@ TEST_F(SubcircuitTest, ElaboratesNestedSubcircuitsIntoParentSimulation)
   auto circuit = std::make_shared<Circuit>(component, false);
   SILICON::simulation::Session simulator(circuit);
 
-  EXPECT_EQ(simulator.setBus(Bus{inputA}, 1), Simulator::RunResult::Completed);
-  EXPECT_EQ(simulator.setBus(Bus{inputB}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{inputA}, valueFor(Bus{inputA}, 1)), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{inputB}, valueFor(Bus{inputB}, 1)), Simulator::RunResult::Completed);
   EXPECT_EQ(output->getCurrentState(), State::HIGH);
 }
 
@@ -607,7 +607,7 @@ TEST_F(SubcircuitTest, DelayedGateInsideSubcircuitUsesParentEventQueue)
   auto circuit = std::make_shared<Circuit>(component, false);
   SILICON::simulation::Session simulator(circuit);
 
-  EXPECT_EQ(simulator.setBus(Bus{input}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{input}, valueFor(Bus{input}, 0)), Simulator::RunResult::Completed);
   EXPECT_NE(output->getCurrentState(), State::HIGH);
   EXPECT_EQ(simulator.run(1), Simulator::RunResult::Completed);
   EXPECT_NE(output->getCurrentState(), State::HIGH);
@@ -693,14 +693,14 @@ TEST_F(SubcircuitTest, ExplicitSessionRebuildResetsRuntimeAndRestoresTrace)
   auto                                   source = std::make_shared<Circuit>(gate, false);
   SILICON::simulation::Session session(source);
 
-  std::vector<std::pair<std::uint64_t, std::vector<std::string>>> snapshots;
+  std::vector<std::pair<std::uint64_t, std::vector<BusValue>>> snapshots;
   session.setTraceBuses({{"output", Bus{output}}});
   session.setTraceSink(
-      [&snapshots](const std::uint64_t time, const std::vector<std::string>& values) {
+      [&snapshots](const std::uint64_t time, const std::vector<BusValue>& values) {
         snapshots.emplace_back(time, values);
       });
 
-  EXPECT_EQ(session.setBus(Bus{input}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(session.setBus(Bus{input}, valueFor(Bus{input}, 0)), Simulator::RunResult::Completed);
   EXPECT_EQ(session.run(2), Simulator::RunResult::Completed);
   EXPECT_EQ(session.getCurrentTime(), 2);
   EXPECT_NE(output->getCurrentState(), State::HIGH);
@@ -720,7 +720,7 @@ TEST_F(SubcircuitTest, ExplicitSessionRebuildResetsRuntimeAndRestoresTrace)
   ASSERT_FALSE(snapshots.empty());
   EXPECT_EQ(snapshots.back().first, 0);
   ASSERT_EQ(snapshots.back().second.size(), 1);
-  EXPECT_EQ(snapshots.back().second[0], "1");
+  EXPECT_EQ(snapshots.back().second[0], busValueFromBits("1"));
 
   EXPECT_EQ(session.run(6), Simulator::RunResult::Completed);
   EXPECT_EQ(output->getCurrentState(), State::HIGH);
@@ -845,9 +845,9 @@ TEST_F(SubcircuitTest, ElaboratesGraphicalAndHdlBackedSubcircuitsIdentically)
   EXPECT_EQ(notCount, 1);
 
   SILICON::simulation::Session session(source);
-  EXPECT_EQ(session.setBus(Bus{graphicalInputA}, 1), Simulator::RunResult::Completed);
-  EXPECT_EQ(session.setBus(Bus{graphicalInputB}, 1), Simulator::RunResult::Completed);
-  EXPECT_EQ(session.setBus(Bus{hdlInput}, 0), Simulator::RunResult::Completed);
+  EXPECT_EQ(session.setBus(Bus{graphicalInputA}, valueFor(Bus{graphicalInputA}, 1)), Simulator::RunResult::Completed);
+  EXPECT_EQ(session.setBus(Bus{graphicalInputB}, valueFor(Bus{graphicalInputB}, 1)), Simulator::RunResult::Completed);
+  EXPECT_EQ(session.setBus(Bus{hdlInput}, valueFor(Bus{hdlInput}, 0)), Simulator::RunResult::Completed);
   EXPECT_EQ(session.runUntilIdle(), Simulator::RunResult::Completed);
   EXPECT_EQ(graphicalOutput->getCurrentState(), State::HIGH);
   EXPECT_EQ(hdlOutput->getCurrentState(), State::HIGH);
@@ -937,8 +937,8 @@ TEST_F(SubcircuitTest, SimulatesFeedbackSubcircuitWithBoundaryOutputs)
   EXPECT_EQ(q->getCurrentState(), State::HIGH);
   EXPECT_EQ(notQ->getCurrentState(), State::LOW);
 
-  EXPECT_EQ(simulator.setBus(Bus{reset}, 0), Simulator::RunResult::Completed);
-  EXPECT_EQ(simulator.setBus(Bus{set}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{reset}, valueFor(Bus{reset}, 0)), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{set}, valueFor(Bus{set}, 1)), Simulator::RunResult::Completed);
   EXPECT_EQ(q->getCurrentState(), State::LOW);
   EXPECT_EQ(notQ->getCurrentState(), State::HIGH);
 }
@@ -963,8 +963,8 @@ TEST_F(SubcircuitTest, SimulatesGraphicalSubcircuitDocument)
   auto circuit = std::make_shared<Circuit>(component, false);
   SILICON::simulation::Session simulator(circuit);
 
-  EXPECT_EQ(simulator.setBus(Bus{inputA}, 1), Simulator::RunResult::Completed);
-  EXPECT_EQ(simulator.setBus(Bus{inputB}, 1), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{inputA}, valueFor(Bus{inputA}, 1)), Simulator::RunResult::Completed);
+  EXPECT_EQ(simulator.setBus(Bus{inputB}, valueFor(Bus{inputB}, 1)), Simulator::RunResult::Completed);
   EXPECT_EQ(output->getCurrentState(), State::HIGH);
 }
 

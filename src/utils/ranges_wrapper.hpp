@@ -25,6 +25,10 @@
   #include <range/v3/view/sliding.hpp>
 #endif
 
+#ifndef __cpp_lib_ranges_chunk
+  #include <range/v3/view/chunk.hpp>
+#endif
+
 namespace SILICON::views {
 
 #ifndef __cpp_lib_ranges_enumerate
@@ -44,6 +48,12 @@ inline constexpr auto enumerate = std::views::enumerate;
 inline constexpr auto slide = ranges::views::sliding;
 #else
 inline constexpr auto slide = std::views::slide;
+#endif
+
+#ifndef __cpp_lib_ranges_chunk
+inline constexpr auto chunk = ranges::views::chunk;
+#else
+inline constexpr auto chunk = std::views::chunk;
 #endif
 
 }  // namespace SILICON::views

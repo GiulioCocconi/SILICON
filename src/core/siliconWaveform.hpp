@@ -24,6 +24,7 @@
 #include <string_view>
 #include <vector>
 
+#include <core/wire.hpp>
 #include <core/fstTraceWriter.hpp>
 
 namespace SILICON::waveform {
@@ -35,7 +36,7 @@ struct Signal {
 
 struct Sample {
   uint64_t                 time = 0;
-  std::vector<std::string> values;
+  std::vector<core::BusValue> values;
 };
 
 struct Trace {
@@ -46,7 +47,7 @@ struct Trace {
 
 void resetTrace(Trace& trace, std::vector<Signal> signalDefinitions, int inputCount);
 
-void appendSnapshot(Trace& trace, uint64_t time, std::vector<std::string> values);
+void appendSnapshot(Trace& trace, uint64_t time, std::vector<core::BusValue> values);
 
 void appendSnapshots(Trace& trace, std::span<const Sample> samples);
 
@@ -54,14 +55,10 @@ void clearSamples(Trace& trace);
 
 [[nodiscard]] std::size_t signalWidth(const Trace& trace, int signalIndex);
 
-[[nodiscard]] std::string rawBitsForValue(unsigned int value, std::size_t width);
-
-[[nodiscard]] unsigned int rawBitsToUnsignedValue(std::string_view rawBits);
-
 void rebuildEditableTrace(Trace& trace, uint64_t duration);
 
 void applyEditInterval(Trace& trace, uint64_t duration, int signalIndex,
-                       uint64_t startTime, uint64_t endTime, std::string rawValue);
+                       uint64_t startTime, uint64_t endTime, const core::BusValue& rawValue);
 
 [[nodiscard]] std::vector<Sample> editedInputSamples(const Trace& trace);
 

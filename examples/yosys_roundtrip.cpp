@@ -40,9 +40,9 @@ namespace {
 constexpr auto CounterWidth = 4;
 constexpr auto TopModule    = "counter";
 
-[[nodiscard]] Component_ptr constant(Wire_ptr output, std::string value)
+[[nodiscard]] Component_ptr constant(Wire_ptr output, const State value)
 {
-  return std::make_shared<ConstantComponent>(std::move(output), std::move(value));
+  return std::make_shared<ConstantComponent>(std::move(output), BusValue{value});
 }
 
 void writeFile(const std::filesystem::path& path, const std::string_view contents)
@@ -76,12 +76,12 @@ void writeFile(const std::filesystem::path& path, const std::string_view content
       std::make_shared<DummyInputComponent>(Bus{clock}, "clk"),
       std::make_shared<DummyBusOutputComponent>(count, "count"),
 
-      constant(increment[0], "1"),
-      constant(increment[1], "0"),
-      constant(increment[2], "0"),
-      constant(increment[3], "0"),
-      constant(enable, "1"),
-      constant(clear, "0"),
+      constant(increment[0], State::HIGH),
+      constant(increment[1], State::LOW),
+      constant(increment[2], State::LOW),
+      constant(increment[3], State::LOW),
+      constant(enable, State::HIGH),
+      constant(clear, State::LOW),
 
       std::make_shared<AdderNBits>(std::array<Bus, 2>{count, increment}, nextCount,
                                    carry),

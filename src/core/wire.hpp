@@ -32,14 +32,14 @@ namespace SILICON::core {
  * Each wire could hold one of four states. UNKNOWN can be HIGH or LOW, for example
  * HIGH || UNKNOWN == HIGH, cause (HIGH || HIGH) == (HIGH || LOW) == HIGH.
  *
- * UNKNOWN and ERROR states are only used as simulation internal values, they should not
- * be assignable as inputs. */
+ * UNKNOWN may also be assigned by users to model an indeterminate input. ERROR is
+ * reserved for simulation failures and conflicting drivers. */
 
 enum class State : unsigned char {
-  LOW = '0',
-  HIGH = '1',
+  LOW     = '0',
+  HIGH    = '1',
   UNKNOWN = 'X',
-  ERROR = 'E',
+  ERROR   = 'E',
 };
 
 State operator&&(const State& a, const State& b);
@@ -116,6 +116,11 @@ public:
 
 using Wire_ptr = std::shared_ptr<Wire>;
 
+using BusValue = std::vector<State>;
+
+BusValue operator+(const BusValue& a, const BusValue& b);
+BusValue twosComplement(const BusValue& n);
+
 class Bus {
 private:
   std::vector<Wire_ptr> busData;
@@ -129,7 +134,7 @@ public:
 
   void setSize(unsigned short size);
 
-  int forceSetCurrentValue(unsigned int value);
+  bool forceSetCurrentValue(const BusValue& value);
 
   /**
    * @brief Forces the bus value without authorization check.
@@ -137,22 +142,20 @@ public:
    * @param authorizedBy The component that authorized this change
    * @return Non-zero if value exceeds bus size (overflow), zero otherwise
    */
-  int forceSetCurrentValue(unsigned int value, const Component_weakPtr& authorizedBy);
-  void                       forceSetCurrentValue(std::string_view str, const Component_weakPtr& authorizedBy);
-  int setCurrentValue(unsigned int value, const Component_weakPtr& requestedBy);
+  [[nodiscard]] bool forceSetCurrentValue(const BusValue&          value,
+                                          const Component_weakPtr& authorizedBy);
+  [[nodiscard]] bool setCurrentValue(const BusValue&          value,
+                                     const Component_weakPtr& requestedBy);
 
-  [[nodiscard]] unsigned int getCurrentValue() const;
-  [[nodiscard]] std::string  getCurrentValueString() const;
-  [[nodiscard]] bool         isInErrorState() const;
-  [[nodiscard]] bool         hasUnknowns() const;
-  [[nodiscard]] bool         sharesWireWith(const Bus& other) const;
+  [[nodiscard]] BusValue getCurrentValue() const;
+  [[nodiscard]] bool     isInErrorState() const;
+  [[nodiscard]] bool     hasUnknowns() const;
+  [[nodiscard]] bool     sharesWireWith(const Bus& other) const;
 
-  const Wire_ptr& operator[](unsigned short index) const
-  {
-    return this->busData.at(index);
-  }
+  const Wire_ptr& operator[](const unsigned short index) const
+  { return this->busData.at(index); }
 
-  Wire_ptr& operator[](unsigned short index) { return this->busData.at(index); }
+  Wire_ptr& operator[](const unsigned short index) { return this->busData.at(index); }
 
   explicit operator std::vector<Wire_ptr>() const { return this->busData; }
   explicit operator std::vector<Wire_ptr>() { return this->busData; }

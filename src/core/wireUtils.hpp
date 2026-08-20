@@ -24,13 +24,19 @@
 
 namespace SILICON::wireUtils {
 
+/** @brief True when truncating to @p width would discard a non-low bit. */
+[[nodiscard]] bool busValueOverflowsWidth(const core::BusValue& value,
+                                          std::size_t           width);
+
 /**
- * @brief Checks whether an unsigned value exceeds a bus width.
- * @param value Value to fit in the bus.
- * @param width Number of bits available in the bus.
- * @return True when value cannot be represented by width bits.
+ * @brief Resize an LSB-first value to an exact bus width.
+ *
+ * Short values are extended with @p extension and long values retain their least
+ * significant bits.
  */
-[[nodiscard]] bool busValueOverflowsWidth(unsigned int value, std::size_t width);
+[[nodiscard]] core::BusValue normalizeBusValue(const core::BusValue& value,
+                                               std::size_t           width,
+                                               core::State extension = core::State::LOW);
 
 /**
  * @brief Checks whether assigning a binary value would change any driven bus wire.
@@ -38,7 +44,8 @@ namespace SILICON::wireUtils {
  * @param value Binary value encoded least-significant bit first.
  * @return True when at least one existing wire would change state.
  */
-[[nodiscard]] bool busWillChangeToValue(const core::Bus& bus, unsigned int value);
+[[nodiscard]] bool busWillChangeToValue(const core::Bus&      bus,
+                                        const core::BusValue& value);
 
 /**
  * @brief Tests whether a state is a concrete binary logic value.

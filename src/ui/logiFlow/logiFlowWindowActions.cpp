@@ -508,8 +508,6 @@ void LogiFlowWindow::createWaveformWindow()
           &waveform::Viewer::resetTrace);
   connect(diagramScene, &DiagramScene::waveformTraceSnapshot, waveformViewer,
           &waveform::Viewer::appendSnapshot);
-  connect(diagramScene, &DiagramScene::waveformTraceSnapshots, waveformViewer,
-          &waveform::Viewer::appendSnapshots);
   connect(
       waveformViewer, &waveform::Viewer::editModeChanged, this,
       [this](const bool enabled) { diagramScene->setIoInteractionsEnabled(!enabled); });

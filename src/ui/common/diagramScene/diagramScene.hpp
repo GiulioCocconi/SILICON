@@ -387,7 +387,7 @@ public slots:
    * @param value The value to set
    * @param source The component that triggered the change
    */
-  void handleInputToggled(Bus targetBus, unsigned int value, Component_weakPtr source);
+  void handleInputToggled(Bus targetBus, BusValue value, Component_weakPtr source);
 
   /**
    * @brief Refreshes the visual state of all graphical outputs.
@@ -433,13 +433,13 @@ signals:
   /**
    * @brief Emitted when the simulator reaches a new visible waveform state.
    */
-  void waveformTraceSnapshot(qulonglong time, QStringList values);
+  void waveformTraceSnapshot(qulonglong time, std::vector<BusValue> values);
 
   /**
    * @brief Emitted when a completed simulation job produced multiple waveform states.
    * @param snapshots Ordered timestamp and signal-value snapshots
    */
-  void waveformTraceSnapshots(QList<QPair<qulonglong, QStringList>> snapshots);
+  void waveformTraceSnapshots(QList<QPair<qulonglong, std::vector<BusValue>>> snapshots);
 
 private:
   /**

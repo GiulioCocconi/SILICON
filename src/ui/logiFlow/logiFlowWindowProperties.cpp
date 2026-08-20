@@ -18,6 +18,8 @@
 
 #include "logiFlowWindow.hpp"
 
+#include <utils/num_formatting.hpp>
+
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
@@ -433,6 +435,28 @@ void LogiFlowWindow::updatePropertyDock()
 
           applyProperty(key, lineEdit->text().toStdString());
           lineEdit->setModified(false);
+        });
+
+        layout->addRow(QString::fromStdString(key), lineEdit);
+      } else if constexpr (std::is_same_v<T, BusValue>) {
+        auto* lineEdit = new QLineEdit(container);
+        if (isMixed)
+          lineEdit->setPlaceholderText(tr("Mixed values..."));
+        else
+          lineEdit->setText(QString::fromStdString(
+              SILICON::core::formatValue(arg, BusValueFormat::Raw)));
+
+        connect(lineEdit, &QLineEdit::editingFinished, this, [=, this]() {
+          if (!lineEdit->isModified())
+            return;
+          try {
+            applyProperty(
+                key, SILICON::core::busValueFromBits(lineEdit->text().toStdString()));
+            lineEdit->setModified(false);
+          } catch (const std::exception& error) {
+            SILICON::ui::inputDialog::warning(this, tr("Invalid Property"),
+                                              error.what());
+          }
         });
 
         layout->addRow(QString::fromStdString(key), lineEdit);

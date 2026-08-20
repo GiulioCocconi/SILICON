@@ -89,7 +89,7 @@ public:
                 int inputCount);
 
   /** @brief Sets per-signal display formats used for bus labels. */
-  void setSignalFormats(const std::vector<SILICON::core::NumberFormat>& formats);
+  void setSignalFormats(const std::vector<SILICON::core::BusValueFormat>& formats);
 
   /**
    * @brief Changes horizontal waveform scale.
@@ -201,7 +201,7 @@ private:
   int                                editDragSignalIndex      = -1;
   quint64                            editDragStartTime        = 0;
   quint64                            editDragEndTime          = 0;
-  std::vector<SILICON::core::NumberFormat> signalFormats;
+  std::vector<SILICON::core::BusValueFormat> signalFormats;
 
   [[nodiscard]] int     rowHeight() const { return 28; }
   [[nodiscard]] int     rulerHeight() const { return 24; }
@@ -214,15 +214,18 @@ private:
   [[nodiscard]] int     groupHeaderCountBeforeSignal(int row) const;
   [[nodiscard]] int     yForSignalRow(int row) const;
   [[nodiscard]] int     signalRowAt(QPoint position) const;
-  [[nodiscard]] int     yForScalarValue(int row, const QString& value) const;
-  [[nodiscard]] SILICON::core::NumberFormat formatForSignal(int row) const;
+  [[nodiscard]] int     yForScalarValue(int row, const core::BusValue& value) const;
+  [[nodiscard]] SILICON::core::BusValueFormat valueFormatForSignal(int row) const;
   /** @brief Recomputes the scrollable canvas dimensions from trace extent and zoom. */
   void updateCanvasSize();
 
-  void drawScalar(QPainter& painter, int row, int x0, int x1, const QString& value) const;
+  void drawScalar(QPainter& painter, int row, int x0, int x1,
+                  const core::BusValue& value) const;
   void drawScalarTransition(QPainter& painter, int row, int x,
-                            const QString& previousValue, const QString& nextValue) const;
-  void drawBus(QPainter& painter, int row, int x0, int x1, const QString& value) const;
+                            const core::BusValue& previousValue,
+                            const core::BusValue& nextValue) const;
+  void drawBus(QPainter& painter, int row, int x0, int x1,
+               const core::BusValue& value) const;
 };
 
 class Viewer : public QWidget {
@@ -249,13 +252,13 @@ public slots:
    * @param time Simulation timestamp
    * @param values Signal values ordered like the configured names
    */
-  void appendSnapshot(quint64 time, const QStringList& values);
+  void appendSnapshot(quint64 time, const std::vector<core::BusValue>& values);
 
   /**
    * @brief Appends a batch of snapshots with a single deferred UI refresh.
    * @param snapshots Ordered timestamp and signal-value snapshots
    */
-  void appendSnapshots(const QList<QPair<qulonglong, QStringList>>& snapshots);
+  void appendSnapshots(const QList<QPair<qulonglong, std::vector<core::BusValue>>>& snapshots);
 
   /** @brief Clears all recorded waveform samples. */
   void clearTrace();
@@ -302,7 +305,7 @@ private:
   int                                selectedSampleIndex = -1;
   int                                selectedSignalIndex = -1;
   double                             pixelsPerTick       = 12.0;
-  std::vector<SILICON::core::NumberFormat> signalFormats;
+  std::vector<SILICON::core::BusValueFormat> signalFormats;
   bool                               syncingScrollBars      = false;
   bool                               editMode               = false;
   quint64                            editDuration           = 20;
@@ -369,7 +372,7 @@ private:
   [[nodiscard]] QStringList visibleNames() const;
   [[nodiscard]] QStringList displayedValues() const;
   [[nodiscard]] std::size_t signalWidth(int signalIndex) const;
-  [[nodiscard]] QString     displayValue(int signalIndex, const QString& value) const;
+  [[nodiscard]] QString     displayValue(int signalIndex, const core::BusValue& value) const;
   void                      setSelectedSignalIndex(int signalIndex);
   void                      showSignalFormatMenu(int signalIndex, QPoint globalPosition);
   void                      saveTrace();

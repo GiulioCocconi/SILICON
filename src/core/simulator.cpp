@@ -18,6 +18,7 @@
 
 #include "simulator.hpp"
 
+#include "utils/num_formatting.hpp"
 #include "utils/ranges_wrapper.hpp"
 
 #include <algorithm>
@@ -323,29 +324,12 @@ void Simulator::emitTraceSnapshot()
   if (!traceSink || traceBuses.empty())
     return;
 
-  std::vector<std::string> values;
+  std::vector<BusValue> values;
   values.reserve(traceBuses.size());
   for (const auto& [name, bus] : traceBuses)
-    values.push_back(encodeTraceBusValue(bus));
+    values.push_back(bus.getCurrentValue());
 
   traceSink(currentTime, values);
-}
-
-std::string Simulator::encodeTraceBusValue(const Bus& bus)
-{
-  std::string value;
-  value.reserve(bus.size());
-
-  for (auto it = bus.end(); it != bus.begin();) {
-    --it;
-    if (!*it) {
-      value.push_back('x');
-    } else {
-      value.push_back(CircuitWriter::stateToFstValue((*it)->getCurrentState()));
-    }
-  }
-
-  return value;
 }
 
 Simulator::PendingTransitionKey
@@ -452,7 +436,7 @@ Simulator::compileExecutionPlan(std::span<const Circuit::SimulationBlock> blocks
     }
 
     if (!cyclicComps.empty())
-      plan.push_back({true, std::move(cyclicComps)});
+      plan.push_back({.isCyclic = true, .components = std::move(cyclicComps)});
   }
 
   return plan;
@@ -563,7 +547,8 @@ Simulator::getForwardExecutionSteps(std::span<const Bus> changedBuses) const
   return steps;
 }
 
-void Simulator::updateWire(const Wire_ptr& target, State newState, uint64_t delay,
+void Simulator::updateWire(const Wire_ptr& target, const State newState,
+                           const uint64_t delay,
                            const Component_weakPtr& source)
 {
   if (!target)
@@ -589,6 +574,15 @@ void Simulator::updateWire(const Wire_ptr& target, State newState, uint64_t dela
 
   target->setCurrentState(newState, source);
   cyclicStateChanged = true;
+}
+
+void Simulator::updateBus(const Bus& bus, const BusValue& value, const uint64_t delay,
+                          const Component_weakPtr& source)
+{
+  const auto normalized = SILICON::wireUtils::normalizeBusValue(value, bus.size());
+  for (auto i = 0uz; i < bus.size(); ++i) {
+    updateWire(bus[i], normalized[i], delay, source);
+  }
 }
 
 Simulator::RunResult
@@ -741,7 +735,7 @@ Simulator::RunResult Simulator::simulateWaveform(
         return result;
     }
 
-    std::vector<std::string> values = inputSnapshots[sampleIndex].values;
+    std::vector<BusValue> values = inputSnapshots[sampleIndex].values;
     ++sampleIndex;
     while (sampleIndex < inputSnapshots.size()
            && inputSnapshots[sampleIndex].time == sampleTime) {
@@ -764,7 +758,7 @@ Simulator::RunResult Simulator::simulateWaveform(
 }
 
 Simulator::RunResult
-Simulator::applyWaveformInputSample(std::span<const std::string>         values,
+Simulator::applyWaveformInputSample(std::span<const BusValue>         values,
                                     std::span<const WaveformInputDriver> inputDrivers,
                                     const CancellationCheck&             isCancelled)
 {
@@ -777,16 +771,14 @@ Simulator::applyWaveformInputSample(std::span<const std::string>         values,
   std::unordered_map<uint64_t, State> previousWireStates;
   for (std::size_t i = 0; i < inputCount; ++i) {
     const auto& driver = inputDrivers[i];
-    const auto  value  = rawBitsToUnsignedValue(values[i]);
     auto        bus    = driver.bus;
 
-    if (SILICON::wireUtils::busWillChangeToValue(bus, value)) {
+    if (bus.getCurrentValue() != values[i]) {
       inputsChanged = true;
       changedBuses.push_back(bus);
       capturePreviousBusStates(previousWireStates, bus);
     }
-
-    bus.forceSetCurrentValue(value, driver.source);
+    (void)bus.forceSetCurrentValue(values[i], driver.source);
   }
 
   if (!inputsChanged)
@@ -816,22 +808,24 @@ int Simulator::getMaxTransitionsPerDeltaCycle()
   return maxTransitionsPerDeltaCycle;
 }
 
-Simulator::RunResult Simulator::setBus(Bus bus, unsigned int value,
+Simulator::RunResult Simulator::setBus(Bus bus, BusValue value,
                                        CancellationCheck isCancelled)
 {
   return setBus(std::move(bus), value, {}, std::move(isCancelled));
 }
 
-Simulator::RunResult Simulator::setBus(Bus bus, const unsigned int value,
+Simulator::RunResult Simulator::setBus(Bus bus, BusValue value,
                                        const Component_weakPtr& source,
                                        CancellationCheck        isCancelled)
 {
   if (cancellationRequested(isCancelled))
     return RunResult::Cancelled;
 
+  value = SILICON::wireUtils::normalizeBusValue(value, bus.size());
+
   // Early return if bus current value == new value (only if the prev value is valid)
   if (!bus.isInErrorState() && !bus.hasUnknowns()) {
-    unsigned int currentVal = bus.getCurrentValue();
+    BusValue currentVal = bus.getCurrentValue();
     if (currentVal == value)
       return RunResult::Completed;
   }
@@ -840,7 +834,7 @@ Simulator::RunResult Simulator::setBus(Bus bus, const unsigned int value,
   std::unordered_map<uint64_t, State> previousWireStates;
   capturePreviousBusStates(previousWireStates, bus);
 
-  bus.forceSetCurrentValue(value, source);
+  (void)bus.forceSetCurrentValue(value, source);
 
   return evaluateForwardConeAndTrace(changedBuses, std::move(previousWireStates),
                                      isCancelled);

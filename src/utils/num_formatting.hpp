@@ -18,17 +18,36 @@
 
 #pragma once
 
+#include <core/wire.hpp>
+
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace SILICON::core {
 
-enum class NumberFormat { Signed, Unsigned, Hex, Oct, Bin };
+enum class BusValueFormat { Raw, Signed, Unsigned, Hex, Oct, Bin, Unknown };
 
-[[nodiscard]] unsigned int maxValueForBusWidth(std::size_t width);
-[[nodiscard]] std::string  formatFixedWidthHex(unsigned int value, std::size_t width);
-[[nodiscard]] bool         parseBusValue(std::string_view text, unsigned int& value);
-[[nodiscard]] std::string  formatRawBits(std::string_view rawBits, NumberFormat format);
+/** @brief Format an LSB-first BusValue for display. */
+[[nodiscard]] std::string formatValue(const BusValue& value, BusValueFormat format,
+                                      std::size_t fixedWidth = 0);
+
+/**
+ * @brief Parse user-facing decimal, hexadecimal, octal, binary, or four-state text.
+ *
+ * Unprefixed binary/four-state text is interpreted as an MSB-first raw value; other
+ * unprefixed digits are decimal. Invalid text returns BusValueFormat::Unknown.
+ */
+[[nodiscard]] std::pair<BusValue, BusValueFormat> valueFromStr(std::string_view text);
+
+[[nodiscard]] BusValue maxValueForBusWidth(std::size_t width);
+
+/** @brief Builds a fixed-width BusValue from an unsigned integer (LSB-first). */
+[[nodiscard]] BusValue busValueFromInteger(std::uint64_t value, std::size_t width);
+
+/** @brief Strictly decodes an MSB-first raw string containing 0, 1, X, or E. */
+[[nodiscard]] BusValue busValueFromBits(std::string_view bits);
 
 }  // namespace SILICON::core

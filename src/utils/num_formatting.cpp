@@ -20,199 +20,302 @@
 
 #include <algorithm>
 #include <cctype>
-#include <charconv>
-#include <limits>
-#include <sstream>
+#include <format>
+#include <map>
+#include <ranges>
+#include <stdexcept>
+#include <utility>
+
+#include <core/wireUtils.hpp>
+#include <utils/ranges_wrapper.hpp>
 
 namespace SILICON::core {
-
 namespace {
 
-  std::string trimmed(std::string_view text)
-  {
-    while (!text.empty() && std::isspace(static_cast<unsigned char>(text.front())) != 0)
-      text.remove_prefix(1);
-    while (!text.empty() && std::isspace(static_cast<unsigned char>(text.back())) != 0)
-      text.remove_suffix(1);
-    return std::string(text);
+const std::map<BusValueFormat, std::string> formatPrefix{
+    {BusValueFormat::Signed, "-"},
+    {BusValueFormat::Hex, "0x"},
+    {BusValueFormat::Oct, "0o"},
+    {BusValueFormat::Bin, "0b"},
+};
+
+const std::map<BusValueFormat, std::string> formatAlphabet{
+    {BusValueFormat::Raw,
+     std::format("{}{}{}{}", static_cast<char>(std::to_underlying(State::LOW)),
+                 static_cast<char>(std::to_underlying(State::HIGH)),
+                 static_cast<char>(std::to_underlying(State::UNKNOWN)),
+                 static_cast<char>(std::to_underlying(State::ERROR)))},
+    {BusValueFormat::Signed, "0123456789"},
+    {BusValueFormat::Unsigned, "0123456789"},
+    {BusValueFormat::Oct, "01234567"},
+    {BusValueFormat::Hex, "0123456789ABCDEF"},
+    {BusValueFormat::Bin, "01"},
+};
+
+bool satisfiesAlphabet(const std::string_view digits, const BusValueFormat format)
+{
+	const auto alphabet = formatAlphabet.at(format);
+
+	return !digits.empty()
+	   && std::ranges::all_of(digits, [alphabet](const char digit) {
+		return alphabet.contains(toupper(digit));
+	      });
+};
+
+char upper(const char value)
+{ return static_cast<char>(std::toupper(static_cast<unsigned char>(value))); }
+
+std::string_view trim(std::string_view text)
+{
+  while (!text.empty()
+         && std::isspace(static_cast<unsigned char>(text.front())) != 0)
+    text.remove_prefix(1);
+  while (!text.empty()
+         && std::isspace(static_cast<unsigned char>(text.back())) != 0)
+    text.remove_suffix(1);
+  return text;
+}
+
+bool startsWithIgnoreCase(const std::string_view value,
+                          const std::string_view prefix)
+{
+  return value.size() >= prefix.size()
+         && std::ranges::equal(value.substr(0, prefix.size()), prefix,
+                               [](const char lhs, const char rhs) {
+                                 return upper(lhs) == upper(rhs);
+                               });
+}
+
+[[nodiscard]] std::pair<BusValueFormat, std::string_view>
+getFormat(std::string_view value)
+{
+  value = trim(value);
+  if (value.empty())
+    return {BusValueFormat::Unknown, {}};
+
+  // Explicit prefixes take precedence over the raw alphabet (notably for 0xE).
+  for (const auto& [format, prefix] : formatPrefix) {
+    if (!startsWithIgnoreCase(value, prefix))
+      continue;
+
+    const auto digits = value.substr(prefix.size());
+    if (satisfiesAlphabet(digits, format))
+      return {format, digits};
   }
 
-  bool startsWithIgnoreCase(std::string_view text, std::string_view prefix)
-  {
-    if (text.size() < prefix.size())
-      return false;
-    for (std::size_t i = 0; i < prefix.size(); ++i) {
-      if (std::tolower(static_cast<unsigned char>(text[i]))
-          != std::tolower(static_cast<unsigned char>(prefix[i])))
-        return false;
+  for (const auto& [format, _] : formatAlphabet) {
+    if (formatPrefix.contains(format))
+      continue;
+
+    auto digits = value;
+    if (satisfiesAlphabet(digits, format))
+      return {format, digits};
+  }
+  return {BusValueFormat::Unknown, {}};
+}
+
+// Arbitrary-precision Horner's method for converting unbounded binary strings.
+void decimalMultiplyByTwoAndAdd(std::string& value, const int add)
+{
+  int carry = add;
+  for (char& digit : value | std::views::reverse) {
+    const int expanded = (digit - '0') * 2 + carry;
+    digit              = static_cast<char>('0' + expanded % 10);
+    carry              = expanded / 10;
+  }
+  if (carry != 0)
+    value.insert(value.begin(), static_cast<char>('0' + carry));
+}
+
+std::string parseKnownBits(const std::string_view rawBits)
+{
+  std::string value = "0";
+  for (const char bit : rawBits)
+    decimalMultiplyByTwoAndAdd(value, bit - '0');
+  return value;
+}
+
+std::string twosComplementMagnitude(const std::string_view rawBits)
+{
+  std::string magnitude =
+      rawBits | std::views::transform([](const char bit) {
+        return bit == '1' ? '0' : '1';
+      })
+      | std::ranges::to<std::string>();
+
+  for (char& bit : magnitude | std::views::reverse) {
+    if (bit == '0') {
+      bit = '1';
+      break;
     }
-    return true;
+    bit = '0';
+  }
+  return parseKnownBits(magnitude);
+}
+
+std::string groupedBase(const std::string_view rawBits, const int groupSize,
+                        const std::string_view digits)
+{
+  if (std::ranges::all_of(rawBits, [](const char bit) { return bit == '0'; }))
+    return "0";
+
+  const std::size_t padding =
+      (static_cast<std::size_t>(groupSize) - rawBits.size() % groupSize)
+      % static_cast<std::size_t>(groupSize);
+  std::string padded(padding, '0');
+  padded += rawBits;
+
+  std::string result;
+  for (const auto chunk : padded | SILICON::views::chunk(groupSize)) {
+    const int value = std::ranges::fold_left(
+        chunk, 0,
+        [](const int acc, const char bit) { return (acc << 1) | (bit - '0'); });
+    result.push_back(digits[static_cast<std::size_t>(value)]);
   }
 
-  bool isKnownBitString(std::string_view rawBits)
-  {
-    return !rawBits.empty() && std::ranges::all_of(rawBits, [](char ch) {
-      return ch == '0' || ch == '1';
-    });
-  }
-
-  std::string uppercaseRaw(std::string_view rawBits)
-  {
-    std::string value(rawBits);
-    std::ranges::transform(value, value.begin(), [](unsigned char ch) {
-      return static_cast<char>(std::toupper(ch));
-    });
-    return value.empty() ? "X" : value;
-  }
-
-  void decimalMultiplyByTwo(std::string& value)
-  {
-    int carry = 0;
-    for (auto it = value.rbegin(); it != value.rend(); ++it) {
-      const int digit = (*it - '0') * 2 + carry;
-      *it             = static_cast<char>('0' + digit % 10);
-      carry           = digit / 10;
-    }
-    if (carry != 0)
-      value.insert(value.begin(), static_cast<char>('0' + carry));
-  }
-
-  void decimalAddOne(std::string& value)
-  {
-    int carry = 1;
-    for (auto it = value.rbegin(); it != value.rend() && carry != 0; ++it) {
-      const int digit = (*it - '0') + carry;
-      *it             = static_cast<char>('0' + digit % 10);
-      carry           = digit / 10;
-    }
-    if (carry != 0)
-      value.insert(value.begin(), '1');
-  }
-
-  std::string parseKnownBits(std::string_view rawBits)
-  {
-    std::string value = "0";
-    for (const char bit : rawBits) {
-      decimalMultiplyByTwo(value);
-      if (bit == '1')
-        decimalAddOne(value);
-    }
-    return value;
-  }
-
-  std::string parseTwosComplementMagnitude(std::string_view rawBits)
-  {
-    std::string magnitude(rawBits);
-    for (char& bit : magnitude)
-      bit = bit == '1' ? '0' : '1';
-
-    for (auto it = magnitude.rbegin(); it != magnitude.rend(); ++it) {
-      if (*it == '0') {
-        *it = '1';
-        break;
-      }
-      *it = '0';
-    }
-
-    return parseKnownBits(magnitude);
-  }
-
-  std::string groupedBase(std::string_view rawBits, int groupSize,
-                          std::string_view digits, std::string_view prefix)
-  {
-    if (!isKnownBitString(rawBits))
-      return uppercaseRaw(rawBits);
-
-    const std::size_t pad =
-        (groupSize - rawBits.size() % static_cast<std::size_t>(groupSize))
-        % static_cast<std::size_t>(groupSize);
-    std::string padded(pad, '0');
-    padded.append(rawBits);
-
-    std::string result(prefix);
-    bool        emittedNonZero = false;
-    for (std::size_t i = 0; i < padded.size(); i += static_cast<std::size_t>(groupSize)) {
-      int value = 0;
-      for (int offset = 0; offset < groupSize; ++offset) {
-        value <<= 1;
-        if (padded[i + static_cast<std::size_t>(offset)] == '1')
-          ++value;
-      }
-      result.push_back(digits[static_cast<std::size_t>(value)]);
-      emittedNonZero = emittedNonZero || value != 0;
-    }
-
-    if (!emittedNonZero)
-      return std::string(prefix) + "0";
-    return result;
-  }
+  const auto firstNonZero = result.find_first_not_of('0');
+  return firstNonZero == std::string::npos ? "0" : result.substr(firstNonZero);
+}
 
 }  // namespace
 
-unsigned int maxValueForBusWidth(const std::size_t width)
+BusValue maxValueForBusWidth(const std::size_t width)
+{ return BusValue(width, State::HIGH); }
+
+BusValue busValueFromInteger(std::uint64_t value, const std::size_t width)
 {
-  if (width >= std::numeric_limits<unsigned int>::digits)
-    return std::numeric_limits<unsigned int>::max();
-  return (1U << width) - 1U;
+  BusValue result;
+  result.reserve(width);
+  for (std::size_t bit = 0; bit < width; ++bit) {
+    result.push_back((value & 1U) != 0 ? State::HIGH : State::LOW);
+    value >>= 1U;
+  }
+  return result;
 }
 
-std::string formatFixedWidthHex(const unsigned int value, const std::size_t width)
+BusValue busValueFromBits(const std::string_view bits)
 {
-  const int          hexDigits = std::max(1, static_cast<int>((width + 3) / 4));
-  std::ostringstream stream;
-  stream << "0X" << std::uppercase << std::hex;
-  stream.width(hexDigits);
-  stream.fill('0');
-  stream << value;
-  return stream.str();
+  if (bits.empty())
+    return {};
+
+  const auto [format, digits] = getFormat(bits);
+  // Only valid formats are those which satisfy the raw alphabet
+  if (format != BusValueFormat::Raw && !satisfiesAlphabet(digits, BusValueFormat::Raw))
+    throw std::invalid_argument("Raw bus values may contain only 0, 1, X, or E");
+
+  return digits | std::views::reverse
+         | std::views::transform([](const char digit) {
+             return static_cast<State>(upper(digit));
+           })
+         | std::ranges::to<BusValue>();
 }
 
-bool parseBusValue(std::string_view text, unsigned int& value)
+std::string formatValue(const BusValue& value, const BusValueFormat format,
+                        const std::size_t fixedWidth)
 {
-  const std::string normalized = trimmed(text);
-  if (normalized.empty())
-    return false;
+  if (value.empty())
+    return {};
 
-  int              base   = 10;
-  std::string_view digits = normalized;
-  if (startsWithIgnoreCase(digits, "0x")) {
-    base = 16;
-    digits.remove_prefix(2);
-  } else if (startsWithIgnoreCase(digits, "0b")) {
-    base = 2;
-    digits.remove_prefix(2);
+  const bool mustBeRaw = std::ranges::any_of(
+      value, [](const State state) {
+        return state == State::UNKNOWN || state == State::ERROR;
+      });
+
+  const auto rawStr = value | std::views::reverse
+                      | std::views::transform([](const State state) {
+                          return static_cast<char>(std::to_underlying(state));
+                        })
+                      | std::ranges::to<std::string>();
+
+  if (format == BusValueFormat::Raw || mustBeRaw)
+    return rawStr;
+
+  std::string res;
+  switch (format) {
+    case BusValueFormat::Hex: res = groupedBase(rawStr, 4, formatAlphabet.at(format)); break;
+    case BusValueFormat::Oct: res = groupedBase(rawStr, 3, formatAlphabet.at(format)); break;
+    case BusValueFormat::Bin: res = rawStr; break;
+    case BusValueFormat::Unsigned: res = parseKnownBits(rawStr); break;
+    case BusValueFormat::Signed:
+      res = value.back() == State::HIGH
+                ? formatPrefix.at(format) + twosComplementMagnitude(rawStr)
+                : parseKnownBits(rawStr);
+      break;
+    case BusValueFormat::Raw:
+    case BusValueFormat::Unknown: throw std::invalid_argument("Invalid output format");
   }
 
-  if (digits.empty())
-    return false;
-
-  unsigned int parsed = 0;
-  const auto [ptr, ec] =
-      std::from_chars(digits.data(), digits.data() + digits.size(), parsed, base);
-  if (ec != std::errc{} || ptr != digits.data() + digits.size())
-    return false;
-
-  value = parsed;
-  return true;
+  const bool needsPrefix =
+      format != BusValueFormat::Signed && formatPrefix.contains(format);
+  const std::size_t padding = fixedWidth > res.size() ? fixedWidth - res.size() : 0;
+  return std::format("{}{}{}", needsPrefix ? formatPrefix.at(format) : "",
+                     std::string(padding, '0'), res);
 }
 
-std::string formatRawBits(std::string_view rawBits, const NumberFormat format)
+std::pair<BusValue, BusValueFormat> valueFromStr(const std::string_view value)
 {
-  if (!isKnownBitString(rawBits))
-    return uppercaseRaw(rawBits);
+  const auto [format, digits] = getFormat(value);
+  BusValue result;
 
   switch (format) {
-    case NumberFormat::Hex: return groupedBase(rawBits, 4, "0123456789ABCDEF", "0X");
-    case NumberFormat::Oct: return groupedBase(rawBits, 3, "01234567", "0O");
-    case NumberFormat::Bin: return std::string("0B") + std::string(rawBits);
-    case NumberFormat::Unsigned: return parseKnownBits(rawBits);
-    case NumberFormat::Signed:
-      if (rawBits.front() == '1')
-        return "-" + parseTwosComplementMagnitude(rawBits);
-      return parseKnownBits(rawBits);
+    case BusValueFormat::Raw:
+      result = digits | std::views::reverse
+               | std::views::transform([](const char digit) {
+                   return static_cast<State>(upper(digit));
+                 })
+               | std::ranges::to<BusValue>();
+      break;
+    case BusValueFormat::Bin:
+      result = digits | std::views::reverse
+               | std::views::transform([](const char digit) {
+                   return digit == '1' ? State::HIGH : State::LOW;
+                 })
+               | std::ranges::to<BusValue>();
+      break;
+    case BusValueFormat::Hex:
+      for (const char digit : digits | std::views::reverse) {
+        const char normalized = upper(digit);
+        const int parsed = normalized >= 'A' ? normalized - 'A' + 10
+                                             : normalized - '0';
+        for (int bit = 0; bit < 4; ++bit)
+          result.push_back((parsed >> bit) & 1 ? State::HIGH : State::LOW);
+      }
+      break;
+    case BusValueFormat::Oct:
+      for (const char digit : digits | std::views::reverse) {
+        const int parsed = digit - '0';
+        for (int bit = 0; bit < 3; ++bit)
+          result.push_back((parsed >> bit) & 1 ? State::HIGH : State::LOW);
+      }
+      break;
+    case BusValueFormat::Unsigned:
+    case BusValueFormat::Signed: {
+      std::string decimal(digits);
+      bool        nonZero = true;
+      while (nonZero) {
+        int remainder = 0;
+        nonZero       = false;
+
+        for (char& digit : decimal) {
+          const int expanded = digit - '0' + remainder * 10;
+          digit              = static_cast<char>(expanded / 2 + '0');
+          remainder          = expanded % 2;
+          if (digit != '0')
+            nonZero = true;
+        }
+        result.push_back(remainder != 0 ? State::HIGH : State::LOW);
+      }
+
+      if (format == BusValueFormat::Signed) {
+        result.push_back(State::LOW);
+        result = twosComplement(result);
+      }
+      break;
+    }
+    case BusValueFormat::Unknown: return {{}, BusValueFormat::Unknown};
   }
 
-  return uppercaseRaw(rawBits);
+  return {std::move(result), format};
 }
 
 }  // namespace SILICON::core
