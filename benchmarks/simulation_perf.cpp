@@ -20,6 +20,7 @@
 #include <core/gates.hpp>
 #include <core/simulator.hpp>
 #include <logging/logger.hpp>
+#include <utils/num_formatting.hpp>
 
 #include <algorithm>
 #include <array>
@@ -337,7 +338,8 @@ std::size_t checksum(const std::vector<Bus>& buses)
 {
   std::size_t result = 0;
   for (const auto& bus : buses) {
-    result = result * 131U + std::hash<std::string>{}(bus.getCurrentValueString());
+    for (const auto state : bus.getCurrentValue())
+      result = result * 131U + static_cast<std::size_t>(std::to_underlying(state));
     result = result * 17U + static_cast<std::size_t>(bus.hasUnknowns());
     result = result * 17U + static_cast<std::size_t>(bus.isInErrorState());
   }
@@ -451,7 +453,8 @@ void runPropagationBenchmark(const std::string_view name, Measurement measuremen
   for (std::size_t iteration = 0; iteration < iterations; ++iteration) {
     const auto value = static_cast<unsigned int>(iteration & 1U);
     for (const auto& input : measurement.bench.inputs) {
-      if (simulator.setBus(input, value) != Simulator::RunResult::Completed)
+      if (simulator.setBus(input, busValueFromInteger(value, input.size()))
+          != Simulator::RunResult::Completed)
         throw std::runtime_error("setBus did not complete");
     }
     if (simulator.runUntilIdle() != Simulator::RunResult::Completed)
@@ -525,7 +528,8 @@ void runCyclicBenchmark(Measurement measurement, const std::size_t iterations,
   for (std::size_t iteration = 0; iteration < iterations; ++iteration) {
     const auto value = static_cast<unsigned int>(iteration & 1U);
     for (const auto& input : measurement.bench.inputs) {
-      if (simulator.setBus(input, value) != Simulator::RunResult::Completed)
+      if (simulator.setBus(input, busValueFromInteger(value, input.size()))
+          != Simulator::RunResult::Completed)
         throw std::runtime_error("cyclic setBus did not complete");
     }
     if (simulator.runUntilIdle() != Simulator::RunResult::Completed)
@@ -565,11 +569,13 @@ void runRegisteredCyclicBenchmark(Measurement measurement, const std::size_t ite
   const auto runStart = Clock::now();
   const auto clock    = measurement.bench.inputs.front();
   for (std::size_t iteration = 0; iteration < iterations; ++iteration) {
-    if (simulator.setBus(clock, 1) != Simulator::RunResult::Completed)
+    if (simulator.setBus(clock, busValueFromInteger(1, clock.size()))
+        != Simulator::RunResult::Completed)
       throw std::runtime_error("registered cyclic rising clock did not complete");
     if (simulator.runUntilIdle() != Simulator::RunResult::Completed)
       throw std::runtime_error("registered cyclic rising settle did not complete");
-    if (simulator.setBus(clock, 0) != Simulator::RunResult::Completed)
+    if (simulator.setBus(clock, busValueFromInteger(0, clock.size()))
+        != Simulator::RunResult::Completed)
       throw std::runtime_error("registered cyclic falling clock did not complete");
     if (simulator.runUntilIdle() != Simulator::RunResult::Completed)
       throw std::runtime_error("registered cyclic falling settle did not complete");

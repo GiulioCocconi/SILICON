@@ -101,13 +101,13 @@ public:
   /**
    * @brief Forces a bus value and propagates the change through the runtime circuit.
    */
-  Simulator::RunResult setBus(Bus bus, unsigned int value,
+  Simulator::RunResult setBus(Bus bus, const BusValue& value,
                               Simulator::CancellationCheck isCancelled = {});
 
   /**
    * @brief Forces a bus value with an explicit source component authorization.
    */
-  Simulator::RunResult setBus(Bus bus, unsigned int value,
+  Simulator::RunResult setBus(Bus bus, const BusValue& value,
                               const Component_weakPtr&     source,
                               Simulator::CancellationCheck isCancelled = {});
 

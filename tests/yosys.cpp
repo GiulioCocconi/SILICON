@@ -181,9 +181,9 @@ private:
                   {"netnames", Json::object()}}}}}};
 }
 
-[[nodiscard]] unsigned int evaluateBinaryCircuit(const std::shared_ptr<Circuit>& circuit,
-                                                 const unsigned int              a,
-                                                 const unsigned int              b)
+[[nodiscard]] BusValue evaluateBinaryCircuit(const std::shared_ptr<Circuit>& circuit,
+                                             const unsigned int              a,
+                                             const unsigned int              b)
 {
   std::map<std::string, std::shared_ptr<DummyBusInputComponent>> inputs;
   std::shared_ptr<DummyBusOutputComponent>                       output;
@@ -198,8 +198,10 @@ private:
 
   if (!inputs.contains("a") || !inputs.contains("b") || !output)
     throw std::runtime_error("Expected named binary circuit boundary components");
-  inputs.at("a")->setState(a);
-  inputs.at("b")->setState(b);
+  inputs.at("a")->setBusValue(
+      valueFor(inputs.at("a")->outputBuses()[0], a));
+  inputs.at("b")->setBusValue(
+      valueFor(inputs.at("b")->outputBuses()[0], b));
   Simulator simulator(circuit);
   if (simulator.runUntilIdle() != Simulator::RunResult::Completed)
     throw std::runtime_error("Binary circuit simulation did not complete");
@@ -732,7 +734,8 @@ TEST(YosysTest, ImportsGeneralCombinationalNetlistWithConstants)
   auto importedConstant = findComponent<ConstantComponent>(imported);
   ASSERT_TRUE(importedConstant);
   EXPECT_EQ(importedConstant->getPropertyValue<int>("size"), 2);
-  EXPECT_EQ(importedConstant->getPropertyValue<std::string>("value"), "01");
+  EXPECT_EQ(importedConstant->getPropertyValue<BusValue>("value"),
+            busValueFromBits("01"));
 
   imported.setName("top");
   auto registry = ComponentRegistry::empty();
@@ -761,10 +764,10 @@ TEST(YosysTest, ImportsGeneralCombinationalNetlistWithConstants)
   }
   ASSERT_TRUE(inputComponent);
   ASSERT_TRUE(outputComponent);
-  inputComponent->setState(3);
+  inputComponent->setBusValue(valueFor(inputComponent->outputBuses()[0], 3));
   Simulator simulator(simulated);
   ASSERT_EQ(simulator.runUntilIdle(), Simulator::RunResult::Completed);
-  EXPECT_EQ(outputComponent->inputBuses()[0].getCurrentValue(), 2U);
+  EXPECT_EQ(outputComponent->inputBuses()[0].getCurrentValue(), valueFor(outputComponent->inputBuses()[0], 2));
 }
 
 TEST(YosysTest, ImportsSubWithYosysWidthAndSignednessSemantics)
@@ -789,7 +792,7 @@ TEST(YosysTest, ImportsSubWithYosysWidthAndSignednessSemantics)
   EXPECT_EQ(extender->getPropertyValue<int>("outSize"), 5);
   EXPECT_EQ(extender->getPropertyValue<std::string>("mode"),
             std::string(Extender::UnsignedMode));
-  EXPECT_EQ(evaluateBinaryCircuit(unsignedCircuit, 2, 5), 13U);
+  EXPECT_EQ(evaluateBinaryCircuit(unsignedCircuit, 2, 5), valueFor(4, 13));
 
   // Both signed flags cause sign extension: 3'b110 (-2) - 5'b00011 (3) = -5.
   auto signedCircuit = import(3, 5, 6, true, true);
@@ -797,7 +800,7 @@ TEST(YosysTest, ImportsSubWithYosysWidthAndSignednessSemantics)
   ASSERT_TRUE(signedExtender);
   EXPECT_EQ(signedExtender->getPropertyValue<std::string>("mode"),
             std::string(Extender::SignedMode));
-  EXPECT_EQ(evaluateBinaryCircuit(signedCircuit, 6, 3), 59U);
+  EXPECT_EQ(evaluateBinaryCircuit(signedCircuit, 6, 3), valueFor(6, 59));
 
   // A mixed signedness operation is unsigned in Yosys: 6 - 3 = 3.
   auto mixedCircuit = import(3, 5, 6, true, false);
@@ -805,11 +808,11 @@ TEST(YosysTest, ImportsSubWithYosysWidthAndSignednessSemantics)
   ASSERT_TRUE(mixedExtender);
   EXPECT_EQ(mixedExtender->getPropertyValue<std::string>("mode"),
             std::string(Extender::UnsignedMode));
-  EXPECT_EQ(evaluateBinaryCircuit(mixedCircuit, 6, 3), 3U);
+  EXPECT_EQ(evaluateBinaryCircuit(mixedCircuit, 6, 3), valueFor(6, 3));
 
   // Arithmetic is evaluated at the widest width and narrowed to the low Y bits.
   auto narrowedCircuit = import(5, 4, 3, false, false);
-  EXPECT_EQ(evaluateBinaryCircuit(narrowedCircuit, 1, 3), 6U);
+  EXPECT_EQ(evaluateBinaryCircuit(narrowedCircuit, 1, 3), valueFor(3, 6));
 
   auto addDesign = subtractionDesign(3, 5, 4, false, false);
   onlyModule(addDesign)["cells"].begin().value()["type"] = "$add";
@@ -818,7 +821,7 @@ TEST(YosysTest, ImportsSubWithYosysWidthAndSignednessSemantics)
   ASSERT_TRUE(addExtender);
   EXPECT_EQ(addExtender->getPropertyValue<int>("inSize"), 3);
   EXPECT_EQ(addExtender->getPropertyValue<int>("outSize"), 5);
-  EXPECT_EQ(evaluateBinaryCircuit(addCircuit, 2, 5), 7U);
+  EXPECT_EQ(evaluateBinaryCircuit(addCircuit, 2, 5), valueFor(4, 7));
 }
 
 TEST(YosysTest, RaisesSharedConstantEqualityComparisonsToDecoder)
@@ -860,17 +863,17 @@ TEST(YosysTest, RaisesSharedConstantEqualityComparisonsToDecoder)
   EXPECT_EQ(componentTypes(*circuit).count("Decoder"), 1);
 
   Simulator simulator(circuit);
-  ASSERT_EQ(simulator.setBus(decoder->inputBuses()[1], 1),
+  ASSERT_EQ(simulator.setBus(decoder->inputBuses()[1], valueFor(decoder->inputBuses()[1], 1)),
             Simulator::RunResult::Completed);
   EXPECT_EQ(decoder->outputBuses()[0][1]->getCurrentState(), State::HIGH);
   EXPECT_EQ(decoder->outputBuses()[0][6]->getCurrentState(), State::LOW);
 
-  ASSERT_EQ(simulator.setBus(decoder->inputBuses()[1], 6),
+  ASSERT_EQ(simulator.setBus(decoder->inputBuses()[1], valueFor(decoder->inputBuses()[1], 6)),
             Simulator::RunResult::Completed);
   EXPECT_EQ(decoder->outputBuses()[0][1]->getCurrentState(), State::LOW);
   EXPECT_EQ(decoder->outputBuses()[0][6]->getCurrentState(), State::HIGH);
 
-  ASSERT_EQ(simulator.setBus(decoder->inputBuses()[1], 3),
+  ASSERT_EQ(simulator.setBus(decoder->inputBuses()[1], valueFor(decoder->inputBuses()[1], 3)),
             Simulator::RunResult::Completed);
   EXPECT_EQ(decoder->outputBuses()[0][1]->getCurrentState(), State::LOW);
   EXPECT_EQ(decoder->outputBuses()[0][6]->getCurrentState(), State::LOW);
@@ -1617,16 +1620,16 @@ TEST(YosysToolTest, ImportedTechnologyCellsPreserveRepresentativeBehavior)
   auto latch = findComponent<DLatch>(*latchCircuit);
   ASSERT_TRUE(latch);
   Simulator latchSimulator(latchCircuit);
-  EXPECT_EQ(latchSimulator.setBus(latch->inputBuses()[0], 1),
+  EXPECT_EQ(latchSimulator.setBus(latch->inputBuses()[0], valueFor(latch->inputBuses()[0], 1)),
             Simulator::RunResult::Completed);
   EXPECT_EQ(latch->outputBuses()[0][0]->getCurrentState(), State::UNKNOWN);
-  EXPECT_EQ(latchSimulator.setBus(latch->inputBuses()[1], 1),
+  EXPECT_EQ(latchSimulator.setBus(latch->inputBuses()[1], valueFor(latch->inputBuses()[1], 1)),
             Simulator::RunResult::Completed);
   EXPECT_EQ(latch->outputBuses()[0][0]->getCurrentState(), State::HIGH);
   EXPECT_EQ(latch->outputBuses()[1][0]->getCurrentState(), State::LOW);
-  EXPECT_EQ(latchSimulator.setBus(latch->inputBuses()[1], 0),
+  EXPECT_EQ(latchSimulator.setBus(latch->inputBuses()[1], valueFor(latch->inputBuses()[1], 0)),
             Simulator::RunResult::Completed);
-  EXPECT_EQ(latchSimulator.setBus(latch->inputBuses()[0], 0),
+  EXPECT_EQ(latchSimulator.setBus(latch->inputBuses()[0], valueFor(latch->inputBuses()[0], 0)),
             Simulator::RunResult::Completed);
   EXPECT_EQ(latch->outputBuses()[0][0]->getCurrentState(), State::HIGH);
 
@@ -1645,10 +1648,12 @@ TEST(YosysToolTest, ImportedTechnologyCellsPreserveRepresentativeBehavior)
       throw std::runtime_error("Mapped D flip-flop was not reconstructed");
     Simulator  simulator(circuit);
     const bool positive = edge == "posedge";
-    EXPECT_EQ(simulator.setBus(dff->inputBuses()[1], positive ? 0 : 1),
+    EXPECT_EQ(simulator.setBus(dff->inputBuses()[1],
+                               valueFor(dff->inputBuses()[1], positive ? 0 : 1)),
               Simulator::RunResult::Completed);
-    EXPECT_EQ(simulator.setBus(dff->inputBuses()[0], 1), Simulator::RunResult::Completed);
-    EXPECT_EQ(simulator.setBus(dff->inputBuses()[1], positive ? 1 : 0),
+    EXPECT_EQ(simulator.setBus(dff->inputBuses()[0], valueFor(dff->inputBuses()[0], 1)), Simulator::RunResult::Completed);
+    EXPECT_EQ(simulator.setBus(dff->inputBuses()[1],
+                               valueFor(dff->inputBuses()[1], positive ? 1 : 0)),
               Simulator::RunResult::Completed);
     EXPECT_EQ(dff->outputBuses()[0][0]->getCurrentState(), State::HIGH);
     EXPECT_EQ(dff->outputBuses()[1][0]->getCurrentState(), State::LOW);
@@ -1666,20 +1671,20 @@ TEST(YosysToolTest, ImportedTechnologyCellsPreserveRepresentativeBehavior)
   auto dffe = findComponent<EFlipFlop>(*enabledCircuit);
   ASSERT_TRUE(dffe);
   Simulator enabledSimulator(enabledCircuit);
-  EXPECT_EQ(enabledSimulator.setBus(dffe->inputBuses()[2], 0),
+  EXPECT_EQ(enabledSimulator.setBus(dffe->inputBuses()[2], valueFor(dffe->inputBuses()[2], 0)),
             Simulator::RunResult::Completed);
-  EXPECT_EQ(enabledSimulator.setBus(dffe->inputBuses()[0], 1),
+  EXPECT_EQ(enabledSimulator.setBus(dffe->inputBuses()[0], valueFor(dffe->inputBuses()[0], 1)),
             Simulator::RunResult::Completed);
-  EXPECT_EQ(enabledSimulator.setBus(dffe->inputBuses()[1], 0),
+  EXPECT_EQ(enabledSimulator.setBus(dffe->inputBuses()[1], valueFor(dffe->inputBuses()[1], 0)),
             Simulator::RunResult::Completed);
-  EXPECT_EQ(enabledSimulator.setBus(dffe->inputBuses()[2], 1),
+  EXPECT_EQ(enabledSimulator.setBus(dffe->inputBuses()[2], valueFor(dffe->inputBuses()[2], 1)),
             Simulator::RunResult::Completed);
   EXPECT_EQ(dffe->outputBuses()[0][0]->getCurrentState(), State::UNKNOWN);
-  EXPECT_EQ(enabledSimulator.setBus(dffe->inputBuses()[2], 0),
+  EXPECT_EQ(enabledSimulator.setBus(dffe->inputBuses()[2], valueFor(dffe->inputBuses()[2], 0)),
             Simulator::RunResult::Completed);
-  EXPECT_EQ(enabledSimulator.setBus(dffe->inputBuses()[1], 1),
+  EXPECT_EQ(enabledSimulator.setBus(dffe->inputBuses()[1], valueFor(dffe->inputBuses()[1], 1)),
             Simulator::RunResult::Completed);
-  EXPECT_EQ(enabledSimulator.setBus(dffe->inputBuses()[2], 1),
+  EXPECT_EQ(enabledSimulator.setBus(dffe->inputBuses()[2], valueFor(dffe->inputBuses()[2], 1)),
             Simulator::RunResult::Completed);
   EXPECT_EQ(dffe->outputBuses()[0][0]->getCurrentState(), State::HIGH);
 
@@ -1703,11 +1708,11 @@ TEST(YosysToolTest, ImportedTechnologyCellsPreserveRepresentativeBehavior)
   ASSERT_TRUE(inputs.contains("a"));
   ASSERT_TRUE(inputs.contains("b"));
   ASSERT_TRUE(output);
-  inputs.at("a")->setState(15);
-  inputs.at("b")->setState(1);
+  inputs.at("a")->setBusValue(valueFor(inputs.at("a")->outputBuses()[0], 15));
+  inputs.at("b")->setBusValue(valueFor(inputs.at("b")->outputBuses()[0], 1));
   Simulator adderSimulator(adderCircuit);
   ASSERT_EQ(adderSimulator.runUntilIdle(), Simulator::RunResult::Completed);
-  EXPECT_EQ(output->inputBuses()[0].getCurrentValue(), 16U);
+  EXPECT_EQ(output->inputBuses()[0].getCurrentValue(), valueFor(output->inputBuses()[0], 16));
 }
 
 TEST(YosysToolTest, ExportsAdderAsBehavioralExpression)
@@ -1765,11 +1770,16 @@ TEST(YosysToolTest, TechnologyCellsExportAsBehavioralVerilog)
     auto adder = findComponent<FullAdder>(*simulated);
     ASSERT_TRUE(adder);
     Simulator simulator(simulated);
-    ASSERT_EQ(simulator.setBus(adder->inputBuses()[0], value & 1U),
+    ASSERT_EQ(simulator.setBus(adder->inputBuses()[0],
+                               valueFor(adder->inputBuses()[0], value & 1U)),
               Simulator::RunResult::Completed);
-    ASSERT_EQ(simulator.setBus(adder->inputBuses()[1], (value >> 1U) & 1U),
+    ASSERT_EQ(simulator.setBus(
+                  adder->inputBuses()[1],
+                  valueFor(adder->inputBuses()[1], (value >> 1U) & 1U)),
               Simulator::RunResult::Completed);
-    ASSERT_EQ(simulator.setBus(adder->inputBuses()[2], (value >> 2U) & 1U),
+    ASSERT_EQ(simulator.setBus(
+                  adder->inputBuses()[2],
+                  valueFor(adder->inputBuses()[2], (value >> 2U) & 1U)),
               Simulator::RunResult::Completed);
     const unsigned result =
         static_cast<unsigned>(adder->outputBuses()[0][0]->getCurrentState()
@@ -1804,11 +1814,11 @@ TEST(YosysToolTest, TechnologyCellsExportAsBehavioralVerilog)
   EXPECT_EQ(restoredDff->getPropertyValue<std::string>("triggerEdge"),
             std::optional<std::string>("NET"));
   Simulator dffSimulator(dffCircuit);
-  ASSERT_EQ(dffSimulator.setBus(restoredDff->inputBuses()[1], 1),
+  ASSERT_EQ(dffSimulator.setBus(restoredDff->inputBuses()[1], valueFor(restoredDff->inputBuses()[1], 1)),
             Simulator::RunResult::Completed);
-  ASSERT_EQ(dffSimulator.setBus(restoredDff->inputBuses()[0], 1),
+  ASSERT_EQ(dffSimulator.setBus(restoredDff->inputBuses()[0], valueFor(restoredDff->inputBuses()[0], 1)),
             Simulator::RunResult::Completed);
-  ASSERT_EQ(dffSimulator.setBus(restoredDff->inputBuses()[1], 0),
+  ASSERT_EQ(dffSimulator.setBus(restoredDff->inputBuses()[1], valueFor(restoredDff->inputBuses()[1], 0)),
             Simulator::RunResult::Completed);
   EXPECT_EQ(restoredDff->outputBuses()[0][0]->getCurrentState(), State::HIGH);
   EXPECT_EQ(restoredDff->outputBuses()[1][0]->getCurrentState(), State::LOW);
@@ -1965,7 +1975,7 @@ TEST(YosysToolTest, VerilogCircuitVerilogRoundTripPreservesBehavior)
     }
     if (!input || !output)
       throw std::runtime_error("Round-trip circuit boundary was not preserved");
-    input->setState(inputValue);
+    input->setBusValue(valueFor(input->outputBuses()[0], inputValue));
     Simulator simulator(sharedCircuit);
     if (simulator.runUntilIdle() != Simulator::RunResult::Completed)
       throw std::runtime_error("Round-trip circuit simulation did not complete");

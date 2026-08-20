@@ -67,12 +67,12 @@ TEST(MultiplexerTest, TwoToOneSelectsInputBit)
   auto      circuit = std::make_shared<Circuit>(Component_set{mux});
   Simulator sim(circuit);
 
-  sim.setBus(data, 0b10);
-  sim.setBus(selection, 0);
+  sim.setBus(data, valueFor(data, 0b10));
+  sim.setBus(selection, valueFor(selection, 0));
   sim.run(10);
   EXPECT_EQ(output->getCurrentState(), State::LOW);
 
-  sim.setBus(selection, 1);
+  sim.setBus(selection, valueFor(selection, 1));
   sim.run(10);
   EXPECT_EQ(output->getCurrentState(), State::HIGH);
 }
@@ -87,10 +87,10 @@ TEST(MultiplexerTest, LargerMuxSelectsMatchingDataBit)
   auto      circuit = std::make_shared<Circuit>(Component_set{mux});
   Simulator sim(circuit);
 
-  sim.setBus(data, 0b1010'0100);
+  sim.setBus(data, valueFor(data, 0b1010'0100));
 
   for (unsigned int selected = 0; selected < 8; ++selected) {
-    sim.setBus(selection, selected);
+    sim.setBus(selection, valueFor(selection, selected));
     sim.run(10);
 
     const State expected = ((0b1010'0100u >> selected) & 1u) ? State::HIGH
@@ -124,7 +124,7 @@ TEST(MultiplexerTest, UnknownAndErrorSelectionPropagate)
     auto      circuit = std::make_shared<Circuit>(Component_set{mux});
     Simulator sim(circuit);
 
-    sim.setBus(data, 0b11);
+    sim.setBus(data, valueFor(data, 0b11));
     selection[0]->forceSetCurrentState(State::UNKNOWN);
     sim.run(10);
     EXPECT_EQ(output->getCurrentState(), State::UNKNOWN);
@@ -140,7 +140,7 @@ TEST(MultiplexerTest, UnknownAndErrorSelectionPropagate)
     auto      circuit = std::make_shared<Circuit>(Component_set{mux});
     Simulator sim(circuit);
 
-    sim.setBus(data, 0b11);
+    sim.setBus(data, valueFor(data, 0b11));
     sim.run(10);
     EXPECT_EQ(output->getCurrentState(), State::ERROR);
   }
@@ -193,11 +193,11 @@ TEST(MultiplexerTest, BusMuxSelectsMatchingInputBus)
   auto      circuit = std::make_shared<Circuit>(Component_set{mux});
   Simulator sim(circuit);
 
-  sim.setBus(inputs[0], 0b0001);
-  sim.setBus(inputs[1], 0b1010);
-  sim.setBus(inputs[2], 0b1110);
-  sim.setBus(inputs[3], 0b1110);
-  sim.setBus(selection, 2);
+  sim.setBus(inputs[0], valueFor(inputs[0], 0b0001));
+  sim.setBus(inputs[1], valueFor(inputs[1], 0b1010));
+  sim.setBus(inputs[2], valueFor(inputs[2], 0b1110));
+  sim.setBus(inputs[3], valueFor(inputs[3], 0b1110));
+  sim.setBus(selection, valueFor(selection, 2));
   sim.run(10);
 
   expectBusStates(output, {State::LOW, State::HIGH, State::HIGH, State::HIGH});
@@ -213,7 +213,7 @@ TEST(MultiplexerTest, BusMuxSelectionPropagatesToEveryOutputBit)
     auto       selection = mux->getInputs()[4];
     const auto output    = mux->getOutputs()[0];
 
-    selection.forceSetCurrentValue(0);
+    selection.forceSetCurrentValue(valueFor(selection, 0));
     selection[1]->forceSetCurrentState(state);
 
     auto      circuit = std::make_shared<Circuit>(Component_set{mux});
@@ -274,12 +274,12 @@ TEST(DemultiplexerTest, TwoWayRoutesDataToSelectedOutput)
   auto      circuit = std::make_shared<Circuit>(Component_set{demux});
   Simulator sim(circuit);
 
-  sim.setBus(data, 1);
-  sim.setBus(selection, 0);
+  sim.setBus(data, valueFor(data, 1));
+  sim.setBus(selection, valueFor(selection, 0));
   sim.run(10);
   expectBusStates(output, {State::HIGH, State::LOW});
 
-  sim.setBus(selection, 1);
+  sim.setBus(selection, valueFor(selection, 1));
   sim.run(10);
   expectBusStates(output, {State::LOW, State::HIGH});
 }
@@ -294,10 +294,10 @@ TEST(DemultiplexerTest, LargerSelectionRoutesDataToSelectedOutput)
   auto      circuit = std::make_shared<Circuit>(Component_set{demux});
   Simulator sim(circuit);
 
-  sim.setBus(data, 1);
+  sim.setBus(data, valueFor(data, 1));
 
   for (unsigned int selected = 0; selected < 8; ++selected) {
-    sim.setBus(selection, selected);
+    sim.setBus(selection, valueFor(selection, selected));
     sim.run(10);
     expectBusStates(output, oneHotStates(8, selected));
   }
@@ -314,9 +314,9 @@ TEST(DemultiplexerTest, UnknownAndErrorSelectionPropagateToAllOutputs)
     auto      circuit = std::make_shared<Circuit>(Component_set{demux});
     Simulator sim(circuit);
 
-    selection.forceSetCurrentValue(0);
+    selection.forceSetCurrentValue(valueFor(selection, 0));
     selection[1]->forceSetCurrentState(state);
-    sim.setBus(data, 1);
+    sim.setBus(data, valueFor(data, 1));
     sim.run(10);
     expectBusStates(output, std::vector<State>(4, state));
   }
@@ -334,7 +334,7 @@ TEST(DemultiplexerTest, UnknownAndErrorDataPropagatesOnlyToSelectedOutput)
     Simulator sim(circuit);
 
     data[0]->forceSetCurrentState(state);
-    sim.setBus(selection, 2);
+    sim.setBus(selection, valueFor(selection, 2));
     sim.run(10);
     expectBusStates(output, oneHotStates(4, 2, state));
   }
@@ -387,8 +387,8 @@ TEST(DemultiplexerTest, BusDemuxRoutesInputBusToSelectedOutputBus)
   auto      circuit = std::make_shared<Circuit>(Component_set{demux});
   Simulator sim(circuit);
 
-  sim.setBus(data, 0b1011);
-  sim.setBus(selection, 3);
+  sim.setBus(data, valueFor(data, 0b1011));
+  sim.setBus(selection, valueFor(selection, 3));
   sim.run(10);
 
   expectBusStates(outputs[0], std::vector<State>(4, State::LOW));
@@ -407,7 +407,7 @@ TEST(DemultiplexerTest, BusDemuxSelectionPropagatesToEveryOutputBit)
     auto       selection = demux->getInputs()[1];
     const auto outputs   = demux->getOutputs();
 
-    selection.forceSetCurrentValue(0);
+    selection.forceSetCurrentValue(valueFor(selection, 0));
     selection[1]->forceSetCurrentState(state);
 
     auto      circuit = std::make_shared<Circuit>(Component_set{demux});
@@ -430,13 +430,13 @@ TEST(DemultiplexerTest, BusDemuxDataPropagatesOnlyToSelectedOutputBus)
     auto selection = demux->getInputs()[1];
     auto outputs   = demux->getOutputs();
 
-    data.forceSetCurrentValue(0);
+    data.forceSetCurrentValue(valueFor(data, 0));
     data[1]->forceSetCurrentState(state);
 
     auto      circuit = std::make_shared<Circuit>(Component_set{demux});
     Simulator sim(circuit);
 
-    sim.setBus(selection, 2);
+    sim.setBus(selection, valueFor(selection, 2));
     sim.run(10);
 
     expectBusStates(outputs[0], std::vector<State>(3, State::LOW));
@@ -533,9 +533,9 @@ TEST(DecoderTest, EnabledDecoderDrivesOneHotOutput)
   auto      circuit = std::make_shared<Circuit>(Component_set{decoder});
   Simulator sim(circuit);
 
-  sim.setBus(enable, 1);
+  sim.setBus(enable, valueFor(enable, 1));
   for (unsigned int selected = 0; selected < 8; ++selected) {
-    sim.setBus(selection, selected);
+    sim.setBus(selection, valueFor(selection, selected));
     sim.run(10);
     expectBusStates(output, oneHotStates(8, selected));
   }
@@ -551,8 +551,8 @@ TEST(DecoderTest, DisabledDecoderDrivesAllOutputsLow)
   auto      circuit = std::make_shared<Circuit>(Component_set{decoder});
   Simulator sim(circuit);
 
-  sim.setBus(enable, 0);
-  sim.setBus(selection, 3);
+  sim.setBus(enable, valueFor(enable, 0));
+  sim.setBus(selection, valueFor(selection, 3));
   sim.run(10);
   expectBusStates(output, std::vector<State>(4, State::LOW));
 }
@@ -569,7 +569,7 @@ TEST(DecoderTest, UnknownAndErrorEnablePropagateToAllOutputs)
     Simulator sim(circuit);
 
     enable[0]->forceSetCurrentState(state);
-    sim.setBus(selection, 1);
+    sim.setBus(selection, valueFor(selection, 1));
     sim.run(10);
     expectBusStates(output, std::vector<State>(4, state));
   }
@@ -586,9 +586,9 @@ TEST(DecoderTest, UnknownAndErrorSelectionPropagateToAllOutputs)
     auto      circuit = std::make_shared<Circuit>(Component_set{decoder});
     Simulator sim(circuit);
 
-    selection.forceSetCurrentValue(0);
+    selection.forceSetCurrentValue(valueFor(selection, 0));
     selection[1]->forceSetCurrentState(state);
-    sim.setBus(enable, 1);
+    sim.setBus(enable, valueFor(enable, 1));
     sim.run(10);
     expectBusStates(output, std::vector<State>(4, state));
   }

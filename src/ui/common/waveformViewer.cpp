@@ -18,6 +18,7 @@
 
 #include "waveformViewer.hpp"
 
+#include "core/wireUtils.hpp"
 #include "utils/ranges_wrapper.hpp"
 
 #include <algorithm>
@@ -58,69 +59,53 @@
 #include <ui/common/inputDialogUtils.hpp>
 #include <ui/common/theme.hpp>
 
-
 namespace SILICON::ui::waveform {
 using namespace SILICON::core;
 using namespace SILICON::waveform;
 
 namespace {
 
-constexpr int rulerHeightPx       = 24;
-constexpr int traceRowHeightPx    = 28;
-constexpr int groupHeaderHeightPx = 22;
-constexpr int signalListWidthPx   = 220;
-constexpr int waveformLeftInset   = 16;
+  constexpr int rulerHeightPx       = 24;
+  constexpr int traceRowHeightPx    = 28;
+  constexpr int groupHeaderHeightPx = 22;
+  constexpr int signalListWidthPx   = 220;
+  constexpr int waveformLeftInset   = 16;
 
-QColor colorForTraceValue(const QString& value)
-{
-  if (value.contains('z'))
-    return Qt::red;
-  if (value.contains('x'))
-    return ThemeEngine::getColor("SILICON_VIOLET");
-  if (std::ranges::all_of(value, [](QChar ch) { return ch == '0'; }))
-    return ThemeEngine::getColor("SILICON_LORANGE");
-  return ThemeEngine::getColor("SILICON_ORANGE");
-}
+  QColor colorForTraceValue(const BusValue& value)
+  {
+    if (std::ranges::any_of(value, [](const auto s) { return s == State::ERROR; }))
+      return Qt::red;
+    if (std::ranges::any_of(value, [](const auto s) { return s == State::UNKNOWN; }))
+      return ThemeEngine::getColor("SILICON_VIOLET");
+    if (std::ranges::all_of(value, [](const auto s) { return s == State::LOW; }))
+      return ThemeEngine::getColor("SILICON_LORANGE");
+    return ThemeEngine::getColor("SILICON_ORANGE");
+  }
 
-bool hasInputGroup(int inputCount)
-{
-  return inputCount > 0;
-}
+  bool hasInputGroup(int inputCount)
+  { return inputCount > 0; }
 
-bool hasOutputGroup(int signalCount, int inputCount)
-{
-  return inputCount < signalCount;
-}
+  bool hasOutputGroup(int signalCount, int inputCount)
+  { return inputCount < signalCount; }
 
-int totalGroupHeaderCount(int signalCount, int inputCount)
-{
-  return (hasInputGroup(inputCount) ? 1 : 0)
-         + (hasOutputGroup(signalCount, inputCount) ? 1 : 0);
-}
+  int totalGroupHeaderCount(int signalCount, int inputCount)
+  {
+    return (hasInputGroup(inputCount) ? 1 : 0)
+           + (hasOutputGroup(signalCount, inputCount) ? 1 : 0);
+  }
 
-int totalGroupHeaderCountBeforeSignal(int row, int signalCount, int inputCount)
-{
-  int count = hasInputGroup(inputCount) ? 1 : 0;
-  if (row >= inputCount && hasOutputGroup(signalCount, inputCount))
-    ++count;
-  return count;
-}
-
-std::vector<std::string> valuesFromQt(const QStringList& values)
-{
-  std::vector<std::string> result;
-  result.reserve(static_cast<std::size_t>(values.size()));
-  for (const auto& value : values)
-    result.push_back(value.toStdString());
-  return result;
-}
+  int totalGroupHeaderCountBeforeSignal(int row, int signalCount, int inputCount)
+  {
+    int count = hasInputGroup(inputCount) ? 1 : 0;
+    if (row >= inputCount && hasOutputGroup(signalCount, inputCount))
+      ++count;
+    return count;
+  }
 
 }  // namespace
 
 SignalListWidget::SignalListWidget(QWidget* parent) : QWidget(parent)
-{
-  setFixedWidth(signalListWidthPx);
-}
+{ setFixedWidth(signalListWidthPx); }
 
 void SignalListWidget::setTrace(const QStringList& signalNames, int inputCount)
 {
@@ -154,9 +139,7 @@ int SignalListWidget::signalAreaHeight() const
 }
 
 int SignalListWidget::valueColumnX() const
-{
-  return std::max(96, signalListWidthPx * 33 / 50);
-}
+{ return std::max(96, signalListWidthPx * 33 / 50); }
 
 int SignalListWidget::yForSignalRow(int row) const
 {
@@ -249,14 +232,11 @@ Canvas::Canvas(QWidget* parent) : QWidget(parent)
   setMinimumSize(480, rulerHeight());
 }
 
-void Canvas::setTrace(const QStringList&         names,
-                              const std::vector<Sample>& samples)
-{
-  setTrace(names, samples, inputSignalCount);
-}
+void Canvas::setTrace(const QStringList& names, const std::vector<Sample>& samples)
+{ setTrace(names, samples, inputSignalCount); }
 
-void Canvas::setTrace(const QStringList&         names,
-                              const std::vector<Sample>& samples, const int inputCount)
+void Canvas::setTrace(const QStringList& names, const std::vector<Sample>& samples,
+                      const int inputCount)
 {
   if (signalNames != names)
     signalNames = names;
@@ -272,7 +252,7 @@ void Canvas::setTrace(const QStringList&         names,
   update();
 }
 
-void Canvas::setSignalFormats(const std::vector<SILICON::core::NumberFormat>& formats)
+void Canvas::setSignalFormats(const std::vector<SILICON::core::BusValueFormat>& formats)
 {
   signalFormats = formats;
   update();
@@ -344,8 +324,7 @@ void Canvas::setEditDuration(const quint64 duration)
   update();
 }
 
-void Canvas::setEditSelection(const int signalIndex, quint64 startTime,
-                                      quint64 endTime)
+void Canvas::setEditSelection(const int signalIndex, quint64 startTime, quint64 endTime)
 {
   const int nextSignalIndex =
       signalIndex >= 0 && signalIndex < signalNames.size() ? signalIndex : -1;
@@ -384,9 +363,7 @@ quint64 Canvas::endTime() const
 }
 
 int Canvas::xForTime(const quint64 time) const
-{
-  return waveformLeftInset + std::lround(time * pixelsPerTick);
-}
+{ return waveformLeftInset + std::lround(time * pixelsPerTick); }
 
 quint64 Canvas::timeForX(const int x) const
 {
@@ -396,14 +373,10 @@ quint64 Canvas::timeForX(const int x) const
 }
 
 int Canvas::groupHeaderCount() const
-{
-  return totalGroupHeaderCount(signalNames.size(), inputSignalCount);
-}
+{ return totalGroupHeaderCount(signalNames.size(), inputSignalCount); }
 
 int Canvas::groupHeaderCountBeforeSignal(const int row) const
-{
-  return totalGroupHeaderCountBeforeSignal(row, signalNames.size(), inputSignalCount);
-}
+{ return totalGroupHeaderCountBeforeSignal(row, signalNames.size(), inputSignalCount); }
 
 int Canvas::yForSignalRow(const int row) const
 {
@@ -473,11 +446,10 @@ void Canvas::paintEvent(QPaintEvent* event)
 
   const bool hasSelectedSignal =
       selectedSignalIndex >= 0 && selectedSignalIndex < signalNames.size();
-  auto sampleValueAt = [&samples](int sampleIndex, int row) {
+  auto sampleValueAt = [&samples](const int sampleIndex, const int row) {
     return row < static_cast<int>(samples[sampleIndex].values.size())
-               ? QString::fromStdString(
-                     samples[sampleIndex].values[static_cast<std::size_t>(row)])
-               : QString("x");
+               ? samples[sampleIndex].values[static_cast<std::size_t>(row)]
+               : BusValue({State::UNKNOWN});
   };
 
   auto drawRulerTick = [&](const Sample& sample) {
@@ -580,8 +552,8 @@ void Canvas::paintEvent(QPaintEvent* event)
   // Iterate only the visible time slice instead of the full simulation history.
   for (int row = 0; row < signalNames.size(); ++row) {
     for (int i = firstVisibleIndex; i + 1 < lastVisibleIndex;) {
-      const QString value = sampleValueAt(i, row);
-      int           end   = i + 1;
+      const BusValue value = sampleValueAt(i, row);
+      int            end   = i + 1;
       while (end < lastVisibleIndex - 1 && sampleValueAt(end, row) == value)
         ++end;
 
@@ -590,7 +562,7 @@ void Canvas::paintEvent(QPaintEvent* event)
       if (value.size() == 1) {
         drawScalar(painter, row, x0, x1, value);
         if (end < lastVisibleIndex - 1) {
-          const QString nextValue = sampleValueAt(end, row);
+          const BusValue nextValue = sampleValueAt(end, row);
           if (nextValue.size() == 1)
             drawScalarTransition(painter, row, x1, value, nextValue);
         }
@@ -643,8 +615,8 @@ void Canvas::mouseMoveEvent(QMouseEvent* event)
 
   // Snap to the timestamp where the selected track changes nearest the pointer,
   // matching the ruler ticks; fall back to every timestamp when no track is selected.
-  int      closestIndex    = -1;
-  int      closestDistance = std::numeric_limits<int>::max();
+  int closestIndex    = -1;
+  int closestDistance = std::numeric_limits<int>::max();
   for (int i = 0; i < static_cast<int>(samples.size()); ++i) {
     if (hasSelectedSignal && i > 0
         && samples[i].values[selectedSignalIndex]
@@ -705,36 +677,36 @@ void Canvas::mouseReleaseEvent(QMouseEvent* event)
     emit editIntervalSelected(signalIndex, startTime, endTime);
 }
 
-int Canvas::yForScalarValue(int row, const QString& value) const
+int Canvas::yForScalarValue(int row, const BusValue& value) const
 {
   const int top    = yForSignalRow(row) + 5;
   const int bottom = yForSignalRow(row) + rowHeight() - 6;
   const int mid    = std::midpoint(top, bottom);
 
-  if (value == "1")
+  if (value == BusValue{State::HIGH})
     return top;
-  if (value == "0")
+  if (value == BusValue{State::LOW})
     return bottom;
   return mid;
 }
 
-SILICON::core::NumberFormat Canvas::formatForSignal(const int row) const
+BusValueFormat Canvas::valueFormatForSignal(const int row) const
 {
   if (row >= 0 && row < static_cast<int>(signalFormats.size()))
     return signalFormats[static_cast<std::size_t>(row)];
-  return SILICON::core::NumberFormat::Hex;
+  return BusValueFormat::Hex;
 }
 
 void Canvas::drawScalar(QPainter& painter, int row, int x0, int x1,
-                                const QString& value) const
+                        const BusValue& value) const
 {
   painter.setPen(QPen(colorForTraceValue(value), 2));
   painter.drawLine(x0, yForScalarValue(row, value), x1, yForScalarValue(row, value));
 }
 
 void Canvas::drawScalarTransition(QPainter& painter, int row, int x,
-                                          const QString& previousValue,
-                                          const QString& nextValue) const
+                                  const BusValue& previousValue,
+                                  const BusValue& nextValue) const
 {
   if (previousValue == nextValue)
     return;
@@ -745,7 +717,7 @@ void Canvas::drawScalarTransition(QPainter& painter, int row, int x,
 }
 
 void Canvas::drawBus(QPainter& painter, int row, int x0, int x1,
-                             const QString& value) const
+                     const BusValue& value) const
 {
   const int top    = yForSignalRow(row) + 5;
   const int bottom = yForSignalRow(row) + rowHeight() - 6;
@@ -762,8 +734,8 @@ void Canvas::drawBus(QPainter& painter, int row, int x0, int x1,
 
   if (x1 - x0 > 28) {
     painter.setPen(palette().text().color());
-    const QString displayValue = QString::fromStdString(
-        SILICON::core::formatRawBits(value.toStdString(), formatForSignal(row)));
+    const QString displayValue =
+        QString::fromStdString(formatValue(value, valueFormatForSignal(row)));
     painter.drawText(QRect(x0 + 7, top, x1 - x0 - 14, bottom - top), Qt::AlignCenter,
                      displayValue);
   }
@@ -916,8 +888,7 @@ Viewer::Viewer(QWidget* parent) : QWidget(parent)
   });
   connect(signalList, &SignalListWidget::signalSelected, this,
           &Viewer::setSelectedSignalIndex);
-  connect(canvas, &Canvas::signalSelected, this,
-          &Viewer::setSelectedSignalIndex);
+  connect(canvas, &Canvas::signalSelected, this, &Viewer::setSelectedSignalIndex);
   connect(signalList, &SignalListWidget::signalContextMenuRequested, this,
           &Viewer::showSignalFormatMenu);
   connect(canvas, &Canvas::signalContextMenuRequested, this,
@@ -927,8 +898,7 @@ Viewer::Viewer(QWidget* parent) : QWidget(parent)
             setSelectedSignalIndex(signalIndex);
             setEditIntervalFields(startTime, endTime);
           });
-  connect(canvas, &Canvas::editIntervalSelected, this,
-          &Viewer::promptEditIntervalValue);
+  connect(canvas, &Canvas::editIntervalSelected, this, &Viewer::promptEditIntervalValue);
   connect(durationEdit, &QLineEdit::editingFinished, this, [this]() {
     if (!editMode) {
       updateDurationField();
@@ -953,7 +923,7 @@ Viewer::Viewer(QWidget* parent) : QWidget(parent)
 }
 
 void Viewer::resetTrace(const QStringList& signalNames, int inputCount,
-                                const QList<int>& widths)
+                        const QList<int>& widths)
 {
   std::vector<Signal> signalDefinitions;
   signalDefinitions.reserve(static_cast<std::size_t>(signalNames.size()));
@@ -967,7 +937,8 @@ void Viewer::resetTrace(const QStringList& signalNames, int inputCount,
   selectedSampleIndex = -1;
   selectedSignalIndex = editMode ? (trace.inputCount > 0 ? 0 : -1)
                                  : (trace.signalDefinitions.empty() ? -1 : 0);
-  signalFormats.assign(trace.signalDefinitions.size(), SILICON::core::NumberFormat::Hex);
+  signalFormats.assign(trace.signalDefinitions.size(),
+                       SILICON::core::BusValueFormat::Hex);
   if (editMode)
     rebuildEditTrace();
 
@@ -995,13 +966,11 @@ bool Viewer::eventFilter(QObject* watched, QEvent* event)
   return QWidget::eventFilter(watched, event);
 }
 
-void Viewer::appendSnapshot(quint64 time, const QStringList& values)
-{
-  appendSnapshots({{time, values}});
-}
+void Viewer::appendSnapshot(quint64 time, const std::vector<BusValue>& values)
+{ appendSnapshots({{time, values}}); }
 
 void Viewer::appendSnapshots(
-    const QList<QPair<qulonglong, QStringList>>& snapshots)
+    const QList<QPair<qulonglong, std::vector<BusValue>>>& snapshots)
 {
   if (trace.signalDefinitions.empty() || editMode)
     return;
@@ -1011,9 +980,9 @@ void Viewer::appendSnapshots(
                              == scrollArea->horizontalScrollBar()->maximum();
 
   std::vector<Sample> coreSnapshots;
-  coreSnapshots.reserve(static_cast<std::size_t>(snapshots.size()));
+  coreSnapshots.reserve(snapshots.size());
   for (const auto& [time, values] : snapshots) {
-    coreSnapshots.push_back({static_cast<uint64_t>(time), valuesFromQt(values)});
+    coreSnapshots.push_back({time, values});
   }
   SILICON::waveform::appendSnapshots(trace, coreSnapshots);
 
@@ -1092,32 +1061,38 @@ void Viewer::refreshCanvas()
 }
 
 void Viewer::rebuildEditTrace()
-{
-  rebuildEditableTrace(trace, editDuration);
-}
+{ rebuildEditableTrace(trace, editDuration); }
 
-void Viewer::applyEditInterval(int signalIndex, quint64 startTime,
-                                       quint64 endTime, const QString& rawValue)
+void Viewer::applyEditInterval(int signalIndex, quint64 startTime, quint64 endTime,
+                               const QString& rawValue)
 {
   if (!editMode || signalIndex < 0 || signalIndex >= trace.inputCount
       || endTime <= startTime)
     return;
 
+  const auto [busValue, _] = valueFromStr(rawValue.toStdString());
+  if (_ == BusValueFormat::Unknown || busValue.empty()
+      || std::ranges::contains(busValue, State::ERROR)
+      || SILICON::wireUtils::busValueOverflowsWidth(
+          busValue, signalWidth(signalIndex)))
+    return;
+
   SILICON::waveform::applyEditInterval(trace, editDuration, signalIndex, startTime,
-                                       endTime, rawValue.toStdString());
+                                       endTime,
+                                       SILICON::wireUtils::normalizeBusValue(
+                                           busValue, signalWidth(signalIndex)));
   refreshSignalList();
   refreshCanvas();
 }
 
-void Viewer::promptEditIntervalValue(int signalIndex, quint64 startTime,
-                                             quint64 endTime)
+void Viewer::promptEditIntervalValue(int signalIndex, quint64 startTime, quint64 endTime)
 {
   if (!editMode || signalIndex < 0 || signalIndex >= trace.inputCount)
     return;
 
   setEditIntervalFields(startTime, endTime);
 
-  const std::size_t              width = signalWidth(signalIndex);
+  const std::size_t      width = signalWidth(signalIndex);
   const QPointer<Viewer> safeThis(this);
   if (width <= 1) {
     SILICON::ui::inputDialog::getItem(
@@ -1143,9 +1118,9 @@ void Viewer::promptEditIntervalValue(int signalIndex, quint64 startTime,
         if (!safeThis)
           return;
 
-        unsigned int value = 0;
-        if (!SILICON::core::parseBusValue(text.toStdString(), value)
-            || value > SILICON::core::maxValueForBusWidth(width)) {
+
+        const auto [value, _] = valueFromStr(text.toStdString());
+        if (SILICON::wireUtils::busValueOverflowsWidth(value, width)) {
           SILICON::ui::inputDialog::warning(
               safeThis, QObject::tr("Bus Input"),
               QObject::tr("The value does not fit in the selected signal width."));
@@ -1154,7 +1129,7 @@ void Viewer::promptEditIntervalValue(int signalIndex, quint64 startTime,
 
         safeThis->applyEditInterval(
             signalIndex, startTime, endTime,
-            QString::fromStdString(rawBitsForValue(value, width)));
+            QString::fromStdString(formatValue(value, BusValueFormat::Raw)));
       });
 }
 
@@ -1201,9 +1176,7 @@ void Viewer::updateDurationField()
 }
 
 std::vector<Sample> Viewer::editedInputSnapshots() const
-{
-  return editedInputSamples(trace);
-}
+{ return editedInputSamples(trace); }
 
 void Viewer::updateEditControls()
 {
@@ -1242,7 +1215,7 @@ QStringList Viewer::visibleNames() const
 
 QStringList Viewer::displayedValues() const
 {
-  std::vector<std::string> rawValues;
+  std::vector<BusValue> rawValues;
   if (selectedSampleIndex >= 0
       && selectedSampleIndex < static_cast<int>(trace.samples.size()))
     rawValues = trace.samples[static_cast<std::size_t>(selectedSampleIndex)].values;
@@ -1254,26 +1227,23 @@ QStringList Viewer::displayedValues() const
   QStringList values;
   values.reserve(static_cast<qsizetype>(rawValues.size()));
   for (int i = 0; i < static_cast<int>(rawValues.size()); ++i)
-    values.push_back(
-        displayValue(i, QString::fromStdString(rawValues[static_cast<std::size_t>(i)])));
+    values.push_back(displayValue(i, rawValues[static_cast<std::size_t>(i)]));
   return values;
 }
 
 std::size_t Viewer::signalWidth(const int signalIndex) const
-{
-  return SILICON::waveform::signalWidth(trace, signalIndex);
-}
+{ return SILICON::waveform::signalWidth(trace, signalIndex); }
 
-QString Viewer::displayValue(const int signalIndex, const QString& value) const
+QString Viewer::displayValue(const int signalIndex, const BusValue& value) const
 {
   if (signalWidth(signalIndex) <= 1)
-    return value;
+    return QString::fromStdString(SILICON::core::formatValue(value, BusValueFormat::Raw));
 
   const auto format =
       signalIndex >= 0 && signalIndex < static_cast<int>(signalFormats.size())
           ? signalFormats[static_cast<std::size_t>(signalIndex)]
-          : SILICON::core::NumberFormat::Hex;
-  return QString::fromStdString(SILICON::core::formatRawBits(value.toStdString(), format));
+          : SILICON::core::BusValueFormat::Hex;
+  return QString::fromStdString(SILICON::core::formatValue(value, format));
 }
 
 void Viewer::setSelectedSignalIndex(const int signalIndex)
@@ -1306,12 +1276,12 @@ void Viewer::showSignalFormatMenu(const int signalIndex, QPoint globalPosition)
   auto* menu = &stackMenu;
 #endif
 
-  auto addFormatAction = [&](const QString& label, SILICON::core::NumberFormat format) {
+  auto addFormatAction = [&](const QString& label, SILICON::core::BusValueFormat format) {
     QAction* action = menu->addAction(label);
     action->setCheckable(true);
     action->setChecked(signalIndex >= 0
-                        && signalIndex < static_cast<int>(signalFormats.size())
-                        && signalFormats[static_cast<std::size_t>(signalIndex)] == format);
+                       && signalIndex < static_cast<int>(signalFormats.size())
+                       && signalFormats[static_cast<std::size_t>(signalIndex)] == format);
     connect(action, &QAction::triggered, this, [this, signalIndex, format]() {
       if (signalIndex < 0 || signalIndex >= static_cast<int>(signalFormats.size()))
         return;
@@ -1321,11 +1291,11 @@ void Viewer::showSignalFormatMenu(const int signalIndex, QPoint globalPosition)
     });
   };
 
-  addFormatAction(tr("SIGNED"), SILICON::core::NumberFormat::Signed);
-  addFormatAction(tr("UNSIGNED"), SILICON::core::NumberFormat::Unsigned);
-  addFormatAction(tr("HEX"), SILICON::core::NumberFormat::Hex);
-  addFormatAction(tr("OCT"), SILICON::core::NumberFormat::Oct);
-  addFormatAction(tr("BIN"), SILICON::core::NumberFormat::Bin);
+  addFormatAction(tr("SIGNED"), SILICON::core::BusValueFormat::Signed);
+  addFormatAction(tr("UNSIGNED"), SILICON::core::BusValueFormat::Unsigned);
+  addFormatAction(tr("HEX"), SILICON::core::BusValueFormat::Hex);
+  addFormatAction(tr("OCT"), SILICON::core::BusValueFormat::Oct);
+  addFormatAction(tr("BIN"), SILICON::core::BusValueFormat::Bin);
 #ifdef __EMSCRIPTEN__
   menu->popup(globalPosition);
 #else

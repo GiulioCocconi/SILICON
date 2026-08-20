@@ -528,6 +528,7 @@ void DiagramSceneSerializer::deserialize(const std::string&       jsonStr,
   // Once a visual scene exists, its grouped wires define the editable topology. Rebuild
   // component connections immediately so bus widths and wire identities agree before
   // the first simulation or export.
+  scene.getWireManager().calculateJunctions();
   scene.updateSceneAfterEdit();
 
   scene.setInteractionMode(InteractionMode::NORMAL_MODE);

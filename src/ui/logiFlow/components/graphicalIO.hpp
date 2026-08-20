@@ -54,7 +54,7 @@ public:
 private:
   void setupCallbacks();
   void updateLayout();
-  void updateLayout(std::string_view value);
+  void updateLayout(const BusValue& value);
 };
 
 /**
@@ -136,7 +136,7 @@ signals:
    * @param value The new numerical value of the input.
    * @param source A weak pointer to the logic component that triggered the change.
    */
-  void inputToggled(Bus targetBus, unsigned int value, Component_weakPtr source);
+  void inputToggled(Bus targetBus, BusValue value, Component_weakPtr source);
 };
 
 /**
@@ -228,7 +228,7 @@ public:
    * @brief Directly sets the numerical value of the bus.
    * @param value The value to apply (will be masked to fit bus width).
    */
-  void setValue(unsigned int value);
+  void setValue(const BusValue& value);
 
   /**
    * @brief Opens a dialog prompting the user to type in a new bus value.
@@ -249,7 +249,7 @@ public:
              QWidget* widget) override;
 
 private:
-  unsigned int currentValue = 0;
+  BusValue currentValue{State::LOW};
 
   void   propagateCurrentValue();
   void   installPropertyCallbacks();

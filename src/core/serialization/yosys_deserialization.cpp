@@ -23,6 +23,7 @@
 
 #include <algorithm>
 #include <array>
+#include <charconv>
 #include <format>
 #include <functional>
 #include <limits>
@@ -46,6 +47,7 @@
 #include <extraComponents/arithmetic.hpp>
 #include <extraComponents/multiplexer.hpp>
 #include <extraComponents/utils.hpp>
+#include <utils/num_formatting.hpp>
 
 namespace SILICON::yosys {
 
@@ -85,12 +87,15 @@ namespace {
         fail(context, "expected an unsigned value");
       return static_cast<std::uint64_t>(result);
     }
-    std::uint64_t result = 0;
-    for (const char digit : binaryDigits(value, context)) {
-      if (result > (std::numeric_limits<std::uint64_t>::max() >> 1))
-        fail(context, "binary value does not fit in 64 bits");
-      result = (result << 1) | static_cast<unsigned>(digit - '0');
-    }
+    const auto    decimal = formatValue(busValueFromBits(binaryDigits(value, context)),
+                                        BusValueFormat::Unsigned);
+    std::uint64_t result  = 0;
+    const auto [end, error] =
+        std::from_chars(decimal.data(), decimal.data() + decimal.size(), result);
+    if (error == std::errc::result_out_of_range)
+      fail(context, "binary value does not fit in 64 bits");
+    if (error != std::errc{} || end != decimal.data() + decimal.size())
+      fail(context, "expected a fully defined binary string");
     return result;
   }
 
@@ -302,12 +307,12 @@ namespace {
 
     Json                                         design;
     std::string                                  moduleName;
-    std::map<std::uint64_t, Wire_ptr>            signals;
-    std::map<std::string, Wire_ptr, std::less<>> constants;
-    std::map<std::string, Bus, std::less<>>      constantBuses;
-    std::set<std::uint64_t>                      drivenSignals;
-    std::set<std::string, std::less<>>           boundaryOutputSignals;
-    std::vector<Component_ptr>                   components;
+    std::map<std::uint64_t, Wire_ptr>  signals;
+    std::map<State, Wire_ptr>          constants;
+    std::map<BusValue, Bus>            constantBuses;
+    std::set<std::uint64_t>            drivenSignals;
+    std::set<std::string, std::less<>> boundaryOutputSignals;
+    std::vector<Component_ptr>         components;
 
     [[nodiscard]] std::pair<std::string, const Json&>
     selectModule(const Json&                           modules,
@@ -383,22 +388,19 @@ namespace {
       if (value != "0" && value != "1" && value != "x")
         fail(context, std::format("unsupported signal literal '{}'", value));
 
-      auto& wire = constants[std::string(value)];
+      const auto state = busValueFromBits(value).front();
+      auto&      wire  = constants[state];
       if (!wire) {
-        const auto state = value == "0"   ? State::LOW
-                           : value == "1" ? State::HIGH
-                                          : State::UNKNOWN;
-        wire             = std::make_shared<Wire>(state);
-        components.push_back(
-            std::make_shared<ConstantComponent>(wire, std::string(value)));
+        wire = std::make_shared<Wire>(state);
+        components.push_back(std::make_shared<ConstantComponent>(wire, BusValue{state}));
       }
       return wire;
     }
 
     [[nodiscard]] Bus constantBus(const Json& bits, const std::string_view context)
     {
-      std::string value;
-      value.reserve(bits.size());
+      std::string rawValue;
+      rawValue.reserve(bits.size());
       for (std::size_t bit = bits.size(); bit > 0; --bit) {
         const auto& digitJson = bits[bit - 1];
         if (!digitJson.is_string())
@@ -408,14 +410,14 @@ namespace {
           fail(context, "high-impedance 'z' has no Silicon equivalent");
         if (digit != "0" && digit != "1" && digit != "x")
           fail(context, std::format("unsupported signal literal '{}'", digit));
-        value += digit;
+        rawValue += digit;
       }
+      const BusValue value = busValueFromBits(rawValue);
 
       auto [it, inserted] = constantBuses.try_emplace(value);
       if (inserted) {
         it->second = Bus(static_cast<unsigned short>(bits.size()));
-        components.push_back(
-            std::make_shared<ConstantComponent>(it->second, value));
+        components.push_back(std::make_shared<ConstantComponent>(it->second, value));
       }
       return it->second;
     }

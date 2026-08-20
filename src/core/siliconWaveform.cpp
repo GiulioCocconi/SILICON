@@ -18,9 +18,12 @@
 
 #include "siliconWaveform.hpp"
 
+#include <core/wire.hpp>
+#include <utils/num_formatting.hpp>
+
 #include <algorithm>
 #include <cstddef>
-#include <limits>
+#include <ranges>
 #include <stdexcept>
 #include <utility>
 
@@ -28,20 +31,20 @@ namespace SILICON::waveform {
 
 namespace {
 
-  [[nodiscard]] std::vector<std::string> defaultInputValues(const Trace& trace)
+  [[nodiscard]] std::vector<core::BusValue> defaultInputValues(const Trace& trace)
   {
-    std::vector<std::string> values;
-    const auto               inputCount =
+    std::vector<core::BusValue> values;
+    const auto                  inputCount =
         std::min<int>(trace.inputCount, static_cast<int>(trace.signalDefinitions.size()));
     values.reserve(static_cast<std::size_t>(inputCount));
 
     for (int i = 0; i < inputCount; ++i)
-      values.push_back(std::string(signalWidth(trace, i), '0'));
+      values.emplace_back(signalWidth(trace, i), core::State::LOW);
 
     return values;
   }
 
-  [[nodiscard]] std::vector<std::string> valuesAt(const Trace& trace, uint64_t time)
+  [[nodiscard]] std::vector<core::BusValue> valuesAt(const Trace& trace, uint64_t time)
   {
     auto values = defaultInputValues(trace);
     for (const auto& sample : trace.samples) {
@@ -65,27 +68,25 @@ void resetTrace(Trace& trace, std::vector<Signal> signalDefinitions, const int i
     signal.width = std::max<std::size_t>(1, signal.width);
 }
 
-void appendSnapshot(Trace& trace, const uint64_t time, std::vector<std::string> values)
+void appendSnapshot(Trace& trace, const uint64_t time, std::vector<core::BusValue> values)
 {
   if (!trace.samples.empty() && trace.samples.back().time == time) {
     trace.samples.back().values = std::move(values);
     return;
   }
 
-  trace.samples.push_back({time, std::move(values)});
+  trace.samples.push_back({time, values});
 }
 
 void appendSnapshots(Trace& trace, std::span<const Sample> snapshots)
 {
   trace.samples.reserve(trace.samples.size() + snapshots.size());
-  for (const auto& sample : snapshots)
-    appendSnapshot(trace, sample.time, sample.values);
+  for (const auto& [time, values] : snapshots)
+    appendSnapshot(trace, time, values);
 }
 
 void clearSamples(Trace& trace)
-{
-  trace.samples.clear();
-}
+{ trace.samples.clear(); }
 
 std::size_t signalWidth(const Trace& trace, const int signalIndex)
 {
@@ -104,37 +105,6 @@ std::size_t signalWidth(const Trace& trace, const int signalIndex)
   return std::max<std::size_t>(1, width);
 }
 
-std::string rawBitsForValue(const unsigned int value, const std::size_t width)
-{
-  std::string bits;
-  bits.reserve(width);
-  for (std::size_t bit = width; bit > 0; --bit) {
-    if (bit - 1 >= std::numeric_limits<unsigned int>::digits) {
-      bits.push_back('0');
-      continue;
-    }
-    bits.push_back((value & (1U << (bit - 1))) != 0 ? '1' : '0');
-  }
-  return bits.empty() ? std::string("0") : bits;
-}
-
-unsigned int rawBitsToUnsignedValue(const std::string_view rawBits)
-{
-  unsigned int value = 0;
-  const auto   firstRelevantBit =
-      rawBits.size() > std::numeric_limits<unsigned int>::digits
-            ? rawBits.end()
-                - static_cast<std::ptrdiff_t>(std::numeric_limits<unsigned int>::digits)
-            : rawBits.begin();
-
-  for (auto it = firstRelevantBit; it != rawBits.end(); ++it) {
-    value <<= 1;
-    if (*it == '1')
-      value |= 1U;
-  }
-  return value;
-}
-
 void rebuildEditableTrace(Trace& trace, const uint64_t duration)
 {
   trace.samples.clear();
@@ -148,7 +118,8 @@ void rebuildEditableTrace(Trace& trace, const uint64_t duration)
 }
 
 void applyEditInterval(Trace& trace, uint64_t duration, int signalIndex,
-                       uint64_t startTime, uint64_t endTime, std::string rawValue)
+                       uint64_t startTime, uint64_t endTime,
+                       const core::BusValue& rawValue)
 {
   if (signalIndex < 0 || signalIndex >= trace.inputCount || endTime <= startTime)
     return;
@@ -165,7 +136,8 @@ void applyEditInterval(Trace& trace, uint64_t duration, int signalIndex,
   const auto startValues = valuesAt(trace, startTime);
   const auto endValues   = valuesAt(trace, endTime);
 
-  auto ensureBoundary = [&](const uint64_t time, const std::vector<std::string>& values) {
+  auto ensureBoundary = [&](const uint64_t                     time,
+                            const std::vector<core::BusValue>& values) {
     const auto it = std::ranges::lower_bound(trace.samples, time, {}, &Sample::time);
     if (it != trace.samples.end() && it->time == time) {
       it->values = values;
@@ -182,7 +154,7 @@ void applyEditInterval(Trace& trace, uint64_t duration, int signalIndex,
       continue;
 
     while (sample.values.size() < static_cast<std::size_t>(trace.inputCount))
-      sample.values.push_back("0");
+      sample.values.push_back({core::State::LOW});
     sample.values[static_cast<std::size_t>(signalIndex)] = rawValue;
   }
 
@@ -199,9 +171,7 @@ void applyEditInterval(Trace& trace, uint64_t duration, int signalIndex,
 }
 
 std::vector<Sample> editedInputSamples(const Trace& trace)
-{
-  return trace.samples;
-}
+{ return trace.samples; }
 
 }  // namespace SILICON::waveform
 
@@ -210,9 +180,7 @@ namespace SILICON::waveform::fst {
 using namespace SILICON::waveform;
 
 void writeTrace(std::string_view fileName, const Trace& trace)
-{
-  writeTrace(fileName, trace, {.topScopeName = "Waveform"});
-}
+{ writeTrace(fileName, trace, {.topScopeName = "Waveform"}); }
 
 void writeTrace(std::string_view fileName, const Trace& trace,
                 TraceWriter::Options options)
@@ -230,9 +198,13 @@ void writeTrace(std::string_view fileName, const Trace& trace,
 
   TraceWriter writer(fileName, traceSignals, std::move(options));
 
-  for (const auto& sample : trace.samples)
-    writer.emitSnapshot(sample.time, sample.values);
-
+  for (const auto& [time, values] : trace.samples) {
+    const auto strValues =
+        values | std::views::transform([](const auto& el) {
+          return core::formatValue(el, BusValueFormat::Raw);
+        }) | std::ranges::to<std::vector<std::string>>();
+    writer.emitSnapshot(time, strValues);
+  }
   writer.flush();
 }
 

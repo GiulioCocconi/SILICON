@@ -38,10 +38,10 @@ TEST(UtilsTest, WireMergerCase)
   Simulator sim(circ);
   sim.run(20);
 
-  sim.setBus(Bus{a}, 1);
+  sim.setBus(Bus{a}, valueFor(Bus{a}, 1));
   sim.run(20);
 
-  EXPECT_EQ(bus.getCurrentValue(), 3);
+  EXPECT_EQ(bus.getCurrentValue(), valueFor(bus, 3));
 }
 
 TEST(UtilsTest, WireSplitterCase)
@@ -55,7 +55,7 @@ TEST(UtilsTest, WireSplitterCase)
   auto      circ = std::make_shared<Circuit>(Component_set{ws});
   Simulator sim(circ);
 
-  sim.setBus(bus, 2);  // 0b10 sets 'b' to HIGH and 'a' to LOW
+  sim.setBus(bus, valueFor(bus, 2));  // 0b10 sets 'b' to HIGH and 'a' to LOW
   sim.run(20);
 
   EXPECT_EQ(a->getCurrentState(), State::LOW);

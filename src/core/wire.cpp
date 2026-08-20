@@ -19,7 +19,6 @@
 #include "wire.hpp"
 
 #include <algorithm>
-#include <limits>
 #include <ranges>
 #include <stdexcept>
 #include <utility>
@@ -91,25 +90,27 @@ namespace SILICON::wireUtils {
 
 using namespace SILICON::core;
 
-bool busValueOverflowsWidth(const unsigned int value, const std::size_t width)
+bool busValueOverflowsWidth(const BusValue& value, const std::size_t width)
 {
-  if (width >= std::numeric_limits<unsigned int>::digits)
-    return false;
-  return value >= (1u << width);
+  return value.size() > width
+         && std::ranges::any_of(value.begin() + static_cast<std::ptrdiff_t>(width),
+                                value.end(),
+                                [](const State state) { return state != State::LOW; });
 }
 
-bool busWillChangeToValue(const Bus& bus, const unsigned int value)
+BusValue normalizeBusValue(const BusValue& value, const std::size_t width,
+                           const State extension)
 {
-  for (const auto& [index, wire] : bus | SILICON::views::enumerate) {
-    if (!wire)
-      continue;
+  BusValue normalized(value.begin(),
+                      value.begin()
+                          + static_cast<std::ptrdiff_t>(std::min(value.size(), width)));
+  normalized.resize(width, extension);
+  return normalized;
+}
 
-    const State newState = (value >> index) & 1 ? State::HIGH : State::LOW;
-    if (wire->getCurrentState() != newState)
-      return true;
-  }
-
-  return false;
+bool busWillChangeToValue(const Bus& bus, const BusValue& value)
+{
+  return bus.getCurrentValue() != normalizeBusValue(value, bus.size());
 }
 
 bool isKnownBinary(const State state)
@@ -223,11 +224,53 @@ void Wire::safeSetCurrentState(const std::weak_ptr<Wire>& w, State newState,
 
 State Wire::safeGetCurrentState(const std::weak_ptr<Wire>& w)
 {
-  if (const auto lockedWire = w.lock()) {
-    return lockedWire->getCurrentState();
-  }
-  return State::ERROR;
+  const auto lockedWire = w.lock();
+  return lockedWire ? lockedWire->getCurrentState() : State::ERROR;
 }
+
+BusValue operator+(const BusValue& a, const BusValue& b)
+{
+  // +1 safely accommodates the maximum possible carry-out bit
+  const auto width = std::max(a.size(), b.size()) + 1;
+
+  const auto zeroExtend = [width](BusValue value) {
+    value.resize(width, State::LOW);
+    return value;
+  };
+
+  BusValue res = zeroExtend(a);
+  const BusValue extB = zeroExtend(b);
+
+  auto carry = State::LOW;
+
+  for (auto&& [idx, s] : res | SILICON::views::enumerate) {
+    const State valA = s;
+    const State valB = extB[idx];
+
+    s = valA ^ valB ^ carry;
+    carry = (valA && valB) || (carry && (valA ^ valB));
+  }
+
+  return res;
+}
+
+BusValue twosComplement(const BusValue& n)
+{
+  BusValue res = n | std::views::transform([](const State s) { return !s; })
+                   | std::ranges::to<BusValue>();
+
+  State carry = State::HIGH;
+
+  for (State& s : res) {
+    const State currentBit = s;
+
+    s = currentBit ^ carry;
+    carry = currentBit && carry;
+  }
+
+  return res;
+}
+
 
 Bus::Bus(const unsigned short size)
 {
@@ -262,77 +305,54 @@ Bus::Bus(std::initializer_list<Wire> initList) : busData(initList.size())
   }
 }
 
-int Bus::forceSetCurrentValue(const unsigned int value)
+bool Bus::forceSetCurrentValue(const BusValue& value)
 {
-  for (unsigned short i = 0; i < this->size(); i++) {
-    if (this->busData[i]) {
-      State s = (value >> i) & 1 ? State::HIGH : State::LOW;
-      this->busData[i]->forceSetCurrentState(s);
-    }
+  const auto normalized = SILICON::wireUtils::normalizeBusValue(value, size());
+  for (auto i = 0uz; i < size(); ++i) {
+    const auto currentWire = this->busData[i];
+
+    if (!currentWire)
+      continue;
+
+    currentWire->forceSetCurrentState(normalized[i]);
   }
-  return SILICON::wireUtils::busValueOverflowsWidth(value, this->size());
+  return SILICON::wireUtils::busValueOverflowsWidth(value, size());
 }
 
-int Bus::forceSetCurrentValue(const unsigned int       value,
-                              const Component_weakPtr& authorizedBy)
-{
-  for (unsigned short i = 0; i < this->size(); i++) {
-    if (this->busData[i]) {
-      State s = (value >> i) & 1 ? State::HIGH : State::LOW;
-      this->busData[i]->forceSetCurrentState(s, authorizedBy);
-    }
-  }
-  return SILICON::wireUtils::busValueOverflowsWidth(value, this->size());
-}
-
-int Bus::setCurrentValue(const unsigned int value, const Component_weakPtr& requestedBy)
-{
-  for (unsigned short i = 0; i < this->size(); i++) {
-    if (this->busData[i]) {
-      const State s = (value >> i) & 1 ? State::HIGH : State::LOW;
-      Wire::safeSetCurrentState(this->busData[i], s, requestedBy);
-    }
-  }
-  return SILICON::wireUtils::busValueOverflowsWidth(value, this->size());
-}
-
-unsigned int Bus::getCurrentValue() const
-{
-  if (isInErrorState() || hasUnknowns())
-    throw std::logic_error("int Bus::getCurrentValue() called on a bus in UNKNOWN / "
-                           "ERROR state, use the string version instead");
-
-  unsigned int res = 0;
-  for (unsigned int i = 0; i < this->size(); i++) {
-    if (!this->busData[i])
-      return 0;
-    State s = this->busData[i]->getCurrentState();
-    if (s == State::HIGH)
-      res |= (1 << i);
-  }
-  return res;
-}
-
-std::string Bus::getCurrentValueString() const
-{
-  return busData | std::views::reverse | std::views::transform([](const auto& wire) {
-           return std::to_underlying(Wire::safeGetCurrentState(wire));
-         })
-         | std::ranges::to<std::string>();
-}
-
-void Bus::forceSetCurrentValue(std::string_view         str,
+bool Bus::forceSetCurrentValue(const BusValue&          value,
                                const Component_weakPtr& authorizedBy)
 {
-  if (std::ranges::any_of(
-          str, [](const char c) { return c != '1' && c != '0' && c != 'X' && c != 'E'; }))
-    throw std::invalid_argument(
-        "Bus::setCurrentValue input string contained invalid character");
+  const auto normalized = SILICON::wireUtils::normalizeBusValue(value, size());
+  for (auto i = 0uz; i < size(); ++i) {
+    const auto currentWire = this->busData[i];
 
-  setSize(str.size());
+    if (!currentWire)
+      continue;
 
-  for (const auto [index, c] : str | SILICON::views::enumerate)
-    this->operator[](index)->forceSetCurrentState(static_cast<State>(c), authorizedBy);
+    currentWire->forceSetCurrentState(normalized[i], authorizedBy);
+  }
+  return SILICON::wireUtils::busValueOverflowsWidth(value, size());
+}
+
+bool Bus::setCurrentValue(const BusValue& value, const Component_weakPtr& requestedBy)
+{
+  const auto normalized = SILICON::wireUtils::normalizeBusValue(value, size());
+  for (auto i = 0uz; i < size(); ++i) {
+    const auto currentWire = this->busData[i];
+
+    if (!currentWire)
+      continue;
+
+    Wire::safeSetCurrentState(currentWire, normalized[i], requestedBy);
+  }
+  return SILICON::wireUtils::busValueOverflowsWidth(value, size());
+}
+
+BusValue Bus::getCurrentValue() const
+{
+  return this->busData | std::views::transform([](const auto& wire) {
+    return Wire::safeGetCurrentState(wire);
+  }) | std::ranges::to<BusValue>();
 }
 
 bool Bus::isInErrorState() const

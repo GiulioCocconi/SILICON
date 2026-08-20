@@ -30,17 +30,16 @@ using namespace SILICON::core;
 
 namespace {
 
-  [[nodiscard]] int validateExtenderWidth(const PropertyValue& value,
-                                          const std::string_view property)
-  {
-    const int width = std::get<int>(value);
-    if (width < 1)
-      throw std::invalid_argument(
-          std::format("Extender {} must be at least 1", property));
-    if (width > std::numeric_limits<unsigned short>::max())
-      throw std::invalid_argument(std::format("Extender {} is too large", property));
-    return width;
-  }
+[[nodiscard]] int validateExtenderWidth(const PropertyValue&   value,
+                                        const std::string_view property)
+{
+  const int width = std::get<int>(value);
+  if (width < 1)
+    throw std::invalid_argument(std::format("Extender {} must be at least 1", property));
+  if (width > std::numeric_limits<unsigned short>::max())
+    throw std::invalid_argument(std::format("Extender {} is too large", property));
+  return width;
+}
 
 }  // namespace
 
@@ -108,22 +107,16 @@ void Extender::simulate(SILICON::simulation::Simulator& sim)
   if (inputs.size() != 1 || outputs.size() != 1 || inputs[0].size() == 0)
     return;
 
+  auto value = inputs[0].getCurrentValue();
+
   const bool signedMode =
       getPropertyValue<std::string>("mode").value_or(std::string(UnsignedMode))
       == SignedMode;
-  const State extension =
-      signedMode ? Wire::safeGetCurrentState(inputs[0][inputs[0].size() - 1]) : State::LOW;
 
-  for (std::size_t bit = 0; bit < outputs[0].size(); ++bit) {
-    const State state = bit < inputs[0].size()
-                            ? Wire::safeGetCurrentState(
-                                  inputs[0][static_cast<unsigned short>(bit)])
-                            : extension;
-    sim.updateWire(outputs[0][static_cast<unsigned short>(bit)], state, 0,
-                   weak_from_this());
-  }
+  const State extension = signedMode ? value.back() : State::LOW;
+  value.resize(outputs[0].size(), extension);
+  sim.updateBus(outputs[0], value, 0, weak_from_this());
 }
-
 Complementer::Complementer()
 {
   defineProperty("delay", 0);
@@ -186,14 +179,9 @@ void Complementer::simulate(SILICON::simulation::Simulator& sim)
   if (inputs.size() != 1 || outputs.size() != 1 || inputs[0].size() != outputs[0].size())
     return;
 
-  const int propagationDelay = getPropertyValue<int>("delay").value_or(0);
-  auto      carry            = State::LOW;
-  for (auto i = 0uz; i < inputs[0].size(); i++) {
-    const auto a = !(Wire::safeGetCurrentState(inputs[0][i]));
-    const auto b = (i == 0) ? State::HIGH : State::LOW;
-    sim.updateWire(outputs[0][i], a ^ b ^ carry, propagationDelay, weak_from_this());
-    carry = (a && b) || (carry && (a ^ b));
-  }
+  const int  propagationDelay = getPropertyValue<int>("delay").value_or(0);
+  const auto complement       = twosComplement(inputs[0].getCurrentValue());
+  sim.updateBus(outputs[0], complement, propagationDelay, weak_from_this());
 }
 
 HalfAdder::HalfAdder()
@@ -331,20 +319,20 @@ void AdderNBits::simulate(SILICON::simulation::Simulator& sim)
   if (outputBusSize(Outputs::Sum) == 0 || outputBusSize(Outputs::Cout) == 0)
     return;
 
-  State      carry            = State::LOW;
+  const auto propagationDelay = getPropertyValue<int>("delay").value_or(0);
   const auto sumWidth         = outputBusSize(Outputs::Sum);
-  const int  propagationDelay = getPropertyValue<int>("delay").value_or(0);
 
-  for (unsigned short bit = 0; bit < sumWidth; ++bit) {
-    const State a = inputState(Inputs::A, bit);
-    const State b = inputState(Inputs::B, bit);
+  auto result =
+      inputs[busIndex(Inputs::A)].getCurrentValue()
+      + inputs[busIndex(Inputs::B)].getCurrentValue();
 
-    sim.updateWire(outputWire(Outputs::Sum, bit), a ^ b ^ carry, propagationDelay,
-                   weak_from_this());
-    carry = (a && b) || (carry && (a ^ b));
-  }
+  const State carry = result[sumWidth];
+  result.resize(sumWidth);
 
-  sim.updateWire(outputWire(Outputs::Cout), carry, propagationDelay, weak_from_this());
+  sim.updateBus(outputs[busIndex(Outputs::Sum)], result, propagationDelay,
+                weak_from_this());
+
+  sim.updateWire(outputWire(Outputs::Cout), carry, propagationDelay,
+                 weak_from_this());
 }
-
 }  // namespace SILICON::extra

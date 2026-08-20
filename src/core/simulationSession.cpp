@@ -73,13 +73,13 @@ Session::simulateWaveform(const uint64_t duration, std::span<const Sample> input
                                             std::move(isCancelled));
 }
 
-Simulator::RunResult Session::setBus(Bus bus, const unsigned int value,
+Simulator::RunResult Session::setBus(Bus bus, const BusValue& value,
                                      Simulator::CancellationCheck isCancelled)
 {
   return runtimeSimulator->setBus(std::move(bus), value, std::move(isCancelled));
 }
 
-Simulator::RunResult Session::setBus(Bus bus, const unsigned int value,
+Simulator::RunResult Session::setBus(Bus bus, const BusValue& value,
                                      const Component_weakPtr&     source,
                                      Simulator::CancellationCheck isCancelled)
 {

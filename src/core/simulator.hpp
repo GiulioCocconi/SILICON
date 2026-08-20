@@ -73,7 +73,7 @@ struct TimedEvent {
 class Simulator {
 public:
   /** @brief Receives encoded waveform values for a simulation timestamp. */
-  using TraceSink = std::function<void(uint64_t, const std::vector<std::string>&)>;
+  using TraceSink = std::function<void(uint64_t, const std::vector<BusValue>&)>;
 
   /** @brief Bus driven by one column of an input waveform. */
   struct WaveformInputDriver {
@@ -216,7 +216,7 @@ public:
    * @param isCancelled Optional cooperative cancellation callback
    * @return Completion or cancellation outcome
    */
-  RunResult setBus(Bus bus, unsigned int value, CancellationCheck isCancelled = {});
+  RunResult setBus(Bus bus, BusValue value, CancellationCheck isCancelled = {});
 
   /**
    * @brief Forces a bus to a specific value with a source component and propagates
@@ -232,7 +232,7 @@ public:
    * @param isCancelled Optional cooperative cancellation callback
    * @return Completion or cancellation outcome
    */
-  RunResult setBus(Bus bus, unsigned int value, const Component_weakPtr& source,
+  RunResult setBus(Bus bus, BusValue value, const Component_weakPtr& source,
                    CancellationCheck isCancelled = {});
 
   /**
@@ -257,6 +257,20 @@ public:
    */
   void updateWire(const Wire_ptr& target, State newState, uint64_t delay,
                   const Component_weakPtr& source);
+
+  /**
+   * @brief Updates a bus to a new value through the normal wire-update path.
+   *
+   * Normalizes @p value to the bus width, then delegates each bit to updateWire()
+   * so immediate and delayed updates share the usual simulator bookkeeping.
+   *
+   * @param bus The bus to update
+   * @param value The new value
+   * @param delay
+   * @param source The component that authorized this change
+   */
+  void updateBus(const Bus& bus, const BusValue& value, uint64_t delay,
+                 const Component_weakPtr& source);
 
   /**
    * @brief Gets the current simulation time.
@@ -347,8 +361,6 @@ private:
    */
   void emitTraceSnapshot();
 
-  [[nodiscard]] static std::string encodeTraceBusValue(const Bus& bus);
-
   [[nodiscard]] static PendingTransitionKey
   pendingTransitionKey(const Wire_ptr& target, const Component_weakPtr& source);
 
@@ -396,7 +408,7 @@ private:
   getForwardExecutionSteps(std::span<const Bus> changedBuses) const;
 
   [[nodiscard]] RunResult
-  applyWaveformInputSample(std::span<const std::string>         values,
+  applyWaveformInputSample(std::span<const BusValue>            values,
                            std::span<const WaveformInputDriver> inputDrivers,
                            const CancellationCheck&             isCancelled);
 

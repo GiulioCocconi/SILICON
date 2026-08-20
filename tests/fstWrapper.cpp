@@ -520,7 +520,7 @@ TEST(SiliconFstWriterTest, SimulatorFstTraceUsesConfiguredBusNames)
         {"result", Bus({o})},
     });
     simulator.enableFstTracing(filename, {.topScopeName = "SimTrace"});
-    simulator.setBus(Bus({a}), 1);
+    simulator.setBus(Bus({a}), valueFor(Bus({a}), 1));
     simulator.run(5);
   }
 

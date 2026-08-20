@@ -96,7 +96,7 @@ public:
    * @param value New value to inject
    * @param source Component that originated the change
    */
-  void handleInputToggled(Bus targetBus, unsigned int value, Component_weakPtr source);
+  void handleInputToggled(Bus targetBus, const BusValue& value, Component_weakPtr source);
 
   /**
    * @brief Enables or disables FST tracing for the active simulation session.
@@ -227,7 +227,7 @@ private:
   QTimer* dialogTimer = nullptr;
 
   /** @brief Worker-produced snapshots delivered to the viewer as one GUI batch */
-  QList<QPair<qulonglong, QStringList>> pendingWaveformSnapshots;
+  QList<QPair<qulonglong, std::vector<BusValue>>> pendingWaveformSnapshots;
 };
 
 }  // namespace ui

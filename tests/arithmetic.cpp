@@ -43,12 +43,12 @@ TEST(ArithmeticTest, HalfAdderCase)
   EXPECT_EQ(sum->getCurrentState(), State::LOW);
   EXPECT_EQ(cout->getCurrentState(), State::LOW);
 
-  sim.setBus(Bus{b}, 1);
+  sim.setBus(Bus{b}, valueFor(Bus{b}, 1));
   sim.run(20);
   EXPECT_EQ(sum->getCurrentState(), State::HIGH);
   EXPECT_EQ(cout->getCurrentState(), State::LOW);
 
-  sim.setBus(Bus{a}, 1);
+  sim.setBus(Bus{a}, valueFor(Bus{a}, 1));
   sim.run(20);
   EXPECT_EQ(sum->getCurrentState(), State::LOW);
   EXPECT_EQ(cout->getCurrentState(), State::HIGH);
@@ -63,15 +63,15 @@ TEST(ArithmeticTest, ExtenderSupportsUnsignedSignedAndNarrowingModes)
     auto extender = std::make_shared<Extender>(input, output, mode);
     auto circuit  = std::make_shared<Circuit>(Component_set{extender});
     Simulator simulator(circuit);
-    simulator.setBus(input, value);
+    simulator.setBus(input, valueFor(input, value));
     if (simulator.runUntilIdle() != Simulator::RunResult::Completed)
       throw std::runtime_error("Extender simulation did not complete");
     return output.getCurrentValue();
   };
 
-  EXPECT_EQ(evaluate(3, 5, std::string(Extender::UnsignedMode), 6), 6U);
-  EXPECT_EQ(evaluate(3, 5, std::string(Extender::SignedMode), 6), 30U);
-  EXPECT_EQ(evaluate(5, 3, std::string(Extender::SignedMode), 29), 5U);
+  EXPECT_EQ(evaluate(3, 5, std::string(Extender::UnsignedMode), 6), valueFor(5, 6));
+  EXPECT_EQ(evaluate(3, 5, std::string(Extender::SignedMode), 6), valueFor(5, 30));
+  EXPECT_EQ(evaluate(5, 3, std::string(Extender::SignedMode), 29), valueFor(3, 5));
 }
 
 TEST(ArithmeticTest, ExtenderPropertiesValidateAndReshapeBuses)
@@ -112,9 +112,9 @@ TEST(ArithmeticTest, ComplementerComputesFixedWidthTwosComplement)
 
   for (const auto [value, expected] : std::vector<std::pair<unsigned int, unsigned int>>{
            {0, 0}, {1, 15}, {3, 13}, {8, 8}, {15, 1}}) {
-    simulator.setBus(input, value);
+    simulator.setBus(input, valueFor(input, value));
     ASSERT_EQ(simulator.runUntilIdle(), Simulator::RunResult::Completed);
-    EXPECT_EQ(output.getCurrentValue(), expected);
+    EXPECT_EQ(output.getCurrentValue(), valueFor(output, expected));
   }
 }
 
@@ -153,9 +153,9 @@ TEST(ArithmeticTest, AdderNBitsFromComponents)
     partialCarryWires[i]->forceSetCurrentState(State::LOW);
   }
 
-  a.forceSetCurrentValue(0);
-  b.forceSetCurrentValue(0);
-  sum.forceSetCurrentValue(0);
+  a.forceSetCurrentValue(valueFor(a, 0));
+  b.forceSetCurrentValue(valueFor(b, 0));
+  sum.forceSetCurrentValue(valueFor(sum, 0));
 
   for (int i = 0; i < 4; i++) {
     auto fa = std::make_shared<FullAdder>(std::array<Wire_ptr, 2>{a[i], b[i]},
@@ -167,33 +167,33 @@ TEST(ArithmeticTest, AdderNBitsFromComponents)
   auto      circ = std::make_shared<Circuit>(comps);
   Simulator sim(circ);
 
-  sim.setBus(a, 0);
-  sim.setBus(b, 0);
+  sim.setBus(a, valueFor(a, 0));
+  sim.setBus(b, valueFor(b, 0));
   sim.run(100);
 
   EXPECT_EQ(cout->getCurrentState(), State::LOW);
-  EXPECT_EQ(sum.getCurrentValue(), 0);
+  EXPECT_EQ(sum.getCurrentValue(), valueFor(sum, 0));
 
-  sim.setBus(a, 0b1100);
-  sim.setBus(b, 0b0011);
+  sim.setBus(a, valueFor(a, 0b1100));
+  sim.setBus(b, valueFor(b, 0b0011));
   sim.run(100);
 
   EXPECT_EQ(cout->getCurrentState(), State::LOW);
-  EXPECT_EQ(sum.getCurrentValue(), 0b1111);
+  EXPECT_EQ(sum.getCurrentValue(), valueFor(sum, 0b1111));
 
-  sim.setBus(b, 0b1100);
-  sim.setBus(a, 0b0011);
+  sim.setBus(b, valueFor(b, 0b1100));
+  sim.setBus(a, valueFor(a, 0b0011));
   sim.run(100);
 
   EXPECT_EQ(cout->getCurrentState(), State::LOW);
-  EXPECT_EQ(sum.getCurrentValue(), 0b1111);
+  EXPECT_EQ(sum.getCurrentValue(), valueFor(sum, 0b1111));
 
-  sim.setBus(a, 0b1111);
-  sim.setBus(b, 0b0001);
+  sim.setBus(a, valueFor(a, 0b1111));
+  sim.setBus(b, valueFor(b, 0b0001));
   sim.run(100);
 
   EXPECT_EQ(cout->getCurrentState(), State::HIGH);
-  EXPECT_EQ(sum.getCurrentValue(), 0);
+  EXPECT_EQ(sum.getCurrentValue(), valueFor(sum, 0));
 }
 
 TEST(ArithmeticTest, AdderNBitsAtomic)
@@ -207,33 +207,33 @@ TEST(ArithmeticTest, AdderNBitsAtomic)
   auto      circ  = std::make_shared<Circuit>(Component_set{adder});
   Simulator sim(circ);
 
-  sim.setBus(a, 0);
-  sim.setBus(b, 0);
+  sim.setBus(a, valueFor(a, 0));
+  sim.setBus(b, valueFor(b, 0));
   sim.run(100);
 
   EXPECT_EQ(cout->getCurrentState(), State::LOW);
-  EXPECT_EQ(sum.getCurrentValue(), 0);
+  EXPECT_EQ(sum.getCurrentValue(), valueFor(sum, 0));
 
-  sim.setBus(a, 0b1100);
-  sim.setBus(b, 0b0011);
+  sim.setBus(a, valueFor(a, 0b1100));
+  sim.setBus(b, valueFor(b, 0b0011));
   sim.run(100);
 
   EXPECT_EQ(cout->getCurrentState(), State::LOW);
-  EXPECT_EQ(sum.getCurrentValue(), 0b1111);
+  EXPECT_EQ(sum.getCurrentValue(), valueFor(sum, 0b1111));
 
-  sim.setBus(b, 0b1100);
-  sim.setBus(a, 0b0011);
+  sim.setBus(b, valueFor(b, 0b1100));
+  sim.setBus(a, valueFor(a, 0b0011));
   sim.run(100);
 
   EXPECT_EQ(cout->getCurrentState(), State::LOW);
-  EXPECT_EQ(sum.getCurrentValue(), 0b1111);
+  EXPECT_EQ(sum.getCurrentValue(), valueFor(sum, 0b1111));
 
-  sim.setBus(a, 0b1111);
-  sim.setBus(b, 0b0001);
+  sim.setBus(a, valueFor(a, 0b1111));
+  sim.setBus(b, valueFor(b, 0b0001));
   sim.run(100);
 
   EXPECT_EQ(cout->getCurrentState(), State::HIGH);
-  EXPECT_EQ(sum.getCurrentValue(), 0);
+  EXPECT_EQ(sum.getCurrentValue(), valueFor(sum, 0));
 }
 
 TEST(ArithmeticTest, DelayedAdderReschedulesUnchangedOutputBits)
@@ -250,8 +250,8 @@ TEST(ArithmeticTest, DelayedAdderReschedulesUnchangedOutputBits)
   Simulator sim(circ);
 
   const std::vector<Sample> inputSnapshots{
-      {0, {"0000", "0000"}},
-      {2, {"0100", "0101"}},
+      {0, {busValueFromBits("0000"), busValueFromBits("0000")}},
+      {2, {busValueFromBits("0100"), busValueFromBits("0101")}},
   };
   const std::vector<Simulator::WaveformInputDriver> inputDrivers{
       {a, {}},
@@ -264,7 +264,7 @@ TEST(ArithmeticTest, DelayedAdderReschedulesUnchangedOutputBits)
     EXPECT_EQ(wire->getCurrentState(), State::UNKNOWN);
 
   EXPECT_EQ(sim.run(1), Simulator::RunResult::Completed);
-  EXPECT_EQ(sum.getCurrentValue(), 0b1001);
+  EXPECT_EQ(sum.getCurrentValue(), valueFor(sum, 0b1001));
 }
 
 TEST(ArithmeticTest, AdderNBitsSizePropertyDefaultsAndValidation)
