@@ -92,10 +92,31 @@ using namespace SILICON::core;
 
 bool busValueOverflowsWidth(const BusValue& value, const std::size_t width)
 {
-  return value.size() > width
-         && std::ranges::any_of(value.begin() + static_cast<std::ptrdiff_t>(width),
-                                value.end(),
-                                [](const State state) { return state != State::LOW; });
+  return !fitsUnsigned(value, width);
+}
+
+bool fitsUnsigned(const BusValue& value, const std::size_t width)
+{
+  return value.size() <= width
+         || std::ranges::all_of(
+             value.begin() + static_cast<std::ptrdiff_t>(width), value.end(),
+             [](const State state) { return state == State::LOW; });
+}
+
+bool fitsSigned(const BusValue& value, const std::size_t width)
+{
+  if (value.empty() || width == 0)
+    return false;
+  if (value.size() <= width)
+    return true;
+
+  const State sign = value[width - 1];
+  if (!isKnownBinary(sign))
+    return false;
+
+  return std::ranges::all_of(
+      value.begin() + static_cast<std::ptrdiff_t>(width), value.end(),
+      [sign](const State state) { return state == sign; });
 }
 
 BusValue normalizeBusValue(const BusValue& value, const std::size_t width,
@@ -270,7 +291,6 @@ BusValue twosComplement(const BusValue& n)
 
   return res;
 }
-
 
 Bus::Bus(const unsigned short size)
 {

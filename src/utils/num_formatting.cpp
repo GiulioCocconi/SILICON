@@ -252,10 +252,10 @@ std::string formatValue(const BusValue& value, const BusValueFormat format,
                      std::string(padding, '0'), res);
 }
 
-std::pair<BusValue, BusValueFormat> valueFromStr(const std::string_view value)
+ParsedBusValue valueFromStr(const std::string_view value)
 {
   const auto [format, digits] = getFormat(value);
-  BusValue result;
+  BusValue                    result;
 
   switch (format) {
     case BusValueFormat::Raw:
@@ -308,7 +308,8 @@ std::pair<BusValue, BusValueFormat> valueFromStr(const std::string_view value)
 
       if (format == BusValueFormat::Signed) {
         result.push_back(State::LOW);
-        result = twosComplement(result);
+        if (trim(value).front() == '-')
+          result = twosComplement(result);
       }
       break;
     }
@@ -316,6 +317,30 @@ std::pair<BusValue, BusValueFormat> valueFromStr(const std::string_view value)
   }
 
   return {std::move(result), format};
+}
+
+std::optional<BusValue> resizeParsedValue(const ParsedBusValue& parsed,
+                                          const std::size_t     width)
+{
+  if (parsed.format == BusValueFormat::Unknown || parsed.value.empty())
+    return std::nullopt;
+
+  if (parsed.format == BusValueFormat::Signed) {
+    if (!SILICON::wireUtils::fitsSigned(parsed.value, width))
+      return std::nullopt;
+    return SILICON::wireUtils::normalizeBusValue(parsed.value, width,
+                                                 parsed.value.back());
+  }
+
+  if (!SILICON::wireUtils::fitsUnsigned(parsed.value, width))
+    return std::nullopt;
+
+  const State extension =
+      parsed.format == BusValueFormat::Raw && parsed.value.size() == 1
+              && parsed.value.front() == State::UNKNOWN
+          ? State::UNKNOWN
+          : State::LOW;
+  return SILICON::wireUtils::normalizeBusValue(parsed.value, width, extension);
 }
 
 }  // namespace SILICON::core

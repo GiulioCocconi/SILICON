@@ -22,13 +22,19 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
-#include <utility>
 
 namespace SILICON::core {
 
 enum class BusValueFormat { Raw, Signed, Unsigned, Hex, Oct, Bin, Unknown };
+
+/** @brief A bit-vector together with the textual interpretation that produced it. */
+struct ParsedBusValue {
+  BusValue       value;
+  BusValueFormat format = BusValueFormat::Unknown;
+};
 
 /** @brief Format an LSB-first BusValue for display. */
 [[nodiscard]] std::string formatValue(const BusValue& value, BusValueFormat format,
@@ -38,9 +44,20 @@ enum class BusValueFormat { Raw, Signed, Unsigned, Hex, Oct, Bin, Unknown };
  * @brief Parse user-facing decimal, hexadecimal, octal, binary, or four-state text.
  *
  * Unprefixed binary/four-state text is interpreted as an MSB-first raw value; other
- * unprefixed digits are decimal. Invalid text returns BusValueFormat::Unknown.
+ * unprefixed digits are unsigned decimal. A leading + or - selects signed decimal.
+ * Invalid text returns BusValueFormat::Unknown.
  */
-[[nodiscard]] std::pair<BusValue, BusValueFormat> valueFromStr(std::string_view text);
+[[nodiscard]] ParsedBusValue valueFromStr(std::string_view text);
+
+/**
+ * @brief Adapts a parsed textual value to an exact destination width.
+ *
+ * Signed decimal values use two's-complement fit and sign extension. Other formats
+ * use unsigned fit and zero extension, except a scalar raw UNKNOWN expands to all
+ * UNKNOWN bits. A value that cannot be represented returns std::nullopt.
+ */
+[[nodiscard]] std::optional<BusValue>
+resizeParsedValue(const ParsedBusValue& parsed, std::size_t width);
 
 [[nodiscard]] BusValue maxValueForBusWidth(std::size_t width);
 

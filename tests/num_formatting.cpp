@@ -9,6 +9,7 @@
 
 #include "tests.hpp"
 
+#include <core/wireUtils.hpp>
 #include <utils/num_formatting.hpp>
 
 #include <string>
@@ -72,10 +73,10 @@ TEST(NumFormattingTest, ParsesFourStateRawValuesAsMsbFirst)
 
 TEST(NumFormattingTest, RejectsInvalidInput)
 {
-  EXPECT_EQ(valueFromStr("").second, BusValueFormat::Unknown);
-  EXPECT_EQ(valueFromStr("0b102").second, BusValueFormat::Unknown);
-  EXPECT_EQ(valueFromStr("10Z1").second, BusValueFormat::Unknown);
-  EXPECT_EQ(valueFromStr("-0x2a").second, BusValueFormat::Unknown);
+  EXPECT_EQ(valueFromStr("").format, BusValueFormat::Unknown);
+  EXPECT_EQ(valueFromStr("0b102").format, BusValueFormat::Unknown);
+  EXPECT_EQ(valueFromStr("10Z1").format, BusValueFormat::Unknown);
+  EXPECT_EQ(valueFromStr("-0x2a").format, BusValueFormat::Unknown);
   EXPECT_THROW((void)busValueFromBits("10Z1"), std::invalid_argument);
 }
 
@@ -91,6 +92,57 @@ TEST(NumFormattingTest, SignedUsesTwosComplementWidth)
   const auto [negative, format] = valueFromStr("-42");
   EXPECT_EQ(format, BusValueFormat::Signed);
   EXPECT_EQ(formatValue(negative, BusValueFormat::Signed), "-42");
+}
+
+TEST(NumFormattingTest, ResizesParsedSignedValuesWithTwosComplementSemantics)
+{
+  const auto expectResize = [](const std::string_view text, const std::size_t width,
+                               const std::string_view expected) {
+    const auto resized = resizeParsedValue(valueFromStr(text), width);
+    ASSERT_TRUE(resized) << text << " at " << width << " bits";
+    EXPECT_EQ(formatValue(*resized, BusValueFormat::Raw), expected);
+  };
+
+  expectResize("-1", 1, "1");
+  expectResize("-1", 4, "1111");
+  expectResize("-1", 8, "11111111");
+  expectResize("-8", 4, "1000");
+  expectResize("-8", 8, "11111000");
+  expectResize("127", 8, "01111111");
+
+  EXPECT_FALSE(resizeParsedValue(valueFromStr("-9"), 4));
+  EXPECT_FALSE(resizeParsedValue(valueFromStr("+128"), 8));
+}
+
+TEST(NumFormattingTest, ResizesUnsignedAndRawValuesWithZeroExtension)
+{
+  EXPECT_EQ(resizeParsedValue(valueFromStr("255"), 8),
+            busValueFromBits("11111111"));
+  EXPECT_FALSE(resizeParsedValue(valueFromStr("256"), 8));
+  EXPECT_EQ(resizeParsedValue(valueFromStr("0b101"), 8),
+            busValueFromBits("00000101"));
+  EXPECT_EQ(resizeParsedValue(valueFromStr("X"), 8),
+            BusValue(8, State::UNKNOWN));
+
+  const auto wide = valueFromStr("36893488147419103231");
+  EXPECT_TRUE(resizeParsedValue(wide, 65));
+  EXPECT_FALSE(resizeParsedValue(wide, 64));
+}
+
+TEST(NumFormattingTest, NumericFitChecksAreSeparateFromBitVectorNormalization)
+{
+  EXPECT_TRUE(SILICON::wireUtils::fitsUnsigned(busValueFromBits("000001"), 4));
+  EXPECT_FALSE(SILICON::wireUtils::fitsUnsigned(busValueFromBits("100001"), 4));
+  EXPECT_TRUE(SILICON::wireUtils::fitsSigned(busValueFromBits("11111"), 1));
+  EXPECT_TRUE(SILICON::wireUtils::fitsSigned(busValueFromBits("11000"), 4));
+  EXPECT_FALSE(SILICON::wireUtils::fitsSigned(busValueFromBits("10111"), 4));
+
+  EXPECT_EQ(SILICON::wireUtils::normalizeBusValue(
+                busValueFromBits("100001"), 4),
+            busValueFromBits("0001"));
+  EXPECT_EQ(SILICON::wireUtils::normalizeBusValue(
+                busValueFromBits("1"), 4, State::HIGH),
+            busValueFromBits("1111"));
 }
 
 TEST(NumFormattingTest, SupportsValuesWiderThanMachineIntegers)
