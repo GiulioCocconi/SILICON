@@ -1070,17 +1070,17 @@ void Viewer::applyEditInterval(int signalIndex, quint64 startTime, quint64 endTi
       || endTime <= startTime)
     return;
 
-  const auto [busValue, _] = valueFromStr(rawValue.toStdString());
-  if (_ == BusValueFormat::Unknown || busValue.empty()
-      || std::ranges::contains(busValue, State::ERROR)
-      || SILICON::wireUtils::busValueOverflowsWidth(
-          busValue, signalWidth(signalIndex)))
+  const auto parsed = valueFromStr(rawValue.toStdString());
+  if (parsed.format == BusValueFormat::Unknown || parsed.value.empty()
+      || std::ranges::contains(parsed.value, State::ERROR))
+    return;
+
+  const auto resized = resizeParsedValue(parsed, signalWidth(signalIndex));
+  if (!resized)
     return;
 
   SILICON::waveform::applyEditInterval(trace, editDuration, signalIndex, startTime,
-                                       endTime,
-                                       SILICON::wireUtils::normalizeBusValue(
-                                           busValue, signalWidth(signalIndex)));
+                                       endTime, *resized);
   refreshSignalList();
   refreshCanvas();
 }
@@ -1118,9 +1118,9 @@ void Viewer::promptEditIntervalValue(int signalIndex, quint64 startTime, quint64
         if (!safeThis)
           return;
 
-
-        const auto [value, _] = valueFromStr(text.toStdString());
-        if (SILICON::wireUtils::busValueOverflowsWidth(value, width)) {
+        const auto parsed  = valueFromStr(text.toStdString());
+        const auto resized = resizeParsedValue(parsed, width);
+        if (!resized) {
           SILICON::ui::inputDialog::warning(
               safeThis, QObject::tr("Bus Input"),
               QObject::tr("The value does not fit in the selected signal width."));
@@ -1129,7 +1129,7 @@ void Viewer::promptEditIntervalValue(int signalIndex, quint64 startTime, quint64
 
         safeThis->applyEditInterval(
             signalIndex, startTime, endTime,
-            QString::fromStdString(formatValue(value, BusValueFormat::Raw)));
+            QString::fromStdString(formatValue(*resized, BusValueFormat::Raw)));
       });
 }
 

@@ -766,17 +766,18 @@ void GraphicalBusInput::editValue()
           return;
 
         const auto parsed = SILICON::core::valueFromStr(text.toStdString());
-        if (parsed.second == SILICON::core::BusValueFormat::Unknown
-            || std::ranges::contains(parsed.first, State::ERROR))
+        if (parsed.format == SILICON::core::BusValueFormat::Unknown
+            || std::ranges::contains(parsed.value, State::ERROR))
           return;
 
-        if (SILICON::wireUtils::busValueOverflowsWidth(parsed.first, width)) {
+        const auto resized = SILICON::core::resizeParsedValue(parsed, width);
+        if (!resized) {
           SILICON::ui::inputDialog::warning(
               SILICON::ui::inputDialog::parentWidgetForGraphicsItem(safeThis.data()),
               "Bus Input", "The value does not fit in the bus width.");
           return;
         }
-        safeThis->setValue(parsed.first);
+        safeThis->setValue(*resized);
       });
 }
 

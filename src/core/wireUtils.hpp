@@ -28,6 +28,12 @@ namespace SILICON::wireUtils {
 [[nodiscard]] bool busValueOverflowsWidth(const core::BusValue& value,
                                           std::size_t           width);
 
+/** @brief Tests whether an LSB-first value is representable as an unsigned value. */
+[[nodiscard]] bool fitsUnsigned(const core::BusValue& value, std::size_t width);
+
+/** @brief Tests whether an LSB-first two's-complement value fits a signed width. */
+[[nodiscard]] bool fitsSigned(const core::BusValue& value, std::size_t width);
+
 /**
  * @brief Resize an LSB-first value to an exact bus width.
  *
