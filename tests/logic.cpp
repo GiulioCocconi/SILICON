@@ -383,6 +383,44 @@ TEST(SimulatorTest, WaveformInputSampleCapturesPreviousWireStates)
                                               Simulator::EdgeType::NO_CHANGE}));
 }
 
+TEST(SimulatorTest, WaveformDoesNotPropagateWhenNormalizedValueIsUnchanged)
+{
+  auto lowBit  = std::make_shared<Wire>(State::HIGH);
+  auto highBit = std::make_shared<Wire>(State::LOW);
+  Bus  input{lowBit, highBit};
+
+  auto recorder = std::make_shared<ContextRecordingComponent>(input);
+  auto circuit  = std::make_shared<Circuit>(Component_set{recorder});
+  Simulator simulator(circuit);
+  ASSERT_EQ(simulator.runUntilIdle(), Simulator::RunResult::Completed);
+  const auto recordsBeforeSample = recorder->records.size();
+
+  const std::vector<Sample> inputSnapshots{{0, {busValueFromBits("1")}}};
+  const std::vector<Simulator::WaveformInputDriver> inputDrivers{{input, {}}};
+
+  EXPECT_EQ(simulator.simulateWaveform(1, inputSnapshots, inputDrivers),
+            Simulator::RunResult::Completed);
+  EXPECT_EQ(recorder->records.size(), recordsBeforeSample);
+  EXPECT_EQ(input.getCurrentValue(), busValueFromBits("01"));
+}
+
+TEST(SimulatorTest, UpdateBusNormalizesImmediateAndDelayedValues)
+{
+  Bus bus(3);
+  auto circuit = std::make_shared<Circuit>();
+  Simulator simulator(circuit);
+
+  simulator.updateBus(bus, busValueFromBits("1"), 0, {});
+  EXPECT_EQ(bus.getCurrentValue(), busValueFromBits("001"));
+
+  simulator.updateBus(bus, busValueFromBits("10"), 3, {});
+  EXPECT_EQ(bus.getCurrentValue(), busValueFromBits("001"));
+  EXPECT_EQ(simulator.run(2), Simulator::RunResult::Completed);
+  EXPECT_EQ(bus.getCurrentValue(), busValueFromBits("001"));
+  EXPECT_EQ(simulator.run(1), Simulator::RunResult::Completed);
+  EXPECT_EQ(bus.getCurrentValue(), busValueFromBits("010"));
+}
+
 TEST(SimulatorTest, DelayedGateRejectsShortInputPulse)
 {
   auto a = std::make_shared<Wire>(State::LOW);
