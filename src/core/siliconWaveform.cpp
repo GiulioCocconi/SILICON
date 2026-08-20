@@ -75,7 +75,7 @@ void appendSnapshot(Trace& trace, const uint64_t time, std::vector<core::BusValu
     return;
   }
 
-  trace.samples.push_back({time, values});
+  trace.samples.push_back({time, std::move(values)});
 }
 
 void appendSnapshots(Trace& trace, std::span<const Sample> snapshots)

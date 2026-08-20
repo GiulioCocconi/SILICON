@@ -772,13 +772,15 @@ Simulator::applyWaveformInputSample(std::span<const BusValue>         values,
   for (std::size_t i = 0; i < inputCount; ++i) {
     const auto& driver = inputDrivers[i];
     auto        bus    = driver.bus;
+    const auto normalized =
+        SILICON::wireUtils::normalizeBusValue(values[i], bus.size());
 
-    if (bus.getCurrentValue() != values[i]) {
+    if (bus.getCurrentValue() != normalized) {
       inputsChanged = true;
       changedBuses.push_back(bus);
       capturePreviousBusStates(previousWireStates, bus);
     }
-    (void)bus.forceSetCurrentValue(values[i], driver.source);
+    (void)bus.forceSetCurrentValue(normalized, driver.source);
   }
 
   if (!inputsChanged)
