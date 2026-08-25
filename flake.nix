@@ -56,6 +56,7 @@ outputs = { self, nixpkgs, flake-utils }:
         nativeInputs = with pkgs; [
           cmake
           ninja
+          python3
           # Required by the Yosys JSON import validation test.
           yosys
         ];

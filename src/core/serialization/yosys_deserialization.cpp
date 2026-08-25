@@ -25,7 +25,6 @@
 #include <array>
 #include <charconv>
 #include <format>
-#include <functional>
 #include <limits>
 #include <map>
 #include <memory>
@@ -311,7 +310,6 @@ namespace {
     std::map<State, Wire_ptr>          constants;
     std::map<BusValue, Bus>            constantBuses;
     std::set<std::uint64_t>            drivenSignals;
-    std::set<std::string, std::less<>> boundaryOutputSignals;
     std::vector<Component_ptr>         components;
 
     [[nodiscard]] std::pair<std::string, const Json&>
@@ -487,9 +485,6 @@ namespace {
           else
             components.push_back(std::make_shared<DummyBusInputComponent>(bus, name));
         } else {
-          for (const auto& bit : bitsJson)
-            boundaryOutputSignals.insert(bit.dump());
-
           // Yosys flattens a zero-extension assignment into a cell-free output
           // connection whose most-significant bits are literal zeroes. Restore the
           // word-level component when the remaining least-significant bits are all
@@ -536,19 +531,8 @@ namespace {
       if (!cells.is_object())
         fail(std::format("{}.cells", moduleContext()), "expected an object");
 
-      // proc followed by pmuxtree lowers an exhaustive case statement to equality
-      // comparisons, OR gates, and a tree of binary muxes. Recover that complete
-      // pattern before raising the remaining comparisons to decoders.
-      const auto foldedCells = importDecodedMuxTrees(cells);
-
-      // Recover word-level decode structure before importing individual cells.
-      // Raised comparisons are implemented by the Decoder and must not be
-      // dispatched a second time as unsupported standalone $eq cells.
-      const auto raisedComparisons = importEqDecoderGroups(cells, foldedCells);
-      for (const auto& [name, cell] : cells.items()) {
-        if (!foldedCells.contains(name) && !raisedComparisons.contains(name))
-          importCell(name, cell);
-      }
+      for (const auto& [name, cell] : cells.items())
+        importCell(name, cell);
     }
 
     [[nodiscard]] static std::vector<Bus>
@@ -568,391 +552,6 @@ namespace {
       if (selectionWidth >= std::numeric_limits<std::size_t>::digits)
         fail(context, std::format("{} selection width is too large", type));
       return std::size_t{1} << selectionWidth;
-    }
-
-    // One equality comparison that may become an output of a shared decoder.
-    // outputIndex is the value being compared against; selectorPort identifies
-    // the non-constant side of the equality.
-    struct EqDecoderCandidate {
-      std::string name;
-      std::string selectorPort;
-      std::size_t selectionWidth = 0;
-      std::size_t outputIndex    = 0;
-    };
-
-    // Returns the numeric value of a fully defined constant connection. Yosys JSON
-    // stores connection arrays least-significant bit first. A non-constant signal
-    // or an x/z literal makes the connection unsuitable for decoder recovery.
-    [[nodiscard]] static std::optional<std::size_t>
-    constantConnectionValue(const Cell& cell, const std::string_view port,
-                            const std::size_t width)
-    {
-      const auto& bits = cell.connection(port);
-      if (!bits.is_array() || bits.size() != width)
-        fail(cell.where(), std::format("'{}' must be {} bits wide", port, width));
-
-      std::size_t value = 0;
-      for (std::size_t bit = 0; bit < width; ++bit) {
-        if (!bits[bit].is_string())
-          return std::nullopt;
-        const auto& digit = bits[bit].get_ref<const std::string&>();
-        if (digit != "0" && digit != "1")
-          return std::nullopt;
-        if (digit == "1")
-          value |= std::size_t{1} << bit;
-      }
-      return value;
-    }
-
-    struct DecodedPredicate {
-      Json                               selector;
-      std::size_t                        selectionWidth = 0;
-      std::set<std::size_t>              values;
-      std::set<std::string, std::less<>> cells;
-    };
-
-    /*
-     * Fold the exact structure emitted by Yosys' `proc; pmuxtree` sequence for a
-     * complete binary case statement:
-     *
-     *   $eq(selector, K) --+
-     *                      +--> $or/$mux tree --> Y
-     *
-     * A fold requires 2^N-1 distinct equality cells for one N-bit selector. One
-     * value is represented by the tree's default arm. Requiring all other values
-     * keeps sparse cases and priority muxes out of this canonicalization.
-     */
-    [[nodiscard]] std::set<std::string, std::less<>>
-    importDecodedMuxTrees(const Json& cells)
-    {
-      using NameSet = std::set<std::string, std::less<>>;
-
-      std::map<std::string, std::string, std::less<>> producers;
-      std::map<std::string, NameSet, std::less<>>     consumers;
-      NameSet                                         muxNames;
-
-      for (const auto& [name, cellJson] : cells.items()) {
-        Cell cell(*this, cellJson, std::format("{}.cells.{}", moduleContext(), name));
-        const auto directions = cellJson.find("port_directions");
-        for (const auto& [port, connection] :
-             requireObjectMember(cellJson, "connections", cell.where()).items()) {
-          const bool input = directions != cellJson.end() && directions->is_object()
-                                 ? directions->value(port, std::string()) == "input"
-                                 : port != "Y";
-          if (!input || !connection.is_array())
-            continue;
-          for (const auto& bit : connection)
-            consumers[bit.dump()].insert(name);
-        }
-
-        if (cell.cellType() != "$eq" && cell.cellType() != "$or"
-            && cell.cellType() != "$mux") {
-          continue;
-        }
-        const auto& output = cell.connection("Y");
-        producers.emplace(output.dump(), name);
-        if (cell.cellType() == "$mux")
-          muxNames.insert(name);
-      }
-
-      NameSet childMuxes;
-      for (const auto& name : muxNames) {
-        Cell cell(*this, cells.at(name),
-                  std::format("{}.cells.{}", moduleContext(), name));
-        for (const auto port : {"A", "B"}) {
-          if (const auto producer = producers.find(cell.connection(port).dump());
-              producer != producers.end() && muxNames.contains(producer->second)) {
-            childMuxes.insert(producer->second);
-          }
-        }
-      }
-
-      std::function<std::optional<DecodedPredicate>(const Json&, const Json&,
-                                                    const NameSet&)>
-          resolvePredicate;
-      resolvePredicate = [this, &cells, &producers, &resolvePredicate](
-                             const Json& signal, const Json& expectedSelector,
-                             const NameSet& active) -> std::optional<DecodedPredicate> {
-        const auto producer = producers.find(signal.dump());
-        if (producer == producers.end() || active.contains(producer->second))
-          return std::nullopt;
-
-        const auto& name = producer->second;
-        Cell        cell(*this, cells.at(name),
-                         std::format("{}.cells.{}", moduleContext(), name));
-
-        NameSet nextActive = active;
-        nextActive.insert(name);
-        if (cell.cellType() == "$eq") {
-          cell.requireConnections({"A", "B", "Y"});
-          const auto aWidth = cell.width("A_WIDTH");
-          const auto bWidth = cell.width("B_WIDTH");
-          if (cell.flag("A_SIGNED") || cell.flag("B_SIGNED") || aWidth != bWidth
-              || cell.width("Y_WIDTH") != 1 || aWidth > 15) {
-            return std::nullopt;
-          }
-
-          const auto aConstant = constantConnectionValue(cell, "A", aWidth);
-          const auto bConstant = constantConnectionValue(cell, "B", bWidth);
-          if (aConstant.has_value() == bConstant.has_value())
-            return std::nullopt;
-
-          const auto  selectorPort = aConstant ? "B" : "A";
-          const auto& selector     = cell.connection(selectorPort);
-          if (!expectedSelector.empty() && selector != expectedSelector)
-            return std::nullopt;
-          return DecodedPredicate{
-              selector, aWidth, {aConstant ? *aConstant : *bConstant}, {name}};
-        }
-
-        if (cell.cellType() != "$or" || cell.width("A_WIDTH") != 1
-            || cell.width("B_WIDTH") != 1 || cell.width("Y_WIDTH") != 1) {
-          return std::nullopt;
-        }
-        const auto lhs =
-            resolvePredicate(cell.connection("A"), expectedSelector, nextActive);
-        if (!lhs)
-          return std::nullopt;
-        const auto rhs =
-            resolvePredicate(cell.connection("B"), lhs->selector, nextActive);
-        if (!rhs || lhs->selectionWidth != rhs->selectionWidth)
-          return std::nullopt;
-
-        DecodedPredicate result = *lhs;
-        if (std::ranges::any_of(rhs->values, [&result](const auto value) {
-              return result.values.contains(value);
-            })) {
-          return std::nullopt;
-        }
-        result.values.insert(rhs->values.begin(), rhs->values.end());
-        result.cells.insert(rhs->cells.begin(), rhs->cells.end());
-        result.cells.insert(name);
-        return result;
-      };
-
-      NameSet folded;
-      for (const auto& rootName : muxNames) {
-        if (childMuxes.contains(rootName) || folded.contains(rootName))
-          continue;
-
-        Cell       root(*this, cells.at(rootName),
-                        std::format("{}.cells.{}", moduleContext(), rootName));
-        const auto width = root.width("WIDTH");
-
-        Json                  selector;
-        std::size_t           selectionWidth = 0;
-        NameSet               candidateCells;
-        NameSet               equalityCells;
-        std::set<std::size_t> comparedValues;
-        bool                  failed = false;
-
-        std::function<Json(const std::string&, std::size_t, NameSet)> selectLane;
-        selectLane = [this, &cells, &producers, &resolvePredicate, &selector,
-                      &selectionWidth, &candidateCells, &equalityCells, &failed,
-                      &comparedValues,
-                      &selectLane](const std::string& muxName, const std::size_t value,
-                                   NameSet active) -> Json {
-          if (!active.insert(muxName).second) {
-            failed = true;
-            return {};
-          }
-          Cell       mux(*this, cells.at(muxName),
-                         std::format("{}.cells.{}", moduleContext(), muxName));
-          const auto predicate =
-              resolvePredicate(mux.connection("S"), selector, NameSet{});
-          if (!predicate) {
-            failed = true;
-            return {};
-          }
-          if (selector.empty()) {
-            selector       = predicate->selector;
-            selectionWidth = predicate->selectionWidth;
-          } else if (predicate->selector != selector
-                     || predicate->selectionWidth != selectionWidth) {
-            failed = true;
-            return {};
-          }
-
-          candidateCells.insert(muxName);
-          candidateCells.insert(predicate->cells.begin(), predicate->cells.end());
-          comparedValues.insert(predicate->values.begin(), predicate->values.end());
-          for (const auto& predicateCell : predicate->cells) {
-            Cell cell(*this, cells.at(predicateCell),
-                      std::format("{}.cells.{}", moduleContext(), predicateCell));
-            if (cell.cellType() == "$eq")
-              equalityCells.insert(predicateCell);
-          }
-
-          const auto& branch   = predicate->values.contains(value) ? mux.connection("B")
-                                                                   : mux.connection("A");
-          const auto  producer = producers.find(branch.dump());
-          if (producer == producers.end())
-            return branch;
-          Cell child(*this, cells.at(producer->second),
-                     std::format("{}.cells.{}", moduleContext(), producer->second));
-          if (child.cellType() != "$mux")
-            return branch;
-          return selectLane(producer->second, value, std::move(active));
-        };
-
-        const auto rootPredicate =
-            resolvePredicate(root.connection("S"), Json{}, NameSet{});
-        if (!rootPredicate || rootPredicate->selectionWidth < 2)
-          continue;
-        selectionWidth   = rootPredicate->selectionWidth;
-        selector         = rootPredicate->selector;
-        const auto lanes = laneCount(selectionWidth, "decoded mux tree", root.where());
-
-        std::vector<Json> laneConnections;
-        laneConnections.reserve(lanes);
-        for (std::size_t lane = 0; lane < lanes && !failed; ++lane)
-          laneConnections.push_back(selectLane(rootName, lane, {}));
-        if (failed || equalityCells.size() != lanes - 1
-            || comparedValues.size() != lanes - 1)
-          continue;
-
-        const bool privateIntermediates =
-            std::ranges::all_of(candidateCells, [&](const auto& cellName) {
-              if (cellName == rootName)
-                return true;
-              Cell        cell(*this, cells.at(cellName),
-                               std::format("{}.cells.{}", moduleContext(), cellName));
-              const auto& output = cell.connection("Y");
-              return output.is_array()
-                     && std::ranges::all_of(output, [&](const auto& bit) {
-                          if (boundaryOutputSignals.contains(bit.dump()))
-                            return false;
-                          const auto found = consumers.find(bit.dump());
-                          return found != consumers.end() && !found->second.empty()
-                                 && std::ranges::all_of(
-                                     found->second, [&candidateCells](const auto& user) {
-                                       return candidateCells.contains(user);
-                                     });
-                        });
-            });
-        if (!privateIntermediates)
-          continue;
-
-        std::vector<Bus> inputs;
-        if (width == 1) {
-          Json packed = Json::array();
-          for (const auto& lane : laneConnections) {
-            if (!lane.is_array() || lane.size() != 1) {
-              failed = true;
-              break;
-            }
-            packed.push_back(lane[0]);
-          }
-          if (failed)
-            continue;
-          inputs.push_back(readBus(packed, ConnectionRole::Consumer,
-                                   std::format("{}.decoded_mux_data", root.where())));
-        } else {
-          for (std::size_t lane = 0; lane < laneConnections.size(); ++lane) {
-            inputs.push_back(readBus(
-                laneConnections[lane], ConnectionRole::Consumer,
-                std::format("{}.decoded_mux_data[{}]", root.where(), lane), width));
-          }
-        }
-        inputs.push_back(readBus(selector, ConnectionRole::Consumer,
-                                 std::format("{}.decoded_mux_selection", root.where()),
-                                 selectionWidth));
-        const Bus output = readBus(root.connection("Y"), ConnectionRole::Driver,
-                                   std::format("{}.Y", root.where()), width);
-        addMuxLike<Multiplexer>(selectionWidth, width, std::move(inputs), {output});
-        folded.insert(candidateCells.begin(), candidateCells.end());
-      }
-      return folded;
-    }
-
-    /*
-     * Yosys commonly represents a case statement as a bank of unsigned $eq cells
-     * feeding a mux tree. Recover banks that compare the same selector with distinct
-     * constants as one native Decoder:
-     *
-     *   $eq(selector, K) -> Decoder::outputs[K]
-     *
-     * The original Y wires are installed directly at their corresponding decoder
-     * indices, so downstream mux cells retain their existing connections. Decoder
-     * outputs without a comparison remain private wires. A bank needs at least two
-     * members; isolated equality remains unsupported instead of being disguised as
-     * an unnecessarily large decoder.
-     *
-     * Returns the names of the $eq cells implemented by the created decoders.
-     */
-    [[nodiscard]] std::set<std::string, std::less<>>
-    importEqDecoderGroups(const Json&                               cells,
-                          const std::set<std::string, std::less<>>& ignored)
-    {
-      std::map<std::string, std::vector<EqDecoderCandidate>, std::less<>> groups;
-
-      for (const auto& [name, cellJson] : cells.items()) {
-        if (ignored.contains(name))
-          continue;
-        Cell cell(*this, cellJson, std::format("{}.cells.{}", moduleContext(), name));
-        if (cell.cellType() != "$eq")
-          continue;
-
-        cell.requireConnections({"A", "B", "Y"});
-        const auto aWidth = cell.width("A_WIDTH");
-        const auto bWidth = cell.width("B_WIDTH");
-        const auto yWidth = cell.width("Y_WIDTH");
-        if (cell.flag("A_SIGNED") || cell.flag("B_SIGNED") || aWidth != bWidth
-            || yWidth != 1 || aWidth > 15) {
-          continue;
-        }
-
-        const auto aConstant = constantConnectionValue(cell, "A", aWidth);
-        const auto bConstant = constantConnectionValue(cell, "B", bWidth);
-        if (aConstant.has_value() == bConstant.has_value())
-          continue;
-
-        const std::string selectorPort = aConstant ? "B" : "A";
-        const std::size_t outputIndex  = aConstant ? *aConstant : *bConstant;
-        // dump() provides a stable structural identity for the ordered JSON bit
-        // array. Width is part of the key to keep differently typed selectors apart.
-        const auto key =
-            std::format("{}:{}", aWidth, cell.connection(selectorPort).dump());
-        groups[key].push_back({name, selectorPort, aWidth, outputIndex});
-      }
-
-      std::set<std::string, std::less<>> raised;
-      for (const auto& [_key, candidates] : groups) {
-        if (candidates.size() < 2)
-          continue;
-
-        std::set<std::size_t> outputIndices;
-        const bool            uniqueOutputs =
-            std::ranges::all_of(candidates, [&outputIndices](const auto& candidate) {
-              return outputIndices.insert(candidate.outputIndex).second;
-            });
-        if (!uniqueOutputs)
-          continue;
-
-        const auto& first = candidates.front();
-        Cell        firstCell(*this, cells.at(first.name),
-                              std::format("{}.cells.{}", moduleContext(), first.name));
-        const Bus selector = firstCell.consumer(first.selectorPort, first.selectionWidth);
-        // Bus(size) creates wires for sparse/unmatched decoder outputs. Replacing
-        // only matched indices preserves the exact Y wires consumed elsewhere.
-        Bus outputs(static_cast<unsigned short>(
-            laneCount(first.selectionWidth, "$eq decoder group", firstCell.where())));
-
-        for (const auto& candidate : candidates) {
-          Cell cell(*this, cells.at(candidate.name),
-                    std::format("{}.cells.{}", moduleContext(), candidate.name));
-          outputs[static_cast<unsigned short>(candidate.outputIndex)] =
-              cell.driverBit("Y");
-          raised.insert(candidate.name);
-        }
-
-        auto decoder = std::make_shared<Decoder>(
-            Bus{constantWire("1", firstCell.where())}, selector, std::move(outputs));
-        decoder->setProperty("delay", 0);
-        components.push_back(std::move(decoder));
-      }
-
-      return raised;
     }
 
     void connectAndAdd(Component_ptr component, std::vector<Bus> inputs,
@@ -1207,6 +806,13 @@ namespace {
       const Bus a = cell.consumer("A", width);
       const Bus s = cell.consumer("S", selectionWidth);
       const Bus y = cell.driver("Y", width * lanes);
+
+      if (width == 1 && cell.rawConstant("A", "1")) {
+        auto decoder = std::make_shared<Decoder>(a, s, y);
+        decoder->setProperty("delay", 0);
+        components.push_back(std::move(decoder));
+        return;
+      }
 
       auto outputs = width == 1 ? std::vector<Bus>{y} : split(y, width, lanes);
       addMuxLike<Demultiplexer>(selectionWidth, width, {a, s}, std::move(outputs));

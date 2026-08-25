@@ -237,24 +237,46 @@ target_compile_options(silicon_core PRIVATE -Werror)
 
 if (NOT EMSCRIPTEN)
     find_program(SILICON_YOSYS_CONFIG_EXECUTABLE yosys-config)
-    if (SILICON_YOSYS_CONFIG_EXECUTABLE)
+    find_package(Python3 QUIET COMPONENTS Interpreter)
+    if (SILICON_YOSYS_CONFIG_EXECUTABLE AND Python3_Interpreter_FOUND)
+        set(SILICON_YOSYS_PMGEN_OUTPUT
+                "${CMAKE_CURRENT_BINARY_DIR}/yosys/silicon_import_pm.h")
         set(SILICON_YOSYS_PLUGIN_OUTPUT
                 "${CMAKE_CURRENT_BINARY_DIR}/yosys/silicon_bmux_case${CMAKE_SHARED_LIBRARY_SUFFIX}")
         add_custom_command(
-                OUTPUT "${SILICON_YOSYS_PLUGIN_OUTPUT}"
+                OUTPUT "${SILICON_YOSYS_PMGEN_OUTPUT}"
                 COMMAND "${CMAKE_COMMAND}" -E make_directory
                         "${CMAKE_CURRENT_BINARY_DIR}/yosys"
+                COMMAND "${Python3_EXECUTABLE}"
+                        "${CMAKE_SOURCE_DIR}/vendor/yosys/pmgen.py"
+                        -p silicon_import
+                        -o "${SILICON_YOSYS_PMGEN_OUTPUT}"
+                        "${CMAKE_SOURCE_DIR}/tools/yosys/silicon_import.pmg"
+                DEPENDS
+                        "${CMAKE_SOURCE_DIR}/vendor/yosys/pmgen.py"
+                        "${CMAKE_SOURCE_DIR}/tools/yosys/silicon_import.pmg"
+                VERBATIM)
+        add_custom_command(
+                OUTPUT "${SILICON_YOSYS_PLUGIN_OUTPUT}"
                 COMMAND "${SILICON_YOSYS_CONFIG_EXECUTABLE}" --build
                         "${SILICON_YOSYS_PLUGIN_OUTPUT}"
+                        "${CMAKE_SOURCE_DIR}/tools/yosys/silicon_import.cpp"
                         "${CMAKE_SOURCE_DIR}/tools/yosys/silicon_bmux_case.cpp"
-                DEPENDS "${CMAKE_SOURCE_DIR}/tools/yosys/silicon_bmux_case.cpp"
+                        "-I${CMAKE_CURRENT_BINARY_DIR}/yosys"
+                DEPENDS
+                        "${SILICON_YOSYS_PMGEN_OUTPUT}"
+                        "${CMAKE_SOURCE_DIR}/tools/yosys/silicon_import.cpp"
+                        "${CMAKE_SOURCE_DIR}/tools/yosys/silicon_bmux_case.cpp"
                 VERBATIM)
         add_custom_target(silicon_yosys_plugin ALL
                 DEPENDS "${SILICON_YOSYS_PLUGIN_OUTPUT}")
         add_dependencies(silicon_core silicon_yosys_plugin)
+    elseif (SILICON_YOSYS_CONFIG_EXECUTABLE)
+        message(WARNING
+                "Python 3 was not found; the SILICON Yosys plugin will not be built")
     else ()
         message(WARNING
-                "yosys-config was not found; the SILICON mux-case plugin will not be built")
+                "yosys-config was not found; the SILICON Yosys plugin will not be built")
     endif ()
 endif ()
 
@@ -268,7 +290,7 @@ target_compile_definitions(silicon_core PRIVATE
         SILICON_YOSYS_INSTALL_RESOURCE_DIR="${SILICON_YOSYS_INSTALL_RESOURCE_DIR}"
         SILICON_YOSYS_INSTALL_RELATIVE_RESOURCE_DIR="${SILICON_YOSYS_INSTALL_RELATIVE_RESOURCE_DIR}")
 
-if (NOT EMSCRIPTEN AND SILICON_YOSYS_CONFIG_EXECUTABLE)
+if (TARGET silicon_yosys_plugin)
     file(TO_CMAKE_PATH "${SILICON_YOSYS_PLUGIN_OUTPUT}"
             SILICON_YOSYS_BUILD_PLUGIN)
     file(TO_CMAKE_PATH
@@ -396,7 +418,7 @@ install(TARGETS SILICON
 install(DIRECTORY "${yosys_resources_dir}/"
         DESTINATION "${CMAKE_INSTALL_DATADIR}/silicon/yosys")
 
-if (NOT EMSCRIPTEN AND SILICON_YOSYS_CONFIG_EXECUTABLE)
+if (TARGET silicon_yosys_plugin)
     install(FILES "${SILICON_YOSYS_PLUGIN_OUTPUT}"
             DESTINATION "${CMAKE_INSTALL_LIBDIR}/silicon/yosys")
 endif ()

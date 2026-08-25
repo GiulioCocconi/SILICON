@@ -303,6 +303,37 @@ registerWithMode(const bool parallelInput, const bool parallelOutput, const int 
   std::filesystem::remove(path);
   return result;
 }
+
+#ifdef SILICON_TEST_YOSYS_PLUGIN_PATH
+void runPluginScript(const std::string_view source, const std::string_view commands,
+                     const std::string_view tag)
+{
+  const auto path =
+      std::filesystem::temp_directory_path()
+      / std::format("silicon_yosys_{}_{}.v", tag,
+                    std::chrono::steady_clock::now().time_since_epoch().count());
+  {
+    std::ofstream output(path);
+    if (!output.good())
+      throw std::runtime_error("Could not create temporary Verilog source");
+    output << source;
+  }
+
+  try {
+    const SILICON::yosys::ToolOptions options{
+        .executable = std::filesystem::path(SILICON_TEST_YOSYS_EXECUTABLE),
+        .technologyLibraryDirectory = std::nullopt};
+    (void)SILICON::yosys::runScript(
+        std::format("plugin -i \"{}\"\nread_verilog \"{}\"\n{}",
+                    SILICON_TEST_YOSYS_PLUGIN_PATH, path.string(), commands),
+        options);
+  } catch (...) {
+    std::filesystem::remove(path);
+    throw;
+  }
+  std::filesystem::remove(path);
+}
+#endif
 #endif
 
 }  // namespace
@@ -824,7 +855,7 @@ TEST(YosysTest, ImportsSubWithYosysWidthAndSignednessSemantics)
   EXPECT_EQ(evaluateBinaryCircuit(addCircuit, 2, 5), valueFor(4, 7));
 }
 
-TEST(YosysTest, RaisesSharedConstantEqualityComparisonsToDecoder)
+TEST(YosysTest, RejectsNonCanonicalEqualityGroups)
 {
   using SILICON::yosys::Json;
   using SILICON::yosys::SerializationContext;
@@ -856,27 +887,7 @@ TEST(YosysTest, RaisesSharedConstantEqualityComparisonsToDecoder)
             {"match_six", eqCell(Json::array({"0", "1", "1"}), 6)}}},
           {"netnames", Json::object()}}}}}};
 
-  auto circuit = std::make_shared<Circuit>(SILICON::yosys::deserialize(design.dump()));
-  auto decoder = findComponent<Decoder>(*circuit);
-  ASSERT_TRUE(decoder);
-  EXPECT_EQ(decoder->getPropertyValue<int>("selectionSize"), 3);
-  EXPECT_EQ(componentTypes(*circuit).count("Decoder"), 1);
-
-  Simulator simulator(circuit);
-  ASSERT_EQ(simulator.setBus(decoder->inputBuses()[1], valueFor(decoder->inputBuses()[1], 1)),
-            Simulator::RunResult::Completed);
-  EXPECT_EQ(decoder->outputBuses()[0][1]->getCurrentState(), State::HIGH);
-  EXPECT_EQ(decoder->outputBuses()[0][6]->getCurrentState(), State::LOW);
-
-  ASSERT_EQ(simulator.setBus(decoder->inputBuses()[1], valueFor(decoder->inputBuses()[1], 6)),
-            Simulator::RunResult::Completed);
-  EXPECT_EQ(decoder->outputBuses()[0][1]->getCurrentState(), State::LOW);
-  EXPECT_EQ(decoder->outputBuses()[0][6]->getCurrentState(), State::HIGH);
-
-  ASSERT_EQ(simulator.setBus(decoder->inputBuses()[1], valueFor(decoder->inputBuses()[1], 3)),
-            Simulator::RunResult::Completed);
-  EXPECT_EQ(decoder->outputBuses()[0][1]->getCurrentState(), State::LOW);
-  EXPECT_EQ(decoder->outputBuses()[0][6]->getCurrentState(), State::LOW);
+  EXPECT_THROW((void)SILICON::yosys::deserialize(design.dump()), std::runtime_error);
 }
 
 TEST(YosysTest, ConnectionReaderEnforcesRolesWidthsAndDriverOwnership)
@@ -1336,6 +1347,113 @@ TEST(YosysToolTest, ImportsZeroExtendedOutputAsUnsignedExtender)
   EXPECT_FALSE(findComponent<ConstantComponent>(circuit));
 }
 
+TEST(YosysToolTest, RaisesSharedConstantEqualityComparisonsToDecoder)
+{
+#ifndef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
+  GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
+#else
+  constexpr std::string_view source = R"(
+    module top(input [2:0] select, output [1:0] matches);
+      assign matches[0] = select == 3'd1;
+      assign matches[1] = 3'd6 == select;
+    endmodule
+  )";
+
+  auto circuit = std::make_shared<Circuit>(SILICON::yosys::importVerilog(source, "top"));
+  auto decoder = findComponent<Decoder>(*circuit);
+  ASSERT_TRUE(decoder);
+  EXPECT_EQ(decoder->getPropertyValue<int>("selectionSize"), 3);
+  EXPECT_EQ(componentTypes(*circuit).count("Decoder"), 1);
+
+  Simulator simulator(circuit);
+  ASSERT_EQ(
+      simulator.setBus(decoder->inputBuses()[1], valueFor(decoder->inputBuses()[1], 1)),
+      Simulator::RunResult::Completed);
+  EXPECT_EQ(decoder->outputBuses()[0][1]->getCurrentState(), State::HIGH);
+  EXPECT_EQ(decoder->outputBuses()[0][6]->getCurrentState(), State::LOW);
+
+  ASSERT_EQ(
+      simulator.setBus(decoder->inputBuses()[1], valueFor(decoder->inputBuses()[1], 6)),
+      Simulator::RunResult::Completed);
+  EXPECT_EQ(decoder->outputBuses()[0][1]->getCurrentState(), State::LOW);
+  EXPECT_EQ(decoder->outputBuses()[0][6]->getCurrentState(), State::HIGH);
+
+  ASSERT_EQ(
+      simulator.setBus(decoder->inputBuses()[1], valueFor(decoder->inputBuses()[1], 3)),
+      Simulator::RunResult::Completed);
+  EXPECT_EQ(decoder->outputBuses()[0][1]->getCurrentState(), State::LOW);
+  EXPECT_EQ(decoder->outputBuses()[0][6]->getCurrentState(), State::LOW);
+#endif
+}
+
+TEST(YosysToolTest, PmgenMatchesSelectedPmuxWithUnselectedPredicates)
+{
+#ifndef SILICON_TEST_YOSYS_PLUGIN_PATH
+  GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
+#else
+  constexpr std::string_view source = R"(
+    module top(
+      input [1:0] select,
+      input [3:0] lane0,
+      input [3:0] lane1,
+      input [3:0] lane2,
+      input [3:0] lane3,
+      output reg [3:0] y
+    );
+      always @* begin
+        case (select)
+          2'd0: y = lane0;
+          2'd1: y = lane1;
+          2'd2: y = lane2;
+          2'd3: y = lane3;
+        endcase
+      end
+    endmodule
+  )";
+
+  EXPECT_NO_THROW(runPluginScript(source,
+                                  "hierarchy -check -top top\n"
+                                  "proc\n"
+                                  "muxpack\n"
+                                  "select top/t:$pmux\n"
+                                  "silicon_pmux_bmux\n"
+                                  "select -assert-count 1 top/t:$bmux\n"
+                                  "select -assert-count 0 top/t:$pmux\n",
+                                  "selected_pmux"));
+#endif
+}
+
+TEST(YosysToolTest, PmgenLeavesInvalidGroupsAndRaisesValidSignedGroup)
+{
+#ifndef SILICON_TEST_YOSYS_PLUGIN_PATH
+  GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
+#else
+  constexpr std::string_view source = R"(
+    module top(
+      input [2:0] first,
+      input [2:0] second,
+      input signed [2:0] signed_select,
+      output [5:0] matches
+    );
+      assign matches[0] = first == 3'd1;
+      assign matches[1] = first == 3'd3;
+      assign matches[2] = first == 3'd3;
+      assign matches[3] = second == 3'd2;
+      assign matches[4] = signed_select == 3'sd1;
+      assign matches[5] = signed_select == 3'sd2;
+    endmodule
+  )";
+
+  EXPECT_NO_THROW(runPluginScript(source,
+                                  "hierarchy -check -top top\n"
+                                  "proc\n"
+                                  "silicon_eq_decoder\n"
+                                  "select -assert-count 4 top/t:$eq\n"
+                                  "select -assert-count 1 top/t:$demux\n",
+                                  "invalid_eq_groups"));
+#endif
+}
+
 TEST(YosysToolTest, LowersPriorityMuxCellsBeforeImport)
 {
   constexpr std::string_view source = R"(
@@ -1377,6 +1495,9 @@ TEST(YosysToolTest, ImportsSequentialVerilog)
 
 TEST(YosysToolTest, FoldsSparseCaseIntoOneWideMultiplexer)
 {
+#ifndef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
+  GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
+#endif
   constexpr std::string_view source = R"(
     module top(
       input [7:0] a,
@@ -1403,6 +1524,9 @@ TEST(YosysToolTest, FoldsSparseCaseIntoOneWideMultiplexer)
 
 TEST(YosysToolTest, FoldsExhaustiveCaseIntoOneWideMultiplexer)
 {
+#ifndef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
+  GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
+#endif
   constexpr std::string_view source = R"(
     module mux(
       input [3:0] bus_1,

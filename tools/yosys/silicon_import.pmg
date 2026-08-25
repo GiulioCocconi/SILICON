@@ -1,0 +1,226 @@
+// Recover the structure emitted by `proc; muxpack` for decoded case choices:
+//
+//   $eq(selector, K) --+
+//                      +--> $or/$reduce_or --> $pmux.S[i]
+//
+// Every select predicate must decode the same selector, and values belonging to
+// distinct PMUX choices must not overlap. Those constraints make the choices
+// mutually exclusive, so the priority cell can be rewritten as a $bmux indexed
+// directly by selector. Sparse values retain the $pmux default input.
+//
+// The accepted match is rewritten by raiseDecodedPmux() using selector and lanes.
+pattern decoded_pmux
+
+// Selection is pass input populated after pmgen setup, so it must remain runtime
+// data and be checked with filter rather than select.
+udata <pool<Cell*>> selected_cells
+
+// Keep the prospective lane table sparse while matching. The dense $bmux table is
+// materialized only after the whole pattern has matched successfully.
+state <int> choice_index decoded_value
+state <SigBit> predicate_signal
+state <SigSpec> choice_selector decoded_selector selector
+state <dict<int, SigSpec>> lane_overrides
+state <vector<SigSpec>> lanes
+
+// Predicate composition is traversed as a rollback-safe worklist. Repeated signals
+// are conservatively rejected, covering cycles and reconvergent predicate DAGs.
+state <vector<SigBit>> pending_predicates
+state <pool<SigBit>> visited_predicates
+
+// Values are deduplicated within one PMUX choice. Cross-choice overlap is checked
+// when a decoded choice is committed to lane_overrides.
+state <pool<int>> choice_values
+
+match pmux
+	select pmux->type == $pmux
+	select param(pmux, \WIDTH).as_int() > 0
+	select param(pmux, \S_WIDTH).as_int() > 0
+	select GetSize(port(pmux, \A)) == param(pmux, \WIDTH).as_int()
+	select GetSize(port(pmux, \Y)) == param(pmux, \WIDTH).as_int()
+	select GetSize(port(pmux, \S)) == param(pmux, \S_WIDTH).as_int()
+	select GetSize(port(pmux, \B)) == param(pmux, \WIDTH).as_int() * param(pmux, \S_WIDTH).as_int()
+	filter selected_cells.count(pmux)
+endmatch
+
+code choice_index selector lane_overrides
+	choice_index = 0;
+	selector = SigSpec();
+	lane_overrides.clear();
+	subpattern(start_choice);
+endcode
+
+subpattern start_choice
+arg pmux choice_index selector lane_overrides
+
+code choice_selector choice_values pending_predicates visited_predicates
+	choice_selector = SigSpec();
+	choice_values.clear();
+	pending_predicates.clear();
+	visited_predicates.clear();
+	pending_predicates.push_back(port(pmux, \S)[choice_index]);
+	subpattern(decode);
+endcode
+
+subpattern decode
+arg pmux choice_index choice_selector choice_values pending_predicates visited_predicates selector lane_overrides
+
+code predicate_signal pending_predicates visited_predicates
+	if (pending_predicates.empty())
+		reject;
+
+	predicate_signal = pending_predicates.back();
+	pending_predicates.pop_back();
+	if (!visited_predicates.insert(predicate_signal).second)
+		reject;
+
+	subpattern(eq);
+	subpattern(logic_not);
+	subpattern(logic_or);
+	subpattern(reduce_or);
+endcode
+
+// Decode selector == constant and constant == selector. Equal-width equality has
+// identical bit-pattern semantics regardless of signedness.
+subpattern eq
+arg pmux choice_index predicate_signal choice_selector choice_values pending_predicates visited_predicates selector lane_overrides
+
+match predicate
+	select predicate->type == $eq
+	choice <IdString> signal_port {\A, \B}
+	define <IdString> constant_port signal_port == \A ? \B : \A
+	select GetSize(port(predicate, \Y)) == 1
+	select GetSize(port(predicate, signal_port)) == GetSize(port(predicate, constant_port))
+	select !port(predicate, signal_port).is_fully_const()
+	select port(predicate, constant_port).is_fully_const()
+	select port(predicate, constant_port).as_const().is_fully_def()
+	index <SigBit> port(predicate, \Y)[0] === predicate_signal
+	set decoded_selector port(predicate, signal_port)
+	set decoded_value port(predicate, constant_port).as_const().as_int()
+endmatch
+
+code
+	subpattern(record_leaf);
+endcode
+
+// Preserve the established interpretation of !selector as selector == 0.
+subpattern logic_not
+arg pmux choice_index predicate_signal choice_selector choice_values pending_predicates visited_predicates selector lane_overrides
+
+match predicate
+	select predicate->type == $logic_not
+	select GetSize(port(predicate, \A)) > 0
+	select GetSize(port(predicate, \Y)) == 1
+	index <SigBit> port(predicate, \Y)[0] === predicate_signal
+	set decoded_selector port(predicate, \A)
+	set decoded_value 0
+endmatch
+
+code
+	subpattern(record_leaf);
+endcode
+
+subpattern record_leaf
+arg pmux choice_index decoded_selector decoded_value choice_selector choice_values pending_predicates visited_predicates selector lane_overrides
+
+code choice_selector choice_values
+	if (choice_selector.empty())
+		choice_selector = decoded_selector;
+	else if (choice_selector != decoded_selector)
+		reject;
+
+	choice_values.insert(decoded_value);
+	subpattern(continue_decode);
+endcode
+
+// Scalar OR nodes represent the union of decoded predicates.
+subpattern logic_or
+arg pmux choice_index predicate_signal choice_selector choice_values pending_predicates visited_predicates selector lane_overrides
+
+match predicate
+	select predicate->type == $or || predicate->type == $logic_or
+	select GetSize(port(predicate, \A)) == 1
+	select GetSize(port(predicate, \B)) == 1
+	select GetSize(port(predicate, \Y)) == 1
+	index <SigBit> port(predicate, \Y)[0] === predicate_signal
+endmatch
+
+code pending_predicates
+	pending_predicates.push_back(port(predicate, \A)[0]);
+	pending_predicates.push_back(port(predicate, \B)[0]);
+	subpattern(decode);
+endcode
+
+// proc may flatten grouped case labels into an n-ary $reduce_or.
+subpattern reduce_or
+arg pmux choice_index predicate_signal choice_selector choice_values pending_predicates visited_predicates selector lane_overrides
+
+match predicate
+	select predicate->type == $reduce_or
+	select GetSize(port(predicate, \A)) > 0
+	select GetSize(port(predicate, \Y)) == 1
+	index <SigBit> port(predicate, \Y)[0] === predicate_signal
+endmatch
+
+code pending_predicates
+	for (const auto bit : port(predicate, \A))
+		pending_predicates.push_back(bit);
+	subpattern(decode);
+endcode
+
+subpattern continue_decode
+arg pmux choice_index choice_selector choice_values pending_predicates visited_predicates selector lane_overrides
+
+code
+	if (!pending_predicates.empty())
+		subpattern(decode);
+	else
+		subpattern(commit);
+endcode
+
+// Commit one PMUX choice into sparse state. This is the only place where overlap
+// between distinct PMUX select bits is rejected.
+subpattern commit
+arg pmux choice_index choice_selector choice_values selector lane_overrides
+
+code choice_index selector lane_overrides
+	{
+	if (choice_selector.empty() || GetSize(choice_selector) > MaxDecodedSelectorWidth)
+		reject;
+
+	if (selector.empty())
+		selector = choice_selector;
+	else if (selector != choice_selector)
+		reject;
+
+	const int lane_count = 1 << GetSize(selector);
+	const int width = param(pmux, \WIDTH).as_int();
+	const auto choice_data = port(pmux, \B).extract(choice_index * width, width);
+
+	for (const int value : choice_values) {
+		if (value < 0 || value >= lane_count)
+			reject;
+		if (lane_overrides.count(value))
+			reject;
+		lane_overrides[value] = choice_data;
+	}
+
+	choice_index++;
+	if (choice_index < GetSize(port(pmux, \S)))
+		subpattern(start_choice);
+	else
+		subpattern(finish_match);
+	}
+endcode
+
+// Keep the existing C++ callback contract: state.lanes is dense at accept time.
+subpattern finish_match
+arg pmux selector lane_overrides
+
+code lanes
+	const std::size_t lane_count = std::size_t{1} << GetSize(selector);
+	lanes.assign(lane_count, port(pmux, \A));
+	for (const auto &lane : lane_overrides)
+		lanes[lane.first] = lane.second;
+	accept;
+endcode
