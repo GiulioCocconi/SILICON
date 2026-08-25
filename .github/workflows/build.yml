@@ -6,6 +6,9 @@ on:
     paths:
       - "**.cpp"
       - "**.hpp"
+      - "**.py"
+      - "**.pmg"
+      - "**.v"
       - "**/CMakeLists.txt"
       - "**.cmake"
       - "flake.nix"
@@ -18,6 +21,9 @@ on:
     paths:
       - "**.cpp"
       - "**.hpp"
+      - "**.py"
+      - "**.pmg"
+      - "**.v"
       - "**/CMakeLists.txt"
       - "**.cmake"
       - "flake.nix"

@@ -612,7 +612,8 @@ Circuit importVerilog(const std::string_view source, const std::string_view topM
   const auto plugin = verilogPlugin();
   const auto pluginLoad =
       plugin ? std::format("plugin -i {}\n", quotePath(*plugin)) : std::string();
-  const auto muxImport = plugin ? std::string("silicon_pmux_bmux\n") : std::string();
+  const auto muxImport =
+      plugin ? std::string("silicon_pmux_bmux\nsilicon_eq_decoder\n") : std::string();
 
   (void)runScript(std::format("{}"
                               "read_verilog -lib -D SILICON_BLACKBOX {}\n"

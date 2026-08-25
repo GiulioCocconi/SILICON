@@ -149,7 +149,10 @@ private:
  * @brief Deserialize one supported Yosys write_json module into a Silicon circuit.
  *
  * When @p moduleName is absent, the sole module or unique module carrying the Yosys
- * `top` attribute is selected. Unsupported or ambiguous designs fail atomically.
+ * `top` attribute is selected. Input must already use the canonical cells supported
+ * by the direct importer; synthesis patterns such as equality banks are normalized by
+ * `importVerilog` when the SILICON Yosys plugin is available. Unsupported or
+ * ambiguous designs fail atomically.
  */
 [[nodiscard]] core::Circuit
 deserialize(std::string_view                json,

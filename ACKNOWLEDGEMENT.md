@@ -31,3 +31,5 @@ git clone --depth 1 --branch v1.0.6 https://github.com/Aksem/adaptagrams /tmp/ad
 git diff --no-index /tmp/adaptagrams_orig/cola/libavoid ./vendor/libavoid
 rm -rf /tmp/adaptagrams_orig
 ```
+
+We also use the [`git-clang-format`](ci/git-clang-format) script from the [LLVM project](https://github.com/llvm/llvm-project) (Apache License with LLVM Exceptions) and the [`pmgen`](vendor/yosys/pmgen.py) script from [YOSYS](https://github.com/yosyshq/yosys) (ISC license), their (eventual) modifications are documented within this repository. 
