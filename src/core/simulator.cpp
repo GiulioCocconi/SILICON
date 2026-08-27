@@ -548,8 +548,7 @@ Simulator::getForwardExecutionSteps(std::span<const Bus> changedBuses) const
 }
 
 void Simulator::updateWire(const Wire_ptr& target, const State newState,
-                           const uint64_t delay,
-                           const Component_weakPtr& source)
+                           const uint64_t delay, const Component_weakPtr& source)
 {
   if (!target)
     return;
@@ -758,7 +757,7 @@ Simulator::RunResult Simulator::simulateWaveform(
 }
 
 Simulator::RunResult
-Simulator::applyWaveformInputSample(std::span<const BusValue>         values,
+Simulator::applyWaveformInputSample(std::span<const BusValue>            values,
                                     std::span<const WaveformInputDriver> inputDrivers,
                                     const CancellationCheck&             isCancelled)
 {
@@ -770,10 +769,9 @@ Simulator::applyWaveformInputSample(std::span<const BusValue>         values,
   std::vector<Bus> changedBuses;
   std::unordered_map<uint64_t, State> previousWireStates;
   for (std::size_t i = 0; i < inputCount; ++i) {
-    const auto& driver = inputDrivers[i];
+    const auto& driver     = inputDrivers[i];
     auto        bus    = driver.bus;
-    const auto normalized =
-        SILICON::wireUtils::normalizeBusValue(values[i], bus.size());
+    const auto  normalized = SILICON::wireUtils::normalizeBusValue(values[i], bus.size());
 
     if (bus.getCurrentValue() != normalized) {
       inputsChanged = true;

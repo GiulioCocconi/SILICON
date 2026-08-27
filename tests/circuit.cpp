@@ -913,9 +913,8 @@ TEST(CircuitTest, BusValuePropertiesRoundTripAsRawStringsAndRejectIntegers)
   ComponentRegistry registry;
   registerAllComponents(registry);
 
-  auto constant = std::make_shared<ConstantComponent>(
-      Bus(4), busValueFromBits("10X1"));
-  auto input = std::make_shared<DummyBusInputComponent>(Bus(5), "input");
+  auto constant = std::make_shared<ConstantComponent>(Bus(4), busValueFromBits("10X1"));
+  auto input    = std::make_shared<DummyBusInputComponent>(Bus(5), "input");
   input->setProperty("startValue", busValueFromBits("00101"));
   Circuit original(Component_set{constant, input}, false);
 
@@ -930,15 +929,14 @@ TEST(CircuitTest, BusValuePropertiesRoundTripAsRawStringsAndRejectIntegers)
   }
 
   const auto restored = Circuit::deserialize(serialized.dump(), registry);
-  std::shared_ptr<ConstantComponent> restoredConstant;
+  std::shared_ptr<ConstantComponent>      restoredConstant;
   std::shared_ptr<DummyBusInputComponent> restoredInput;
   for (const auto vertex :
        boost::make_iterator_range(boost::vertices(restored.getGraph()))) {
     const auto& component = restored.getGraph()[vertex].component;
     if (auto candidate = std::dynamic_pointer_cast<ConstantComponent>(component))
       restoredConstant = std::move(candidate);
-    if (auto candidate =
-            std::dynamic_pointer_cast<DummyBusInputComponent>(component))
+    if (auto candidate = std::dynamic_pointer_cast<DummyBusInputComponent>(component))
       restoredInput = std::move(candidate);
   }
   ASSERT_TRUE(restoredConstant);
@@ -969,15 +967,13 @@ TEST(CircuitTest, BusValuePropertiesRoundTripZeroAndWideFourStateValues)
   wide.back()  = State::HIGH;
 
   auto wideConstant = std::make_shared<ConstantComponent>(Bus(130), wide);
-  auto zeroConstant = std::make_shared<ConstantComponent>(
-      Bus(130), BusValue{State::LOW});
+  auto zeroConstant = std::make_shared<ConstantComponent>(Bus(130), BusValue{State::LOW});
   Circuit original(Component_set{wideConstant, zeroConstant}, false);
 
   const auto serialized = original.serialize();
-  EXPECT_NE(serialized.find(formatValue(wide, BusValueFormat::Raw)),
-            std::string::npos);
+  EXPECT_NE(serialized.find(formatValue(wide, BusValueFormat::Raw)), std::string::npos);
 
-  const auto restored = Circuit::deserialize(serialized, registry);
+  const auto            restored = Circuit::deserialize(serialized, registry);
   std::vector<BusValue> restoredValues;
   for (const auto vertex :
        boost::make_iterator_range(boost::vertices(restored.getGraph()))) {
@@ -988,8 +984,7 @@ TEST(CircuitTest, BusValuePropertiesRoundTripZeroAndWideFourStateValues)
   }
 
   EXPECT_TRUE(std::ranges::contains(restoredValues, wide));
-  EXPECT_TRUE(std::ranges::contains(restoredValues,
-                                    BusValue(130, State::LOW)));
+  EXPECT_TRUE(std::ranges::contains(restoredValues, BusValue(130, State::LOW)));
 }
 
 TEST(CircuitTest, DeserializePreservesWireIds)

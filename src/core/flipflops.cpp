@@ -69,8 +69,8 @@ void FlipFlop::simulate(SILICON::simulation::Simulator&     sim,
                         const SILICON::simulation::Context& context)
 {
   const State clock = inputState(clockIndex);
-  const State clear  = inputState(clearIndex);
-  const State preset = inputState(presetIndex);
+  const State    clear     = inputState(clearIndex);
+  const State    preset    = inputState(presetIndex);
   const Wire_ptr clockWire = inputWire(clockIndex);
 
   const auto clockEdge     = SILICON::simulation::Simulator::edgeType(context, clockWire);

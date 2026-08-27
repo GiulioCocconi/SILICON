@@ -47,8 +47,8 @@ constexpr int              BusIoPaddingX     = DiagramScene::GRID_SIZE;
 constexpr int              BusIoValueTextGap = 8;
 constexpr int              MaxInlineValueCharacters = 18;
 constexpr int              IoPortExtension         = 2 * DiagramScene::GRID_SIZE;
-constexpr int              ConstantSize            = 4 * DiagramScene::GRID_SIZE;
-constexpr int              ConstantPortExtension   = 2 * DiagramScene::GRID_SIZE;
+constexpr int              ConstantSize             = 4 * DiagramScene::GRID_SIZE;
+constexpr int              ConstantPortExtension    = 2 * DiagramScene::GRID_SIZE;
 constexpr std::string_view PortOrientationProperty = "portOrientation";
 constexpr std::string_view PortOrientationUp       = "UP";
 constexpr std::string_view PortOrientationDown     = "DOWN";
@@ -102,8 +102,7 @@ QString compactValueText(QString value)
 QString compactValueText(const BusValue& value, const BusValueFormat format,
                          const std::size_t fixedWidth = 0)
 {
-  return compactValueText(
-      QString::fromStdString(formatValue(value, format, fixedWidth)));
+  return compactValueText(QString::fromStdString(formatValue(value, format, fixedWidth)));
 }
 
 bool isInteractiveSimulation(const GraphicalItem* item)
@@ -237,7 +236,9 @@ private:
 class ConstantShape : public QGraphicsItem {
 public:
   QRectF boundingRect() const override
-  { return {0, 0, static_cast<qreal>(cachedWidth), static_cast<qreal>(ConstantSize)}; }
+  {
+    return {0, 0, static_cast<qreal>(cachedWidth), static_cast<qreal>(ConstantSize)};
+  }
 
   void setValue(QString newValue)
   {
@@ -271,7 +272,9 @@ public:
 
 private:
   [[nodiscard]] QString displayValue() const
-  { return (value.size() > 1 ? QStringLiteral("0b") : QString()) + value.toUpper(); }
+  {
+    return (value.size() > 1 ? QStringLiteral("0b") : QString()) + value.toUpper();
+  }
 
   QString value       = QStringLiteral("0");
   int     cachedWidth = ConstantSize;
@@ -316,7 +319,9 @@ IoPortOrientation parsePortOrientation(const std::string_view orientation)
 }
 
 bool portNameBelongsBelowShape(const std::string_view orientation)
-{ return parsePortOrientation(orientation) == IoPortOrientation::Up; }
+{
+  return parsePortOrientation(orientation) == IoPortOrientation::Up;
+}
 
 std::string currentPortOrientation(const Component_ptr& component)
 {
@@ -362,10 +367,9 @@ std::string_view portOrientationName(const PortSide side)
 // -------------------------------------------------------------------------
 
 GraphicalConstant::GraphicalConstant(QGraphicsItem* parent)
-  : GraphicalLogicComponent(
-        std::make_shared<ConstantComponent>(std::make_shared<Wire>(),
-                                            BusValue{State::LOW}),
-        new ConstantShape(), parent)
+  : GraphicalLogicComponent(std::make_shared<ConstantComponent>(std::make_shared<Wire>(),
+                                                                BusValue{State::LOW}),
+                            new ConstantShape(), parent)
 {
   isEditable = true;
   setupCallbacks();
@@ -407,8 +411,8 @@ void GraphicalConstant::updateLayout()
   if (!associatedComponent)
     return;
 
-  const auto value = associatedComponent->getPropertyValue<BusValue>("value")
-                         .value_or(BusValue{State::UNKNOWN});
+  const auto value = associatedComponent->getPropertyValue<BusValue>("value").value_or(
+      BusValue{State::UNKNOWN});
   updateLayout(value);
 }
 
@@ -573,7 +577,9 @@ GraphicalInput::GraphicalInput(QGraphicsItem* parent)
 }
 
 void GraphicalInput::toggle()
-{ setState(!skinState); }
+{
+  setState(!skinState);
+}
 
 void GraphicalInput::setState(State state)
 {
@@ -587,16 +593,18 @@ void GraphicalInput::setState(State state)
       input->setState(state);
   }
 
-  emit inputToggled(targetBus, BusValue{state},
-                    getComponent()->weak_from_this());
+  emit inputToggled(targetBus, BusValue{state}, getComponent()->weak_from_this());
 }
 
 void GraphicalInput::handleSimulationClick()
-{ toggle(); }
+{
+  toggle();
+}
 
 void GraphicalInput::applyStartValue()
 {
-  const auto startValue = getComponent()->getPropertyValue<BusValue>("startValue")
+  const auto startValue = getComponent()
+                              ->getPropertyValue<BusValue>("startValue")
                               .value_or(BusValue{State::LOW});
   skinState = startValue.empty() ? State::LOW : startValue.front();
   setItemShape(new QGraphicsSvgItem((skinState == State::HIGH) ? getOnShapePath()
@@ -607,7 +615,9 @@ void GraphicalInput::applyStartValue()
 }
 
 void GraphicalInput::resetSimulationState()
-{ applyStartValue(); }
+{
+  applyStartValue();
+}
 
 void GraphicalInput::paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
                            QWidget* widget)
@@ -684,19 +694,18 @@ void GraphicalBusInput::installPropertyCallbacks()
   associatedComponent->setPropertyCallback(
       "startValue", [safeThis, boundComponent](const PropertyValue& value) {
         const auto requestedValue = std::get<BusValue>(value);
-        const auto component = boundComponent.lock();
+        const auto component      = boundComponent.lock();
         const auto outputs =
             component ? component->getOutputs() : decltype(component->getOutputs()){};
         const auto width = outputs.empty() ? 1 : outputs[0].size();
-        if (requestedValue.empty()
-            || std::ranges::contains(requestedValue, State::ERROR))
+        if (requestedValue.empty() || std::ranges::contains(requestedValue, State::ERROR))
           throw std::invalid_argument("Bus input values must not contain ERROR");
-        const State extension = requestedValue.size() == 1
-                                        && requestedValue.front() == State::UNKNOWN
-                                    ? State::UNKNOWN
-                                    : State::LOW;
-        const auto newValue = SILICON::wireUtils::normalizeBusValue(
-            requestedValue, width, extension);
+        const State extension =
+            requestedValue.size() == 1 && requestedValue.front() == State::UNKNOWN
+                ? State::UNKNOWN
+                : State::LOW;
+        const auto newValue =
+            SILICON::wireUtils::normalizeBusValue(requestedValue, width, extension);
 
         // See the "size" callback above: safeThis guards the item, and the
         // equality check confirms the item still owns this same component.
@@ -722,15 +731,14 @@ void GraphicalBusInput::setValue(const BusValue& value)
   const auto width = outputs[0].size();
   if (value.empty() || std::ranges::contains(value, State::ERROR))
     throw std::invalid_argument("Bus input values must not contain ERROR");
-  const State extension = value.size() == 1 && value.front() == State::UNKNOWN
-                              ? State::UNKNOWN
-                              : State::LOW;
+  const State extension =
+      value.size() == 1 && value.front() == State::UNKNOWN ? State::UNKNOWN : State::LOW;
   currentValue = SILICON::wireUtils::normalizeBusValue(value, width, extension);
 
   if (auto* shape = getBusIoShape(getItemShape(), "GraphicalBusInput::setValue")) {
     shape->setBusWidth(static_cast<unsigned int>(width));
-    shape->setValueText(compactValueText(
-        currentValue, SILICON::core::BusValueFormat::Hex, (width + 3) / 4));
+    shape->setValueText(compactValueText(currentValue, SILICON::core::BusValueFormat::Hex,
+                                         (width + 3) / 4));
   }
 
   if (!isInteractiveSimulation(this))
@@ -782,30 +790,35 @@ void GraphicalBusInput::editValue()
 }
 
 void GraphicalBusInput::handleSimulationClick()
-{ editValue(); }
+{
+  editValue();
+}
 
 void GraphicalBusInput::applyStartValue()
 {
-  const auto startValue = getComponent()->getPropertyValue<BusValue>("startValue")
+  const auto startValue = getComponent()
+                              ->getPropertyValue<BusValue>("startValue")
                               .value_or(BusValue{State::LOW});
   const auto outputs = getComponent()->getOutputs();
   if (outputs.empty())
     return;
 
   const auto width = outputs[0].size();
-  currentValue = SILICON::wireUtils::normalizeBusValue(startValue, width);
+  currentValue     = SILICON::wireUtils::normalizeBusValue(startValue, width);
 
   if (auto* shape = getBusIoShape(getItemShape(), "GraphicalBusInput::applyStartValue")) {
     shape->setBusWidth(static_cast<unsigned int>(width));
-    shape->setValueText(compactValueText(
-        currentValue, SILICON::core::BusValueFormat::Hex, (width + 3) / 4));
+    shape->setValueText(compactValueText(currentValue, SILICON::core::BusValueFormat::Hex,
+                                         (width + 3) / 4));
   }
 
   propagateCurrentValue();
 }
 
 void GraphicalBusInput::resetSimulationState()
-{ applyStartValue(); }
+{
+  applyStartValue();
+}
 
 void GraphicalBusInput::refreshFromComponent()
 {
@@ -816,8 +829,8 @@ void GraphicalBusInput::refreshFromComponent()
   if (auto* shape =
           getBusIoShape(getItemShape(), "GraphicalBusInput::refreshFromComponent")) {
     shape->setBusWidth(static_cast<unsigned int>(width));
-    shape->setValueText(compactValueText(
-        currentValue, SILICON::core::BusValueFormat::Hex, (width + 3) / 4));
+    shape->setValueText(compactValueText(currentValue, SILICON::core::BusValueFormat::Hex,
+                                         (width + 3) / 4));
   }
 }
 
@@ -871,10 +884,14 @@ void GraphicalOutputSingle::setState(State state)
 }
 
 void GraphicalOutputSingle::applyStartValue()
-{ resetSimulationState(); }
+{
+  resetSimulationState();
+}
 
 void GraphicalOutputSingle::resetSimulationState()
-{ setState(State::UNKNOWN); }
+{
+  setState(State::UNKNOWN);
+}
 
 void GraphicalOutputSingle::paint(QPainter*                       painter,
                                   const QStyleOptionGraphicsItem* option, QWidget* widget)
@@ -952,14 +969,14 @@ void GraphicalBusOutput::setBusState(const Bus& bus)
       shape->setValueText("ERR");
     } else if (bus.hasUnknowns()) {
       shape->setDisplayState(State::UNKNOWN);
-      shape->setValueText(compactValueText(
-          bus.getCurrentValue(), SILICON::core::BusValueFormat::Raw));
+      shape->setValueText(
+          compactValueText(bus.getCurrentValue(), SILICON::core::BusValueFormat::Raw));
     } else {
-      const auto value = bus.getCurrentValue();
+      const auto value   = bus.getCurrentValue();
       const bool anyHigh = std::ranges::contains(value, State::HIGH);
       shape->setDisplayState(anyHigh ? State::HIGH : State::LOW);
-      shape->setValueText(compactValueText(
-          value, SILICON::core::BusValueFormat::Hex, (bus.size() + 3) / 4));
+      shape->setValueText(compactValueText(value, SILICON::core::BusValueFormat::Hex,
+                                           (bus.size() + 3) / 4));
     }
   }
 }
@@ -972,7 +989,9 @@ void GraphicalBusOutput::refreshFromComponent()
 }
 
 void GraphicalBusOutput::applyStartValue()
-{ resetSimulationState(); }
+{
+  resetSimulationState();
+}
 
 void GraphicalBusOutput::resetSimulationState()
 {
@@ -984,7 +1003,8 @@ void GraphicalBusOutput::resetSimulationState()
             : static_cast<unsigned int>(getComponent()->getInputs()[0].size());
     shape->setBusWidth(width);
     shape->setDisplayState(State::UNKNOWN);
-    shape->setValueText(compactValueText(QString(width, QChar(std::to_underlying(State::UNKNOWN)))));
+    shape->setValueText(
+        compactValueText(QString(width, QChar(std::to_underlying(State::UNKNOWN)))));
   }
 }
 

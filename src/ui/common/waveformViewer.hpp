@@ -258,7 +258,8 @@ public slots:
    * @brief Appends a batch of snapshots with a single deferred UI refresh.
    * @param snapshots Ordered timestamp and signal-value snapshots
    */
-  void appendSnapshots(const QList<QPair<qulonglong, std::vector<core::BusValue>>>& snapshots);
+  void
+  appendSnapshots(const QList<QPair<qulonglong, std::vector<core::BusValue>>>& snapshots);
 
   /** @brief Clears all recorded waveform samples. */
   void clearTrace();
@@ -372,7 +373,7 @@ private:
   [[nodiscard]] QStringList visibleNames() const;
   [[nodiscard]] QStringList displayedValues() const;
   [[nodiscard]] std::size_t signalWidth(int signalIndex) const;
-  [[nodiscard]] QString     displayValue(int signalIndex, const core::BusValue& value) const;
+  [[nodiscard]] QString displayValue(int signalIndex, const core::BusValue& value) const;
   void                      setSelectedSignalIndex(int signalIndex);
   void                      showSignalFormatMenu(int signalIndex, QPoint globalPosition);
   void                      saveTrace();

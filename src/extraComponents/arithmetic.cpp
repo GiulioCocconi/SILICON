@@ -30,16 +30,17 @@ using namespace SILICON::core;
 
 namespace {
 
-[[nodiscard]] int validateExtenderWidth(const PropertyValue&   value,
-                                        const std::string_view property)
-{
-  const int width = std::get<int>(value);
-  if (width < 1)
-    throw std::invalid_argument(std::format("Extender {} must be at least 1", property));
-  if (width > std::numeric_limits<unsigned short>::max())
-    throw std::invalid_argument(std::format("Extender {} is too large", property));
-  return width;
-}
+  [[nodiscard]] int validateExtenderWidth(const PropertyValue&   value,
+                                          const std::string_view property)
+  {
+    const int width = std::get<int>(value);
+    if (width < 1)
+      throw std::invalid_argument(
+          std::format("Extender {} must be at least 1", property));
+    if (width > std::numeric_limits<unsigned short>::max())
+      throw std::invalid_argument(std::format("Extender {} is too large", property));
+    return width;
+  }
 
 }  // namespace
 
@@ -322,9 +323,8 @@ void AdderNBits::simulate(SILICON::simulation::Simulator& sim)
   const auto propagationDelay = getPropertyValue<int>("delay").value_or(0);
   const auto sumWidth         = outputBusSize(Outputs::Sum);
 
-  auto result =
-      inputs[busIndex(Inputs::A)].getCurrentValue()
-      + inputs[busIndex(Inputs::B)].getCurrentValue();
+  auto result = inputs[busIndex(Inputs::A)].getCurrentValue()
+                + inputs[busIndex(Inputs::B)].getCurrentValue();
 
   const State carry = result[sumWidth];
   result.resize(sumWidth);
@@ -332,7 +332,6 @@ void AdderNBits::simulate(SILICON::simulation::Simulator& sim)
   sim.updateBus(outputs[busIndex(Outputs::Sum)], result, propagationDelay,
                 weak_from_this());
 
-  sim.updateWire(outputWire(Outputs::Cout), carry, propagationDelay,
-                 weak_from_this());
+  sim.updateWire(outputWire(Outputs::Cout), carry, propagationDelay, weak_from_this());
 }
 }  // namespace SILICON::extra

@@ -45,22 +45,17 @@ TEST(SiliconWaveformTest, AppendsAndReplacesLatestTimestamp)
   Trace trace;
   resetTrace(trace, {{"a", 1}, {"bus", 4}}, 1);
 
-  appendSnapshot(trace, 0,
-                 {busValueFromBits("0"), busValueFromBits("0011")});
-  appendSnapshot(trace, 0,
-                 {busValueFromBits("1"), busValueFromBits("0101")});
-  appendSnapshot(trace, 4,
-                 {busValueFromBits("0"), busValueFromBits("1111")});
+  appendSnapshot(trace, 0, {busValueFromBits("0"), busValueFromBits("0011")});
+  appendSnapshot(trace, 0, {busValueFromBits("1"), busValueFromBits("0101")});
+  appendSnapshot(trace, 4, {busValueFromBits("0"), busValueFromBits("1111")});
 
   ASSERT_EQ(trace.samples.size(), 2);
   EXPECT_EQ(trace.samples[0].time, 0);
   EXPECT_EQ(trace.samples[0].values,
-            (std::vector<BusValue>{busValueFromBits("1"),
-                                   busValueFromBits("0101")}));
+            (std::vector<BusValue>{busValueFromBits("1"), busValueFromBits("0101")}));
   EXPECT_EQ(trace.samples[1].time, 4);
   EXPECT_EQ(trace.samples[1].values,
-            (std::vector<BusValue>{busValueFromBits("0"),
-                                   busValueFromBits("1111")}));
+            (std::vector<BusValue>{busValueFromBits("0"), busValueFromBits("1111")}));
 }
 
 TEST(SiliconWaveformTest, RebuildsAndAppliesEditIntervals)
@@ -71,8 +66,7 @@ TEST(SiliconWaveformTest, RebuildsAndAppliesEditIntervals)
   rebuildEditableTrace(trace, 10);
   ASSERT_EQ(trace.samples.size(), 2);
   EXPECT_EQ(trace.samples[0].values,
-            (std::vector<BusValue>{busValueFromBits("0"),
-                                   busValueFromBits("0000")}));
+            (std::vector<BusValue>{busValueFromBits("0"), busValueFromBits("0000")}));
   EXPECT_EQ(trace.samples[1].time, 10);
 
   applyEditInterval(trace, 10, 1, 2, 5, busValueFromBits("1010"));
@@ -80,16 +74,13 @@ TEST(SiliconWaveformTest, RebuildsAndAppliesEditIntervals)
   ASSERT_EQ(trace.samples.size(), 4);
   EXPECT_EQ(trace.samples[0].time, 0);
   EXPECT_EQ(trace.samples[0].values,
-            (std::vector<BusValue>{busValueFromBits("0"),
-                                   busValueFromBits("0000")}));
+            (std::vector<BusValue>{busValueFromBits("0"), busValueFromBits("0000")}));
   EXPECT_EQ(trace.samples[1].time, 2);
   EXPECT_EQ(trace.samples[1].values,
-            (std::vector<BusValue>{busValueFromBits("0"),
-                                   busValueFromBits("1010")}));
+            (std::vector<BusValue>{busValueFromBits("0"), busValueFromBits("1010")}));
   EXPECT_EQ(trace.samples[2].time, 5);
   EXPECT_EQ(trace.samples[2].values,
-            (std::vector<BusValue>{busValueFromBits("0"),
-                                   busValueFromBits("0000")}));
+            (std::vector<BusValue>{busValueFromBits("0"), busValueFromBits("0000")}));
   EXPECT_EQ(trace.samples[3].time, 10);
 }
 
@@ -109,10 +100,8 @@ TEST(SiliconWaveformTest, WritesFstTrace)
 
   Trace trace;
   resetTrace(trace, {{"clk", 1}, {"data", 4}}, 1);
-  appendSnapshot(trace, 0,
-                 {busValueFromBits("0"), busValueFromBits("0011")});
-  appendSnapshot(trace, 5,
-                 {busValueFromBits("1"), busValueFromBits("1010")});
+  appendSnapshot(trace, 0, {busValueFromBits("0"), busValueFromBits("0011")});
+  appendSnapshot(trace, 5, {busValueFromBits("1"), busValueFromBits("1010")});
 
   writeTrace(filename, trace);
 

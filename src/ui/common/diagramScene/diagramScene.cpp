@@ -45,8 +45,8 @@
 #include <ui/common/wireRouting.hpp>
 #include <ui/logiFlow/components/graphicalIO.hpp>
 #include <ui/logiFlow/logiFlowWindow.hpp>
-#include <utils/num_formatting.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
+#include <utils/num_formatting.hpp>
 
 namespace SILICON {
 namespace ui {

@@ -306,11 +306,11 @@ namespace {
 
     Json                                         design;
     std::string                                  moduleName;
-    std::map<std::uint64_t, Wire_ptr>  signals;
-    std::map<State, Wire_ptr>          constants;
-    std::map<BusValue, Bus>            constantBuses;
-    std::set<std::uint64_t>            drivenSignals;
-    std::vector<Component_ptr>         components;
+    std::map<std::uint64_t, Wire_ptr>            signals;
+    std::map<State, Wire_ptr>                    constants;
+    std::map<BusValue, Bus>                      constantBuses;
+    std::set<std::uint64_t>                      drivenSignals;
+    std::vector<Component_ptr>                   components;
 
     [[nodiscard]] std::pair<std::string, const Json&>
     selectModule(const Json&                           modules,
@@ -478,8 +478,8 @@ namespace {
           fail(context, std::format("invalid port direction '{}'", direction));
 
         if (direction == "input") {
-          const Bus bus = readBus(bitsJson, ConnectionRole::Driver,
-                                  std::format("{}.bits", context));
+          const Bus bus =
+              readBus(bitsJson, ConnectionRole::Driver, std::format("{}.bits", context));
           if (bus.size() == 1)
             components.push_back(std::make_shared<DummyInputComponent>(bus, name));
           else
@@ -499,8 +499,7 @@ namespace {
           const bool isUnsignedExtension =
               inputWidth > 0 && inputWidth < bitsJson.size()
               && std::ranges::all_of(
-                  bitsJson.begin(), bitsJson.begin() + inputWidth,
-                  [](const Json& bit) {
+                  bitsJson.begin(), bitsJson.begin() + inputWidth, [](const Json& bit) {
                     return bit.is_number_integer() || bit.is_number_unsigned();
                   });
           if (isUnsignedExtension) {
@@ -653,8 +652,9 @@ namespace {
 
       if (aWidth != yWidth) {
         components.push_back(std::make_shared<Extender>(
-            a, y, std::string(cell.flag("A_SIGNED") ? Extender::SignedMode
-                                                     : Extender::UnsignedMode)));
+            a, y,
+            std::string(cell.flag("A_SIGNED") ? Extender::SignedMode
+                                              : Extender::UnsignedMode)));
         return;
       }
 
@@ -685,21 +685,20 @@ namespace {
       }
 
       const auto arithmeticWidth = std::max({aWidth, bWidth, yWidth});
-      const Bus  extendedA = resizeArithmeticOperand(a, arithmeticWidth, false);
-      const Bus  extendedB = resizeArithmeticOperand(b, arithmeticWidth, false);
+      const Bus  extendedA       = resizeArithmeticOperand(a, arithmeticWidth, false);
+      const Bus  extendedB       = resizeArithmeticOperand(b, arithmeticWidth, false);
 
       auto sumWires = static_cast<std::vector<Wire_ptr>>(y);
       while (sumWires.size() < arithmeticWidth)
         sumWires.push_back(std::make_shared<Wire>(State::UNKNOWN));
 
-      auto adder = std::make_shared<AdderNBits>(
-          std::array<Bus, 2>{extendedA, extendedB}, Bus(std::move(sumWires)),
-          std::make_shared<Wire>(State::UNKNOWN));
+      auto adder = std::make_shared<AdderNBits>(std::array<Bus, 2>{extendedA, extendedB},
+                                                Bus(std::move(sumWires)),
+                                                std::make_shared<Wire>(State::UNKNOWN));
       addWithZeroDelay(std::move(adder));
     }
 
-    [[nodiscard]] Bus resizeArithmeticOperand(const Bus& operand,
-                                              const std::size_t width,
+    [[nodiscard]] Bus resizeArithmeticOperand(const Bus& operand, const std::size_t width,
                                               const bool signExtend)
     {
       if (operand.size() > width)
@@ -739,10 +738,8 @@ namespace {
       // Yosys evaluates binary arithmetic at the widest operand/result width, sign
       // extending only when both operands are signed, and then truncates to Y_WIDTH.
       const auto arithmeticWidth = std::max({aWidth, bWidth, yWidth});
-      const Bus  extendedA =
-          resizeArithmeticOperand(a, arithmeticWidth, signedArithmetic);
-      const Bus extendedB =
-          resizeArithmeticOperand(b, arithmeticWidth, signedArithmetic);
+      const Bus extendedA = resizeArithmeticOperand(a, arithmeticWidth, signedArithmetic);
+      const Bus extendedB = resizeArithmeticOperand(b, arithmeticWidth, signedArithmetic);
 
       Bus  complementedB(static_cast<unsigned short>(arithmeticWidth));
       auto complementer = std::make_shared<Complementer>(extendedB, complementedB);

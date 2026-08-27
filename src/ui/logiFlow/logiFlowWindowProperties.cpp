@@ -454,8 +454,7 @@ void LogiFlowWindow::updatePropertyDock()
                 key, SILICON::core::busValueFromBits(lineEdit->text().toStdString()));
             lineEdit->setModified(false);
           } catch (const std::exception& error) {
-            SILICON::ui::inputDialog::warning(this, tr("Invalid Property"),
-                                              error.what());
+            SILICON::ui::inputDialog::warning(this, tr("Invalid Property"), error.what());
           }
         });
 

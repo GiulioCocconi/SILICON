@@ -147,7 +147,7 @@ void GraphicalWireSegment::updateTopology()
 }
 
 void GraphicalWireSegment::setGraphicalWire(GraphicalWire* newWire,
-                                            const bool propagateToTouchingSegments)
+                                            const bool     propagateToTouchingSegments)
 {
   if (graphicalWire == newWire)
     return;

@@ -562,8 +562,7 @@ public:
    * @param input Input bus index
    * @return Declared default, or no value when the input is required
    */
-  [[nodiscard]] std::optional<State>
-  unconnectedInputDefault(unsigned int input) const
+  [[nodiscard]] std::optional<State> unconnectedInputDefault(unsigned int input) const
   {
     if (const auto it = unconnectedInputDefaults.find(input);
         it != unconnectedInputDefaults.end()) {

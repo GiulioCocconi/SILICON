@@ -9,10 +9,14 @@
 using namespace SILICON::core;
 
 inline BusValue valueFor(const Bus& bus, const std::uint64_t value)
-{ return busValueFromInteger(value, bus.size()); }
+{
+  return busValueFromInteger(value, bus.size());
+}
 
 inline BusValue valueFor(const std::size_t width, const std::uint64_t value)
-{ return busValueFromInteger(value, width); }
+{
+  return busValueFromInteger(value, width);
+}
 
 extern "C" {
 inline void __ubsan_on_report()

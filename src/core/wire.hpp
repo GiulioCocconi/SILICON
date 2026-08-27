@@ -153,7 +153,9 @@ public:
   [[nodiscard]] bool     sharesWireWith(const Bus& other) const;
 
   const Wire_ptr& operator[](const unsigned short index) const
-  { return this->busData.at(index); }
+  {
+    return this->busData.at(index);
+  }
 
   Wire_ptr& operator[](const unsigned short index) { return this->busData.at(index); }
 

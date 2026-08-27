@@ -96,14 +96,13 @@ public:
   {
     using SILICON::yosys::Json;
     using SILICON::yosys::SerializationContext;
-    context.addCell(
-        "default_input", "$pos",
-        Json{{"A_SIGNED", SerializationContext::parameter(0, 1)},
-             {"A_WIDTH", SerializationContext::parameter(1)},
-             {"Y_WIDTH", SerializationContext::parameter(1)}},
-        Json{{"A", "input"}, {"Y", "output"}},
-        Json{{"A", context.inputBits(*this, 0, 1)},
-             {"Y", context.bits(outputBuses().at(0))}});
+    context.addCell("default_input", "$pos",
+                    Json{{"A_SIGNED", SerializationContext::parameter(0, 1)},
+                         {"A_WIDTH", SerializationContext::parameter(1)},
+                         {"Y_WIDTH", SerializationContext::parameter(1)}},
+                    Json{{"A", "input"}, {"Y", "output"}},
+                    Json{{"A", context.inputBits(*this, 0, 1)},
+                         {"Y", context.bits(outputBuses().at(0))}});
   }
 };
 
@@ -182,8 +181,7 @@ private:
 }
 
 [[nodiscard]] BusValue evaluateBinaryCircuit(const std::shared_ptr<Circuit>& circuit,
-                                             const unsigned int              a,
-                                             const unsigned int              b)
+                                             const unsigned int a, const unsigned int b)
 {
   std::map<std::string, std::shared_ptr<DummyBusInputComponent>> inputs;
   std::shared_ptr<DummyBusOutputComponent>                       output;
@@ -198,10 +196,8 @@ private:
 
   if (!inputs.contains("a") || !inputs.contains("b") || !output)
     throw std::runtime_error("Expected named binary circuit boundary components");
-  inputs.at("a")->setBusValue(
-      valueFor(inputs.at("a")->outputBuses()[0], a));
-  inputs.at("b")->setBusValue(
-      valueFor(inputs.at("b")->outputBuses()[0], b));
+  inputs.at("a")->setBusValue(valueFor(inputs.at("a")->outputBuses()[0], a));
+  inputs.at("b")->setBusValue(valueFor(inputs.at("b")->outputBuses()[0], b));
   Simulator simulator(circuit);
   if (simulator.runUntilIdle() != Simulator::RunResult::Completed)
     throw std::runtime_error("Binary circuit simulation did not complete");
@@ -304,7 +300,7 @@ registerWithMode(const bool parallelInput, const bool parallelOutput, const int 
   return result;
 }
 
-#ifdef SILICON_TEST_YOSYS_PLUGIN_PATH
+  #ifdef SILICON_TEST_YOSYS_PLUGIN_PATH
 void runPluginScript(const std::string_view source, const std::string_view commands,
                      const std::string_view tag)
 {
@@ -333,7 +329,7 @@ void runPluginScript(const std::string_view source, const std::string_view comma
   }
   std::filesystem::remove(path);
 }
-#endif
+  #endif
 #endif
 
 }  // namespace
@@ -433,7 +429,7 @@ TEST(YosysTest, ExportsUnusedAdderCarryOutput)
 TEST(YosysTest, EncodesDeclaredUnconnectedInputDefault)
 {
   const auto exported = exportComponent(std::make_shared<DefaultedInputYosysComponent>());
-  const auto& input    = onlyCell(exported).at("connections").at("A");
+  const auto& input   = onlyCell(exported).at("connections").at("A");
   ASSERT_EQ(input.size(), 1);
   EXPECT_EQ(input.at(0), "1");
   EXPECT_NO_THROW((void)SILICON::yosys::deserialize(exported.dump()));
@@ -441,8 +437,8 @@ TEST(YosysTest, EncodesDeclaredUnconnectedInputDefault)
 
 TEST(YosysTest, ExtenderLowersToPosAndRoundTripsWithItsModeAndWidths)
 {
-  auto extender = std::make_shared<Extender>(Bus(3), Bus(6),
-                                              std::string(Extender::SignedMode));
+  auto extender =
+      std::make_shared<Extender>(Bus(3), Bus(6), std::string(Extender::SignedMode));
   auto exported = exportComponent(extender);
   EXPECT_EQ(cellTypes(onlyModule(exported)), std::multiset<std::string>{"$pos"});
 
@@ -757,11 +753,10 @@ TEST(YosysTest, ImportsGeneralCombinationalNetlistWithConstants)
 
   Circuit imported = Circuit::deserializeYosys(design.dump());
   EXPECT_EQ(imported.getName(), "logic_top");
-  EXPECT_EQ(
-      componentTypes(imported),
-      (std::multiset<std::string>{"AndGate", "ConstantComponent",
-                                  "DummyBusInputComponent", "DummyBusOutputComponent",
-                                  "NotGate", "NotGate"}));
+  EXPECT_EQ(componentTypes(imported),
+            (std::multiset<std::string>{
+                "AndGate", "ConstantComponent", "DummyBusInputComponent",
+                "DummyBusOutputComponent", "NotGate", "NotGate"}));
   auto importedConstant = findComponent<ConstantComponent>(imported);
   ASSERT_TRUE(importedConstant);
   EXPECT_EQ(importedConstant->getPropertyValue<int>("size"), 2);
@@ -798,7 +793,8 @@ TEST(YosysTest, ImportsGeneralCombinationalNetlistWithConstants)
   inputComponent->setBusValue(valueFor(inputComponent->outputBuses()[0], 3));
   Simulator simulator(simulated);
   ASSERT_EQ(simulator.runUntilIdle(), Simulator::RunResult::Completed);
-  EXPECT_EQ(outputComponent->inputBuses()[0].getCurrentValue(), valueFor(outputComponent->inputBuses()[0], 2));
+  EXPECT_EQ(outputComponent->inputBuses()[0].getCurrentValue(),
+            valueFor(outputComponent->inputBuses()[0], 2));
 }
 
 TEST(YosysTest, ImportsSubWithYosysWidthAndSignednessSemantics)
@@ -826,7 +822,7 @@ TEST(YosysTest, ImportsSubWithYosysWidthAndSignednessSemantics)
   EXPECT_EQ(evaluateBinaryCircuit(unsignedCircuit, 2, 5), valueFor(4, 13));
 
   // Both signed flags cause sign extension: 3'b110 (-2) - 5'b00011 (3) = -5.
-  auto signedCircuit = import(3, 5, 6, true, true);
+  auto signedCircuit  = import(3, 5, 6, true, true);
   auto signedExtender = findComponent<Extender>(*signedCircuit);
   ASSERT_TRUE(signedExtender);
   EXPECT_EQ(signedExtender->getPropertyValue<std::string>("mode"),
@@ -834,7 +830,7 @@ TEST(YosysTest, ImportsSubWithYosysWidthAndSignednessSemantics)
   EXPECT_EQ(evaluateBinaryCircuit(signedCircuit, 6, 3), valueFor(6, 59));
 
   // A mixed signedness operation is unsigned in Yosys: 6 - 3 = 3.
-  auto mixedCircuit = import(3, 5, 6, true, false);
+  auto mixedCircuit  = import(3, 5, 6, true, false);
   auto mixedExtender = findComponent<Extender>(*mixedCircuit);
   ASSERT_TRUE(mixedExtender);
   EXPECT_EQ(mixedExtender->getPropertyValue<std::string>("mode"),
@@ -847,7 +843,8 @@ TEST(YosysTest, ImportsSubWithYosysWidthAndSignednessSemantics)
 
   auto addDesign = subtractionDesign(3, 5, 4, false, false);
   onlyModule(addDesign)["cells"].begin().value()["type"] = "$add";
-  auto addCircuit = std::make_shared<Circuit>(SILICON::yosys::deserialize(addDesign.dump()));
+  auto addCircuit =
+      std::make_shared<Circuit>(SILICON::yosys::deserialize(addDesign.dump()));
   auto addExtender = findComponent<Extender>(*addCircuit);
   ASSERT_TRUE(addExtender);
   EXPECT_EQ(addExtender->getPropertyValue<int>("inSize"), 3);
@@ -1349,9 +1346,9 @@ TEST(YosysToolTest, ImportsZeroExtendedOutputAsUnsignedExtender)
 
 TEST(YosysToolTest, RaisesSharedConstantEqualityComparisonsToDecoder)
 {
-#ifndef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
+  #ifndef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
   GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
-#else
+  #else
   constexpr std::string_view source = R"(
     module top(input [2:0] select, output [1:0] matches);
       assign matches[0] = select == 3'd1;
@@ -1383,14 +1380,14 @@ TEST(YosysToolTest, RaisesSharedConstantEqualityComparisonsToDecoder)
       Simulator::RunResult::Completed);
   EXPECT_EQ(decoder->outputBuses()[0][1]->getCurrentState(), State::LOW);
   EXPECT_EQ(decoder->outputBuses()[0][6]->getCurrentState(), State::LOW);
-#endif
+  #endif
 }
 
 TEST(YosysToolTest, PmgenMatchesSelectedPmuxWithUnselectedPredicates)
 {
-#ifndef SILICON_TEST_YOSYS_PLUGIN_PATH
+  #ifndef SILICON_TEST_YOSYS_PLUGIN_PATH
   GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
-#else
+  #else
   constexpr std::string_view source = R"(
     module top(
       input [1:0] select,
@@ -1420,14 +1417,14 @@ TEST(YosysToolTest, PmgenMatchesSelectedPmuxWithUnselectedPredicates)
                                   "select -assert-count 1 top/t:$bmux\n"
                                   "select -assert-count 0 top/t:$pmux\n",
                                   "selected_pmux"));
-#endif
+  #endif
 }
 
 TEST(YosysToolTest, PmgenLeavesInvalidGroupsAndRaisesValidSignedGroup)
 {
-#ifndef SILICON_TEST_YOSYS_PLUGIN_PATH
+  #ifndef SILICON_TEST_YOSYS_PLUGIN_PATH
   GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
-#else
+  #else
   constexpr std::string_view source = R"(
     module top(
       input [2:0] first,
@@ -1451,7 +1448,7 @@ TEST(YosysToolTest, PmgenLeavesInvalidGroupsAndRaisesValidSignedGroup)
                                   "select -assert-count 4 top/t:$eq\n"
                                   "select -assert-count 1 top/t:$demux\n",
                                   "invalid_eq_groups"));
-#endif
+  #endif
 }
 
 TEST(YosysToolTest, LowersPriorityMuxCellsBeforeImport)
@@ -1495,9 +1492,9 @@ TEST(YosysToolTest, ImportsSequentialVerilog)
 
 TEST(YosysToolTest, FoldsSparseCaseIntoOneWideMultiplexer)
 {
-#ifndef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
+  #ifndef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
   GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
-#endif
+  #endif
   constexpr std::string_view source = R"(
     module top(
       input [7:0] a,
@@ -1524,9 +1521,9 @@ TEST(YosysToolTest, FoldsSparseCaseIntoOneWideMultiplexer)
 
 TEST(YosysToolTest, FoldsExhaustiveCaseIntoOneWideMultiplexer)
 {
-#ifndef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
+  #ifndef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
   GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
-#endif
+  #endif
   constexpr std::string_view source = R"(
     module mux(
       input [3:0] bus_1,
@@ -1744,17 +1741,21 @@ TEST(YosysToolTest, ImportedTechnologyCellsPreserveRepresentativeBehavior)
   auto latch = findComponent<DLatch>(*latchCircuit);
   ASSERT_TRUE(latch);
   Simulator latchSimulator(latchCircuit);
-  EXPECT_EQ(latchSimulator.setBus(latch->inputBuses()[0], valueFor(latch->inputBuses()[0], 1)),
-            Simulator::RunResult::Completed);
+  EXPECT_EQ(
+      latchSimulator.setBus(latch->inputBuses()[0], valueFor(latch->inputBuses()[0], 1)),
+      Simulator::RunResult::Completed);
   EXPECT_EQ(latch->outputBuses()[0][0]->getCurrentState(), State::UNKNOWN);
-  EXPECT_EQ(latchSimulator.setBus(latch->inputBuses()[1], valueFor(latch->inputBuses()[1], 1)),
-            Simulator::RunResult::Completed);
+  EXPECT_EQ(
+      latchSimulator.setBus(latch->inputBuses()[1], valueFor(latch->inputBuses()[1], 1)),
+      Simulator::RunResult::Completed);
   EXPECT_EQ(latch->outputBuses()[0][0]->getCurrentState(), State::HIGH);
   EXPECT_EQ(latch->outputBuses()[1][0]->getCurrentState(), State::LOW);
-  EXPECT_EQ(latchSimulator.setBus(latch->inputBuses()[1], valueFor(latch->inputBuses()[1], 0)),
-            Simulator::RunResult::Completed);
-  EXPECT_EQ(latchSimulator.setBus(latch->inputBuses()[0], valueFor(latch->inputBuses()[0], 0)),
-            Simulator::RunResult::Completed);
+  EXPECT_EQ(
+      latchSimulator.setBus(latch->inputBuses()[1], valueFor(latch->inputBuses()[1], 0)),
+      Simulator::RunResult::Completed);
+  EXPECT_EQ(
+      latchSimulator.setBus(latch->inputBuses()[0], valueFor(latch->inputBuses()[0], 0)),
+      Simulator::RunResult::Completed);
   EXPECT_EQ(latch->outputBuses()[0][0]->getCurrentState(), State::HIGH);
 
   const auto simulateDff = [](const std::string_view edge) {
@@ -1775,7 +1776,8 @@ TEST(YosysToolTest, ImportedTechnologyCellsPreserveRepresentativeBehavior)
     EXPECT_EQ(simulator.setBus(dff->inputBuses()[1],
                                valueFor(dff->inputBuses()[1], positive ? 0 : 1)),
               Simulator::RunResult::Completed);
-    EXPECT_EQ(simulator.setBus(dff->inputBuses()[0], valueFor(dff->inputBuses()[0], 1)), Simulator::RunResult::Completed);
+    EXPECT_EQ(simulator.setBus(dff->inputBuses()[0], valueFor(dff->inputBuses()[0], 1)),
+              Simulator::RunResult::Completed);
     EXPECT_EQ(simulator.setBus(dff->inputBuses()[1],
                                valueFor(dff->inputBuses()[1], positive ? 1 : 0)),
               Simulator::RunResult::Completed);
@@ -1795,21 +1797,28 @@ TEST(YosysToolTest, ImportedTechnologyCellsPreserveRepresentativeBehavior)
   auto dffe = findComponent<EFlipFlop>(*enabledCircuit);
   ASSERT_TRUE(dffe);
   Simulator enabledSimulator(enabledCircuit);
-  EXPECT_EQ(enabledSimulator.setBus(dffe->inputBuses()[2], valueFor(dffe->inputBuses()[2], 0)),
-            Simulator::RunResult::Completed);
-  EXPECT_EQ(enabledSimulator.setBus(dffe->inputBuses()[0], valueFor(dffe->inputBuses()[0], 1)),
-            Simulator::RunResult::Completed);
-  EXPECT_EQ(enabledSimulator.setBus(dffe->inputBuses()[1], valueFor(dffe->inputBuses()[1], 0)),
-            Simulator::RunResult::Completed);
-  EXPECT_EQ(enabledSimulator.setBus(dffe->inputBuses()[2], valueFor(dffe->inputBuses()[2], 1)),
-            Simulator::RunResult::Completed);
+  EXPECT_EQ(
+      enabledSimulator.setBus(dffe->inputBuses()[2], valueFor(dffe->inputBuses()[2], 0)),
+      Simulator::RunResult::Completed);
+  EXPECT_EQ(
+      enabledSimulator.setBus(dffe->inputBuses()[0], valueFor(dffe->inputBuses()[0], 1)),
+      Simulator::RunResult::Completed);
+  EXPECT_EQ(
+      enabledSimulator.setBus(dffe->inputBuses()[1], valueFor(dffe->inputBuses()[1], 0)),
+      Simulator::RunResult::Completed);
+  EXPECT_EQ(
+      enabledSimulator.setBus(dffe->inputBuses()[2], valueFor(dffe->inputBuses()[2], 1)),
+      Simulator::RunResult::Completed);
   EXPECT_EQ(dffe->outputBuses()[0][0]->getCurrentState(), State::UNKNOWN);
-  EXPECT_EQ(enabledSimulator.setBus(dffe->inputBuses()[2], valueFor(dffe->inputBuses()[2], 0)),
-            Simulator::RunResult::Completed);
-  EXPECT_EQ(enabledSimulator.setBus(dffe->inputBuses()[1], valueFor(dffe->inputBuses()[1], 1)),
-            Simulator::RunResult::Completed);
-  EXPECT_EQ(enabledSimulator.setBus(dffe->inputBuses()[2], valueFor(dffe->inputBuses()[2], 1)),
-            Simulator::RunResult::Completed);
+  EXPECT_EQ(
+      enabledSimulator.setBus(dffe->inputBuses()[2], valueFor(dffe->inputBuses()[2], 0)),
+      Simulator::RunResult::Completed);
+  EXPECT_EQ(
+      enabledSimulator.setBus(dffe->inputBuses()[1], valueFor(dffe->inputBuses()[1], 1)),
+      Simulator::RunResult::Completed);
+  EXPECT_EQ(
+      enabledSimulator.setBus(dffe->inputBuses()[2], valueFor(dffe->inputBuses()[2], 1)),
+      Simulator::RunResult::Completed);
   EXPECT_EQ(dffe->outputBuses()[0][0]->getCurrentState(), State::HIGH);
 
   constexpr std::string_view adderSource = R"(
@@ -1836,7 +1845,8 @@ TEST(YosysToolTest, ImportedTechnologyCellsPreserveRepresentativeBehavior)
   inputs.at("b")->setBusValue(valueFor(inputs.at("b")->outputBuses()[0], 1));
   Simulator adderSimulator(adderCircuit);
   ASSERT_EQ(adderSimulator.runUntilIdle(), Simulator::RunResult::Completed);
-  EXPECT_EQ(output->inputBuses()[0].getCurrentValue(), valueFor(output->inputBuses()[0], 16));
+  EXPECT_EQ(output->inputBuses()[0].getCurrentValue(),
+            valueFor(output->inputBuses()[0], 16));
 }
 
 TEST(YosysToolTest, ExportsAdderAsBehavioralExpression)
@@ -1897,13 +1907,11 @@ TEST(YosysToolTest, TechnologyCellsExportAsBehavioralVerilog)
     ASSERT_EQ(simulator.setBus(adder->inputBuses()[0],
                                valueFor(adder->inputBuses()[0], value & 1U)),
               Simulator::RunResult::Completed);
-    ASSERT_EQ(simulator.setBus(
-                  adder->inputBuses()[1],
-                  valueFor(adder->inputBuses()[1], (value >> 1U) & 1U)),
+    ASSERT_EQ(simulator.setBus(adder->inputBuses()[1],
+                               valueFor(adder->inputBuses()[1], (value >> 1U) & 1U)),
               Simulator::RunResult::Completed);
-    ASSERT_EQ(simulator.setBus(
-                  adder->inputBuses()[2],
-                  valueFor(adder->inputBuses()[2], (value >> 2U) & 1U)),
+    ASSERT_EQ(simulator.setBus(adder->inputBuses()[2],
+                               valueFor(adder->inputBuses()[2], (value >> 2U) & 1U)),
               Simulator::RunResult::Completed);
     const unsigned result =
         static_cast<unsigned>(adder->outputBuses()[0][0]->getCurrentState()
@@ -1938,11 +1946,14 @@ TEST(YosysToolTest, TechnologyCellsExportAsBehavioralVerilog)
   EXPECT_EQ(restoredDff->getPropertyValue<std::string>("triggerEdge"),
             std::optional<std::string>("NET"));
   Simulator dffSimulator(dffCircuit);
-  ASSERT_EQ(dffSimulator.setBus(restoredDff->inputBuses()[1], valueFor(restoredDff->inputBuses()[1], 1)),
+  ASSERT_EQ(dffSimulator.setBus(restoredDff->inputBuses()[1],
+                                valueFor(restoredDff->inputBuses()[1], 1)),
             Simulator::RunResult::Completed);
-  ASSERT_EQ(dffSimulator.setBus(restoredDff->inputBuses()[0], valueFor(restoredDff->inputBuses()[0], 1)),
+  ASSERT_EQ(dffSimulator.setBus(restoredDff->inputBuses()[0],
+                                valueFor(restoredDff->inputBuses()[0], 1)),
             Simulator::RunResult::Completed);
-  ASSERT_EQ(dffSimulator.setBus(restoredDff->inputBuses()[1], valueFor(restoredDff->inputBuses()[1], 0)),
+  ASSERT_EQ(dffSimulator.setBus(restoredDff->inputBuses()[1],
+                                valueFor(restoredDff->inputBuses()[1], 0)),
             Simulator::RunResult::Completed);
   EXPECT_EQ(restoredDff->outputBuses()[0][0]->getCurrentState(), State::HIGH);
   EXPECT_EQ(restoredDff->outputBuses()[1][0]->getCurrentState(), State::LOW);
@@ -2012,19 +2023,19 @@ TEST(YosysToolTest, ExportsWideMuxAsCaseStatement)
   Circuit circuit = circuitWithBoundaryPorts(mux);
 
   const auto verilog = SILICON::yosys::exportVerilog(circuit);
-#ifdef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
+  #ifdef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
   EXPECT_NE(verilog.find("output reg [3:0] output_0"), std::string::npos);
   EXPECT_NE(verilog.find("case (input_4)"), std::string::npos);
   EXPECT_NE(verilog.find("2'h0:"), std::string::npos);
   EXPECT_NE(verilog.find("output_0 = input_0"), std::string::npos);
   EXPECT_NE(verilog.find("default:"), std::string::npos);
   EXPECT_EQ(verilog.find("$auto$verilog_backend"), std::string::npos);
-#else
+  #else
   EXPECT_NE(verilog.find("$auto$bmuxmap"), std::string::npos);
-#endif
-#ifdef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
+  #endif
+  #ifdef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
   EXPECT_EQ(verilog.find("$auto$bmuxmap"), std::string::npos);
-#endif
+  #endif
   EXPECT_NO_THROW((void)SILICON::yosys::importVerilog(verilog, "top"));
 }
 
