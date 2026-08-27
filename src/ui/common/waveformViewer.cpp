@@ -22,6 +22,7 @@
 #include "utils/ranges_wrapper.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdlib>
 #include <iterator>
@@ -70,6 +71,34 @@ namespace {
   constexpr int groupHeaderHeightPx = 22;
   constexpr int signalListWidthPx   = 220;
   constexpr int waveformLeftInset   = 16;
+
+  int normalizedIndex(const int index, const int count)
+  {
+    return index >= 0 && index < count ? index : -1;
+  }
+
+  std::pair<quint64, quint64> normalizedInterval(quint64 startTime, quint64 endTime,
+                                                 const quint64 duration)
+  {
+    startTime = std::min(startTime, duration);
+    endTime   = std::min(endTime, duration);
+    if (endTime < startTime)
+      std::swap(startTime, endTime);
+    return {startTime, endTime};
+  }
+
+  BusValueFormat formatForSignal(const std::vector<BusValueFormat>& formats,
+                                 const int                          row)
+  {
+    return row >= 0 && row < static_cast<int>(formats.size())
+               ? formats[static_cast<std::size_t>(row)]
+               : BusValueFormat::Hex;
+  }
+
+  std::pair<int, int> traceBounds(const int rowY)
+  {
+    return {rowY + 5, rowY + traceRowHeightPx - 6};
+  }
 
   QColor colorForTraceValue(const BusValue& value)
   {
@@ -130,7 +159,7 @@ void SignalListWidget::setValues(const QStringList& signalValues)
 
 void SignalListWidget::setSelectedSignalIndex(const int signalIndex)
 {
-  const int nextIndex = signalIndex >= 0 && signalIndex < names.size() ? signalIndex : -1;
+  const int nextIndex = normalizedIndex(signalIndex, names.size());
   if (selectedSignalIndex == nextIndex)
     return;
 
@@ -237,7 +266,7 @@ Canvas::Canvas(QWidget* parent) : QWidget(parent)
 {
   setAutoFillBackground(true);
   setMouseTracking(true);
-  setMinimumSize(480, rulerHeight());
+  setMinimumSize(480, rulerHeightPx);
 }
 
 void Canvas::setTrace(const QStringList& names, const std::vector<Sample>& samples)
@@ -271,9 +300,11 @@ void Canvas::setSignalFormats(const std::vector<SILICON::core::BusValueFormat>& 
 void Canvas::updateCanvasSize()
 {
   const int       width         = std::max(480, xForTime(endTime()) + 160);
-  const qsizetype minimumHeight = rulerHeight() + rowHeight();
-  const qsizetype contentHeight = rulerHeight() + groupHeaderCount() * groupHeaderHeight()
-                                  + signalNames.size() * rowHeight();
+  const qsizetype minimumHeight = rulerHeightPx + traceRowHeightPx;
+  const qsizetype contentHeight =
+      rulerHeightPx
+      + totalGroupHeaderCount(signalNames.size(), inputSignalCount) * groupHeaderHeightPx
+      + signalNames.size() * traceRowHeightPx;
   const qsizetype height = std::max(minimumHeight, contentHeight);
   setMinimumSize(width, height);
   resize(width, height);
@@ -305,8 +336,7 @@ void Canvas::setSelectedSampleIndex(const int sampleIndex)
 
 void Canvas::setSelectedSignalIndex(const int signalIndex)
 {
-  const int nextIndex =
-      signalIndex >= 0 && signalIndex < signalNames.size() ? signalIndex : -1;
+  const int nextIndex = normalizedIndex(signalIndex, signalNames.size());
   if (selectedSignalIndex == nextIndex)
     return;
 
@@ -336,12 +366,10 @@ void Canvas::setEditDuration(const quint64 duration)
 
 void Canvas::setEditSelection(const int signalIndex, quint64 startTime, quint64 endTime)
 {
-  const int nextSignalIndex =
-      signalIndex >= 0 && signalIndex < signalNames.size() ? signalIndex : -1;
-  startTime = std::min(startTime, editDuration);
-  endTime   = std::min(endTime, editDuration);
-  if (endTime < startTime)
-    std::swap(startTime, endTime);
+  const int  nextSignalIndex = normalizedIndex(signalIndex, signalNames.size());
+  const auto interval        = normalizedInterval(startTime, endTime, editDuration);
+  startTime                  = interval.first;
+  endTime                    = interval.second;
 
   if (editSelectionSignalIndex == nextSignalIndex && editSelectionStartTime == startTime
       && editSelectionEndTime == endTime) {
@@ -384,33 +412,37 @@ quint64 Canvas::timeForX(const int x) const
   return std::min(rounded, endTime());
 }
 
-int Canvas::groupHeaderCount() const
-{
-  return totalGroupHeaderCount(signalNames.size(), inputSignalCount);
-}
-
-int Canvas::groupHeaderCountBeforeSignal(const int row) const
-{
-  return totalGroupHeaderCountBeforeSignal(row, signalNames.size(), inputSignalCount);
-}
-
 int Canvas::yForSignalRow(const int row) const
 {
-  return rulerHeight() + groupHeaderCountBeforeSignal(row) * groupHeaderHeight()
-         + row * rowHeight();
+  return rulerHeightPx
+         + totalGroupHeaderCountBeforeSignal(row, signalNames.size(), inputSignalCount)
+               * groupHeaderHeightPx
+         + row * traceRowHeightPx;
 }
 
 int Canvas::signalRowAt(const QPoint position) const
 {
-  if (position.y() < rulerHeight())
+  if (position.y() < rulerHeightPx)
     return -1;
 
   for (int row = 0; row < signalNames.size(); ++row) {
     const int y = yForSignalRow(row);
-    if (position.y() >= y && position.y() < y + rowHeight())
+    if (position.y() >= y && position.y() < y + traceRowHeightPx)
       return row;
   }
   return -1;
+}
+
+BusValue Canvas::sampleValueAt(const int sampleIndex, const int row) const
+{
+  if (!traceSamples || sampleIndex < 0
+      || sampleIndex >= static_cast<int>(traceSamples->size()))
+    return {State::UNKNOWN};
+
+  const auto& values = (*traceSamples)[static_cast<std::size_t>(sampleIndex)].values;
+  return row >= 0 && row < static_cast<int>(values.size())
+             ? values[static_cast<std::size_t>(row)]
+             : BusValue{State::UNKNOWN};
 }
 
 void Canvas::paintEvent(QPaintEvent* event)
@@ -427,7 +459,7 @@ void Canvas::paintEvent(QPaintEvent* event)
   const QRect  visibleRect      = event ? event->rect() : rect();
 
   painter.setPen(gridColor);
-  painter.drawLine(0, rulerHeight() - 1, width(), rulerHeight() - 1);
+  painter.drawLine(0, rulerHeightPx - 1, width(), rulerHeightPx - 1);
 
   const auto visibleTimeForX = [this](int x) -> quint64 {
     return std::max(0.0, (x - waveformLeftInset) / pixelsPerTick);
@@ -461,24 +493,21 @@ void Canvas::paintEvent(QPaintEvent* event)
   const auto lastVisibleIndex  = visibleSamples.end() - samples.cbegin();
 
   const bool hasSelectedSignal =
-      selectedSignalIndex >= 0 && selectedSignalIndex < signalNames.size();
-  auto sampleValueAt = [&samples](const int sampleIndex, const int row) {
-    return row < static_cast<int>(samples[sampleIndex].values.size())
-               ? samples[sampleIndex].values[static_cast<std::size_t>(row)]
-               : BusValue({State::UNKNOWN});
-  };
-
-  auto drawRulerTick = [&](const Sample& sample) {
-    const int     x     = xForTime(sample.time);
-    const QString label = QString::number(sample.time);
+      normalizedIndex(selectedSignalIndex, signalNames.size()) >= 0;
+  auto drawTimeMarker = [&](const quint64 time, const QPen& linePen, const QPen& labelPen,
+                            const bool clampRight) {
+    const int     x     = xForTime(time);
+    const QString label = QString::number(time);
     const int     labelWidth =
         std::max(40, painter.fontMetrics().horizontalAdvance(label) + 8);
-    const int labelX = std::max(0, x - labelWidth / 2);
+    const int labelX =
+        clampRight ? std::clamp(x - labelWidth / 2, 0, std::max(0, width() - labelWidth))
+                   : std::max(0, x - labelWidth / 2);
 
-    painter.setPen(gridColor);
+    painter.setPen(linePen);
     painter.drawLine(x, painter.fontMetrics().height() + 2, x, height());
-    painter.setPen(textColor);
-    painter.drawText(QRect(labelX, 1, labelWidth, rulerHeight() - 4),
+    painter.setPen(labelPen);
+    painter.drawText(QRect(labelX, 1, labelWidth, rulerHeightPx - 4),
                      Qt::AlignHCenter | Qt::AlignTop, label);
   };
 
@@ -489,8 +518,8 @@ void Canvas::paintEvent(QPaintEvent* event)
       return false;
     if (sampleIndex == firstVisibleIndex || sampleIndex == 0)
       return true;
-    return sampleValueAt(sampleIndex, selectedSignalIndex)
-           != sampleValueAt(sampleIndex - 1, selectedSignalIndex);
+    return this->sampleValueAt(sampleIndex, selectedSignalIndex)
+           != this->sampleValueAt(sampleIndex - 1, selectedSignalIndex);
   };
 
   if (hasSelectedSignal && !samples.empty()) {
@@ -498,31 +527,31 @@ void Canvas::paintEvent(QPaintEvent* event)
          ++sampleIt) {
       const int sampleIndex = static_cast<int>(sampleIt - samples.cbegin());
       if (isSelectedSignalTick(sampleIndex))
-        drawRulerTick(*sampleIt);
+        drawTimeMarker(sampleIt->time, QPen(gridColor), QPen(textColor), false);
     }
   } else {
     for (const Sample& sample : visibleSamples)
-      drawRulerTick(sample);
+      drawTimeMarker(sample.time, QPen(gridColor), QPen(textColor), false);
   }
 
   auto drawGroupSpacer = [&](int y) {
-    painter.fillRect(QRect(0, y, width(), groupHeaderHeight()), palette().base());
+    painter.fillRect(QRect(0, y, width(), groupHeaderHeightPx), palette().base());
     painter.setPen(gridColor);
-    painter.drawLine(0, y + groupHeaderHeight() - 1, width(),
-                     y + groupHeaderHeight() - 1);
+    painter.drawLine(0, y + groupHeaderHeightPx - 1, width(),
+                     y + groupHeaderHeightPx - 1);
   };
 
   if (hasInputGroup(inputSignalCount))
-    drawGroupSpacer(rulerHeight());
+    drawGroupSpacer(rulerHeightPx);
   if (hasOutputGroup(signalNames.size(), inputSignalCount))
-    drawGroupSpacer(yForSignalRow(inputSignalCount) - groupHeaderHeight());
+    drawGroupSpacer(yForSignalRow(inputSignalCount) - groupHeaderHeightPx);
 
   for (int row = 0; row < signalNames.size(); ++row) {
     const int y = yForSignalRow(row);
     if (row == selectedSignalIndex)
-      painter.fillRect(QRect(0, y, width(), rowHeight()), selectedRowColor);
+      painter.fillRect(QRect(0, y, width(), traceRowHeightPx), selectedRowColor);
     painter.setPen(gridColor);
-    painter.drawLine(0, y + rowHeight() - 1, width(), y + rowHeight() - 1);
+    painter.drawLine(0, y + traceRowHeightPx - 1, width(), y + traceRowHeightPx - 1);
   }
 
   const int editSignalIndex =
@@ -541,25 +570,13 @@ void Canvas::paintEvent(QPaintEvent* event)
     const int     y              = yForSignalRow(editSignalIndex);
     const QColor  selectionColor = ThemeEngine::getColor("SILICON_BLUE");
     painter.fillRect(
-        QRect(std::min(x0, x1), y, std::max(2, std::abs(x1 - x0)), rowHeight()),
+        QRect(std::min(x0, x1), y, std::max(2, std::abs(x1 - x0)), traceRowHeightPx),
         selectionColor.lighter(170));
 
-    auto drawSelectionTick = [&](const quint64 time, const int x) {
-      const QString label = QString::number(time);
-      const int     labelWidth =
-          std::max(40, painter.fontMetrics().horizontalAdvance(label) + 8);
-      const int labelX =
-          std::clamp(x - labelWidth / 2, 0, std::max(0, width() - labelWidth));
-
-      painter.setPen(QPen(selectionColor, 2));
-      painter.drawLine(x, painter.fontMetrics().height() + 2, x, height());
-      painter.drawText(QRect(labelX, 1, labelWidth, rulerHeight() - 4),
-                       Qt::AlignHCenter | Qt::AlignTop, label);
-    };
-
-    drawSelectionTick(startTime, x0);
+    const QPen selectionPen(selectionColor, 2);
+    drawTimeMarker(startTime, selectionPen, selectionPen, true);
     if (endTime != startTime)
-      drawSelectionTick(endTime, x1);
+      drawTimeMarker(endTime, selectionPen, selectionPen, true);
   }
 
   if (samples.empty())
@@ -592,16 +609,9 @@ void Canvas::paintEvent(QPaintEvent* event)
 
   if (selectedSampleIndex >= 0 && selectedSampleIndex < static_cast<int>(samples.size())
       && isSelectedSignalTick(selectedSampleIndex)) {
-    const int     x     = xForTime(samples[selectedSampleIndex].time);
-    const QString label = QString::number(samples[selectedSampleIndex].time);
-    const int     labelWidth =
-        std::max(40, painter.fontMetrics().horizontalAdvance(label) + 8);
-    const int labelX = std::max(0, x - labelWidth / 2);
-
-    painter.setPen(QPen(ThemeEngine::getColor("SILICON_BLUE"), 2));
-    painter.drawLine(x, painter.fontMetrics().height() + 2, x, height());
-    painter.drawText(QRect(labelX, 1, labelWidth, rulerHeight() - 4),
-                     Qt::AlignHCenter | Qt::AlignTop, label);
+    const QPen selectionPen(ThemeEngine::getColor("SILICON_BLUE"), 2);
+    drawTimeMarker(samples[static_cast<std::size_t>(selectedSampleIndex)].time,
+                   selectionPen, selectionPen, false);
   }
 }
 
@@ -627,7 +637,7 @@ void Canvas::mouseMoveEvent(QMouseEvent* event)
   const int   mouseX  = event->position().toPoint().x();
 
   const bool hasSelectedSignal =
-      selectedSignalIndex >= 0 && selectedSignalIndex < signalNames.size();
+      normalizedIndex(selectedSignalIndex, signalNames.size()) >= 0;
 
   // Snap to the timestamp where the selected track changes nearest the pointer,
   // matching the ruler ticks; fall back to every timestamp when no track is selected.
@@ -635,8 +645,8 @@ void Canvas::mouseMoveEvent(QMouseEvent* event)
   int closestDistance = std::numeric_limits<int>::max();
   for (int i = 0; i < static_cast<int>(samples.size()); ++i) {
     if (hasSelectedSignal && i > 0
-        && samples[i].values[selectedSignalIndex]
-               == samples[i - 1].values[selectedSignalIndex])
+        && sampleValueAt(i, selectedSignalIndex)
+               == sampleValueAt(i - 1, selectedSignalIndex))
       continue;
     const int distance = std::abs(mouseX - xForTime(samples[i].time));
     if (distance < closestDistance) {
@@ -695,22 +705,14 @@ void Canvas::mouseReleaseEvent(QMouseEvent* event)
 
 int Canvas::yForScalarValue(int row, const BusValue& value) const
 {
-  const int top    = yForSignalRow(row) + 5;
-  const int bottom = yForSignalRow(row) + rowHeight() - 6;
-  const int mid    = std::midpoint(top, bottom);
+  const auto [top, bottom] = traceBounds(yForSignalRow(row));
+  const int mid            = std::midpoint(top, bottom);
 
   if (value == BusValue{State::HIGH})
     return top;
   if (value == BusValue{State::LOW})
     return bottom;
   return mid;
-}
-
-BusValueFormat Canvas::valueFormatForSignal(const int row) const
-{
-  if (row >= 0 && row < static_cast<int>(signalFormats.size()))
-    return signalFormats[static_cast<std::size_t>(row)];
-  return BusValueFormat::Hex;
 }
 
 void Canvas::drawScalar(QPainter& painter, int row, int x0, int x1,
@@ -735,10 +737,9 @@ void Canvas::drawScalarTransition(QPainter& painter, int row, int x,
 void Canvas::drawBus(QPainter& painter, int row, int x0, int x1,
                      const BusValue& value) const
 {
-  const int top    = yForSignalRow(row) + 5;
-  const int bottom = yForSignalRow(row) + rowHeight() - 6;
-  const int mid    = std::midpoint(top, bottom);
-  const int offset = std::min(5, (x1 - x0) / 2);
+  const auto [top, bottom] = traceBounds(yForSignalRow(row));
+  const int mid            = std::midpoint(top, bottom);
+  const int offset         = std::min(5, (x1 - x0) / 2);
 
   painter.setPen(QPen(colorForTraceValue(value), 2));
   painter.drawLine(x0, mid, x0 + offset, top);
@@ -751,7 +752,7 @@ void Canvas::drawBus(QPainter& painter, int row, int x0, int x1,
   if (x1 - x0 > 28) {
     painter.setPen(palette().text().color());
     const QString displayValue =
-        QString::fromStdString(formatValue(value, valueFormatForSignal(row)));
+        QString::fromStdString(formatValue(value, formatForSignal(signalFormats, row)));
     painter.drawText(QRect(x0 + 7, top, x1 - x0 - 14, bottom - top), Qt::AlignCenter,
                      displayValue);
   }
@@ -762,15 +763,27 @@ Viewer::Viewer(QWidget* parent) : QWidget(parent)
   const auto root = new QVBoxLayout(this);
   root->setContentsMargins(4, 4, 4, 4);
 
-  const auto fileToolBar = new QToolBar(this);
-  fileToolBar->setFloatable(false);
-  fileToolBar->setMovable(false);
-  fileToolBar->setToolButtonStyle(Qt::ToolButtonIconOnly);
+  const auto makeToolBar = [this] {
+    const auto toolBar = new QToolBar(this);
+    toolBar->setFloatable(false);
+    toolBar->setMovable(false);
+    toolBar->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    return toolBar;
+  };
+  const auto makeNumberEdit = [this](const int minimum) {
+    const auto edit = new QLineEdit(this);
+    edit->setValidator(new QIntValidator(minimum, std::numeric_limits<int>::max(), edit));
+    edit->setMaximumWidth(96);
+    edit->setAlignment(Qt::AlignRight);
+    return edit;
+  };
 
-  newAct  = new QAction(Icon("file"), tr("&New"), this);
-  openAct = new QAction(Icon("open"), tr("&Open..."), this);
-  saveAct = new QAction(Icon("save"), tr("&Save"), this);
-  editAct = new QAction(Icon("pencil"), tr("Edit Inputs"), this);
+  const auto fileToolBar = makeToolBar();
+
+  const auto newAct  = new QAction(Icon("file"), tr("&New"), this);
+  const auto openAct = new QAction(Icon("open"), tr("&Open..."), this);
+  const auto saveAct = new QAction(Icon("save"), tr("&Save"), this);
+  editAct            = new QAction(Icon("pencil"), tr("Edit Inputs"), this);
   editAct->setCheckable(true);
 
   fileToolBar->addAction(newAct);
@@ -815,31 +828,17 @@ Viewer::Viewer(QWidget* parent) : QWidget(parent)
   labelPane->setFixedWidth(signalListWidthPx);
   root->addWidget(splitter);
 
-  const auto zoomToolBar = new QToolBar(this);
-  zoomToolBar->setFloatable(false);
-  zoomToolBar->setMovable(false);
-  zoomToolBar->setToolButtonStyle(Qt::ToolButtonIconOnly);
+  const auto zoomToolBar = makeToolBar();
 
-  zoomOutAct = new QAction(Icon("minus"), tr("Zoom Out"), this);
-  zoomInAct  = new QAction(Icon("plus"), tr("Zoom In"), this);
+  const auto zoomOutAct = new QAction(Icon("minus"), tr("Zoom Out"), this);
+  const auto zoomInAct  = new QAction(Icon("plus"), tr("Zoom In"), this);
 
   zoomToolBar->addAction(zoomOutAct);
   zoomToolBar->addAction(zoomInAct);
 
-  durationEdit = new QLineEdit(this);
-  durationEdit->setValidator(
-      new QIntValidator(1, std::numeric_limits<int>::max(), durationEdit));
-  durationEdit->setMaximumWidth(96);
-  durationEdit->setAlignment(Qt::AlignRight);
-  startEdit = new QLineEdit(this);
-  startEdit->setValidator(
-      new QIntValidator(0, std::numeric_limits<int>::max(), startEdit));
-  startEdit->setMaximumWidth(96);
-  startEdit->setAlignment(Qt::AlignRight);
-  endEdit = new QLineEdit(this);
-  endEdit->setValidator(new QIntValidator(0, std::numeric_limits<int>::max(), endEdit));
-  endEdit->setMaximumWidth(96);
-  endEdit->setAlignment(Qt::AlignRight);
+  durationEdit = makeNumberEdit(1);
+  startEdit    = makeNumberEdit(0);
+  endEdit      = makeNumberEdit(0);
   startEdit->installEventFilter(this);
   endEdit->installEventFilter(this);
 
@@ -861,8 +860,7 @@ Viewer::Viewer(QWidget* parent) : QWidget(parent)
   // Limit relayout and repaint work to roughly one frame when snapshots arrive rapidly.
   refreshTimer->setInterval(16);
   connect(refreshTimer, &QTimer::timeout, this, [this]() {
-    refreshSignalList();
-    refreshCanvas();
+    refreshViews();
     if (keepScrolledToEnd)
       scrollArea->horizontalScrollBar()->setValue(
           scrollArea->horizontalScrollBar()->maximum());
@@ -879,28 +877,13 @@ Viewer::Viewer(QWidget* parent) : QWidget(parent)
     pixelsPerTick /= 1.25;
     refreshCanvas();
   });
-  connect(scrollArea->verticalScrollBar(), &QScrollBar::valueChanged, this,
-          [this](int value) {
-            if (syncingScrollBars)
-              return;
-
-            syncingScrollBars = true;
-            labelScrollArea->verticalScrollBar()->setValue(value);
-            syncingScrollBars = false;
-          });
-  connect(labelScrollArea->verticalScrollBar(), &QScrollBar::valueChanged, this,
-          [this](int value) {
-            if (syncingScrollBars)
-              return;
-
-            syncingScrollBars = true;
-            scrollArea->verticalScrollBar()->setValue(value);
-            syncingScrollBars = false;
-          });
+  connect(scrollArea->verticalScrollBar(), &QScrollBar::valueChanged,
+          labelScrollArea->verticalScrollBar(), &QScrollBar::setValue);
+  connect(labelScrollArea->verticalScrollBar(), &QScrollBar::valueChanged,
+          scrollArea->verticalScrollBar(), &QScrollBar::setValue);
   connect(canvas, &Canvas::timestampHovered, this, [this](int sampleIndex) {
     selectedSampleIndex = sampleIndex;
-    refreshSignalList();
-    refreshCanvas();
+    refreshViews();
   });
   connect(signalList, &SignalListWidget::signalSelected, this,
           &Viewer::setSelectedSignalIndex);
@@ -927,9 +910,8 @@ Viewer::Viewer(QWidget* parent) : QWidget(parent)
     editDuration        = next;
     updateDurationField();
     setEditIntervalFields(selectedEditStart, selectedEditEnd);
-    rebuildEditTrace();
-    refreshSignalList();
-    refreshCanvas();
+    rebuildEditableTrace(trace, editDuration);
+    refreshViews();
   });
   connect(startEdit, &QLineEdit::returnPressed, this,
           &Viewer::promptSelectedEditIntervalValue);
@@ -956,13 +938,12 @@ void Viewer::resetTrace(const QStringList& signalNames, int inputCount,
   signalFormats.assign(trace.signalDefinitions.size(),
                        SILICON::core::BusValueFormat::Hex);
   if (editMode)
-    rebuildEditTrace();
+    rebuildEditableTrace(trace, editDuration);
 
   signalList->setTrace(visibleNames(), trace.inputCount);
   signalList->setSelectedSignalIndex(selectedSignalIndex);
   updateDurationField();
-  refreshSignalList();
-  refreshCanvas();
+  refreshViews();
 }
 
 bool Viewer::eventFilter(QObject* watched, QEvent* event)
@@ -1017,8 +998,7 @@ void Viewer::clearTrace()
   selectedSampleIndex = -1;
   selectedSignalIndex = trace.signalDefinitions.empty() ? -1 : 0;
   updateDurationField();
-  refreshSignalList();
-  refreshCanvas();
+  refreshViews();
 }
 
 void Viewer::setEditMode(const bool enabled)
@@ -1038,10 +1018,10 @@ void Viewer::setEditMode(const bool enabled)
   selectedSignalIndex = trace.inputCount > 0 ? 0 : -1;
   if (editMode) {
     setEditIntervalFields(0, std::min<quint64>(1, editDuration));
-    rebuildEditTrace();
+    rebuildEditableTrace(trace, editDuration);
   } else {
     preciseIntervalEditing        = false;
-    const auto committedSnapshots = editedInputSnapshots();
+    const auto committedSnapshots = editedInputSamples(trace);
     const auto committedDuration  = editDuration;
     emit       editModeChanged(false);
     emit       editTraceCommitted(committedDuration, committedSnapshots);
@@ -1052,8 +1032,7 @@ void Viewer::setEditMode(const bool enabled)
   signalList->setTrace(visibleNames(), trace.inputCount);
   signalList->setSelectedSignalIndex(selectedSignalIndex);
   updateEditControls();
-  refreshSignalList();
-  refreshCanvas();
+  refreshViews();
   emit editModeChanged(true);
 }
 
@@ -1078,9 +1057,10 @@ void Viewer::refreshCanvas()
   canvas->setEditSelectionVisible(preciseIntervalEditing);
 }
 
-void Viewer::rebuildEditTrace()
+void Viewer::refreshViews()
 {
-  rebuildEditableTrace(trace, editDuration);
+  refreshSignalList();
+  refreshCanvas();
 }
 
 void Viewer::applyEditInterval(int signalIndex, quint64 startTime, quint64 endTime,
@@ -1095,14 +1075,14 @@ void Viewer::applyEditInterval(int signalIndex, quint64 startTime, quint64 endTi
       || std::ranges::contains(parsed.value, State::ERROR))
     return;
 
-  const auto resized = resizeParsedValue(parsed, signalWidth(signalIndex));
+  const auto resized =
+      resizeParsedValue(parsed, SILICON::waveform::signalWidth(trace, signalIndex));
   if (!resized)
     return;
 
   SILICON::waveform::applyEditInterval(trace, editDuration, signalIndex, startTime,
                                        endTime, *resized);
-  refreshSignalList();
-  refreshCanvas();
+  refreshViews();
 }
 
 void Viewer::promptEditIntervalValue(int signalIndex, quint64 startTime, quint64 endTime)
@@ -1112,7 +1092,7 @@ void Viewer::promptEditIntervalValue(int signalIndex, quint64 startTime, quint64
 
   setEditIntervalFields(startTime, endTime);
 
-  const std::size_t      width = signalWidth(signalIndex);
+  const std::size_t      width = SILICON::waveform::signalWidth(trace, signalIndex);
   const QPointer<Viewer> safeThis(this);
   if (width <= 1) {
     SILICON::ui::inputDialog::getItem(
@@ -1161,13 +1141,10 @@ void Viewer::promptSelectedEditIntervalValue()
 
 void Viewer::setEditIntervalFields(quint64 startTime, quint64 endTime)
 {
-  startTime = std::min(startTime, editDuration);
-  endTime   = std::min(endTime, editDuration);
-  if (endTime < startTime)
-    std::swap(startTime, endTime);
-
-  selectedEditStart = startTime;
-  selectedEditEnd   = endTime;
+  const auto [normalizedStart, normalizedEnd] =
+      normalizedInterval(startTime, endTime, editDuration);
+  selectedEditStart = normalizedStart;
+  selectedEditEnd   = normalizedEnd;
 
   const QSignalBlocker startBlocker(startEdit);
   const QSignalBlocker endBlocker(endEdit);
@@ -1195,11 +1172,6 @@ void Viewer::updateDurationField()
   durationEdit->setText(QString::number(displayedDuration));
 }
 
-std::vector<Sample> Viewer::editedInputSnapshots() const
-{
-  return editedInputSamples(trace);
-}
-
 void Viewer::updateEditControls()
 {
   const QSignalBlocker blocker(editAct);
@@ -1220,12 +1192,15 @@ void Viewer::scheduleRefresh()
     refreshTimer->start();
 }
 
+int Viewer::visibleSignalCount() const
+{
+  const int signalCount = static_cast<int>(trace.signalDefinitions.size());
+  return editMode ? std::min(trace.inputCount, signalCount) : signalCount;
+}
+
 QStringList Viewer::visibleNames() const
 {
-  const auto visibleCount =
-      editMode ? std::min<int>(trace.inputCount,
-                               static_cast<int>(trace.signalDefinitions.size()))
-               : static_cast<int>(trace.signalDefinitions.size());
+  const int visibleCount = visibleSignalCount();
 
   QStringList result;
   result.reserve(visibleCount);
@@ -1237,57 +1212,44 @@ QStringList Viewer::visibleNames() const
 
 QStringList Viewer::displayedValues() const
 {
-  std::vector<BusValue> rawValues;
+  const std::vector<BusValue>* rawValues = nullptr;
   if (selectedSampleIndex >= 0
       && selectedSampleIndex < static_cast<int>(trace.samples.size()))
-    rawValues = trace.samples[static_cast<std::size_t>(selectedSampleIndex)].values;
+    rawValues = &trace.samples[static_cast<std::size_t>(selectedSampleIndex)].values;
   else if (!trace.samples.empty())
-    rawValues = trace.samples.back().values;
+    rawValues = &trace.samples.back().values;
   else
     return {};
 
   QStringList values;
-  values.reserve(static_cast<qsizetype>(rawValues.size()));
-  for (int i = 0; i < static_cast<int>(rawValues.size()); ++i)
-    values.push_back(displayValue(i, rawValues[static_cast<std::size_t>(i)]));
+  values.reserve(static_cast<qsizetype>(rawValues->size()));
+  for (int i = 0; i < static_cast<int>(rawValues->size()); ++i)
+    values.push_back(displayValue(i, (*rawValues)[static_cast<std::size_t>(i)]));
   return values;
-}
-
-std::size_t Viewer::signalWidth(const int signalIndex) const
-{
-  return SILICON::waveform::signalWidth(trace, signalIndex);
 }
 
 QString Viewer::displayValue(const int signalIndex, const BusValue& value) const
 {
-  if (signalWidth(signalIndex) <= 1)
+  if (SILICON::waveform::signalWidth(trace, signalIndex) <= 1)
     return QString::fromStdString(SILICON::core::formatValue(value, BusValueFormat::Raw));
 
-  const auto format =
-      signalIndex >= 0 && signalIndex < static_cast<int>(signalFormats.size())
-          ? signalFormats[static_cast<std::size_t>(signalIndex)]
-          : SILICON::core::BusValueFormat::Hex;
-  return QString::fromStdString(SILICON::core::formatValue(value, format));
+  return QString::fromStdString(
+      SILICON::core::formatValue(value, formatForSignal(signalFormats, signalIndex)));
 }
 
 void Viewer::setSelectedSignalIndex(const int signalIndex)
 {
-  const int visibleCount =
-      editMode ? std::min<int>(trace.inputCount,
-                               static_cast<int>(trace.signalDefinitions.size()))
-               : static_cast<int>(trace.signalDefinitions.size());
-  const int nextIndex = signalIndex >= 0 && signalIndex < visibleCount ? signalIndex : -1;
+  const int nextIndex = normalizedIndex(signalIndex, visibleSignalCount());
   if (selectedSignalIndex == nextIndex)
     return;
 
   selectedSignalIndex = nextIndex;
-  refreshSignalList();
-  refreshCanvas();
+  refreshViews();
 }
 
 void Viewer::showSignalFormatMenu(const int signalIndex, QPoint globalPosition)
 {
-  if (signalWidth(signalIndex) <= 1)
+  if (SILICON::waveform::signalWidth(trace, signalIndex) <= 1)
     return;
 
   setSelectedSignalIndex(signalIndex);
@@ -1303,23 +1265,24 @@ void Viewer::showSignalFormatMenu(const int signalIndex, QPoint globalPosition)
   auto addFormatAction = [&](const QString& label, SILICON::core::BusValueFormat format) {
     QAction* action = menu->addAction(label);
     action->setCheckable(true);
-    action->setChecked(signalIndex >= 0
-                       && signalIndex < static_cast<int>(signalFormats.size())
-                       && signalFormats[static_cast<std::size_t>(signalIndex)] == format);
+    action->setChecked(formatForSignal(signalFormats, signalIndex) == format);
     connect(action, &QAction::triggered, this, [this, signalIndex, format]() {
-      if (signalIndex < 0 || signalIndex >= static_cast<int>(signalFormats.size()))
+      if (normalizedIndex(signalIndex, static_cast<int>(signalFormats.size())) < 0)
         return;
       signalFormats[static_cast<std::size_t>(signalIndex)] = format;
-      refreshSignalList();
-      refreshCanvas();
+      refreshViews();
     });
   };
 
-  addFormatAction(tr("SIGNED"), SILICON::core::BusValueFormat::Signed);
-  addFormatAction(tr("UNSIGNED"), SILICON::core::BusValueFormat::Unsigned);
-  addFormatAction(tr("HEX"), SILICON::core::BusValueFormat::Hex);
-  addFormatAction(tr("OCT"), SILICON::core::BusValueFormat::Oct);
-  addFormatAction(tr("BIN"), SILICON::core::BusValueFormat::Bin);
+  const std::array formats{
+      std::pair{tr("SIGNED"), BusValueFormat::Signed},
+      std::pair{tr("UNSIGNED"), BusValueFormat::Unsigned},
+      std::pair{tr("HEX"), BusValueFormat::Hex},
+      std::pair{tr("OCT"), BusValueFormat::Oct},
+      std::pair{tr("BIN"), BusValueFormat::Bin},
+  };
+  for (const auto& [label, format] : formats)
+    addFormatAction(label, format);
 #ifdef __EMSCRIPTEN__
   menu->popup(globalPosition);
 #else

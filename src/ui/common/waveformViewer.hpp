@@ -31,7 +31,6 @@ class QAction;
 class QLineEdit;
 class QMouseEvent;
 
-
 namespace SILICON::ui::waveform {
 using namespace SILICON::waveform;
 
@@ -187,35 +186,30 @@ private:
    * The viewer owns the canvas and its sample vector, so this remains valid for the
    * canvas lifetime and avoids copying the complete trace on every refresh.
    */
-  const std::vector<Sample>*         traceSamples             = nullptr;
-  double                             pixelsPerTick            = 12.0;
-  int                                inputSignalCount         = 0;
-  int                                selectedSampleIndex      = -1;
-  int                                selectedSignalIndex      = -1;
-  bool                               editMode                 = false;
-  quint64                            editDuration             = 20;
-  int                                editSelectionSignalIndex = -1;
-  quint64                            editSelectionStartTime   = 0;
-  quint64                            editSelectionEndTime     = 1;
-  bool                               editSelectionVisible     = false;
-  int                                editDragSignalIndex      = -1;
-  quint64                            editDragStartTime        = 0;
-  quint64                            editDragEndTime          = 0;
+  const std::vector<Sample>*                 traceSamples             = nullptr;
+  double                                     pixelsPerTick            = 12.0;
+  int                                        inputSignalCount         = 0;
+  int                                        selectedSampleIndex      = -1;
+  int                                        selectedSignalIndex      = -1;
+  bool                                       editMode                 = false;
+  quint64                                    editDuration             = 20;
+  int                                        editSelectionSignalIndex = -1;
+  quint64                                    editSelectionStartTime   = 0;
+  quint64                                    editSelectionEndTime     = 1;
+  bool                                       editSelectionVisible     = false;
+  int                                        editDragSignalIndex      = -1;
+  quint64                                    editDragStartTime        = 0;
+  quint64                                    editDragEndTime          = 0;
   std::vector<SILICON::core::BusValueFormat> signalFormats;
 
-  [[nodiscard]] int     rowHeight() const { return 28; }
-  [[nodiscard]] int     rulerHeight() const { return 24; }
-  [[nodiscard]] int     groupHeaderHeight() const { return 22; }
   [[nodiscard]] quint64 endTime() const;
   [[nodiscard]] int     xForTime(quint64 time) const;
   /** @brief Converts an x-coordinate into a clamped simulation timestamp. */
-  [[nodiscard]] quint64 timeForX(int x) const;
-  [[nodiscard]] int     groupHeaderCount() const;
-  [[nodiscard]] int     groupHeaderCountBeforeSignal(int row) const;
-  [[nodiscard]] int     yForSignalRow(int row) const;
-  [[nodiscard]] int     signalRowAt(QPoint position) const;
-  [[nodiscard]] int     yForScalarValue(int row, const core::BusValue& value) const;
-  [[nodiscard]] SILICON::core::BusValueFormat valueFormatForSignal(int row) const;
+  [[nodiscard]] quint64        timeForX(int x) const;
+  [[nodiscard]] int            yForSignalRow(int row) const;
+  [[nodiscard]] int            signalRowAt(QPoint position) const;
+  [[nodiscard]] core::BusValue sampleValueAt(int sampleIndex, int row) const;
+  [[nodiscard]] int yForScalarValue(int row, const core::BusValue& value) const;
   /** @brief Recomputes the scrollable canvas dimensions from trace extent and zoom. */
   void updateCanvasSize();
 
@@ -284,35 +278,28 @@ signals:
    * @param duration Total edited waveform duration
    * @param inputSnapshots Edited input-only snapshots
    */
-  void editTraceCommitted(qulonglong                         duration,
-                          std::vector<Sample> inputSnapshots);
+  void editTraceCommitted(qulonglong duration, std::vector<Sample> inputSnapshots);
 
 private:
   SignalListWidget* signalList;
-  Canvas*   canvas;
+  Canvas*           canvas;
   QScrollArea*      labelScrollArea;
   QScrollArea*      scrollArea;
-  QAction*          newAct;
-  QAction*          openAct;
-  QAction*          saveAct;
   QAction*          editAct;
-  QAction*          zoomInAct;
-  QAction*          zoomOutAct;
   QLineEdit*        durationEdit;
   QLineEdit*        startEdit;
   QLineEdit*        endEdit;
 
-  Trace               trace;
-  int                                selectedSampleIndex = -1;
-  int                                selectedSignalIndex = -1;
-  double                             pixelsPerTick       = 12.0;
+  Trace                                      trace;
+  int                                        selectedSampleIndex = -1;
+  int                                        selectedSignalIndex = -1;
+  double                                     pixelsPerTick       = 12.0;
   std::vector<SILICON::core::BusValueFormat> signalFormats;
-  bool                               syncingScrollBars      = false;
-  bool                               editMode               = false;
-  quint64                            editDuration           = 20;
-  quint64                            selectedEditStart      = 0;
-  quint64                            selectedEditEnd        = 1;
-  bool                               preciseIntervalEditing = false;
+  bool                                       editMode               = false;
+  quint64                                    editDuration           = 20;
+  quint64                                    selectedEditStart      = 0;
+  quint64                                    selectedEditEnd        = 1;
+  bool                                       preciseIntervalEditing = false;
   /** @brief Preserves tail-following behavior across a deferred refresh. */
   bool keepScrolledToEnd = false;
 
@@ -325,8 +312,8 @@ private:
   /** @brief Pushes current trace state into the waveform canvas. */
   void refreshCanvas();
 
-  /** @brief Replaces trace samples with an input-only editable default waveform. */
-  void rebuildEditTrace();
+  /** @brief Refreshes both synchronized waveform views. */
+  void refreshViews();
 
   /**
    * @brief Applies a raw bit value to one input signal over a time interval.
@@ -362,21 +349,19 @@ private:
   /** @brief Synchronizes the duration field with edit mode or the latest trace time. */
   void updateDurationField();
 
-  /** @brief Converts the current editable samples into signal payload form. */
-  [[nodiscard]] std::vector<Sample> editedInputSnapshots() const;
-
   /** @brief Synchronizes edit controls with the current mode and duration. */
   void updateEditControls();
   /** @brief Schedules a coalesced waveform refresh if one is not already pending. */
   void scheduleRefresh();
+  /** @brief Returns the number of signals currently visible in the viewer. */
+  [[nodiscard]] int visibleSignalCount() const;
   /** @brief Returns the signal names currently visible in the viewer. */
   [[nodiscard]] QStringList visibleNames() const;
   [[nodiscard]] QStringList displayedValues() const;
-  [[nodiscard]] std::size_t signalWidth(int signalIndex) const;
   [[nodiscard]] QString displayValue(int signalIndex, const core::BusValue& value) const;
-  void                      setSelectedSignalIndex(int signalIndex);
-  void                      showSignalFormatMenu(int signalIndex, QPoint globalPosition);
-  void                      saveTrace();
+  void                  setSelectedSignalIndex(int signalIndex);
+  void                  showSignalFormatMenu(int signalIndex, QPoint globalPosition);
+  void                  saveTrace();
 };
 
 }  // namespace SILICON::ui::waveform
