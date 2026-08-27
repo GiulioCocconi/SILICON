@@ -28,8 +28,7 @@ TEST(NumFormattingTest, FormatsKnownValues)
   EXPECT_EQ(formatValue(value, BusValueFormat::Hex), "0xA");
   EXPECT_EQ(formatValue(value, BusValueFormat::Oct), "0o12");
   EXPECT_EQ(formatValue(value, BusValueFormat::Bin), "0b1010");
-  EXPECT_EQ(formatValue(busValueFromInteger(10, 8), BusValueFormat::Hex, 2),
-            "0x0A");
+  EXPECT_EQ(formatValue(busValueFromInteger(10, 8), BusValueFormat::Hex, 2), "0x0A");
 }
 
 TEST(NumFormattingTest, MaxValueHasNoMachineIntegerWidthLimit)
@@ -65,8 +64,7 @@ TEST(NumFormattingTest, ParsesFourStateRawValuesAsMsbFirst)
 
   const auto [value, format] = valueFromStr("10xE");
   EXPECT_EQ(format, BusValueFormat::Raw);
-  EXPECT_EQ(value, BusValue({State::ERROR, State::UNKNOWN, State::LOW,
-                             State::HIGH}));
+  EXPECT_EQ(value, BusValue({State::ERROR, State::UNKNOWN, State::LOW, State::HIGH}));
   EXPECT_EQ(formatValue(value, BusValueFormat::Raw), "10XE");
   EXPECT_EQ(formatValue(value, BusValueFormat::Hex), "10XE");
 }
@@ -82,12 +80,9 @@ TEST(NumFormattingTest, RejectsInvalidInput)
 
 TEST(NumFormattingTest, SignedUsesTwosComplementWidth)
 {
-  EXPECT_EQ(formatValue(busValueFromBits("1111"), BusValueFormat::Signed),
-            "-1");
-  EXPECT_EQ(formatValue(busValueFromBits("1000"), BusValueFormat::Signed),
-            "-8");
-  EXPECT_EQ(formatValue(busValueFromBits("0111"), BusValueFormat::Signed),
-            "7");
+  EXPECT_EQ(formatValue(busValueFromBits("1111"), BusValueFormat::Signed), "-1");
+  EXPECT_EQ(formatValue(busValueFromBits("1000"), BusValueFormat::Signed), "-8");
+  EXPECT_EQ(formatValue(busValueFromBits("0111"), BusValueFormat::Signed), "7");
 
   const auto [negative, format] = valueFromStr("-42");
   EXPECT_EQ(format, BusValueFormat::Signed);
@@ -116,13 +111,10 @@ TEST(NumFormattingTest, ResizesParsedSignedValuesWithTwosComplementSemantics)
 
 TEST(NumFormattingTest, ResizesUnsignedAndRawValuesWithZeroExtension)
 {
-  EXPECT_EQ(resizeParsedValue(valueFromStr("255"), 8),
-            busValueFromBits("11111111"));
+  EXPECT_EQ(resizeParsedValue(valueFromStr("255"), 8), busValueFromBits("11111111"));
   EXPECT_FALSE(resizeParsedValue(valueFromStr("256"), 8));
-  EXPECT_EQ(resizeParsedValue(valueFromStr("0b101"), 8),
-            busValueFromBits("00000101"));
-  EXPECT_EQ(resizeParsedValue(valueFromStr("X"), 8),
-            BusValue(8, State::UNKNOWN));
+  EXPECT_EQ(resizeParsedValue(valueFromStr("0b101"), 8), busValueFromBits("00000101"));
+  EXPECT_EQ(resizeParsedValue(valueFromStr("X"), 8), BusValue(8, State::UNKNOWN));
 
   const auto wide = valueFromStr("36893488147419103231");
   EXPECT_TRUE(resizeParsedValue(wide, 65));
@@ -137,11 +129,9 @@ TEST(NumFormattingTest, NumericFitChecksAreSeparateFromBitVectorNormalization)
   EXPECT_TRUE(SILICON::wireUtils::fitsSigned(busValueFromBits("11000"), 4));
   EXPECT_FALSE(SILICON::wireUtils::fitsSigned(busValueFromBits("10111"), 4));
 
-  EXPECT_EQ(SILICON::wireUtils::normalizeBusValue(
-                busValueFromBits("100001"), 4),
+  EXPECT_EQ(SILICON::wireUtils::normalizeBusValue(busValueFromBits("100001"), 4),
             busValueFromBits("0001"));
-  EXPECT_EQ(SILICON::wireUtils::normalizeBusValue(
-                busValueFromBits("1"), 4, State::HIGH),
+  EXPECT_EQ(SILICON::wireUtils::normalizeBusValue(busValueFromBits("1"), 4, State::HIGH),
             busValueFromBits("1111"));
 }
 
@@ -149,9 +139,9 @@ TEST(NumFormattingTest, SupportsValuesWiderThanMachineIntegers)
 {
   EXPECT_EQ(formatValue(BusValue(65, State::HIGH), BusValueFormat::Unsigned),
             "36893488147419103231");
-  EXPECT_EQ(formatValue(busValueFromBits("1" + std::string(64, '0')),
-                        BusValueFormat::Signed),
-            "-18446744073709551616");
+  EXPECT_EQ(
+      formatValue(busValueFromBits("1" + std::string(64, '0')), BusValueFormat::Signed),
+      "-18446744073709551616");
 
   const auto [wide, format] = valueFromStr("36893488147419103231");
   EXPECT_EQ(format, BusValueFormat::Unsigned);

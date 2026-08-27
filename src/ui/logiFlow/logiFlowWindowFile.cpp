@@ -497,8 +497,8 @@ void LogiFlowWindow::confirmSaveIfDirty(std::function<void()> continuation)
       this, tr("Unsaved Changes"),
       tr("The current project has unsaved changes. Do you want to save them?"),
       tr("Save"), tr("Discard"),
-      [this, continuation = std::move(continuation)](
-          const SILICON::ui::inputDialog::Choice choice) {
+      [this, continuation =
+                 std::move(continuation)](const SILICON::ui::inputDialog::Choice choice) {
         if (choice == SILICON::ui::inputDialog::Choice::Cancel)
           return;
         if (choice == SILICON::ui::inputDialog::Choice::Primary && !save())

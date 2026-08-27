@@ -98,9 +98,9 @@ bool busValueOverflowsWidth(const BusValue& value, const std::size_t width)
 bool fitsUnsigned(const BusValue& value, const std::size_t width)
 {
   return value.size() <= width
-         || std::ranges::all_of(
-             value.begin() + static_cast<std::ptrdiff_t>(width), value.end(),
-             [](const State state) { return state == State::LOW; });
+         || std::ranges::all_of(value.begin() + static_cast<std::ptrdiff_t>(width),
+                                value.end(),
+                                [](const State state) { return state == State::LOW; });
 }
 
 bool fitsSigned(const BusValue& value, const std::size_t width)
@@ -114,9 +114,9 @@ bool fitsSigned(const BusValue& value, const std::size_t width)
   if (!isKnownBinary(sign))
     return false;
 
-  return std::ranges::all_of(
-      value.begin() + static_cast<std::ptrdiff_t>(width), value.end(),
-      [sign](const State state) { return state == sign; });
+  return std::ranges::all_of(value.begin() + static_cast<std::ptrdiff_t>(width),
+                             value.end(),
+                             [sign](const State state) { return state == sign; });
 }
 
 BusValue normalizeBusValue(const BusValue& value, const std::size_t width,
@@ -259,7 +259,7 @@ BusValue operator+(const BusValue& a, const BusValue& b)
     return value;
   };
 
-  BusValue res = zeroExtend(a);
+  BusValue       res  = zeroExtend(a);
   const BusValue extB = zeroExtend(b);
 
   auto carry = State::LOW;
@@ -268,7 +268,7 @@ BusValue operator+(const BusValue& a, const BusValue& b)
     const State valA = s;
     const State valB = extB[idx];
 
-    s = valA ^ valB ^ carry;
+    s     = valA ^ valB ^ carry;
     carry = (valA && valB) || (carry && (valA ^ valB));
   }
 
@@ -278,14 +278,14 @@ BusValue operator+(const BusValue& a, const BusValue& b)
 BusValue twosComplement(const BusValue& n)
 {
   BusValue res = n | std::views::transform([](const State s) { return !s; })
-                   | std::ranges::to<BusValue>();
+                 | std::ranges::to<BusValue>();
 
   State carry = State::HIGH;
 
   for (State& s : res) {
     const State currentBit = s;
 
-    s = currentBit ^ carry;
+    s     = currentBit ^ carry;
     carry = currentBit && carry;
   }
 
@@ -371,8 +371,9 @@ bool Bus::setCurrentValue(const BusValue& value, const Component_weakPtr& reques
 BusValue Bus::getCurrentValue() const
 {
   return this->busData | std::views::transform([](const auto& wire) {
-    return Wire::safeGetCurrentState(wire);
-  }) | std::ranges::to<BusValue>();
+           return Wire::safeGetCurrentState(wire);
+         })
+         | std::ranges::to<BusValue>();
 }
 
 bool Bus::isInErrorState() const

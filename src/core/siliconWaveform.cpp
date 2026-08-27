@@ -86,7 +86,9 @@ void appendSnapshots(Trace& trace, std::span<const Sample> snapshots)
 }
 
 void clearSamples(Trace& trace)
-{ trace.samples.clear(); }
+{
+  trace.samples.clear();
+}
 
 std::size_t signalWidth(const Trace& trace, const int signalIndex)
 {
@@ -171,7 +173,9 @@ void applyEditInterval(Trace& trace, uint64_t duration, int signalIndex,
 }
 
 std::vector<Sample> editedInputSamples(const Trace& trace)
-{ return trace.samples; }
+{
+  return trace.samples;
+}
 
 }  // namespace SILICON::waveform
 
@@ -180,7 +184,9 @@ namespace SILICON::waveform::fst {
 using namespace SILICON::waveform;
 
 void writeTrace(std::string_view fileName, const Trace& trace)
-{ writeTrace(fileName, trace, {.topScopeName = "Waveform"}); }
+{
+  writeTrace(fileName, trace, {.topScopeName = "Waveform"});
+}
 
 void writeTrace(std::string_view fileName, const Trace& trace,
                 TraceWriter::Options options)
@@ -199,10 +205,10 @@ void writeTrace(std::string_view fileName, const Trace& trace,
   TraceWriter writer(fileName, traceSignals, std::move(options));
 
   for (const auto& [time, values] : trace.samples) {
-    const auto strValues =
-        values | std::views::transform([](const auto& el) {
-          return core::formatValue(el, BusValueFormat::Raw);
-        }) | std::ranges::to<std::vector<std::string>>();
+    const auto strValues = values | std::views::transform([](const auto& el) {
+                             return core::formatValue(el, BusValueFormat::Raw);
+                           })
+                           | std::ranges::to<std::vector<std::string>>();
     writer.emitSnapshot(time, strValues);
   }
   writer.flush();

@@ -844,7 +844,7 @@ Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry
           continue;
         }
 
-        const auto id = wireJson.get<uint64_t>();
+        const auto id   = wireJson.get<uint64_t>();
         auto&      wire = wireMap[id];
 
         if (!wire)
@@ -859,10 +859,8 @@ Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry
     return buses;
   };
 
-  const auto applyProperty = [](const Component_ptr& component,
-                                const std::string&   key,
-                                const nlohmann::json& value,
-                                bool                  busValue) {
+  const auto applyProperty = [](const Component_ptr& component, const std::string& key,
+                                const nlohmann::json& value, bool busValue) {
     const auto current = component->getProperty(key);
     if (!current || std::holds_alternative<BusValue>(*current) != busValue)
       return;
@@ -872,8 +870,7 @@ Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry
         throw std::runtime_error(
             std::format("BusValue property '{}' must be a string", key));
 
-      component->setProperty(
-          key, busValueFromBits(value.get_ref<const std::string&>()));
+      component->setProperty(key, busValueFromBits(value.get_ref<const std::string&>()));
       return;
     }
 
@@ -895,7 +892,7 @@ Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry
       if (typeIt == compJson.end())
         continue;
 
-      const auto type = typeIt->get<std::string>();
+      const auto type      = typeIt->get<std::string>();
       auto       component = reg.create(type);
 
       if (!component) {
@@ -915,21 +912,18 @@ Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry
           applyProperty(component, key, value, true);
       }
 
-      const auto deserializeInterface =
-          [&](std::string_view name, const std::vector<Bus>& current) {
-            const auto it = compJson.find(name);
-            if (it == compJson.end() || !it->is_array())
-              return current;
+      const auto deserializeInterface = [&](std::string_view        name,
+                                            const std::vector<Bus>& current) {
+        const auto it = compJson.find(name);
+        if (it == compJson.end() || !it->is_array())
+          return current;
 
-            auto buses = deserializeBusList(*it);
-            return reconcileInterface ? reconcileBuses(current, buses)
-                                      : std::move(buses);
-          };
+        auto buses = deserializeBusList(*it);
+        return reconcileInterface ? reconcileBuses(current, buses) : std::move(buses);
+      };
 
-      component->setInputs(
-          deserializeInterface("inputs", component->getInputs()));
-      component->setOutputs(
-          deserializeInterface("outputs", component->getOutputs()));
+      component->setInputs(deserializeInterface("inputs", component->getInputs()));
+      component->setOutputs(deserializeInterface("outputs", component->getOutputs()));
 
       /* --- CRITICAL ORDERING STEP ------------------------------------------------------
        * Boost.Graph (using boost::vecS) assigns VertexDescriptors strictly as sequential
@@ -947,10 +941,9 @@ Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry
     }
   }
 
-  std::ranges::sort(parsedComponents,
-                    [](const auto& lhs, const auto& rhs) {
-                      return lhs.first < rhs.first;
-                    });
+  std::ranges::sort(parsedComponents, [](const auto& lhs, const auto& rhs) {
+    return lhs.first < rhs.first;
+  });
 
   Circuit result;
   result.ownedComponents.reserve(parsedComponents.size());
@@ -962,19 +955,16 @@ Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry
   }
 
   // Rebuild the edges for the correctly-aligned vertices
-  for (const auto vertex :
-       boost::make_iterator_range(boost::vertices(result.graph))) {
+  for (const auto vertex : boost::make_iterator_range(boost::vertices(result.graph))) {
     result.rebuildEdges(vertex);
   }
 
-  result.ownedWires =
-      wireMap | std::views::values | std::ranges::to<std::vector>();
+  result.ownedWires = wireMap | std::views::values | std::ranges::to<std::vector>();
 
   if (const auto it = j.find("name"); it != j.end() && it->is_string())
     result.name = it->get<std::string>();
 
-  if (const auto it = j.find("description");
-      it != j.end() && it->is_string()) {
+  if (const auto it = j.find("description"); it != j.end() && it->is_string()) {
     result.description = it->get<std::string>();
   }
 

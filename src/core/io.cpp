@@ -51,19 +51,19 @@ namespace {
                       static_cast<int>(std::numeric_limits<unsigned short>::max()));
   }
 
-  [[nodiscard]] BusValue normalizedEditableValue(const BusValue& value,
+  [[nodiscard]] BusValue normalizedEditableValue(const BusValue&   value,
                                                  const std::size_t width,
-                                                 const bool fillScalarUnknown)
+                                                 const bool        fillScalarUnknown)
   {
     if (value.empty())
       throw std::invalid_argument("Bus value must not be empty");
     if (std::ranges::contains(value, State::ERROR))
       throw std::invalid_argument("State::ERROR cannot be used as an editable value");
 
-    const State extension = fillScalarUnknown && value.size() == 1
-                                    && value.front() == State::UNKNOWN
-                                ? State::UNKNOWN
-                                : State::LOW;
+    const State extension =
+        fillScalarUnknown && value.size() == 1 && value.front() == State::UNKNOWN
+            ? State::UNKNOWN
+            : State::LOW;
     return SILICON::wireUtils::normalizeBusValue(value, width, extension);
   }
 
@@ -84,8 +84,7 @@ ConstantComponent::ConstantComponent(Wire_ptr output, BusValue value)
 {
 }
 
-ConstantComponent::ConstantComponent(Bus output, BusValue value)
-  : ConstantComponent()
+ConstantComponent::ConstantComponent(Bus output, BusValue value) : ConstantComponent()
 {
   if (output.size() == 0)
     throw std::invalid_argument("Constant output bus must not be empty");
@@ -109,10 +108,10 @@ int ConstantComponent::setSize(const int newSize)
 
 BusValue ConstantComponent::setValue(const BusValue& value) const
 {
-  const auto width = outputs.empty()
-                         ? static_cast<std::size_t>(
-                               getPropertyValue<int>("size").value_or(1))
-                         : outputs[0].size();
+  const auto width =
+      outputs.empty()
+          ? static_cast<std::size_t>(getPropertyValue<int>("size").value_or(1))
+          : outputs[0].size();
   return normalizedEditableValue(value, width, true);
 }
 
@@ -145,8 +144,8 @@ void ConstantComponent::serializeYosys(
         throw std::runtime_error("Cannot export an ERROR constant to Yosys");
     }
   }
-  SILICON::yosys::detail::emitUnary(context, "constant", "$pos",
-                                    std::move(bits), context.bits(outputs[0]));
+  SILICON::yosys::detail::emitUnary(context, "constant", "$pos", std::move(bits),
+                                    context.bits(outputs[0]));
 }
 
 BoundaryIoComponent::BoundaryIoComponent(std::vector<Bus> inputs,
@@ -195,8 +194,7 @@ DummyBusInputComponent::DummyBusInputComponent(Bus bus, std::string name)
   defineProperty("startValue", BusValue(outputs[0].size(), State::LOW),
                  [this](const PropertyValue& value) {
                    const auto width = outputs.empty() ? 1 : outputs[0].size();
-                   return normalizedEditableValue(std::get<BusValue>(value), width,
-                                                  true);
+                   return normalizedEditableValue(std::get<BusValue>(value), width, true);
                  });
 }
 

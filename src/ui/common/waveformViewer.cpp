@@ -83,10 +83,14 @@ namespace {
   }
 
   bool hasInputGroup(int inputCount)
-  { return inputCount > 0; }
+  {
+    return inputCount > 0;
+  }
 
   bool hasOutputGroup(int signalCount, int inputCount)
-  { return inputCount < signalCount; }
+  {
+    return inputCount < signalCount;
+  }
 
   int totalGroupHeaderCount(int signalCount, int inputCount)
   {
@@ -105,7 +109,9 @@ namespace {
 }  // namespace
 
 SignalListWidget::SignalListWidget(QWidget* parent) : QWidget(parent)
-{ setFixedWidth(signalListWidthPx); }
+{
+  setFixedWidth(signalListWidthPx);
+}
 
 void SignalListWidget::setTrace(const QStringList& signalNames, int inputCount)
 {
@@ -139,7 +145,9 @@ int SignalListWidget::signalAreaHeight() const
 }
 
 int SignalListWidget::valueColumnX() const
-{ return std::max(96, signalListWidthPx * 33 / 50); }
+{
+  return std::max(96, signalListWidthPx * 33 / 50);
+}
 
 int SignalListWidget::yForSignalRow(int row) const
 {
@@ -233,7 +241,9 @@ Canvas::Canvas(QWidget* parent) : QWidget(parent)
 }
 
 void Canvas::setTrace(const QStringList& names, const std::vector<Sample>& samples)
-{ setTrace(names, samples, inputSignalCount); }
+{
+  setTrace(names, samples, inputSignalCount);
+}
 
 void Canvas::setTrace(const QStringList& names, const std::vector<Sample>& samples,
                       const int inputCount)
@@ -363,7 +373,9 @@ quint64 Canvas::endTime() const
 }
 
 int Canvas::xForTime(const quint64 time) const
-{ return waveformLeftInset + std::lround(time * pixelsPerTick); }
+{
+  return waveformLeftInset + std::lround(time * pixelsPerTick);
+}
 
 quint64 Canvas::timeForX(const int x) const
 {
@@ -373,10 +385,14 @@ quint64 Canvas::timeForX(const int x) const
 }
 
 int Canvas::groupHeaderCount() const
-{ return totalGroupHeaderCount(signalNames.size(), inputSignalCount); }
+{
+  return totalGroupHeaderCount(signalNames.size(), inputSignalCount);
+}
 
 int Canvas::groupHeaderCountBeforeSignal(const int row) const
-{ return totalGroupHeaderCountBeforeSignal(row, signalNames.size(), inputSignalCount); }
+{
+  return totalGroupHeaderCountBeforeSignal(row, signalNames.size(), inputSignalCount);
+}
 
 int Canvas::yForSignalRow(const int row) const
 {
@@ -967,7 +983,9 @@ bool Viewer::eventFilter(QObject* watched, QEvent* event)
 }
 
 void Viewer::appendSnapshot(quint64 time, const std::vector<BusValue>& values)
-{ appendSnapshots({{time, values}}); }
+{
+  appendSnapshots({{time, values}});
+}
 
 void Viewer::appendSnapshots(
     const QList<QPair<qulonglong, std::vector<BusValue>>>& snapshots)
@@ -1061,7 +1079,9 @@ void Viewer::refreshCanvas()
 }
 
 void Viewer::rebuildEditTrace()
-{ rebuildEditableTrace(trace, editDuration); }
+{
+  rebuildEditableTrace(trace, editDuration);
+}
 
 void Viewer::applyEditInterval(int signalIndex, quint64 startTime, quint64 endTime,
                                const QString& rawValue)
@@ -1176,7 +1196,9 @@ void Viewer::updateDurationField()
 }
 
 std::vector<Sample> Viewer::editedInputSnapshots() const
-{ return editedInputSamples(trace); }
+{
+  return editedInputSamples(trace);
+}
 
 void Viewer::updateEditControls()
 {
@@ -1232,7 +1254,9 @@ QStringList Viewer::displayedValues() const
 }
 
 std::size_t Viewer::signalWidth(const int signalIndex) const
-{ return SILICON::waveform::signalWidth(trace, signalIndex); }
+{
+  return SILICON::waveform::signalWidth(trace, signalIndex);
+}
 
 QString Viewer::displayValue(const int signalIndex, const BusValue& value) const
 {

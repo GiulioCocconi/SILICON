@@ -58,10 +58,10 @@ TEST(ArithmeticTest, ExtenderSupportsUnsignedSignedAndNarrowingModes)
 {
   const auto evaluate = [](const unsigned short inSize, const unsigned short outSize,
                            const std::string& mode, const unsigned int value) {
-    auto input    = Bus(inSize);
-    auto output   = Bus(outSize);
-    auto extender = std::make_shared<Extender>(input, output, mode);
-    auto circuit  = std::make_shared<Circuit>(Component_set{extender});
+    auto      input    = Bus(inSize);
+    auto      output   = Bus(outSize);
+    auto      extender = std::make_shared<Extender>(input, output, mode);
+    auto      circuit  = std::make_shared<Circuit>(Component_set{extender});
     Simulator simulator(circuit);
     simulator.setBus(input, valueFor(input, value));
     if (simulator.runUntilIdle() != Simulator::RunResult::Completed)
@@ -89,8 +89,8 @@ TEST(ArithmeticTest, ExtenderPropertiesValidateAndReshapeBuses)
                std::invalid_argument);
   EXPECT_THROW((void)Extender(Bus(), Bus(4)), std::invalid_argument);
 
-  extender = std::make_shared<Extender>(Bus(3), Bus(5),
-                                        std::string(Extender::SignedMode));
+  extender =
+      std::make_shared<Extender>(Bus(3), Bus(5), std::string(Extender::SignedMode));
   EXPECT_EQ(extender->getPropertyValue<int>("inSize"), 3);
   EXPECT_EQ(extender->getPropertyValue<int>("outSize"), 5);
   EXPECT_EQ(extender->getPropertyValue<std::string>("mode"),

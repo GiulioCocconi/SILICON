@@ -24,8 +24,8 @@
 #include <string_view>
 #include <vector>
 
-#include <core/wire.hpp>
 #include <core/fstTraceWriter.hpp>
+#include <core/wire.hpp>
 
 namespace SILICON::waveform {
 
@@ -58,7 +58,8 @@ void clearSamples(Trace& trace);
 void rebuildEditableTrace(Trace& trace, uint64_t duration);
 
 void applyEditInterval(Trace& trace, uint64_t duration, int signalIndex,
-                       uint64_t startTime, uint64_t endTime, const core::BusValue& rawValue);
+                       uint64_t startTime, uint64_t endTime,
+                       const core::BusValue& rawValue);
 
 [[nodiscard]] std::vector<Sample> editedInputSamples(const Trace& trace);
 

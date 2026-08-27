@@ -25,8 +25,7 @@
 namespace SILICON::wireUtils {
 
 /** @brief True when truncating to @p width would discard a non-low bit. */
-[[nodiscard]] bool busValueOverflowsWidth(const core::BusValue& value,
-                                          std::size_t           width);
+[[nodiscard]] bool busValueOverflowsWidth(const core::BusValue& value, std::size_t width);
 
 /** @brief Tests whether an LSB-first value is representable as an unsigned value. */
 [[nodiscard]] bool fitsUnsigned(const core::BusValue& value, std::size_t width);

@@ -40,9 +40,9 @@ using EqMember = std::pair<RTLIL::Cell*, int>;
 // is the compared constant and therefore the output index; selector identifies
 // the non-constant side of the equality.
 struct EqCandidate {
-  RTLIL::Cell*    cell;
+  RTLIL::Cell*   cell;
   RTLIL::SigSpec selector;
-  int             value;
+  int            value;
 };
 
 struct EqDecoderGroup {
@@ -100,7 +100,7 @@ private:
     }
   }
 
-  SigMap&                            sigmap_;
+  SigMap&                                 sigmap_;
   dict<RTLIL::SigBit, pool<RTLIL::Cell*>> users_;
 };
 
@@ -136,7 +136,7 @@ std::optional<EqCandidate> decodeEquality(RTLIL::Cell* cell, SigMap& sigmap,
   // identical selectors the same canonical identity when candidates are grouped.
   const auto& signal   = aConstant ? b : a;
   const auto& constant = aConstant ? a : b;
-  const auto value     = constant.as_const();
+  const auto  value    = constant.as_const();
   if (!value.is_fully_def())
     return std::nullopt;
 
@@ -194,9 +194,11 @@ std::vector<EqDecoderGroup> collectEqDecoderGroups(RTLIL::Module* module)
     groups.push_back({selector, std::move(bucket)});
   }
 
-  std::sort(groups.begin(), groups.end(), [](const EqDecoderGroup& lhs, const EqDecoderGroup& rhs) {
-    return lhs.members.front().first->name.str() < rhs.members.front().first->name.str();
-  });
+  std::sort(groups.begin(), groups.end(),
+            [](const EqDecoderGroup& lhs, const EqDecoderGroup& rhs) {
+              return lhs.members.front().first->name.str()
+                     < rhs.members.front().first->name.str();
+            });
 
   return groups;
 }
@@ -233,8 +235,8 @@ void raiseEqDecoder(RTLIL::Module* module, const EqDecoderGroup& group)
   for (const auto& [cell, value] : group.members)
     outputs[value] = cell->getPort(ID::Y)[0];
 
-  auto* demux = module->addDemux(NEW_ID, RTLIL::Const(RTLIL::State::S1, 1), group.selector,
-                                 outputs);
+  auto* demux = module->addDemux(NEW_ID, RTLIL::Const(RTLIL::State::S1, 1),
+                                 group.selector, outputs);
 
   const int memberCount = GetSize(group.members);
   for (const auto& [cell, value] : group.members) {

@@ -56,8 +56,8 @@ struct ParsedBusValue {
  * use unsigned fit and zero extension, except a scalar raw UNKNOWN expands to all
  * UNKNOWN bits. A value that cannot be represented returns std::nullopt.
  */
-[[nodiscard]] std::optional<BusValue>
-resizeParsedValue(const ParsedBusValue& parsed, std::size_t width);
+[[nodiscard]] std::optional<BusValue> resizeParsedValue(const ParsedBusValue& parsed,
+                                                        std::size_t           width);
 
 [[nodiscard]] BusValue maxValueForBusWidth(std::size_t width);
 
