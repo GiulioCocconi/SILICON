@@ -38,6 +38,14 @@ namespace SILICON::core {
 class ComponentRegistry;
 enum class PortRole;
 
+}  // namespace SILICON::core
+
+namespace SILICON::project {
+class DocumentStore;
+}
+
+namespace SILICON::core {
+
 /** @brief Property stored in each vertex of the circuit graph */
 struct VertexProperty {
   /** @brief The component this vertex represents */
@@ -474,8 +482,9 @@ public:
    * @param reg The component registry to create components
    * @return The deserialized circuit
    */
-  [[nodiscard]] static Circuit deserialize(const std::string&       jsonStr,
-                                           const ComponentRegistry& reg);
+  [[nodiscard]] static Circuit
+  deserialize(const std::string& jsonStr, const ComponentRegistry& reg,
+              SILICON::project::DocumentStore* documents = nullptr);
 };
 
 /** @brief Represents a block of components for simulation execution */

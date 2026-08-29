@@ -47,7 +47,6 @@
 #include <ui/logiFlow/components/graphicalIO.hpp>
 #include <ui/logiFlow/components/graphicalLogicComponent.hpp>
 
-
 namespace SILICON {
 namespace ui {
 using namespace SILICON::core;
@@ -61,7 +60,8 @@ constexpr ItemCategory InputCategory  = ItemCategory::IO | ItemCategory::Input;
 constexpr ItemCategory OutputCategory = ItemCategory::IO | ItemCategory::Output;
 const SILICON::logging::Logger           simulationUiLog("simulation-ui");
 
-std::string componentNameOr(const Component_ptr& component, const std::string& fallback)
+    std::string componentNameOr(const Component_ptr& component,
+                                const std::string&   fallback)
 {
   if (!component)
     return fallback;
@@ -130,7 +130,8 @@ bool DiagramSceneSimulationController::enterSimulationMode()
   }
 
   // Reset visible outputs first, then inject input start values. Doing this in two
-  // phases prevents output reset from overwriting a shared bus after an input starts it.
+    // phases prevents output reset from overwriting a shared bus after an input starts
+    // it.
   for (auto* output : outputs)
     output->resetSimulationState();
 
@@ -159,8 +160,8 @@ bool DiagramSceneSimulationController::enterSimulationMode()
       return isJobCancellationRequested();
     };
 
-    simulator =
-        std::make_unique<SILICON::simulation::Session>(circuit, isCancelled);
+      simulator = std::make_unique<SILICON::simulation::Session>(circuit, isCancelled,
+                                                                 scene.documentStore());
     configureSimulatorTrace(trace, traceFile);
     return settleInteractiveSimulation(*simulator, isCancelled);
   });
@@ -214,8 +215,8 @@ void DiagramSceneSimulationController::handleInputToggled(Bus               targ
   });
 }
 
-void DiagramSceneSimulationController::setFstTraceFile(
-    std::optional<std::string> fileName)
+  void
+  DiagramSceneSimulationController::setFstTraceFile(std::optional<std::string> fileName)
 {
   if (!isJobFinished())
     return;
@@ -350,8 +351,8 @@ void DiagramSceneSimulationController::simulateEditedWaveform(
       return isJobCancellationRequested();
     };
 
-    simulator =
-        std::make_unique<SILICON::simulation::Session>(circuit, isCancelled);
+      simulator = std::make_unique<SILICON::simulation::Session>(circuit, isCancelled,
+                                                                 scene.documentStore());
     configureSimulatorTrace(trace, traceFile);
 
     return simulator->simulateWaveform(duration, inputSnapshots, inputDrivers,
@@ -487,14 +488,15 @@ void DiagramSceneSimulationController::finishJob()
 #endif
 
   if (!pendingWaveformSnapshots.isEmpty()) {
-    // Deliver one batch after the join so the viewer never observes concurrently-mutated
-    // sample data and the event loop is not flooded by individual timestamps.
+      // Deliver one batch after the join so the viewer never observes
+      // concurrently-mutated sample data and the event loop is not flooded by individual
+      // timestamps.
     scene.waveformTraceSnapshots(std::move(pendingWaveformSnapshots));
     pendingWaveformSnapshots.clear();
   }
 
-  // Use deferred deletion to prevent access violations if events are still pending in the
-  // queue
+    // Use deferred deletion to prevent access violations if events are still pending in
+    // the queue
   if (completionTimer) {
     completionTimer->stop();
     completionTimer->deleteLater();

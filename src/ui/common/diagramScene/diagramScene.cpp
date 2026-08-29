@@ -44,6 +44,7 @@
 #include <ui/common/undoCommands.hpp>
 #include <ui/common/wireRouting.hpp>
 #include <ui/logiFlow/components/graphicalIO.hpp>
+#include <ui/logiFlow/components/subcircuit/graphicalSubcircuit.hpp>
 #include <ui/logiFlow/logiFlowWindow.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
 #include <utils/num_formatting.hpp>
@@ -76,6 +77,17 @@ DiagramScene::DiagramScene(QObject* parent) : QGraphicsScene(parent)
   });
 }
 
+  void DiagramScene::setDocumentStore(
+      SILICON::project::DocumentStore* projectDocuments) noexcept
+  {
+    documents = projectDocuments;
+  }
+
+  SILICON::project::DocumentStore* DiagramScene::documentStore() const noexcept
+  {
+    return documents;
+  }
+
 namespace {
 
 std::vector<std::string> componentTypesForScene(const DiagramScene& scene)
@@ -84,7 +96,8 @@ std::vector<std::string> componentTypesForScene(const DiagramScene& scene)
   return GUIComponentFactory::instance().availableTypes();
 }
 
-std::vector<GraphicalLogicComponent*> logicComponentsInScene(const QGraphicsScene& scene)
+    std::vector<GraphicalLogicComponent*>
+    logicComponentsInScene(const QGraphicsScene& scene)
 {
   std::vector<GraphicalLogicComponent*> components;
 
@@ -236,9 +249,9 @@ void DiagramScene::finalizeWireCreation()
     wireManager.addSegment(finalizedSegment);
 
     if (auto* undoStack = getUndoStack()) {
-      undoStack->push(new SceneSelectionCommand(this, serializeItems({finalizedSegment}),
-                                                SceneSelectionCommand::Operation::Add,
-                                                true));
+        undoStack->push(
+            new SceneSelectionCommand(this, serializeItems({finalizedSegment}),
+                                      SceneSelectionCommand::Operation::Add, true));
     }
   }
   clearWireShadow();
@@ -301,7 +314,8 @@ void DiagramScene::enterComponentPlacingMode()
   const QPoint centerPos = view->viewport()->rect().center();
   // Get cursor pos within view
   const QPoint cursorPosWithinView = view->mapFromGlobal(globalCursorPos);
-  const bool isCursorInsideView = view->viewport()->rect().contains(cursorPosWithinView);
+    const bool   isCursorInsideView =
+        view->viewport()->rect().contains(cursorPosWithinView);
   const QPoint posForCSB        = isCursorInsideView ? cursorPosWithinView : centerPos;
 
   showCSB(view->mapToScene(posForCSB));
@@ -356,8 +370,8 @@ void DiagramScene::mouseMoveEvent(QGraphicsSceneMouseEvent* mouseEvent)
       const QPointF lastPoint =
           wireSegmentToBeDrawn->mapToScene(wireSegmentToBeDrawn->lastPoint());
 
-      auto route = SILICON::core::routeOrthogonalWire(lastPoint, cursorPos,
-                                                      wireRoutingObstacles(), GRID_SIZE);
+        auto route = SILICON::core::routeOrthogonalWire(
+            lastPoint, cursorPos, wireRoutingObstacles(), GRID_SIZE);
 
       if (!route.empty())
         route.erase(route.begin());
@@ -540,8 +554,8 @@ bool DiagramScene::calculateWiresForComponents()
   }
 
   for (auto* item : items()) {
-    if (const auto* gComp =
-            category_cast<GraphicalLogicComponent>(item, ItemCategory::LogicComponent)) {
+      if (const auto* gComp = category_cast<GraphicalLogicComponent>(
+              item, ItemCategory::LogicComponent)) {
       if (gComp->getComponent())
         gComp->getComponent()->clearWires();
     }
@@ -654,8 +668,8 @@ void DiagramScene::autoPlaceCircuit(const bool interactive)
 
   constexpr int   candidateCount = 16;
   auto*           parent = views().isEmpty() ? nullptr : views().first()->window();
-  QProgressDialog progress(tr("Finding a clean circuit layout..."), tr("Use best so far"),
-                           0, candidateCount, parent);
+    QProgressDialog progress(tr("Finding a clean circuit layout..."),
+                             tr("Use best so far"), 0, candidateCount, parent);
   progress.setWindowTitle(tr("Auto place"));
   progress.setWindowModality(Qt::WindowModal);
   progress.setMinimumDuration(300);
@@ -693,6 +707,9 @@ void DiagramScene::placeComponent(std::string_view typeName, const bool showSear
     throw std::logic_error("placeComponent: previous component not yet placed");
 
   componentToBeDrawn      = GUIComponentFactory::instance().create(typeName).release();
+    if (auto* subcircuit =
+            dynamic_cast<GraphicalSubcircuitComponent*>(componentToBeDrawn))
+      subcircuit->setDocumentStore(documents);
   lastPlacedComponentType = typeName;
   lastPlacedComponentProperties = initialProperties;
   suppressNextComponentSearch   = !showSearchBox;

@@ -23,6 +23,9 @@
 class QUndoStack;
 class QWidget;
 
+namespace SILICON::project {
+class DocumentStore;
+}
 
 namespace SILICON {
 namespace ui {
@@ -33,8 +36,9 @@ namespace ui {
  * @param undoStack Optional undo stack used to route metadata changes.
  * @param parent Optional parent widget for the dialog and warnings.
  */
-void editGraphicalSubcircuitShape(const std::string& slug, QUndoStack* undoStack,
-                                  QWidget* parent = nullptr);
+  void editGraphicalSubcircuitShape(const std::string&               slug,
+                                    SILICON::project::DocumentStore& documents,
+                                    QUndoStack* undoStack, QWidget* parent = nullptr);
 
 }  // namespace ui
 }  // namespace SILICON

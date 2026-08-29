@@ -41,15 +41,22 @@ namespace {
 
 }  // namespace
 
-SubcircuitComponent::SubcircuitComponent()
+SubcircuitComponent::SubcircuitComponent(SILICON::project::DocumentStore* documents)
+  : documents(documents)
 {
   defineProperty(std::string("slug"), std::string(), [this](const PropertyValue& value) {
     configureFromSlug(std::get<std::string>(value));
     return value;
   });
 
-  registryListenerId = SILICON::project::DocumentStore::active().addListener(
-      [this](std::string_view path) {
+  subscribeToDocuments();
+}
+
+void SubcircuitComponent::subscribeToDocuments()
+{
+  if (!documents || registryListenerId != 0)
+    return;
+  registryListenerId = documents->addListener([this](std::string_view path) {
         const auto configuredPath = SILICON::project::subcircuitPathForSlug(
             getPropertyValue<std::string>("slug").value_or(std::string()));
         if (path.empty() || path == configuredPath)
@@ -57,10 +64,16 @@ SubcircuitComponent::SubcircuitComponent()
       });
 }
 
+void SubcircuitComponent::unsubscribeFromDocuments()
+{
+  if (documents && registryListenerId != 0)
+    documents->removeListener(registryListenerId);
+  registryListenerId = 0;
+}
+
 SubcircuitComponent::~SubcircuitComponent()
 {
-  if (registryListenerId != 0)
-    SILICON::project::DocumentStore::active().removeListener(registryListenerId);
+  unsubscribeFromDocuments();
 }
 
 void SubcircuitComponent::clearResolvedCircuit()
@@ -77,12 +90,32 @@ void SubcircuitComponent::configureFromSlug(std::string_view slug)
     return;
   }
 
-  auto definition =
-      SILICON::core::loadSubcircuitDefinition(slug, ComponentRegistry::instance());
+  if (!documents) {
+    clearResolvedCircuit();
+    return;
+  }
+
+  auto definition = SILICON::core::loadSubcircuitDefinition(
+      slug, ComponentRegistry::instance(), *documents);
   auto externalInputs  = makeExternalBuses(definition.inputs);
   auto externalOutputs = makeExternalBuses(definition.outputs);
   setInputs(externalInputs);
   setOutputs(externalOutputs);
+}
+
+void SubcircuitComponent::setDocumentStore(SILICON::project::DocumentStore* newDocuments)
+{
+  if (documents == newDocuments)
+    return;
+  unsubscribeFromDocuments();
+  documents = newDocuments;
+  subscribeToDocuments();
+  reloadFromRegistry();
+}
+
+SILICON::project::DocumentStore* SubcircuitComponent::documentStore() const noexcept
+{
+  return documents;
 }
 
 void SubcircuitComponent::reloadFromRegistry()

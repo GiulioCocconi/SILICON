@@ -25,7 +25,6 @@
 
 #include <ui/logiFlow/components/subcircuit/utils.hpp>
 
-
 namespace SILICON {
 namespace ui {
 using namespace SILICON::core;
@@ -49,30 +48,44 @@ portPairs(const std::vector<GraphicalSubcircuitPortMetadata>& ports)
 
 }  // namespace
 
-GraphicalSubcircuitComponent::GraphicalSubcircuitComponent(QGraphicsItem* parent)
+GraphicalSubcircuitComponent::GraphicalSubcircuitComponent(
+    QGraphicsItem* parent, SILICON::project::DocumentStore* documents)
   : GraphicalLogicComponent(
-        std::make_shared<SubcircuitComponent>(),
+        std::make_shared<SubcircuitComponent>(documents),
         new SubcircuitRectShape(QSize(
             GraphicalSubcircuitDefaultSize * DiagramScene::GRID_SIZE,
             GraphicalSubcircuitDefaultSize * DiagramScene::GRID_SIZE)),
-        parent, false)
+        parent, false),
+    documents(documents)
 {
   printPortNames = true;
 
-  registryListenerId =
-      SILICON::project::DocumentStore::active().addListener(
-          [this](std::string_view path) {
-        if (path.empty()
-            || path
-                   == SILICON::project::subcircuitPathForSlug(currentSlug()))
-          refreshFromMetadata();
-      });
+  subscribeToDocuments();
   refreshFromMetadata();
 }
 
+void GraphicalSubcircuitComponent::subscribeToDocuments()
+{
+  if (!documents || registryListenerId != 0)
+    return;
+  registryListenerId = documents->addListener([this](std::string_view path) {
+        if (path.empty() || path == SILICON::project::subcircuitPathForSlug(currentSlug()))
+          refreshFromMetadata();
+      });
+}
+
+void GraphicalSubcircuitComponent::unsubscribeFromDocuments()
+{
+  if (documents && registryListenerId != 0)
+    documents->removeListener(registryListenerId);
+  registryListenerId = 0;
+}
+
 GraphicalSubcircuitComponent::GraphicalSubcircuitComponent(std::string slug,
-                                                           QGraphicsItem* parent)
-  : GraphicalSubcircuitComponent(parent)
+                                                           QGraphicsItem* parent,
+                                                           SILICON::project::DocumentStore*
+                                                               documents)
+  : GraphicalSubcircuitComponent(parent, documents)
 {
   if (!slug.empty())
     applyProperty("slug", std::move(slug));
@@ -80,13 +93,28 @@ GraphicalSubcircuitComponent::GraphicalSubcircuitComponent(std::string slug,
 
 GraphicalSubcircuitComponent::~GraphicalSubcircuitComponent()
 {
-  if (registryListenerId != 0)
-    SILICON::project::DocumentStore::active().removeListener(registryListenerId);
+  unsubscribeFromDocuments();
 }
 
 void GraphicalSubcircuitComponent::setComponent(const Component_ptr& component)
 {
   GraphicalLogicComponent::setComponent(component);
+  if (const auto subcircuit = std::dynamic_pointer_cast<SubcircuitComponent>(component))
+    setDocumentStore(subcircuit->documentStore());
+  refreshFromMetadata();
+}
+
+void GraphicalSubcircuitComponent::setDocumentStore(
+    SILICON::project::DocumentStore* newDocuments)
+{
+  if (documents == newDocuments)
+    return;
+  unsubscribeFromDocuments();
+  documents = newDocuments;
+  if (const auto subcircuit =
+          std::dynamic_pointer_cast<SubcircuitComponent>(associatedComponent))
+    subcircuit->setDocumentStore(documents);
+  subscribeToDocuments();
   refreshFromMetadata();
 }
 
@@ -150,16 +178,19 @@ void GraphicalSubcircuitComponent::refreshFromMetadata()
     return;
   }
 
-  const auto* document = SILICON::project::DocumentStore::active().find(
-      SILICON::project::subcircuitPathForSlug(slug));
+    if (!documents) {
+      applyEmptyMetadata();
+      return;
+    }
+
+    const auto* document = documents->find(SILICON::project::subcircuitPathForSlug(slug));
   if (!document) {
     applyEmptyMetadata();
     return;
   }
 
   auto metadata = synchronizeGraphicalSubcircuitMetadata(
-      document->getSceneJson(),
-      parseGraphicalSubcircuitMetadata(document->getSceneJson())
+        document->getContents(), parseGraphicalSubcircuitMetadata(document->getContents())
           .value_or(GraphicalSubcircuitMetadata{}));
 
   if (associatedComponent) {
@@ -167,8 +198,8 @@ void GraphicalSubcircuitComponent::refreshFromMetadata()
     const auto componentOutputs = associatedComponent->getOutputs();
 
     if (metadata.inputs.size() != componentInputs.size())
-      metadata.inputs = synchronizePortsWithBuses(metadata.inputs, componentInputs,
-                                                  metadata, true);
+        metadata.inputs =
+            synchronizePortsWithBuses(metadata.inputs, componentInputs, metadata, true);
     if (metadata.outputs.size() != componentOutputs.size())
       metadata.outputs = synchronizePortsWithBuses(metadata.outputs, componentOutputs,
                                                    metadata, false);

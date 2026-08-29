@@ -217,7 +217,9 @@ namespace {
       modules[moduleName] = std::move(module);
     }
 
-    [[nodiscard]] ModuleInterface ensureSubcircuit(const std::string_view slug)
+    [[nodiscard]] ModuleInterface
+    ensureSubcircuit(const std::string_view           slug,
+                     SILICON::project::DocumentStore* documents)
     {
       const std::string slugString(slug);
       if (slugString.empty())
@@ -227,8 +229,10 @@ namespace {
         return it->second;
       }
 
+      if (!documents)
+        throw std::runtime_error("Subcircuit serialization requires project documents");
       auto definition =
-          loadSubcircuitDefinition(slugString, ComponentRegistry::instance());
+          loadSubcircuitDefinition(slugString, ComponentRegistry::instance(), *documents);
 
       ModuleInterface interface;
       interface.moduleName = slugString;
@@ -303,8 +307,7 @@ Json SerializationContext::inputBits(const Component& component, const std::size
   }
 
   const bool binaryDefault =
-      defaultState
-      && (*defaultState == State::LOW || *defaultState == State::HIGH);
+      defaultState && (*defaultState == State::LOW || *defaultState == State::HIGH);
   const std::string defaultBit =
       binaryDefault ? formatValue(BusValue{*defaultState}, BusValueFormat::Raw) : "x";
   return bits(buses[index], defaultBit);
@@ -406,11 +409,11 @@ void SerializationContext::addPort(std::string name, const std::string_view dire
       Json{{"hide_name", 0}, {"bits", portBits}, {"attributes", Json::object()}};
 }
 
-void SerializationContext::addSubcircuitInstance(const std::string_view  slug,
-                                                 const std::vector<Bus>& inputs,
-                                                 const std::vector<Bus>& outputs)
+void SerializationContext::addSubcircuitInstance(
+    const std::string_view slug, const std::vector<Bus>& inputs,
+    const std::vector<Bus>& outputs, SILICON::project::DocumentStore* documents)
 {
-  const auto interface = impl.design->ensureSubcircuit(slug);
+  const auto interface = impl.design->ensureSubcircuit(slug, documents);
   if (inputs.size() != interface.inputs.size()
       || outputs.size() != interface.outputs.size()) {
     throw std::runtime_error(std::format("Subcircuit '{}' interface mismatch: expected "

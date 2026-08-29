@@ -50,7 +50,6 @@
 #include <ui/logiFlow/components/graphicalUtils.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
 
-
 namespace SILICON {
 namespace ui {
 using namespace SILICON::core;
@@ -65,14 +64,16 @@ struct PendingWireSegment {
   std::vector<QPointF> points;
 };
 
-std::shared_ptr<Circuit> deserializeCircuitPayload(const nlohmann::json&    payload,
-                                                   const ComponentRegistry& coreRegistry)
+std::shared_ptr<Circuit>
+deserializeCircuitPayload(const nlohmann::json&            payload,
+                          const ComponentRegistry&         coreRegistry,
+                          SILICON::project::DocumentStore* documents)
 {
   if (!payload.contains("circuit"))
     return nullptr;
 
   return std::make_shared<Circuit>(
-      Circuit::deserialize(payload["circuit"].dump(), coreRegistry));
+      Circuit::deserialize(payload["circuit"].dump(), coreRegistry, documents));
 }
 
 void attachCoreComponent(GraphicalComponent* component, const nlohmann::json& compJson,
@@ -270,7 +271,8 @@ void addVisualComponents(QGraphicsScene&                                  scene,
 void addVisualWires(QGraphicsScene& scene, WireManager& wireManager,
                     std::vector<PendingWireSegment> wires, const bool selectInserted)
 {
-  // Recreates wire objects lazily so segments with the same serialized ID share a bus.
+      // Recreates wire objects lazily so segments with the same serialized ID share a
+      // bus.
   std::map<uint64_t, std::shared_ptr<GraphicalWire>> wireIdToWire;
 
   for (auto& pending : wires) {
@@ -278,8 +280,8 @@ void addVisualWires(QGraphicsScene& scene, WireManager& wireManager,
     segment->setUiId(pending.uiId);
     segment->setPoints(std::move(pending.points));
 
-    // Rebuild each serialized wire group exactly once so all of its segments share the
-    // same GraphicalWire and therefore the same logical bus.
+        // Rebuild each serialized wire group exactly once so all of its segments share
+        // the same GraphicalWire and therefore the same logical bus.
     auto& wire = wireIdToWire[pending.wireId];
     if (!wire)
       wire = wireManager.createWire(1);
@@ -362,8 +364,8 @@ std::string DiagramSceneSerializer::serialize() const
       compJson.erase("uiId");
       compJson["type"] = comp->getTypeName();
 
-      if (auto* logicComp =
-              category_cast<GraphicalLogicComponent>(comp, ItemCategory::LogicComponent)) {
+        if (auto* logicComp = category_cast<GraphicalLogicComponent>(
+                comp, ItemCategory::LogicComponent)) {
         if (auto component = logicComp->getComponent()) {
           if (auto it = compToVertexMap.find(component.get());
               it != compToVertexMap.end()) {
@@ -405,8 +407,8 @@ nlohmann::ordered_json DiagramSceneSerializer::serializeItems(
 
   Component_set selectedCoreComponents;
   for (auto* item : sceneItems) {
-    if (const auto* comp =
-            category_cast<GraphicalLogicComponent>(item, ItemCategory::LogicComponent)) {
+      if (const auto* comp = category_cast<GraphicalLogicComponent>(
+              item, ItemCategory::LogicComponent)) {
       if (comp->getComponent())
         selectedCoreComponents.insert(comp->getComponent());
     }
@@ -436,8 +438,8 @@ nlohmann::ordered_json DiagramSceneSerializer::serializeItems(
     auto compJson    = comp->serialize();
     compJson["type"] = comp->getTypeName();
 
-    if (auto* logicComp =
-            category_cast<GraphicalLogicComponent>(comp, ItemCategory::LogicComponent)) {
+      if (auto* logicComp = category_cast<GraphicalLogicComponent>(
+              comp, ItemCategory::LogicComponent)) {
       if (selectedCircuit && logicComp->getComponent()) {
         const auto& compToVertexMap = selectedCircuit->getComponentToVertex();
         if (auto it = compToVertexMap.find(logicComp->getComponent().get());
@@ -491,7 +493,8 @@ void DiagramSceneSerializer::deserialize(const std::string&       jsonStr,
 
   std::shared_ptr<Circuit> authoritativeCircuit;
   if (hasCircuitPart) {
-    authoritativeCircuit = deserializeCircuitPayload(j, coreRegistry);
+      authoritativeCircuit =
+          deserializeCircuitPayload(j, coreRegistry, scene.documentStore());
     scene.setCircuit(authoritativeCircuit);
   } else {
     QMessageBox::warning(QApplication::activeWindow(),
@@ -506,8 +509,8 @@ void DiagramSceneSerializer::deserialize(const std::string&       jsonStr,
 
     std::vector<GraphicalLogicComponent*> logicComponents;
     for (auto* item : scene.items()) {
-      if (auto* component =
-              category_cast<GraphicalLogicComponent>(item, ItemCategory::LogicComponent))
+        if (auto* component = category_cast<GraphicalLogicComponent>(
+                item, ItemCategory::LogicComponent))
         logicComponents.push_back(component);
     }
 
@@ -550,7 +553,8 @@ bool DiagramSceneSerializer::insertSelection(const nlohmann::json&    payload,
 
   const QPointF pasteOffset =
       DiagramScene::snapToGrid(targetOrigin - payloadOrigin(remappedPayload));
-  auto pastedCircuit     = deserializeCircuitPayload(remappedPayload, coreRegistry);
+    auto pastedCircuit =
+        deserializeCircuitPayload(remappedPayload, coreRegistry, scene.documentStore());
   auto pendingComponents = deserializeVisualComponents(
       remappedPayload["visual"], guiFactory, pastedCircuit, pasteOffset);
   auto pendingWires =

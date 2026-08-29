@@ -26,6 +26,9 @@
 #include <ui/logiFlow/components/graphicalLogicComponent.hpp>
 #include <ui/logiFlow/components/subcircuit/metadata.hpp>
 
+namespace SILICON::project {
+class DocumentStore;
+}
 
 namespace SILICON {
 namespace ui {
@@ -41,14 +44,18 @@ class GraphicalSubcircuitComponent : public GraphicalLogicComponent {
   Q_OBJECT
 public:
   /** @brief Creates a graphical subcircuit with an empty slug. */
-  explicit GraphicalSubcircuitComponent(QGraphicsItem* parent = nullptr);
+    explicit GraphicalSubcircuitComponent(
+        QGraphicsItem*                   parent    = nullptr,
+        SILICON::project::DocumentStore* documents = nullptr);
 
   /**
    * @brief Creates a graphical subcircuit and immediately selects a slug.
    * @param slug Subcircuit registry slug.
    * @param parent Optional parent graphics item.
    */
-  explicit GraphicalSubcircuitComponent(std::string slug, QGraphicsItem* parent = nullptr);
+    explicit GraphicalSubcircuitComponent(
+        std::string slug, QGraphicsItem* parent = nullptr,
+        SILICON::project::DocumentStore* documents = nullptr);
 
   /** @brief Unregisters the subcircuit registry listener. */
   ~GraphicalSubcircuitComponent() override;
@@ -61,11 +68,16 @@ public:
 
   /** @brief Reloads shape and ports from the active registry document. */
   void refreshFromMetadata();
+  void setDocumentStore(SILICON::project::DocumentStore* documents);
 
   int type() const override { return SiliconTypes::SUBCIRCUIT; }
 
 private:
   std::uint64_t registryListenerId = 0;
+  SILICON::project::DocumentStore* documents = nullptr;
+
+  void subscribeToDocuments();
+  void unsubscribeFromDocuments();
 
   /** @brief Returns the slug stored by the associated core component. */
   [[nodiscard]] std::string currentSlug() const;

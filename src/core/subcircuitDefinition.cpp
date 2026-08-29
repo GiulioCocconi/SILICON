@@ -99,22 +99,21 @@ std::string extractCoreCircuitJson(std::string_view sceneJson)
 }
 
 SubcircuitDefinition loadSubcircuitDefinition(const std::string_view   slug,
-                                              const ComponentRegistry& registry)
+                                              const ComponentRegistry&         registry,
+                                              SILICON::project::DocumentStore& documents)
 {
   static thread_local std::vector<std::string> activeResolutionSlugs;
   ActiveKeyGuard activeSlug(activeResolutionSlugs, std::string(slug),
                             "Recursive subcircuit dependency detected: ");
 
   const auto  path     = SILICON::project::subcircuitPathForSlug(slug);
-  const auto* document = SILICON::project::DocumentStore::active().find(path);
+  const auto* document = documents.find(path);
   if (!document)
     throw std::runtime_error(std::format("Unknown subcircuit slug '{}'", slug));
 
-  const auto coreJson =
-      document->getCoreCircuitJson().value_or(extractCoreCircuitJson(document->getSceneJson()));
-  auto       circuit = Circuit::deserialize(coreJson, registry);
-  const auto portCircuit =
-      Circuit::deserialize(extractCoreCircuitJson(document->getSceneJson()), registry);
+  const auto coreJson    = extractCoreCircuitJson(document->getContents());
+  auto       circuit     = Circuit::deserialize(coreJson, registry, &documents);
+  const auto portCircuit = Circuit::deserialize(coreJson, registry, &documents);
   auto inputs  = resolvePorts(circuit, portCircuit.getInputPorts());
   auto outputs = resolvePorts(circuit, portCircuit.getOutputPorts());
 

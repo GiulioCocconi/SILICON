@@ -37,12 +37,12 @@
 #include <core/circuit.hpp>
 #include <core/flipflops.hpp>
 #include <core/io.hpp>
+#include <core/projectDocument.hpp>
 #include <core/register.hpp>
 #include <core/serialization/component_registration.hpp>
 #include <core/serialization/yosys.hpp>
 #include <core/simulator.hpp>
 #include <core/subcircuit.hpp>
-#include <core/projectDocument.hpp>
 #include <extraComponents/arithmetic.hpp>
 #include <extraComponents/multiplexer.hpp>
 #include <extraComponents/utils.hpp>
@@ -1150,14 +1150,12 @@ TEST(YosysTest, ExportsSubcircuitsAsHierarchicalModules)
 {
   if (!ComponentRegistry::instance().hasType(AndGate::Type))
     registerAllComponents(ComponentRegistry::instance());
-  auto& registry = SILICON::project::DocumentStore::active();
-  registry.clear();
-  registry.upsertDocument(
-      {SILICON::project::subcircuitPathForSlug("and_child"),
-       andSubcircuitDocument()});
+  SILICON::project::ProjectContext project;
+  project.documents.upsertDocument(
+      {SILICON::project::subcircuitPathForSlug("and_child"), andSubcircuitDocument()});
 
   {
-    auto instance = std::make_shared<SubcircuitComponent>();
+    auto instance = std::make_shared<SubcircuitComponent>(&project.documents);
     instance->setProperty("slug", std::string("and_child"));
     auto circuit = circuitWithBoundaryPorts(instance);
 
@@ -1174,8 +1172,6 @@ TEST(YosysTest, ExportsSubcircuitsAsHierarchicalModules)
     EXPECT_NO_THROW((void)SILICON::yosys::importVerilog(verilog, "top"));
 #endif
   }
-
-  registry.clear();
 }
 
 TEST(YosysTest, YosysReadJsonAcceptsExport)
@@ -1323,6 +1319,18 @@ TEST(YosysToolTest, ImportsCombinationalVerilogAndFlattensHelpers)
   EXPECT_THROW((void)SILICON::yosys::importVerilog(source, "selected; delete selected"),
                std::invalid_argument);
   EXPECT_THROW((void)SILICON::yosys::importVerilog(source, "missing"),
+               std::runtime_error);
+}
+
+TEST(YosysToolTest, ImportsOnlyASingleDiscoveredModule)
+{
+  const auto circuit = SILICON::yosys::importSingleModuleVerilog(
+      "module sole(input a, output y); assign y = ~a; endmodule");
+  EXPECT_EQ(circuit.getName(), "sole");
+
+  EXPECT_THROW((void)SILICON::yosys::importSingleModuleVerilog(""), std::runtime_error);
+  EXPECT_THROW((void)SILICON::yosys::importSingleModuleVerilog(
+                   "module first; endmodule module second; endmodule"),
                std::runtime_error);
 }
 
@@ -2001,8 +2009,7 @@ TEST(YosysToolTest, ExportsParseableStructuralVerilog)
   circuit.setName("top");
 
   const auto verilog = SILICON::yosys::exportVerilog(circuit);
-  EXPECT_NE(verilog.find("module top(input a, input b, output y);"),
-            std::string::npos);
+  EXPECT_NE(verilog.find("module top(input a, input b, output y);"), std::string::npos);
   EXPECT_EQ(verilog.find("\n  input a;"), std::string::npos);
   EXPECT_EQ(verilog.find("\n  wire a;"), std::string::npos);
   EXPECT_EQ(verilog.find("\n  output y;"), std::string::npos);
@@ -2080,7 +2087,6 @@ TEST(YosysToolTest, ImportsVectorDffAsRegister)
             std::optional<std::string>(Register::ParallelType));
   EXPECT_EQ(reg->getPropertyValue<std::string>("outputType"),
             std::optional<std::string>(Register::ParallelType));
-
 }
 
 TEST(YosysToolTest, VerilogCircuitVerilogRoundTripPreservesBehavior)

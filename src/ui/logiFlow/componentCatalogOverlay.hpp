@@ -24,12 +24,15 @@
 #include <QStringList>
 #include <QWidget>
 
-#include <core/serialization/component_registry.hpp>
 #include <core/component.hpp>
+#include <core/serialization/component_registry.hpp>
+
+namespace SILICON::project {
+class DocumentStore;
+}
 
 class QLineEdit;
 class QTableWidget;
-
 
 namespace SILICON {
 namespace ui {
@@ -45,7 +48,9 @@ public:
     PropertyMap                          initialProperties;
   };
 
-  explicit ComponentCatalogOverlay(DiagramScene* scene, QWidget* parent = nullptr);
+    explicit ComponentCatalogOverlay(DiagramScene*                    scene,
+                                     SILICON::project::DocumentStore& documents,
+                                     QWidget*                         parent = nullptr);
 
   void open();
 
@@ -59,6 +64,7 @@ private:
   [[nodiscard]] static QStringList searchableFields(const CatalogRow& rowData);
 
   DiagramScene*           diagramScene = nullptr;
+    SILICON::project::DocumentStore& documents;
   QLineEdit*              searchInput  = nullptr;
   QTableWidget*           table        = nullptr;
   std::vector<CatalogRow> catalogRows;
