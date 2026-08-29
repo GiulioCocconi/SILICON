@@ -18,19 +18,38 @@
 
 namespace SILICON::project {
 
+class ProjectContext;
+
 enum class DocumentType { Circuit, Subcircuit, Code };
+
+enum class DocumentChangeKind { Added, Updated, Removed, Reset };
+
+struct DocumentChange {
+  DocumentChangeKind         kind;
+  std::optional<std::string> path;
+
+  bool operator==(const DocumentChange&) const = default;
+};
 
 [[nodiscard]] std::optional<DocumentType> documentTypeForPath(std::string_view path);
 [[nodiscard]] std::optional<std::string>  subcircuitSlugForPath(std::string_view path);
+[[nodiscard]] bool                        isValidSubcircuitSlug(std::string_view slug);
 [[nodiscard]] std::string                 subcircuitPathForSlug(std::string_view slug);
+/** Checks that an asset path is normalized, relative, and outside reserved namespaces. */
+[[nodiscard]] bool isValidProjectAssetPath(std::string_view path);
+
+/**
+ * A document always has a valid, immutable project-relative path. Its type is
+ * derived from that path. Contents are the only persisted representation.
+ */
 class Document {
 public:
   Document(std::string path, std::string contents);
 
-  [[nodiscard]] const std::string&         getPath() const noexcept;
-  [[nodiscard]] const std::string&         getContents() const noexcept;
-  [[nodiscard]] DocumentType               getType() const noexcept;
-  [[nodiscard]] std::optional<std::string>        subcircuitSlug() const;
+  [[nodiscard]] const std::string& getPath() const noexcept;
+  [[nodiscard]] const std::string& getContents() const noexcept;
+  [[nodiscard]] DocumentType       getType() const noexcept;
+  [[nodiscard]] std::optional<std::string> subcircuitSlug() const;
 
   void setContents(std::string contents);
 
@@ -41,7 +60,8 @@ private:
 
 class DocumentStore {
 public:
-  using Listener = std::function<void(std::string_view)>;
+  using DocumentReferences = std::vector<std::reference_wrapper<const Document>>;
+  using Listener           = std::function<void(const DocumentChange&)>;
 
   void setDocuments(std::vector<Document> documents);
   void upsertDocument(Document document);
@@ -49,24 +69,23 @@ public:
   void removeDocument(std::string_view documentPath);
   void clear();
 
-  [[nodiscard]] const Document*            find(std::string_view documentPath) const;
-  [[nodiscard]] bool                       contains(std::string_view documentPath) const;
-  [[nodiscard]] std::vector<Document>      getDocuments() const;
-  [[nodiscard]] std::vector<Document>      getDocuments(DocumentType type) const;
+  /** Returned pointers/references are invalidated by any store mutation. */
+  [[nodiscard]] const Document* find(std::string_view documentPath) const noexcept;
+  [[nodiscard]] bool contains(std::string_view documentPath) const noexcept;
+  [[nodiscard]] const std::vector<Document>& getDocuments() const noexcept;
+  [[nodiscard]] DocumentReferences getDocuments(DocumentType type) const;
   [[nodiscard]] std::optional<std::size_t> indexOf(std::string_view documentPath) const;
 
   std::uint64_t addListener(Listener listener);
   void          removeListener(std::uint64_t id);
 
 private:
-  std::vector<Document>                             documents;
-  SILICON::core::CallbackRegistry<std::string_view> listeners;
-};
+  friend class ProjectContext;
 
-/** Project-owned mutable state shared by the project's editors and workflows. */
-class ProjectContext {
-public:
-  DocumentStore documents;
+  void commitDocuments(std::vector<Document> documents, const DocumentChange& change);
+
+  std::vector<Document> documents;
+  SILICON::core::CallbackRegistry<const DocumentChange&> listeners;
 };
 
 }  // namespace SILICON::project

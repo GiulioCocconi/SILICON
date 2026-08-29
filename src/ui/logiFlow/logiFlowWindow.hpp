@@ -55,7 +55,7 @@ class LogSideView;
 struct ShortcutSetting;
 class ProjectTree;
 
-#include <core/projectDependencyGraph.hpp>
+#include <core/projectContext.hpp>
 #include <core/serialization/projectFile.hpp>
 
 #ifdef __EMSCRIPTEN__
@@ -561,12 +561,14 @@ private:
   /** @brief Optional persisted project information for the current project. */
   std::optional<SILICON::project::ProjectInfo> currentProjectInfo;
 
+  /** @brief Non-document archive entries preserved across load/save. */
+  std::vector<SILICON::project::ProjectAsset> currentProjectAssets;
+
   /** @brief Project-relative path of the circuit loaded in the diagram scene. */
   std::string activeDocumentPath;
   /** @brief Tracks code edits already flushed to DocumentStore but not to disk. */
   bool                                     codeDocumentsDirty = false;
-    SILICON::project::ProjectContext         projectContext;
-  SILICON::project::ProjectDependencyGraph dependencyGraph;
+  SILICON::project::ProjectContext projectContext;
 
   /** @brief Lazily shown application about dialog. */
   AboutDialog* aboutDialog = nullptr;

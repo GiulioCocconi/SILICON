@@ -189,6 +189,7 @@ void LogiFlowWindow::resetProjectState()
 {
   currentProjectMetadata.reset();
   currentProjectInfo = defaultProjectInfo(currentFileName);
+  currentProjectAssets.clear();
   activeDocumentPath = defaultMainCircuitPath();
   codeDocumentsDirty = false;
   codeEditor->clearFileType();
@@ -198,8 +199,7 @@ void LogiFlowWindow::resetProjectState()
   diagramScene->setSubcircuitDocumentMode(false);
   auto document = defaultCircuitDocument();
   document.setContents(diagramScene->serialize());
-    projectContext.documents.setDocuments({std::move(document)});
-    dependencyGraph.rebuildFromProject(projectContext.documents.getDocuments());
+  projectContext.setDocuments({std::move(document)});
   updateSubcircuitShapeAction();
 }
 
@@ -368,14 +368,6 @@ void LogiFlowWindow::loadCircuitContent(const QString&    fileName,
 
     auto projectFile = SILICON::project::readProjectFile(archivePath.toStdString());
 
-    // Clear the current scene items to prepare for the new circuit.
-    diagramScene->clear();
-
-    // 3. Update application state on success
-    currentProjectMetadata = std::move(projectFile.metadata);
-    currentProjectInfo     = std::move(projectFile.project);
-    codeDocumentsDirty     = false;
-    activeDocumentPath     = projectMainCircuitPath();
     std::vector<SILICON::project::Document> documents;
     documents.reserve(projectFile.documents.size());
     for (auto& document : projectFile.documents) {
@@ -386,8 +378,20 @@ void LogiFlowWindow::loadCircuitContent(const QString&    fileName,
         documents.push_back(std::move(document));
     }
 
-      projectContext.documents.setDocuments(std::move(documents));
-      dependencyGraph.rebuildFromProject(projectContext.documents.getDocuments());
+    const auto mainDocumentPath = projectFile.project.mainCircuit;
+    const auto mainDocument = std::ranges::find(
+        documents, mainDocumentPath, &SILICON::project::Document::getPath);
+    if (mainDocument == documents.end())
+      throw std::runtime_error("Main circuit payload is missing");
+
+    // Commit project-level derived and authoritative state only after validation.
+    diagramScene->clear();
+    currentProjectMetadata = std::move(projectFile.metadata);
+    currentProjectInfo     = std::move(projectFile.project);
+    currentProjectAssets   = std::move(projectFile.assets);
+    codeDocumentsDirty     = false;
+    activeDocumentPath     = mainDocumentPath;
+    projectContext.setDocuments(std::move(documents));
 
     auto&       guiFactory   = GUIComponentFactory::instance();
     auto&       coreRegistry = ComponentRegistry::instance();
@@ -463,9 +467,11 @@ bool LogiFlowWindow::save()
       project.mainCircuit = defaultMainCircuitPath();
     currentProjectInfo = project;
     ensureProjectDocuments();
-      const auto                    documents = projectContext.documents.getDocuments();
-      SILICON::project::ProjectFile projectFile{
-          .metadata = metadata, .project = project, .documents = documents};
+    const auto documents = projectContext.documents.getDocuments();
+    SILICON::project::ProjectFile projectFile{.metadata  = metadata,
+                                              .project   = project,
+                                              .documents = documents,
+                                              .assets    = currentProjectAssets};
 
 #ifdef __EMSCRIPTEN__
     QTemporaryFile archive;
@@ -854,7 +860,7 @@ void LogiFlowWindow::deleteSelectedDocument()
   }
 
   if (!circuit && !code) {
-    const auto dependents = dependencyGraph.dependentsOf(path);
+    const auto dependents = projectContext.circuitDependencies.dependentsOf(path);
     if (!dependents.empty()) {
       QStringList dependentNames;
       for (const auto& dependent : dependents)

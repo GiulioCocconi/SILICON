@@ -19,6 +19,7 @@
 #include "projectDocument.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <format>
 #include <ranges>
 #include <stdexcept>
@@ -28,16 +29,44 @@
 namespace SILICON::project {
 namespace {
 
+  [[nodiscard]] bool containsControlCharacter(const std::string_view value)
+  {
+    return std::ranges::any_of(value, [](const unsigned char character) {
+      return character < 0x20 || character == 0x7f;
+    });
+  }
+
+  [[nodiscard]] bool hasSafePathSegments(const std::string_view path)
+  {
+    std::size_t segmentStart = 0;
+    while (segmentStart < path.size()) {
+      const auto separator = path.find('/', segmentStart);
+      const auto segment = path.substr(segmentStart,
+                                       separator == std::string_view::npos
+                                           ? path.size() - segmentStart
+                                           : separator - segmentStart);
+      if (segment.empty() || segment == "." || segment == "..")
+        return false;
+      if (separator == std::string_view::npos)
+        break;
+      segmentStart = separator + 1;
+    }
+    return true;
+  }
+
   std::optional<DocumentType> classifyFlatJsonPath(const std::string_view path,
                                                    const std::string_view prefix,
                                                    const DocumentType     type)
   {
     constexpr std::string_view suffix = ".json";
-    if (!path.starts_with(prefix) || !path.ends_with(suffix)
-        || path.find("..") != std::string_view::npos)
+    if (!path.starts_with(prefix) || !path.ends_with(suffix) || path.contains('\\')
+        || containsControlCharacter(path) || !hasSafePathSegments(path))
       return std::nullopt;
     const auto fileName = path.substr(prefix.size());
     if (fileName.size() <= suffix.size() || fileName.contains('/'))
+      return std::nullopt;
+    const auto stem = fileName.substr(0, fileName.size() - suffix.size());
+    if (stem == "." || stem == "..")
       return std::nullopt;
     return type;
   }
@@ -71,9 +100,32 @@ std::optional<std::string> subcircuitSlugForPath(const std::string_view path)
       path.substr(prefix.size(), path.size() - prefix.size() - suffix.size()));
 }
 
+bool isValidSubcircuitSlug(const std::string_view slug)
+{
+  return !slug.empty() && slug != "." && slug != ".." && !slug.contains('/')
+         && !slug.contains('\\') && !containsControlCharacter(slug);
+}
+
 std::string subcircuitPathForSlug(const std::string_view slug)
 {
+  if (!isValidSubcircuitSlug(slug))
+    throw std::invalid_argument("Invalid subcircuit slug");
   return std::format("subcircuits/{}.json", slug);
+}
+
+bool isValidProjectAssetPath(const std::string_view path)
+{
+  if (path.empty() || path.front() == '/' || path.back() == '/' || path.contains('\\')
+      || containsControlCharacter(path) || !hasSafePathSegments(path)
+      || (path.size() >= 3
+          && std::isalpha(static_cast<unsigned char>(path[0])) && path[1] == ':'
+          && path[2] == '/')
+      || path == "mimetype" || path == "metadata.json" || path == "project.json")
+    return false;
+
+  const auto firstSeparator = path.find('/');
+  const auto root = path.substr(0, firstSeparator);
+  return root != "circuits" && root != "subcircuits" && root != "code";
 }
 
 Document::Document(std::string path, std::string contents)
@@ -104,7 +156,7 @@ std::optional<std::string> Document::subcircuitSlug() const
 
 void Document::setContents(std::string contents)
 {
-  this->contents        = std::move(contents);
+  this->contents = std::move(contents);
 }
 
 void DocumentStore::setDocuments(std::vector<Document> documents)
@@ -116,7 +168,7 @@ void DocumentStore::setDocuments(std::vector<Document> documents)
           std::format("Duplicate project document path: {}", document.getPath()));
   }
   this->documents = std::move(documents);
-  listeners.notify({});
+  listeners.notify(DocumentChange{.kind = DocumentChangeKind::Reset, .path = std::nullopt});
 }
 
 void DocumentStore::upsertDocument(Document document)
@@ -124,11 +176,12 @@ void DocumentStore::upsertDocument(Document document)
   const auto path = document.getPath();
   if (auto index = indexOf(document.getPath())) {
     documents[*index] = std::move(document);
-    listeners.notify(path);
+    listeners.notify(
+        DocumentChange{.kind = DocumentChangeKind::Updated, .path = path});
     return;
   }
   documents.push_back(std::move(document));
-  listeners.notify(path);
+  listeners.notify(DocumentChange{.kind = DocumentChangeKind::Added, .path = path});
 }
 
 void DocumentStore::insertDocument(Document document, const std::size_t index)
@@ -139,7 +192,7 @@ void DocumentStore::insertDocument(Document document, const std::size_t index)
         std::format("Duplicate project document path: {}", document.getPath()));
   const auto offset = std::min(index, documents.size());
   documents.insert(documents.begin() + offset, std::move(document));
-  listeners.notify(path);
+  listeners.notify(DocumentChange{.kind = DocumentChangeKind::Added, .path = path});
 }
 
 void DocumentStore::removeDocument(const std::string_view documentPath)
@@ -150,37 +203,41 @@ void DocumentStore::removeDocument(const std::string_view documentPath)
     return document.getPath() == documentPath;
   });
   if (documents.size() != oldSize)
-    listeners.notify(path);
+    listeners.notify(DocumentChange{.kind = DocumentChangeKind::Removed, .path = path});
 }
 
 void DocumentStore::clear()
 {
   documents.clear();
-  listeners.notify({});
+  listeners.notify(DocumentChange{.kind = DocumentChangeKind::Reset, .path = std::nullopt});
 }
 
-const Document* DocumentStore::find(const std::string_view documentPath) const
+const Document* DocumentStore::find(const std::string_view documentPath) const noexcept
 {
   const auto it = std::ranges::find(documents, documentPath, &Document::getPath);
   return it == documents.end() ? nullptr : &*it;
 }
 
-bool DocumentStore::contains(const std::string_view documentPath) const
+bool DocumentStore::contains(const std::string_view documentPath) const noexcept
 {
   return find(documentPath) != nullptr;
 }
 
-std::vector<Document> DocumentStore::getDocuments() const
+const std::vector<Document>& DocumentStore::getDocuments() const noexcept
 {
   return documents;
 }
 
-std::vector<Document> DocumentStore::getDocuments(const DocumentType type) const
+DocumentStore::DocumentReferences
+DocumentStore::getDocuments(const DocumentType type) const
 {
-  return documents | std::views::filter([type](const Document& document) {
-           return document.getType() == type;
-         })
-         | std::ranges::to<std::vector>();
+  DocumentReferences result;
+  result.reserve(documents.size());
+  for (const auto& document : documents) {
+    if (document.getType() == type)
+      result.emplace_back(document);
+  }
+  return result;
 }
 
 std::optional<std::size_t>
@@ -200,6 +257,13 @@ std::uint64_t DocumentStore::addListener(Listener listener)
 void DocumentStore::removeListener(const std::uint64_t id)
 {
   listeners.remove(id);
+}
+
+void DocumentStore::commitDocuments(std::vector<Document> documents,
+                                    const DocumentChange& change)
+{
+  this->documents.swap(documents);
+  listeners.notify(change);
 }
 
 }  // namespace SILICON::project

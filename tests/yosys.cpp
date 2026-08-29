@@ -38,6 +38,7 @@
 #include <core/flipflops.hpp>
 #include <core/io.hpp>
 #include <core/projectDocument.hpp>
+#include <core/projectContext.hpp>
 #include <core/register.hpp>
 #include <core/serialization/component_registration.hpp>
 #include <core/serialization/yosys.hpp>

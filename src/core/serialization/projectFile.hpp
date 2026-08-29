@@ -74,6 +74,15 @@ struct ProjectInfo {
   std::string description;
 };
 
+struct ProjectAsset {
+  /// Normalized path of a non-document ZIP entry relative to the archive root.
+  std::string path;
+  /// Exact asset bytes (represented as a string to match the archive API).
+  std::string contents;
+
+  bool operator==(const ProjectAsset&) const = default;
+};
+
 /**
  * @brief In-memory representation of a `.sil` project archive.
  *
@@ -85,6 +94,8 @@ struct ProjectFile {
   ProjectInfo     project;
   /// Authoritative ordered collection of project documents.
   std::vector<Document> documents;
+  /// Arbitrary non-document project files in their own validated namespace.
+  std::vector<ProjectAsset> assets{};
 };
 
 /**
@@ -99,7 +110,7 @@ struct ProjectFile {
 /**
  * @brief Writes a Silicon `.sil` project archive.
  *
- * The writer emits every entry listed in ProjectFile::documents.
+ * The writer emits every document and asset listed by ProjectFile.
  *
  * @throws std::runtime_error if the project references an invalid/missing circuit
  * path or the archive cannot be created/finalized.
