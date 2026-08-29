@@ -33,7 +33,7 @@
 namespace SILICON::core {
 class Circuit;
 class Component;
-}
+}  // namespace SILICON::core
 
 namespace SILICON::yosys {
 
@@ -74,6 +74,13 @@ struct ScriptResult {
 [[nodiscard]] core::Circuit importVerilog(std::string_view   source,
                                           std::string_view   topModule,
                                           const ToolOptions& options = {});
+
+/**
+ * Parse Verilog with Yosys and import it only when it declares exactly one module.
+ * The returned circuit carries that module name.
+ */
+[[nodiscard]] core::Circuit importSingleModuleVerilog(std::string_view   source,
+                                                      const ToolOptions& options = {});
 
 /**
  * @brief Convert a Silicon circuit to readable Verilog using external Yosys.

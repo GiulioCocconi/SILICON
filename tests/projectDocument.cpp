@@ -16,60 +16,55 @@ using namespace SILICON::core;
 using namespace SILICON::project;
 
 using SILICON::project::Document;
-using SILICON::project::DocumentKind;
+using SILICON::project::DocumentType;
 using SILICON::project::DocumentStore;
 
 TEST(ProjectDocumentTest, ClassifiesCanonicalFlatPaths)
 {
-  EXPECT_EQ(SILICON::project::classifyDocumentPath("circuits/main.json"),
-            DocumentKind::Circuit);
-  EXPECT_EQ(SILICON::project::classifyDocumentPath("subcircuits/adder.json"),
-            DocumentKind::Subcircuit);
-  EXPECT_FALSE(SILICON::project::classifyDocumentPath(""));
-  EXPECT_FALSE(SILICON::project::classifyDocumentPath("circuits/nested/main.json"));
-  EXPECT_FALSE(SILICON::project::classifyDocumentPath("circuits/main.txt"));
+  EXPECT_EQ(SILICON::project::documentTypeForPath("circuits/main.json"),
+            DocumentType::Circuit);
+  EXPECT_EQ(SILICON::project::documentTypeForPath("subcircuits/adder.json"),
+            DocumentType::Subcircuit);
+  EXPECT_EQ(SILICON::project::documentTypeForPath("code/adder.v"),
+            DocumentType::Code);
+  EXPECT_FALSE(SILICON::project::documentTypeForPath(""));
+  EXPECT_FALSE(SILICON::project::documentTypeForPath("circuits/nested/main.json"));
+  EXPECT_FALSE(SILICON::project::documentTypeForPath("circuits/main.txt"));
   EXPECT_EQ(SILICON::project::subcircuitSlugForPath("subcircuits/adder.json"), "adder");
   EXPECT_FALSE(SILICON::project::subcircuitSlugForPath("circuits/adder.json"));
 }
 
-TEST(ProjectDocumentTest, SceneReplacementClearsOrReplacesPreparedCoreJson)
+TEST(ProjectDocumentTest, ContentReplacementClearsOrReplacesPreparedCoreJson)
 {
   Document document("subcircuits/adder.json", "old", "prepared");
-  document.setSceneJson("new");
-  EXPECT_EQ(document.getSceneJson(), "new");
+  document.setContents("new");
+  EXPECT_EQ(document.getContents(), "new");
   EXPECT_FALSE(document.getCoreCircuitJson());
 
-  document.setSceneJson("newer", "new prepared");
+  document.setContents("newer", "new prepared");
   ASSERT_TRUE(document.getCoreCircuitJson());
   EXPECT_EQ(*document.getCoreCircuitJson(), "new prepared");
 }
 
-TEST(ProjectDocumentTest, ParsesOptionalVerilogHdlDescriptor)
+TEST(ProjectDocumentTest, DescribesRegisteredCodeTypes)
 {
-  EXPECT_FALSE(SILICON::project::parseHdlDescriptor(R"({"circuit":{}})"));
-  EXPECT_EQ(SILICON::project::parseHdlDescriptor(
-                R"({"hdl":{"type":"verilog","path":"hdl/adder.v"}})"),
-            (SILICON::project::HdlDescriptor{.type = "verilog", .path = "hdl/adder.v"}));
+  const auto registry = codeFileTypeRegistry();
+  ASSERT_EQ(registry.size(), 1);
+  EXPECT_EQ(registry.front().type, CodeFileType::Verilog);
+  EXPECT_EQ(registry.front().displayName, "Verilog");
+  EXPECT_EQ(registry.front().extension, ".v");
+  EXPECT_EQ(registry.front().kdeSyntaxDefinition, "Verilog");
+  EXPECT_EQ(codeFileTypeForPath("code/adder.v"), CodeFileType::Verilog);
+  EXPECT_FALSE(codeFileTypeForPath("code/adder.sv"));
 }
 
-TEST(ProjectDocumentTest, RejectsInvalidHdlDescriptorsAndAssetPaths)
+TEST(ProjectDocumentTest, ValidatesCodePaths)
 {
-  EXPECT_TRUE(SILICON::project::isValidProjectAssetPath("hdl/adder.v"));
-  EXPECT_FALSE(SILICON::project::isValidProjectAssetPath("../adder.v"));
-  EXPECT_FALSE(SILICON::project::isValidProjectAssetPath("/hdl/adder.v"));
-  EXPECT_FALSE(SILICON::project::isValidProjectAssetPath("circuits/adder.json"));
-  EXPECT_FALSE(SILICON::project::isValidProjectAssetPath(
-      std::string_view("hdl/a\0b.v", 9)));
-
-  EXPECT_THROW((void)SILICON::project::parseHdlDescriptor(
-                   R"({"hdl":{"type":"vhdl","path":"hdl/adder.vhd"}})"),
-               std::runtime_error);
-  EXPECT_THROW((void)SILICON::project::parseHdlDescriptor(
-                   R"({"hdl":{"type":"verilog","path":"../adder.v"}})"),
-               std::runtime_error);
-  EXPECT_THROW((void)SILICON::project::parseHdlDescriptor(
-                   R"({"hdl":{"type":"verilog","path":"hdl/adder.v","module":"adder"}})"),
-               std::runtime_error);
+  EXPECT_TRUE(isValidCodeFilePath("code/adder.v", CodeFileType::Verilog));
+  EXPECT_FALSE(isValidCodeFilePath("code/adder.sv", CodeFileType::Verilog));
+  EXPECT_FALSE(isValidCodeFilePath("code/nested/adder.v", CodeFileType::Verilog));
+  EXPECT_FALSE(isValidCodeFilePath("code/../adder.v", CodeFileType::Verilog));
+  EXPECT_EQ(codeFilePath("adder", CodeFileType::Verilog), "code/adder.v");
 }
 
 TEST(ProjectDocumentStoreTest, PreservesOrderAcrossMixedKindsAndUpserts)
@@ -77,21 +72,27 @@ TEST(ProjectDocumentStoreTest, PreservesOrderAcrossMixedKindsAndUpserts)
   DocumentStore store;
   store.setDocuments({{"circuits/main.json", "main"},
                       {"subcircuits/adder.json", "adder"},
+                      {"code/adder.v", "module adder; endmodule"},
                       {"circuits/control.json", "control"}});
 
   store.upsertDocument({"subcircuits/adder.json", "updated"});
-  ASSERT_EQ(store.getDocuments().size(), 3);
+  ASSERT_EQ(store.getDocuments().size(), 4);
   EXPECT_EQ(store.getDocuments()[1].getPath(), "subcircuits/adder.json");
-  EXPECT_EQ(store.getDocuments()[1].getSceneJson(), "updated");
+  EXPECT_EQ(store.getDocuments()[1].getContents(), "updated");
 
-  const auto circuits = store.getDocuments(DocumentKind::Circuit);
+  const auto circuits = store.getDocuments(DocumentType::Circuit);
   ASSERT_EQ(circuits.size(), 2);
   EXPECT_EQ(circuits[0].getPath(), "circuits/main.json");
   EXPECT_EQ(circuits[1].getPath(), "circuits/control.json");
 
+  const auto codeFiles = store.getDocuments(DocumentType::Code);
+  ASSERT_EQ(codeFiles.size(), 1);
+  EXPECT_EQ(codeFiles.front().getContents(), "module adder; endmodule");
+  EXPECT_EQ(codeFileTypeForPath(codeFiles.front().getPath()), CodeFileType::Verilog);
+
   store.removeDocument("subcircuits/adder.json");
   EXPECT_FALSE(store.contains("subcircuits/adder.json"));
-  EXPECT_EQ(store.indexOf("circuits/control.json"), 1);
+  EXPECT_EQ(store.indexOf("circuits/control.json"), 2);
 }
 
 TEST(ProjectDocumentStoreTest, RejectsDuplicatePaths)

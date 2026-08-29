@@ -96,7 +96,7 @@ example.sil
 │   └── controller.json
 ├── subcircuits/
 │   └── adder.json
-└── hdl/
+└── code/
     └── adder.v
 ```
 
@@ -104,20 +104,19 @@ example.sil
 file, and UTC creation/modification timestamps. `project.json` contains the project name,
 description, and `mainCircuit`, which must name an existing flat JSON entry below
 `circuits/`. There must be at least one circuit. Additional circuit files are discovered
-under `circuits/`; optional project-local subcircuits are flat entries under
-`subcircuits/`, with the filename stem serving as the subcircuit slug. Nested paths,
-duplicate paths, duplicate slugs, or a main-circuit reference outside `circuits/` are
-rejected.
+under `circuits/`; project-local subcircuits are flat entries under `subcircuits/`, and
+source documents use registered extensions under `code/`. Other archive entries are
+ignored. Duplicate document paths, duplicate subcircuit slugs, or a main-circuit
+reference outside `circuits/` are rejected.
 
-Inside a running editor, both kinds are represented by the same
+Inside a running editor, all three document types are represented by the same
 `silicon::project::Document`. Its validated project-relative path is its only identity
-and also determines its kind. A subcircuit slug is derived when needed:
+and determines whether it is a circuit, subcircuit, or code document. Code language is
+likewise inferred from the registered file extension. A subcircuit slug is derived when needed:
 `subcircuits/adder.json` becomes `adder`; it is not stored as independent state.
-`ProjectFile::documents` is likewise the authoritative archive collection.
-`mainCircuitJson` is only a compatibility mirror of the document selected by
-`project.json.mainCircuit`.
+`ProjectFile::documents` is the authoritative archive collection.
 
-Every open document lives in the ordered `DocumentStore`. Circuit and subcircuit
+Every open document lives in the ordered `DocumentStore`. Circuit, subcircuit, and code
 creation, deletion, activation, tree selection, undo restoration, and saving all use
 the same canonical path and lifecycle. The store preserves insertion order, including
 when an undo restores a document at its former index, and emits path-based change
@@ -141,36 +140,14 @@ component. Subcircuit documents may also carry graphical boundary/shape metadata
 separation lets simulation and native circuit deserialization remain independent of Qt
 scene data.
 
-An HDL-backed subcircuit additionally carries exactly one optional descriptor:
+Code documents store their source directly in entries such as `code/adder.v`. Verilog is
+the currently registered language. Converting a subcircuit to Verilog creates or replaces
+the corresponding code document; converting it back creates or replaces the subcircuit
+document. Editing a code document hides circuit-only tools and disables simulation.
 
-```json
-{
-  "hdl": {
-    "type": "verilog",
-    "path": "hdl/adder.v"
-  }
-}
-```
-
-The type is currently restricted to `verilog`; SystemVerilog mode is not enabled. The
-path is normalized and relative to the archive root, and the referenced source is stored
-as a `ProjectAsset` rather than embedded in the scene. Every descriptor must reference an
-existing asset, and one asset cannot be shared by multiple subcircuits. The HDL source's
-top module name is the subcircuit slug derived from its document path.
-
-Converting a graphical subcircuit to HDL writes its generated source under `hdl/`, clears
-the graphical implementation, and cannot currently be reversed. Editable code mode and
-compiled mode are still distinct: editing hides the circuit and disables simulation;
-leaving it runs Yosys, replaces the scene's cached core topology, makes the source
-read-only, and re-enables simulation. A compile failure leaves code mode active. Saving
-or switching documents also compiles pending HDL first, so invalid source blocks the
-operation instead of committing a stale core circuit.
-
-A `Document` can additionally hold prepared core-circuit JSON for a subcircuit. For a
-graphical document the UI derives it from the scene; for an HDL-backed document Yosys
-lowers the source into the same core `Circuit` representation before it is stored. That
-payload is the implementation used by definition loading and elaboration and is never
-written as another archive entry. Replacing a scene clears any older prepared payload
+A subcircuit `Document` can additionally hold prepared core-circuit JSON derived from its
+scene. That payload is used by definition loading and elaboration and is never written as
+another archive entry. Replacing document contents clears any older prepared payload
 unless a replacement is supplied at the same time, preventing stale logical data from
 surviving an edit.
 
@@ -179,8 +156,7 @@ project `DocumentStore`. Definition loading returns a core `SubcircuitDefinition
 containing the implementation circuit and its interface. Subcircuit interfaces use
 named `CircuitPort` values, keeping each port name attached to its bus for elaboration
 and hierarchical Yosys export rather than maintaining parallel name arrays.
-Elaboration never reads the HDL descriptor or invokes Yosys, so graphical and HDL-backed
-subcircuits are indistinguishable once their core implementations have been prepared.
+Elaboration operates only on subcircuit documents and never invokes Yosys.
 
 Compatibility is deliberately strict. The archive reader currently accepts only the
 current `metadata.json.formatVersion`, and native core circuit JSON must report the

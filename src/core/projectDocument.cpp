@@ -25,14 +25,12 @@
 #include <unordered_set>
 #include <utility>
 
-#include <nlohmann/json.hpp>
-
 namespace SILICON::project {
 namespace {
 
-  std::optional<DocumentKind> classifyFlatJsonPath(const std::string_view path,
+  std::optional<DocumentType> classifyFlatJsonPath(const std::string_view path,
                                                    const std::string_view prefix,
-                                                   const DocumentKind     kind)
+                                                   const DocumentType     type)
   {
     constexpr std::string_view suffix = ".json";
     if (!path.starts_with(prefix) || !path.ends_with(suffix)
@@ -41,28 +39,32 @@ namespace {
     const auto fileName = path.substr(prefix.size());
     if (fileName.size() <= suffix.size() || fileName.contains('/'))
       return std::nullopt;
-    return kind;
+    return type;
   }
 
   void requireValidPath(const std::string_view path)
   {
-    if (!classifyDocumentPath(path))
-      throw std::invalid_argument(
-          "Document path must reference a valid project JSON entry");
+    if (!documentTypeForPath(path))
+      throw std::invalid_argument("Document path is invalid");
   }
 
 }  // namespace
 
-std::optional<DocumentKind> classifyDocumentPath(const std::string_view path)
+std::optional<DocumentType> documentTypeForPath(const std::string_view path)
 {
-  if (auto kind = classifyFlatJsonPath(path, "circuits/", DocumentKind::Circuit))
-    return kind;
-  return classifyFlatJsonPath(path, "subcircuits/", DocumentKind::Subcircuit);
+  if (auto type = classifyFlatJsonPath(path, "circuits/", DocumentType::Circuit))
+    return type;
+  if (auto type =
+          classifyFlatJsonPath(path, "subcircuits/", DocumentType::Subcircuit))
+    return type;
+  if (codeFileTypeForPath(path))
+    return DocumentType::Code;
+  return std::nullopt;
 }
 
 std::optional<std::string> subcircuitSlugForPath(const std::string_view path)
 {
-  if (classifyDocumentPath(path) != DocumentKind::Subcircuit)
+  if (documentTypeForPath(path) != DocumentType::Subcircuit)
     return std::nullopt;
   constexpr std::string_view prefix = "subcircuits/";
   constexpr std::string_view suffix = ".json";
@@ -75,69 +77,10 @@ std::string subcircuitPathForSlug(const std::string_view slug)
   return std::format("subcircuits/{}.json", slug);
 }
 
-bool isValidProjectAssetPath(const std::string_view path)
-{
-  if (path.empty() || path.front() == '/' || path.back() == '/' || path.contains('\\')
-      || path == "mimetype" || path == "metadata.json" || path == "project.json"
-      || classifyDocumentPath(path)) {
-    return false;
-  }
-  if (std::ranges::any_of(path, [](const unsigned char character) {
-        return character < 0x20 || character == 0x7f;
-      })) {
-    return false;
-  }
-
-  std::size_t segmentStart = 0;
-  while (segmentStart < path.size()) {
-    const auto separator = path.find('/', segmentStart);
-    const auto segment   = path.substr(segmentStart, separator == std::string_view::npos
-                                                         ? path.size() - segmentStart
-                                                         : separator - segmentStart);
-    if (segment.empty() || segment == "." || segment == "..")
-      return false;
-    if (separator == std::string_view::npos)
-      break;
-    segmentStart = separator + 1;
-  }
-  return true;
-}
-
-std::optional<HdlDescriptor> parseHdlDescriptor(const std::string_view sceneJson)
-{
-  nlohmann::json json;
-  try {
-    json = nlohmann::json::parse(sceneJson);
-  } catch (const nlohmann::json::parse_error&) {
-    throw std::runtime_error("Subcircuit document is not valid JSON");
-  }
-
-  const auto hdl = json.find("hdl");
-  if (hdl == json.end())
-    return std::nullopt;
-  if (!hdl->is_object())
-    throw std::runtime_error("Subcircuit hdl must be an object");
-  if (hdl->size() != 2 || !hdl->contains("type") || !hdl->contains("path")
-      || !(*hdl)["type"].is_string() || !(*hdl)["path"].is_string()) {
-    throw std::runtime_error(
-        "Subcircuit hdl must contain only string fields 'type' and 'path'");
-  }
-
-  HdlDescriptor result{.type = (*hdl)["type"].get<std::string>(),
-                       .path = (*hdl)["path"].get<std::string>()};
-  if (result.type != "verilog")
-    throw std::runtime_error(
-        std::format("Unsupported subcircuit HDL type '{}'", result.type));
-  if (!isValidProjectAssetPath(result.path))
-    throw std::runtime_error("Subcircuit hdl.path must be a normalized project-relative "
-                             "asset path");
-  return result;
-}
-
-Document::Document(std::string path, std::string sceneJson,
+Document::Document(std::string path, std::string contents,
                    std::optional<std::string> coreCircuitJson)
   : path(std::move(path)),
-    sceneJson(std::move(sceneJson)),
+    contents(std::move(contents)),
     coreCircuitJson(std::move(coreCircuitJson))
 {
   requireValidPath(this->path);
@@ -148,9 +91,9 @@ const std::string& Document::getPath() const
   return path;
 }
 
-const std::string& Document::getSceneJson() const
+const std::string& Document::getContents() const
 {
-  return sceneJson;
+  return contents;
 }
 
 const std::optional<std::string>& Document::getCoreCircuitJson() const
@@ -158,9 +101,9 @@ const std::optional<std::string>& Document::getCoreCircuitJson() const
   return coreCircuitJson;
 }
 
-DocumentKind Document::kind() const
+DocumentType Document::getType() const
 {
-  return *classifyDocumentPath(path);
+  return *documentTypeForPath(path);
 }
 
 std::optional<std::string> Document::subcircuitSlug() const
@@ -168,10 +111,10 @@ std::optional<std::string> Document::subcircuitSlug() const
   return subcircuitSlugForPath(path);
 }
 
-void Document::setSceneJson(std::string                sceneJson,
-                            std::optional<std::string> coreCircuitJson)
+void Document::setContents(std::string                contents,
+                           std::optional<std::string> coreCircuitJson)
 {
-  this->sceneJson       = std::move(sceneJson);
+  this->contents        = std::move(contents);
   this->coreCircuitJson = std::move(coreCircuitJson);
 }
 
@@ -249,10 +192,10 @@ std::vector<Document> DocumentStore::getDocuments() const
   return documents;
 }
 
-std::vector<Document> DocumentStore::getDocuments(const DocumentKind kind) const
+std::vector<Document> DocumentStore::getDocuments(const DocumentType type) const
 {
-  return documents | std::views::filter([kind](const Document& document) {
-           return document.kind() == kind;
+  return documents | std::views::filter([type](const Document& document) {
+           return document.getType() == type;
          })
          | std::ranges::to<std::vector>();
 }

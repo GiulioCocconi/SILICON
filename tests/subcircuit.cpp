@@ -184,13 +184,6 @@ std::string delayedNotSubcircuitDocument()
 })";
 }
 
-std::string hdlNotSubcircuitDocument()
-{
-  auto document   = nlohmann::json::parse(delayedNotSubcircuitDocument());
-  document["hdl"] = {{"type", "verilog"}, {"path", "hdl/hdl_not.v"}};
-  return document.dump();
-}
-
 std::string doubleNotSubcircuitDocument()
 {
   return R"({
@@ -812,7 +805,7 @@ TEST_F(SubcircuitTest, UsesPreparedCoreCircuitJsonForGraphicalSubcircuitDocument
   EXPECT_EQ(component->getOutputs()[0].size(), 8);
 }
 
-TEST_F(SubcircuitTest, ElaboratesGraphicalAndHdlBackedSubcircuitsIdentically)
+TEST_F(SubcircuitTest, ElaboratesMultipleGraphicalSubcircuits)
 {
   SILICON::project::DocumentStore::active().upsertDocument(
       subcircuitDocument(
@@ -820,26 +813,26 @@ TEST_F(SubcircuitTest, ElaboratesGraphicalAndHdlBackedSubcircuitsIdentically)
           SILICON::core::extractCoreCircuitJson(andSubcircuitDocument())));
   SILICON::project::DocumentStore::active().upsertDocument(
       subcircuitDocument(
-          "hdl_not", hdlNotSubcircuitDocument(),
+          "graphical_not", delayedNotSubcircuitDocument(),
           SILICON::core::extractCoreCircuitJson(delayedNotSubcircuitDocument())));
 
   auto graphical = std::make_shared<SubcircuitComponent>();
-  auto hdl       = std::make_shared<SubcircuitComponent>();
+  auto inverter  = std::make_shared<SubcircuitComponent>();
   graphical->setPropertyValue("slug", std::string("graphical_and"));
-  hdl->setPropertyValue("slug", std::string("hdl_not"));
+  inverter->setPropertyValue("slug", std::string("graphical_not"));
 
   auto graphicalInputA = std::make_shared<Wire>();
   auto graphicalInputB = std::make_shared<Wire>();
   auto graphicalOutput = std::make_shared<Wire>();
-  auto hdlInput         = std::make_shared<Wire>();
-  auto hdlOutput        = std::make_shared<Wire>();
+  auto inverterInput    = std::make_shared<Wire>();
+  auto inverterOutput   = std::make_shared<Wire>();
   graphical->setInput(0, Bus{graphicalInputA});
   graphical->setInput(1, Bus{graphicalInputB});
   graphical->setOutput(0, Bus{graphicalOutput});
-  hdl->setInput(0, Bus{hdlInput});
-  hdl->setOutput(0, Bus{hdlOutput});
+  inverter->setInput(0, Bus{inverterInput});
+  inverter->setOutput(0, Bus{inverterOutput});
 
-  auto source = std::make_shared<Circuit>(Component_set{graphical, hdl}, false);
+  auto source = std::make_shared<Circuit>(Component_set{graphical, inverter}, false);
   SILICON::simulation::CircuitElaborator elaborator(ComponentRegistry::instance());
   auto runtime = elaborator.elaborate(*source);
 
@@ -858,11 +851,11 @@ TEST_F(SubcircuitTest, ElaboratesGraphicalAndHdlBackedSubcircuitsIdentically)
             Simulator::RunResult::Completed);
   EXPECT_EQ(session.setBus(Bus{graphicalInputB}, valueFor(Bus{graphicalInputB}, 1)),
             Simulator::RunResult::Completed);
-  EXPECT_EQ(session.setBus(Bus{hdlInput}, valueFor(Bus{hdlInput}, 0)),
+  EXPECT_EQ(session.setBus(Bus{inverterInput}, valueFor(Bus{inverterInput}, 0)),
             Simulator::RunResult::Completed);
   EXPECT_EQ(session.runUntilIdle(), Simulator::RunResult::Completed);
   EXPECT_EQ(graphicalOutput->getCurrentState(), State::HIGH);
-  EXPECT_EQ(hdlOutput->getCurrentState(), State::HIGH);
+  EXPECT_EQ(inverterOutput->getCurrentState(), State::HIGH);
 }
 
 TEST_F(SubcircuitTest, CircuitUsesPortRoleDeclaredInterface)

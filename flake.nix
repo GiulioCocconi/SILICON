@@ -45,6 +45,7 @@ outputs = { self, nixpkgs, flake-utils }:
           gtest.dev
           qt6.qtbase
           qt6.qtsvg
+          kdePackages.syntax-highlighting
           boost
           libzip
           pegtl

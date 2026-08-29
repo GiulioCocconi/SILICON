@@ -1,18 +1,18 @@
 /*
-  Copyright (c) 2026. Giulio Cocconi
+Copyright (c) 2026. Giulio Cocconi
 
-   This program is free software: you can redistribute it and/or modify
-   it under the terms of the GNU General Public License as published by
-   the Free Software Foundation, either version 3 of the License, or
-   (at your option) any later version.
+ This program is free software: you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
 
-   This program is distributed in the hope that it will be useful,
-   but WITHOUT ANY WARRANTY; without even the implied warranty of
-   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-   GNU General Public License for more details.
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
 
-   You should have received a copy of the GNU General Public License
-   along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ You should have received a copy of the GNU General Public License
+ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
  */
 
@@ -78,7 +78,7 @@
 #include <QVBoxLayout>
 
 #ifdef __EMSCRIPTEN__
-  #include <emscripten/emscripten.h>
+#include <emscripten/emscripten.h>
 #endif
 
 #include <core/serialization/component_registry.hpp>
@@ -88,6 +88,7 @@
 #include <core/subcircuitDefinition.hpp>
 #include <logging/logger.hpp>
 #include <ui/common/aboutDialog.hpp>
+#include <ui/common/codeEditor.hpp>
 #include <ui/common/diagramScene/diagramScene.hpp>
 #include <ui/common/diagramView.hpp>
 #include <ui/common/fileDialogUtils.hpp>
@@ -104,11 +105,9 @@
 #include <ui/logiFlow/components/subcircuit/componentShapeEditor.hpp>
 #include <ui/logiFlow/components/subcircuit/metadata.hpp>
 #include <ui/logiFlow/components/subcircuit/utils.hpp>
-#include <ui/logiFlow/hdlCodeEditor.hpp>
 #include <ui/logiFlow/metadataDescriptionEdit.hpp>
 #include <ui/logiFlow/projectTree.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
-
 
 namespace SILICON {
 namespace ui {
@@ -116,43 +115,61 @@ using namespace SILICON::core;
 
 namespace {
 
-const SILICON::logging::Logger uiLog("ui");
+  const SILICON::logging::Logger uiLog("ui");
 
-QAction* makeAction(QObject* parent, const QIcon& icon, const QString& text,
-                    const QString& statusTip = {})
-{
-  auto* action = new QAction(icon, text, parent);
-  if (!statusTip.isEmpty())
-    action->setStatusTip(statusTip);
-  return action;
-}
+  class ConversionCommand : public QUndoCommand {
+  public:
+    using Fn = std::function<void()>;
+    ConversionCommand(QString text, Fn undoFn, Fn redoFn)
+      : QUndoCommand(std::move(text)),
+        undoFn(std::move(undoFn)),
+        redoFn(std::move(redoFn))
+    {
+    }
+    void undo() override { undoFn(); }
+    void redo() override { redoFn(); }
 
-QAction* makeAction(QObject* parent, const QString& text, const QString& statusTip = {})
-{
-  auto* action = new QAction(text, parent);
-  if (!statusTip.isEmpty())
-    action->setStatusTip(statusTip);
-  return action;
-}
-
-ShortcutSetting shortcut(const QString& key, const QString& label, QAction* action,
-                         const QKeySequence& defaultShortcut)
-{
-  return {
-      .setting =
-          {
-              .name         = key,
-              .defaultValue = QVariant::fromValue(defaultShortcut),
-          },
-      .label  = label,
-      .action = action,
+  private:
+    Fn undoFn;
+    Fn redoFn;
   };
-}
+
+  QAction* makeAction(QObject* parent, const QIcon& icon, const QString& text,
+                      const QString& statusTip = {})
+  {
+    auto* action = new QAction(icon, text, parent);
+    if (!statusTip.isEmpty())
+      action->setStatusTip(statusTip);
+    return action;
+  }
+
+  QAction* makeAction(QObject* parent, const QString& text,
+                      const QString& statusTip = {})
+  {
+    auto* action = new QAction(text, parent);
+    if (!statusTip.isEmpty())
+      action->setStatusTip(statusTip);
+    return action;
+  }
+
+  ShortcutSetting shortcut(const QString& key, const QString& label, QAction* action,
+                           const QKeySequence& defaultShortcut)
+  {
+    return {
+        .setting =
+            {
+                .name         = key,
+                .defaultValue = QVariant::fromValue(defaultShortcut),
+            },
+        .label  = label,
+        .action = action,
+    };
+  }
 
 }  // namespace
 
 void LogiFlowWindow::setActionsEnabled(std::initializer_list<QAction*> actions,
-                                       const bool enabled)
+                                       const bool                      enabled)
 {
   for (QAction* action : actions) {
     if (action)
@@ -164,7 +181,7 @@ void LogiFlowWindow::syncWasmShortcutCapture()
 {
 #ifdef __EMSCRIPTEN__
   const QVector<ShortcutSetting> shortcuts = shortcutSettings();
-  QJsonArray shortcutSequences;
+  QJsonArray                     shortcutSequences;
   for (const ShortcutSetting& shortcut : shortcuts) {
     if (!shortcut.action)
       continue;
@@ -183,100 +200,103 @@ void LogiFlowWindow::syncWasmShortcutCapture()
       QJsonDocument(shortcutSequences).toJson(QJsonDocument::Compact);
 
   // clang-format off
-  EM_ASM(
+EM_ASM(
+    {
+      const shortcuts = JSON.parse(UTF8ToString($0));
+      globalThis.__siliconShortcutSequences =
+          shortcuts.map(sequence => sequence.trim()
+                                         .split('+')
+                                         .map(part => part.trim().toLowerCase())
+                                         .filter(Boolean));
+
+      const isEditableTarget = target => target instanceof HTMLInputElement || target
+          instanceof HTMLTextAreaElement || target
+          instanceof HTMLSelectElement || target?.isContentEditable;
+
+      const normalizedKeyToken = token => ({
+                                           esc : 'escape',
+                                           del : 'delete',
+                                           ins : 'insert',
+                                           return : 'enter',
+                                           enter : 'enter',
+                                           backtab : 'tab',
+                                           space : ' ',
+                                           pgup : 'pageup',
+                                           pgdown : 'pagedown',
+                                           plus : '+',
+                                           comma : ','
+                                         })[token]
+          ?? token;
+
+      const eventMatchesShortcut = (event, shortcut) =>
       {
-        const shortcuts = JSON.parse(UTF8ToString($0));
-        globalThis.__siliconShortcutSequences =
-            shortcuts.map(sequence => sequence.trim()
-                                           .split('+')
-                                           .map(part => part.trim().toLowerCase())
-                                           .filter(Boolean));
+        if (shortcut.length === 0)
+          return false;
 
-        const isEditableTarget = target => target instanceof HTMLInputElement || target
-            instanceof HTMLTextAreaElement || target
-            instanceof HTMLSelectElement || target?.isContentEditable;
+        const key        = event.key.toLowerCase();
+        const keyToken   = normalizedKeyToken(shortcut[shortcut.length - 1]);
+        const wantsCtrl  = shortcut.includes('ctrl') || shortcut.includes('control');
+        const wantsMeta  = shortcut.includes('meta');
+        const wantsAlt   = shortcut.includes('alt');
+        const wantsShift = shortcut.includes('shift');
+        const usesCommandModifier = wantsCtrl || wantsMeta || wantsAlt;
 
-        const normalizedKeyToken = token => ({
-                                             esc : 'escape',
-                                             del : 'delete',
-                                             ins : 'insert',
-                                             return : 'enter',
-                                             enter : 'enter',
-                                             backtab : 'tab',
-                                             space : ' ',
-                                             pgup : 'pageup',
-                                             pgdown : 'pagedown',
-                                             plus : '+',
-                                             comma : ','
-                                           })[token]
-            ?? token;
+        if (!usesCommandModifier && isEditableTarget(event.target))
+          return false;
 
-        const eventMatchesShortcut = (event, shortcut) =>
-        {
-          if (shortcut.length === 0)
-            return false;
+        if (wantsCtrl && !(event.ctrlKey || event.metaKey))
+          return false;
+        if (wantsMeta && !event.metaKey)
+          return false;
+        if (wantsAlt !== event.altKey)
+          return false;
+        if (wantsShift !== event.shiftKey)
+          return false;
 
-          const key        = event.key.toLowerCase();
-          const keyToken   = normalizedKeyToken(shortcut[shortcut.length - 1]);
-          const wantsCtrl  = shortcut.includes('ctrl') || shortcut.includes('control');
-          const wantsMeta  = shortcut.includes('meta');
-          const wantsAlt   = shortcut.includes('alt');
-          const wantsShift = shortcut.includes('shift');
-          const usesCommandModifier = wantsCtrl || wantsMeta || wantsAlt;
+        return key === keyToken || event.code.toLowerCase() === keyToken;
+      };
 
-          if (!usesCommandModifier && isEditableTarget(event.target))
-            return false;
+      globalThis.__siliconShouldCaptureShortcut = event =>
+          globalThis.__siliconShortcutSequences.some(
+              shortcut => eventMatchesShortcut(event, shortcut));
 
-          if (wantsCtrl && !(event.ctrlKey || event.metaKey))
-            return false;
-          if (wantsMeta && !event.metaKey)
-            return false;
-          if (wantsAlt !== event.altKey)
-            return false;
-          if (wantsShift !== event.shiftKey)
-            return false;
+      if (globalThis.__siliconShortcutCaptureInstalled)
+        return;
 
-          return key === keyToken || event.code.toLowerCase() === keyToken;
-        };
-
-        globalThis.__siliconShouldCaptureShortcut = event =>
-            globalThis.__siliconShortcutSequences.some(
-                shortcut => eventMatchesShortcut(event, shortcut));
-
-        if (globalThis.__siliconShortcutCaptureInstalled)
-          return;
-
-        globalThis.__siliconShortcutCaptureInstalled = true;
-        document.addEventListener(
-        'keydown',
-        event => {
-          if (globalThis.__siliconShouldCaptureShortcut?.(event))
-            event.preventDefault();
-        },
-        true);
+      globalThis.__siliconShortcutCaptureInstalled = true;
+      document.addEventListener(
+      'keydown',
+      event => {
+        if (globalThis.__siliconShouldCaptureShortcut?.(event))
+          event.preventDefault();
       },
-      shortcutsJson.constData());
+      true);
+    },
+    shortcutsJson.constData());
   // clang-format on
 #endif
 }
 
 void LogiFlowWindow::createActions()
 {
-  newAct  = makeAction(this, Icon("file"), tr("&New"), tr("Create a new file"));
-  openAct = makeAction(this, Icon("open"), tr("&Open..."),
-                       tr("Open an existing logiFlow file"));
+  newAct         = makeAction(this, Icon("file"), tr("&New"), tr("Create a new file"));
+  newCodeFileAct = makeAction(this, Icon("code"), tr("New Code File..."),
+                              tr("Create an empty source-code document"));
+  openAct        = makeAction(this, Icon("open"), tr("&Open..."),
+                              tr("Open an existing logiFlow file"));
   saveAct = makeAction(this, Icon("save"), tr("&Save"), tr("Save the circuit to disk"));
   exportImageAct = makeAction(this, Icon("export"), tr("&Export..."),
                               tr("Export the circuit as an image"));
-  exitAct   = makeAction(this, Icon("xmark"), tr("E&xit"), tr("Exit the application"));
-  cutAct    = makeAction(this, Icon("cut"), tr("Cu&t"),
-                         tr("Cut the current selection's contents to the clipboard"));
-  copyAct   = makeAction(this, Icon("copy"), tr("&Copy"));
-  pasteAct  = makeAction(this, Icon("paste"), tr("&Paste"),
-                         tr("Paste the clipboard's contents into the current selection"));
-  rotateAct = makeAction(this, Icon("rotate"), tr("&Rotate"));
-  autoPlaceAct   = makeAction(this, Icon("rearrange"), tr("&Auto place"),
-                              tr("Automatically place components and reroute wires"));
+  exitAct = makeAction(this, Icon("xmark"), tr("E&xit"), tr("Exit the application"));
+  cutAct  = makeAction(this, Icon("cut"), tr("Cu&t"),
+                       tr("Cut the current selection's contents to the clipboard"));
+  copyAct = makeAction(this, Icon("copy"), tr("&Copy"));
+  pasteAct =
+      makeAction(this, Icon("paste"), tr("&Paste"),
+                 tr("Paste the clipboard's contents into the current selection"));
+  rotateAct    = makeAction(this, Icon("rotate"), tr("&Rotate"));
+  autoPlaceAct = makeAction(this, Icon("rearrange"), tr("&Auto place"),
+                            tr("Automatically place components and reroute wires"));
   deleteAct =
       makeAction(this, Icon("delete"), tr("&Delete"), tr("Delete selected components"));
   aboutAct    = makeAction(this, Icon("info"), tr("&About"),
@@ -284,11 +304,11 @@ void LogiFlowWindow::createActions()
   settingsAct = makeAction(this, Icon("settings"), tr("&Settings..."),
                            tr("Edit application settings"));
 
-  undoAct = undoStack->createUndoAction(this, tr("&Undo"));
+  undoAct = makeAction(this, Icon("undo"), tr("&Undo"), tr("Undo the last operation"));
   undoAct->setIcon(Icon("undo"));
   undoAct->setStatusTip(tr("Undo the last operation"));
 
-  redoAct = undoStack->createRedoAction(this, tr("&Redo"));
+  redoAct = makeAction(this, Icon("redo"), tr("&Redo"), tr("Redo the last operation"));
   redoAct->setIcon(Icon("redo"));
   redoAct->setStatusTip(tr("Redo the last operation"));
 
@@ -310,16 +330,14 @@ void LogiFlowWindow::createActions()
                                       tr("Edit the active subcircuit shape"));
   editSubcircuitShapeAct->setVisible(false);
   editSubcircuitShapeAct->setEnabled(false);
-  toggleHdlCodeModeAct =
-      makeAction(this, Icon("code"), tr("Code"),
-                 tr("Toggle the active subcircuit between visual and HDL modes"));
-  toggleHdlCodeModeAct->setCheckable(true);
-  toggleHdlCodeModeAct->setVisible(false);
-  toggleHdlCodeModeAct->setEnabled(false);
+  codeConversionAct = makeAction(this, Icon("code"), tr("Code"));
+  codeConversionAct->setVisible(false);
+  codeConversionAct->setEnabled(false);
   setComponentPlacingModeAct =
       makeAction(this, Icon("plus"), "", tr("Open quick component search"));
 
   connect(newAct, &QAction::triggered, this, &LogiFlowWindow::newFile);
+  connect(newCodeFileAct, &QAction::triggered, this, &LogiFlowWindow::createCodeFile);
   connect(openAct, &QAction::triggered, this, &LogiFlowWindow::open);
   connect(saveAct, &QAction::triggered, this, &LogiFlowWindow::save);
   connect(exportImageAct, &QAction::triggered, this, &LogiFlowWindow::exportImage);
@@ -332,6 +350,37 @@ void LogiFlowWindow::createActions()
   connect(deleteAct, &QAction::triggered, this, &LogiFlowWindow::del);
   connect(aboutAct, &QAction::triggered, this, &LogiFlowWindow::about);
   connect(settingsAct, &QAction::triggered, this, &LogiFlowWindow::openSettings);
+  connect(undoAct, &QAction::triggered, this, [this] {
+    if (isCodeDocumentActive() && codeEditor->document()->isUndoAvailable())
+      codeEditor->undo();
+    else
+      undoStack->undo();
+  });
+  connect(redoAct, &QAction::triggered, this, [this] {
+    if (isCodeDocumentActive() && codeEditor->document()->isRedoAvailable())
+      codeEditor->redo();
+    else
+      undoStack->redo();
+  });
+  const auto updateHistoryActions = [this] {
+    undoAct->setEnabled(undoStack->canUndo()
+                        || (isCodeDocumentActive()
+                            && codeEditor->document()->isUndoAvailable()));
+    redoAct->setEnabled(undoStack->canRedo()
+                        || (isCodeDocumentActive()
+                            && codeEditor->document()->isRedoAvailable()));
+  };
+  connect(undoStack, &QUndoStack::canUndoChanged, this,
+          [updateHistoryActions](bool) { updateHistoryActions(); });
+  connect(undoStack, &QUndoStack::canRedoChanged, this,
+          [updateHistoryActions](bool) { updateHistoryActions(); });
+  connect(codeEditor, &QPlainTextEdit::undoAvailable, this,
+          [updateHistoryActions](bool) { updateHistoryActions(); });
+  connect(codeEditor, &QPlainTextEdit::redoAvailable, this,
+          [updateHistoryActions](bool) { updateHistoryActions(); });
+  connect(editorStack, &QStackedWidget::currentChanged, this,
+          [updateHistoryActions](int) { updateHistoryActions(); });
+  updateHistoryActions();
 
   connect(setNormalModeAct, &QAction::triggered, this, &LogiFlowWindow::setNormalMode);
   connect(setPanModeAct, &QAction::triggered, this, &LogiFlowWindow::setPanMode);
@@ -343,13 +392,14 @@ void LogiFlowWindow::createActions()
           &LogiFlowWindow::showComponentCatalog);
   connect(editSubcircuitShapeAct, &QAction::triggered, this,
           &LogiFlowWindow::editActiveSubcircuitShape);
-  connect(toggleHdlCodeModeAct, &QAction::toggled, this,
-          &LogiFlowWindow::toggleHdlCodeMode);
+  connect(codeConversionAct, &QAction::triggered, this,
+          &LogiFlowWindow::convertActiveDocument);
   connect(setComponentPlacingModeAct, &QAction::triggered, this,
           &LogiFlowWindow::setComponentPlacingMode);
   connect(cancelInteractionAct, &QAction::triggered, this,
           &LogiFlowWindow::cancelCurrentInteraction);
-  connect(toggleFstTraceAct, &QAction::toggled, this, &LogiFlowWindow::toggleFstTracing);
+  connect(toggleFstTraceAct, &QAction::toggled, this,
+          &LogiFlowWindow::toggleFstTracing);
 
   addAction(setComponentPlacingModeAct);
   addAction(cancelInteractionAct);
@@ -436,6 +486,7 @@ void LogiFlowWindow::createMenus()
 {
   fileMenu = menuBar()->addMenu(tr("&File"));
   fileMenu->addAction(newAct);
+  fileMenu->addAction(newCodeFileAct);
   fileMenu->addAction(openAct);
   fileMenu->addAction(saveAct);
   fileMenu->addAction(exportImageAct);
@@ -470,7 +521,7 @@ void LogiFlowWindow::createToolBar()
   toolBar->addAction(openAct);
   toolBar->addAction(saveAct);
 
-  toolBar->addSeparator();
+  diagramToolsSeparator = toolBar->addSeparator();
 
   toolBar->addAction(setNormalModeAct);
   toolBar->addAction(setPanModeAct);
@@ -478,10 +529,10 @@ void LogiFlowWindow::createToolBar()
   toolBar->addAction(setSimulationModeAct);
   toolBar->addAction(toggleFstTraceAct);
 
-  toolBar->addSeparator();
+  documentToolsSeparator = toolBar->addSeparator();
   toolBar->addAction(openComponentCatalogAct);
   toolBar->addAction(editSubcircuitShapeAct);
-  toolBar->addAction(toggleHdlCodeModeAct);
+  toolBar->addAction(codeConversionAct);
 
   addToolBar(toolBar);
 }
@@ -519,234 +570,190 @@ void LogiFlowWindow::updateSubcircuitShapeAction()
 {
   if (!editSubcircuitShapeAct)
     return;
-  const bool active = SILICON::project::classifyDocumentPath(activeDocumentPath)
-                      == SILICON::project::DocumentKind::Subcircuit;
+  const bool active = SILICON::project::documentTypeForPath(activeDocumentPath)
+                      == SILICON::project::DocumentType::Subcircuit;
   editSubcircuitShapeAct->setVisible(active);
   editSubcircuitShapeAct->setEnabled(active);
-  updateHdlActions();
+  updateCodeAction();
 }
 
-SILICON::project::ProjectAsset* LogiFlowWindow::projectAsset(const std::string_view path)
+bool LogiFlowWindow::isCodeDocumentActive() const
 {
-  const auto it =
-      std::ranges::find(projectAssets, path, &SILICON::project::ProjectAsset::path);
-  return it == projectAssets.end() ? nullptr : &*it;
+  return SILICON::project::documentTypeForPath(activeDocumentPath)
+         == SILICON::project::DocumentType::Code;
 }
 
-const SILICON::project::ProjectAsset*
-LogiFlowWindow::projectAsset(const std::string_view path) const
+void LogiFlowWindow::updateCodeAction()
 {
-  const auto it =
-      std::ranges::find(projectAssets, path, &SILICON::project::ProjectAsset::path);
-  return it == projectAssets.end() ? nullptr : &*it;
-}
-
-bool LogiFlowWindow::activeDocumentHasHdl() const
-{
-  const auto* document =
-      SILICON::project::DocumentStore::active().find(activeDocumentPath);
-  return document && document->kind() == SILICON::project::DocumentKind::Subcircuit
-         && SILICON::project::parseHdlDescriptor(document->getSceneJson()).has_value();
-}
-
-void LogiFlowWindow::updateHdlActions()
-{
-  if (!toggleHdlCodeModeAct)
+  if (!codeConversionAct)
     return;
-
-  const bool subcircuit = SILICON::project::classifyDocumentPath(activeDocumentPath)
-                          == SILICON::project::DocumentKind::Subcircuit;
-  const bool hdl = subcircuit && activeDocumentHasHdl();
-
-  toggleHdlCodeModeAct->setVisible(subcircuit);
-#ifdef __EMSCRIPTEN__
-  toggleHdlCodeModeAct->setEnabled(false);
-  toggleHdlCodeModeAct->setToolTip(
-      tr("HDL editing requires Yosys and is unavailable in the web build"));
-#else
-  toggleHdlCodeModeAct->setEnabled(subcircuit);
-  toggleHdlCodeModeAct->setToolTip(
-      hdl ? tr("Compile this HDL and return to the visual circuit")
-          : tr("Convert this subcircuit to editable HDL"));
-#endif
-
-  {
-    const QSignalBlocker blocker(toggleHdlCodeModeAct);
-    toggleHdlCodeModeAct->setChecked(hdl && hdlCodeMode);
-  }
-
-  const bool editingHdl = hdl && hdlCodeMode;
-  setSimulationModeAct->setEnabled(!editingHdl);
-  toggleFstTraceAct->setEnabled(!editingHdl);
-  if (editingHdl && toggleFstTraceAct->isChecked())
-    toggleFstTraceAct->setChecked(false);
-
-  setActionsEnabled({setNormalModeAct, setPanModeAct, setWireCreationModeAct,
-                     openComponentCatalogAct, setComponentPlacingModeAct},
-                    !hdl);
-}
-
-void LogiFlowWindow::showActiveHdlDocument()
-{
   const auto* document =
       SILICON::project::DocumentStore::active().find(activeDocumentPath);
-  if (!document)
-    throw std::runtime_error("Active subcircuit document is missing");
-  const auto descriptor = SILICON::project::parseHdlDescriptor(document->getSceneJson());
-  if (!descriptor)
-    throw std::runtime_error("Active subcircuit has no HDL descriptor");
-  const auto* asset = projectAsset(descriptor->path);
-  if (!asset)
-    throw std::runtime_error(
-        std::format("Subcircuit HDL asset '{}' is missing", descriptor->path));
+  const bool subcircuit =
+      document && document->getType() == SILICON::project::DocumentType::Subcircuit;
+  const bool verilog = document
+                       && SILICON::project::codeFileTypeForPath(document->getPath())
+                              == SILICON::project::CodeFileType::Verilog;
+  codeConversionAct->setVisible(subcircuit || verilog);
+  codeConversionAct->setText(subcircuit ? tr("Convert to Verilog")
+                                        : tr("Convert to Subcircuit"));
+#ifdef __EMSCRIPTEN__
+  codeConversionAct->setEnabled(false);
+  codeConversionAct->setToolTip(
+      tr("Conversion requires Yosys and is unavailable in the web build"));
+#else
+  codeConversionAct->setEnabled(subcircuit || verilog);
+#endif
+  const bool code = isCodeDocumentActive();
+  setActionsEnabled({setNormalModeAct, setPanModeAct, setWireCreationModeAct,
+                     setSimulationModeAct, toggleFstTraceAct, openComponentCatalogAct,
+                     setComponentPlacingModeAct, autoPlaceAct},
+                    !code);
 
-  const auto coreJson = document->getCoreCircuitJson().value_or(
-      SILICON::core::extractCoreCircuitJson(document->getSceneJson()));
-  diagramScene->setCircuit(std::make_shared<Circuit>(
-      Circuit::deserialize(coreJson, ComponentRegistry::instance())));
-  hdlEditor->setPlainText(QString::fromStdString(asset->contents));
-  hdlEditor->document()->setModified(false);
-  hdlEditor->setReadOnly(!hdlCodeMode);
-  editorStack->setCurrentWidget(hdlEditor);
-  updateHdlActions();
+  if (toolBar) {
+    for (auto* action : {setNormalModeAct, setPanModeAct, setWireCreationModeAct,
+                         setSimulationModeAct, toggleFstTraceAct,
+                         openComponentCatalogAct}) {
+      if (auto* widget = toolBar->widgetForAction(action))
+        widget->setVisible(!code);
+    }
+    if (auto* widget = toolBar->widgetForAction(diagramToolsSeparator))
+      widget->setVisible(!code);
+    if (auto* widget = toolBar->widgetForAction(documentToolsSeparator))
+      widget->setVisible(!code || codeConversionAct->isEnabled());
+    if (auto* widget = toolBar->widgetForAction(codeConversionAct))
+      widget->setVisible(codeConversionAct->isVisible()
+                         && codeConversionAct->isEnabled());
+  }
 }
 
-void LogiFlowWindow::compileActiveHdl()
+void LogiFlowWindow::commitConvertedDocument(SILICON::project::Document document,
+                                             const std::string&         sourcePath,
+                                             const QString&             commandText)
 {
-  const auto* existing =
-      SILICON::project::DocumentStore::active().find(activeDocumentPath);
-  if (!existing)
-    throw std::runtime_error("Active subcircuit document is missing");
-  const auto descriptor = SILICON::project::parseHdlDescriptor(existing->getSceneJson());
-  const auto slug       = existing->subcircuitSlug();
-  if (!descriptor || !slug)
-    throw std::runtime_error("Active document is not an HDL-backed subcircuit");
+  auto&      store      = SILICON::project::DocumentStore::active();
+  const auto targetPath = document.getPath();
+  const auto oldIndex   = store.indexOf(targetPath);
+  const auto oldDocument =
+      store.find(targetPath) ? std::optional(*store.find(targetPath)) : std::nullopt;
+  const auto insertionIndex =
+      oldIndex ? std::optional<std::ptrdiff_t>(static_cast<std::ptrdiff_t>(*oldIndex))
+               : std::nullopt;
 
-  if (!projectAsset(descriptor->path))
-    throw std::runtime_error(
-        std::format("Subcircuit HDL asset '{}' is missing", descriptor->path));
-
-  const auto source   = hdlEditor->toPlainText().toStdString();
-  auto       circuit  = SILICON::yosys::importVerilog(source, *slug);
-  auto       json     = nlohmann::ordered_json::parse(existing->getSceneJson());
-  const auto fallback = parseGraphicalSubcircuitMetadata(existing->getSceneJson())
-                            .value_or(GraphicalSubcircuitMetadata{});
-
-  // With no visual payload the scene deserializer creates graphical counterparts for
-  // the imported core components and asks the autoplacer to lay out and route them.
-  // Removing the HDL descriptor turns the result back into a regular graphical
-  // subcircuit instead of leaving the conversion permanent.
-  json.erase("hdl");
-  json["circuit"] = nlohmann::json::parse(circuit.serialize());
-  json.erase("visual");
-
-  diagramScene->clear(false, false);
-  diagramScene->deserialize(json.dump(), GUIComponentFactory::instance(),
-                            ComponentRegistry::instance());
-
-  const auto inferredVisual = nlohmann::ordered_json::parse(diagramScene->serialize());
-  json["circuit"]           = inferredVisual.at("circuit");
-  json["visual"]            = inferredVisual.at("visual");
-
-  auto sceneJson             = json.dump(2);
-  json["graphicalComponent"] = graphicalSubcircuitMetadataToJson(
-      synchronizeGraphicalSubcircuitMetadata(sceneJson, fallback));
-  sceneJson = json.dump(2);
-
-  dependencyGraph.replaceDocumentDependencies(activeDocumentPath, sceneJson);
-  SILICON::project::DocumentStore::active().upsertDocument(
-      preparedSubcircuitDocument(activeDocumentPath, std::move(sceneJson)));
-  std::erase_if(projectAssets, [&](const auto& projectAsset) {
-    return projectAsset.path == descriptor->path;
-  });
-
-  hdlEditor->document()->setModified(false);
-  hdlEditor->setReadOnly(true);
-  hdlCodeMode = false;
-  editorStack->setCurrentWidget(diagramView);
-  undoStack->clear();
-  updateHdlActions();
-  updatePropertyDock();
+  const bool replacing = oldDocument.has_value();
+  auto       apply     = [this, document, targetPath, insertionIndex, replacing] {
+    if (replacing) {
+      if (document.getType() != SILICON::project::DocumentType::Code)
+        dependencyGraph.replaceDocumentDependencies(targetPath,
+                                                    document.getContents());
+      SILICON::project::DocumentStore::active().upsertDocument(document);
+      rebuildProjectTree();
+      switchToDocument(targetPath, true);
+    } else {
+      insertDocument(document, insertionIndex, true);
+    }
+  };
+  auto restore = [this, oldDocument, targetPath, sourcePath] {
+    if (oldDocument) {
+      // Leave the generated target first so saving the active editor cannot
+      // immediately overwrite the document snapshot being restored.
+      switchToDocument(sourcePath, true);
+      if (oldDocument->getType() != SILICON::project::DocumentType::Code)
+        dependencyGraph.replaceDocumentDependencies(targetPath,
+                                                    oldDocument->getContents());
+      SILICON::project::DocumentStore::active().upsertDocument(*oldDocument);
+      rebuildProjectTree();
+    } else if (SILICON::project::DocumentStore::active().contains(targetPath)) {
+      removeDocument(targetPath);
+      switchToDocument(sourcePath, true);
+    }
+  };
+  undoStack->push(new ConversionCommand(commandText, restore, apply));
 }
 
-void LogiFlowWindow::convertActiveSubcircuitToHdl()
+void LogiFlowWindow::convertActiveSubcircuitToVerilog()
 {
-  const auto slug = activeProjectSubcircuitSlug();
-  if (slug.empty())
-    throw std::runtime_error("Only subcircuits can be converted to HDL");
-
   saveActiveDocumentPayload();
-  const auto* existing =
-      SILICON::project::DocumentStore::active().find(activeDocumentPath);
-  if (!existing)
-    throw std::runtime_error("Active subcircuit document is missing");
-
+  const auto  sourcePath = activeDocumentPath;
+  const auto  slug       = activeProjectSubcircuitSlug();
+  const auto* existing   = SILICON::project::DocumentStore::active().find(sourcePath);
+  if (!existing || slug.empty())
+    throw std::runtime_error("Only subcircuits can be converted to Verilog");
   auto circuit = Circuit::deserialize(
-      SILICON::core::extractCoreCircuitJson(existing->getSceneJson()),
+      SILICON::core::extractCoreCircuitJson(existing->getContents()),
       ComponentRegistry::instance());
   circuit.setName(slug);
   const auto source = SILICON::yosys::exportVerilog(circuit);
-  // Re-import before committing the conversion. This also validates that the slug is
-  // a supported top-module identifier.
-  (void)SILICON::yosys::importVerilog(source, slug);
-
-  const auto assetPath = std::format("hdl/{}.v", slug);
-  if (projectAsset(assetPath))
-    throw std::runtime_error(std::format("Project asset '{}' already exists", assetPath));
-
-  auto json   = nlohmann::ordered_json::parse(existing->getSceneJson());
-  json["hdl"] = nlohmann::ordered_json{{"type", "verilog"}, {"path", assetPath}};
-  json["visual"]["components"] = nlohmann::ordered_json::array();
-  json["visual"]["wires"]      = nlohmann::ordered_json::array();
-  const auto sceneJson         = json.dump(2);
-
-  dependencyGraph.replaceDocumentDependencies(activeDocumentPath, sceneJson);
-  SILICON::project::DocumentStore::active().upsertDocument(
-      preparedSubcircuitDocument(activeDocumentPath, sceneJson));
-  projectAssets.push_back({assetPath, source});
-
-  hdlCodeMode = true;
-  diagramScene->setInteractionMode(InteractionMode::NORMAL_MODE);
-  hdlEditor->setPlainText(QString::fromStdString(source));
-  hdlEditor->document()->setModified(false);
-  hdlEditor->setReadOnly(false);
-  editorStack->setCurrentWidget(hdlEditor);
-  undoStack->clear();
-  updateHdlActions();
-  updatePropertyDock();
+  const auto path =
+      SILICON::project::codeFilePath(slug, SILICON::project::CodeFileType::Verilog);
+  const SILICON::project::Document result(path, source);
+  auto commit = [this, result, sourcePath] {
+    commitConvertedDocument(result, sourcePath, tr("Convert to Verilog"));
+  };
+  if (hasDocument(path)) {
+    SILICON::ui::inputDialog::question(
+        this, tr("Replace Code File"),
+        tr("'%1' already exists. Replace it?").arg(QString::fromStdString(path)),
+        std::move(commit));
+  } else {
+    commit();
+  }
 }
 
-void LogiFlowWindow::toggleHdlCodeMode(const bool enabled)
+void LogiFlowWindow::convertActiveVerilogToSubcircuit()
 {
-  try {
-    if (!activeDocumentHasHdl()) {
-      if (!enabled)
-        return;
-      convertActiveSubcircuitToHdl();
-      return;
-    }
+  saveActiveDocumentPayload();
+  const auto  sourcePath = activeDocumentPath;
+  const auto* existing   = SILICON::project::DocumentStore::active().find(sourcePath);
+  if (!existing
+      || SILICON::project::codeFileTypeForPath(existing->getPath())
+             != SILICON::project::CodeFileType::Verilog)
+    throw std::runtime_error("Only Verilog code files can be converted to subcircuits");
 
-    if (enabled) {
-      hdlCodeMode = true;
-      diagramScene->setInteractionMode(InteractionMode::NORMAL_MODE);
-      hdlEditor->setReadOnly(false);
-      hdlEditor->setFocus();
-      updateHdlActions();
-      return;
-    }
-
-    compileActiveHdl();
-  } catch (const std::exception& error) {
-    hdlCodeMode = activeDocumentHasHdl();
-    if (hdlCodeMode) {
-      hdlEditor->setReadOnly(false);
-      editorStack->setCurrentWidget(hdlEditor);
-    }
-    updateHdlActions();
-    SILICON::ui::inputDialog::critical(
-        this, tr("HDL Error"),
-        tr("Failed to generate the subcircuit core:\n%1").arg(error.what()));
+  auto circuit    = SILICON::yosys::importSingleModuleVerilog(existing->getContents());
+  const auto slug = circuit.getName();
+  const auto path = SILICON::project::subcircuitPathForSlug(slug);
+  auto       json = nlohmann::ordered_json::object();
+  json["circuit"] = nlohmann::json::parse(circuit.serialize());
+  json["graphicalComponent"] =
+      graphicalSubcircuitMetadataToJson(GraphicalSubcircuitMetadata{});
+  diagramScene->clear(false, false);
+  diagramScene->setSubcircuitDocumentMode(true);
+  diagramScene->deserialize(json.dump(), GUIComponentFactory::instance(),
+                            ComponentRegistry::instance());
+  auto sceneJson                  = diagramScene->serialize();
+  auto completed                  = nlohmann::ordered_json::parse(sceneJson);
+  completed["graphicalComponent"] = graphicalSubcircuitMetadataToJson(
+      synchronizeGraphicalSubcircuitMetadata(sceneJson, GraphicalSubcircuitMetadata{}));
+  const auto result = preparedSubcircuitDocument(path, completed.dump(2));
+  auto       commit = [this, result, sourcePath] {
+    commitConvertedDocument(result, sourcePath, tr("Convert to Subcircuit"));
+  };
+  if (hasDocument(path)) {
+    SILICON::ui::inputDialog::question(
+        this, tr("Replace Subcircuit"),
+        tr("'%1' already exists. Replace it?").arg(QString::fromStdString(path)),
+        std::move(commit));
+  } else {
+    commit();
   }
+}
+
+void LogiFlowWindow::convertActiveDocument()
+{
+#ifndef __EMSCRIPTEN__
+  try {
+    const auto type = SILICON::project::documentTypeForPath(activeDocumentPath);
+    if (type == SILICON::project::DocumentType::Subcircuit)
+      convertActiveSubcircuitToVerilog();
+    else if (type == SILICON::project::DocumentType::Code)
+      convertActiveVerilogToSubcircuit();
+  } catch (const std::exception& error) {
+    SILICON::ui::inputDialog::critical(
+        this, tr("Code Conversion Error"),
+        tr("Failed to convert the active document:\n%1").arg(error.what()));
+  }
+#endif
 }
 
 void LogiFlowWindow::editActiveSubcircuitShape()

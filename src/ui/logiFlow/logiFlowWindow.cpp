@@ -1,18 +1,18 @@
 /*
-  Copyright (c) 2026. Giulio Cocconi
+Copyright (c) 2026. Giulio Cocconi
 
-   This program is free software: you can redistribute it and/or modify
-   it under the terms of the GNU General Public License as published by
-   the Free Software Foundation, either version 3 of the License, or
-   (at your option) any later version.
+ This program is free software: you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
 
-   This program is distributed in the hope that it will be useful,
-   but WITHOUT ANY WARRANTY; without even the implied warranty of
-   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-   GNU General Public License for more details.
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
 
-   You should have received a copy of the GNU General Public License
-   along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ You should have received a copy of the GNU General Public License
+ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
  */
 
@@ -70,6 +70,7 @@
 #include <QString>
 #include <QStringList>
 #include <QTemporaryFile>
+#include <QTextDocument>
 #include <QTimer>
 #include <QToolBar>
 #include <QTreeWidget>
@@ -79,7 +80,7 @@
 #include <QVBoxLayout>
 
 #ifdef __EMSCRIPTEN__
-  #include <emscripten/emscripten.h>
+#include <emscripten/emscripten.h>
 #endif
 
 #include <core/serialization/component_registry.hpp>
@@ -89,6 +90,7 @@
 #include <core/subcircuitDefinition.hpp>
 #include <logging/logger.hpp>
 #include <ui/common/aboutDialog.hpp>
+#include <ui/common/codeEditor.hpp>
 #include <ui/common/diagramScene/diagramScene.hpp>
 #include <ui/common/diagramView.hpp>
 #include <ui/common/fileDialogUtils.hpp>
@@ -105,9 +107,7 @@
 #include <ui/logiFlow/components/subcircuit/componentShapeEditor.hpp>
 #include <ui/logiFlow/components/subcircuit/metadata.hpp>
 #include <ui/logiFlow/components/subcircuit/utils.hpp>
-#include <ui/logiFlow/hdlCodeEditor.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
-
 
 namespace SILICON {
 namespace ui {
@@ -122,6 +122,14 @@ LogiFlowWindow::~LogiFlowWindow()
                                   nullptr);
 #endif
 
+  // QObject disconnects receivers in its base destructor, but by then this class's
+  // C++ members have already been destroyed. Some children (notably QUndoStack)
+  // emit state-change signals from their destructors, so disconnect every owned
+  // sender while LogiFlowWindow is still fully alive.
+  const auto ownedObjects = findChildren<QObject*>(QString(), Qt::FindChildrenRecursively);
+  for (auto* object : ownedObjects)
+    disconnect(object, nullptr, this, nullptr);
+
   // QToolBar only releases its transient drag state in mouseReleaseEvent().
   // Finish a pending drag before Qt destroys the toolbar during window teardown.
   if (toolBar) {
@@ -130,14 +138,12 @@ LogiFlowWindow::~LogiFlowWindow()
     QApplication::sendEvent(toolBar, &releaseEvent);
   }
 
-  if (diagramScene) {
-    disconnect(diagramScene, nullptr, this, nullptr);
-  }
 }
 
 #ifdef __EMSCRIPTEN__
-EM_BOOL LogiFlowWindow::wasmKeyDownCallback(int, const EmscriptenKeyboardEvent* keyEvent,
-                                            void* userData)
+EM_BOOL LogiFlowWindow::wasmKeyDownCallback(int,
+                                            const EmscriptenKeyboardEvent* keyEvent,
+                                            void*                          userData)
 {
   if (!userData || !keyEvent)
     return EM_FALSE;
@@ -198,15 +204,19 @@ LogiFlowWindow::LogiFlowWindow()
   diagramScene = new DiagramScene(this);
   diagramView  = new DiagramView(this);
   diagramView->setScene(diagramScene);
-  hdlEditor = new HDLCodeEditor(this);
-  hdlEditor->setLineWrapMode(QPlainTextEdit::NoWrap);
-  hdlEditor->setProperty("class", "mono");
+  codeEditor = new CodeEditor(this);
+  connect(codeEditor->document(), &QTextDocument::modificationChanged, this,
+          [this](const bool modified) {
+            if (modified && codeEditor->fileType())
+              codeDocumentsDirty = true;
+          });
   editorStack = new QStackedWidget(this);
   editorStack->addWidget(diagramView);
-  editorStack->addWidget(hdlEditor);
+  editorStack->addWidget(codeEditor);
   editorStack->setCurrentWidget(diagramView);
 
-  connect(diagramScene, &DiagramScene::modeChanged, this, &LogiFlowWindow::updateStatus);
+  connect(diagramScene, &DiagramScene::modeChanged, this,
+          &LogiFlowWindow::updateStatus);
   updateStatus();
 
   connect(diagramScene, &DiagramScene::selectionChanged, this,

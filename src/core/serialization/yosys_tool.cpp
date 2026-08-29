@@ -85,6 +85,14 @@ Circuit importVerilog(const std::string_view source, const std::string_view topM
   throw std::logic_error("Unreachable after unavailable Yosys execution");
 }
 
+Circuit importSingleModuleVerilog(const std::string_view source,
+                                  const ToolOptions&     options)
+{
+  (void)source;
+  (void)runScript({}, options);
+  throw std::logic_error("Unreachable after unavailable Yosys execution");
+}
+
 std::string exportVerilog(const Circuit& circuit, const ToolOptions& options)
 {
   (void)circuit;
@@ -646,6 +654,33 @@ Circuit importVerilog(const std::string_view source, const std::string_view topM
                   options);
   return deserialize(readFile(jsonPath, "Verilog-import output-reading phase"),
                      topModule);
+}
+
+Circuit importSingleModuleVerilog(const std::string_view source,
+                                  const ToolOptions&     options)
+{
+  TemporaryWorkspace workspace;
+  const auto         sourcePath = workspace.path() / "source.v";
+  const auto         jsonPath   = workspace.path() / "modules.json";
+  writeFile(sourcePath, source, "Verilog module-discovery input-writing phase");
+  (void)runScript(std::format("read_verilog {}\n"
+                              "hierarchy -check\n"
+                              "write_json {}\n",
+                              quotePath(sourcePath), quotePath(jsonPath)),
+                  options);
+
+  Json design;
+  try {
+    design =
+        Json::parse(readFile(jsonPath, "Verilog module-discovery output-reading phase"));
+  } catch (const nlohmann::json::exception&) {
+    throw std::runtime_error("Yosys module discovery produced invalid JSON");
+  }
+  const auto modules = design.find("modules");
+  if (modules == design.end() || !modules->is_object() || modules->size() != 1)
+    throw std::runtime_error("Verilog source must declare exactly one module");
+
+  return importVerilog(source, modules->begin().key(), options);
 }
 
 std::string exportVerilog(const Circuit& circuit, const ToolOptions& options)

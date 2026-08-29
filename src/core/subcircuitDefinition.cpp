@@ -111,10 +111,10 @@ SubcircuitDefinition loadSubcircuitDefinition(const std::string_view   slug,
     throw std::runtime_error(std::format("Unknown subcircuit slug '{}'", slug));
 
   const auto coreJson =
-      document->getCoreCircuitJson().value_or(extractCoreCircuitJson(document->getSceneJson()));
+      document->getCoreCircuitJson().value_or(extractCoreCircuitJson(document->getContents()));
   auto       circuit = Circuit::deserialize(coreJson, registry);
   const auto portCircuit =
-      Circuit::deserialize(extractCoreCircuitJson(document->getSceneJson()), registry);
+      Circuit::deserialize(extractCoreCircuitJson(document->getContents()), registry);
   auto inputs  = resolvePorts(circuit, portCircuit.getInputPorts());
   auto outputs = resolvePorts(circuit, portCircuit.getOutputPorts());
 

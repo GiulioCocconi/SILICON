@@ -1279,7 +1279,7 @@ CircuitAutoplacer::compute(const Circuit&                            circuit,
     throw std::runtime_error("Circuit autoplacement could not produce a complete route");
   }
 
-  // The single-candidate path is used while materialising an HDL-backed circuit. Keep
+  // The single-candidate path is used while materialising an imported circuit. Keep
   // that conversion bounded: refinement reroutes several proposals per component and is
   // intended for the explicit interactive "Auto place" command, which requests many
   // candidates and exposes cancellation progress.

@@ -106,7 +106,7 @@
 #include <ui/logiFlow/components/subcircuit/componentShapeEditor.hpp>
 #include <ui/logiFlow/components/subcircuit/metadata.hpp>
 #include <ui/logiFlow/components/subcircuit/utils.hpp>
-#include <ui/logiFlow/hdlCodeEditor.hpp>
+#include <ui/common/codeEditor.hpp>
 #include <ui/logiFlow/metadataDescriptionEdit.hpp>
 #include <ui/logiFlow/projectTree.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
@@ -124,7 +124,7 @@ std::pair<std::string, std::string>
 circuitMetadata(const SILICON::project::Document& document)
 {
   try {
-    const auto scene = nlohmann::json::parse(document.getSceneJson());
+    const auto scene = nlohmann::json::parse(document.getContents());
     if (scene.contains("circuit") && scene["circuit"].is_object())
       return {scene["circuit"].value("name", ""),
               scene["circuit"].value("description", "")};
@@ -137,6 +137,15 @@ circuitMetadata(const SILICON::project::Document& document)
 
 void LogiFlowWindow::updatePropertyDock()
 {
+  const auto* selectedProjectItem =
+      projectTree ? projectTree->selectedProjectItem() : nullptr;
+  const bool codeFileSelected =
+      selectedProjectItem
+      && ProjectTree::itemKind(selectedProjectItem) == ProjectTreeItemKind::CodeFile;
+  propertyDock->setVisible(!codeFileSelected);
+  if (codeFileSelected)
+    return;
+
   // 1. Assign the container immediately.
   // QDockWidget::setWidget automatically deletes the previous widget.
   auto* container = new QWidget();
@@ -154,9 +163,6 @@ void LogiFlowWindow::updatePropertyDock()
   }
 
   if (selectedNodes.empty()) {
-    QTreeWidgetItem* selectedProjectItem =
-        projectTree ? projectTree->selectedProjectItem() : nullptr;
-
     if (!selectedProjectItem) {
       layout->addRow(new QLabel(tr(
           "Select a project, circuit, or one or more components\nto view properties.")));

@@ -62,6 +62,7 @@ include(cmake/resources.cmake)
 
 set(COMMON_SOURCE_FILES
         ${src_dir}/utils/num_formatting.cpp
+        ${src_dir}/core/codeFile.cpp
         ${src_dir}/core/wire.cpp
         ${src_dir}/core/io.cpp
         ${src_dir}/core/gates.cpp
@@ -132,7 +133,7 @@ set(UI_SOURCE_FILES
         ${src_dir}/ui/logiFlow/components/graphicalMultiplexer.cpp
         ${src_dir}/ui/logiFlow/components/graphicalUtils.cpp
         ${src_dir}/ui/logiFlow/componentCatalogOverlay.cpp
-        ${src_dir}/ui/logiFlow/hdlCodeEditor.cpp
+        ${src_dir}/ui/common/codeEditor.cpp
         ${src_dir}/ui/logiFlow/metadataDescriptionEdit.cpp
         ${src_dir}/ui/logiFlow/projectTree.cpp
         ${src_dir}/ui/logiFlow/logiFlowWindowActions.cpp
@@ -340,6 +341,7 @@ if ((CMAKE_CXX_COMPILER_ID MATCHES "Clang") OR EMSCRIPTEN)
 endif ()
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets SvgWidgets)
+find_package(KF6SyntaxHighlighting REQUIRED)
 if (UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
     find_package(Fontconfig QUIET)
 endif ()
@@ -361,6 +363,7 @@ target_compile_options(SILICON PRIVATE -Werror)
 target_link_libraries(SILICON PRIVATE
         Qt6::Widgets
         Qt6::SvgWidgets
+        KF6::SyntaxHighlighting
         OGDF
         avoid
         silicon_core)

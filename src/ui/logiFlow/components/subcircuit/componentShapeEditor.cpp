@@ -464,10 +464,10 @@ void editGraphicalSubcircuitShape(const std::string& slug, QUndoStack* undoStack
   if (!document)
     return;
 
-  auto metadata = parseGraphicalSubcircuitMetadata(document->getSceneJson());
+  auto metadata = parseGraphicalSubcircuitMetadata(document->getContents());
   if (!metadata)
     return;
-  metadata   = synchronizeGraphicalSubcircuitMetadata(document->getSceneJson(), *metadata);
+  metadata   = synchronizeGraphicalSubcircuitMetadata(document->getContents(), *metadata);
   auto draft = std::make_shared<GraphicalSubcircuitMetadata>(*metadata);
   sanitizePortPositions(*draft);
 
@@ -576,7 +576,7 @@ void editGraphicalSubcircuitShape(const std::string& slug, QUndoStack* undoStack
       if (!currentDocument)
         return;
 
-      const auto oldSceneJson    = currentDocument->getSceneJson();
+      const auto oldSceneJson    = currentDocument->getContents();
       auto       json            = nlohmann::json::parse(oldSceneJson);
       json["graphicalComponent"] = graphicalSubcircuitMetadataToJson(*draft);
       const auto newSceneJson    = json.dump(2);

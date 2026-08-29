@@ -14,59 +14,32 @@
 #include <vector>
 
 #include <core/callbackRegistry.hpp>
+#include <core/codeFile.hpp>
 
 namespace SILICON::project {
 
-enum class DocumentKind { Circuit, Subcircuit };
+enum class DocumentType { Circuit, Subcircuit, Code };
 
-/**
- * @brief Reference from a subcircuit scene to its project-local HDL source.
- *
- * The descriptor is stored as the optional top-level scene member
- * `{"hdl":{"type":"verilog","path":"hdl/example.v"}}`. `path` is normalized and
- * relative to the project archive root; it does not refer to the host filesystem.
- * Only Verilog is accepted until another frontend is added explicitly.
- */
-struct HdlDescriptor {
-  /// HDL frontend identifier. The only currently supported value is `verilog`.
-  std::string type;
-  /// Normalized project-relative path of the source asset.
-  std::string path;
-
-  bool operator==(const HdlDescriptor&) const = default;
-};
-
-[[nodiscard]] std::optional<DocumentKind> classifyDocumentPath(std::string_view path);
+[[nodiscard]] std::optional<DocumentType> documentTypeForPath(std::string_view path);
 [[nodiscard]] std::optional<std::string>  subcircuitSlugForPath(std::string_view path);
 [[nodiscard]] std::string                 subcircuitPathForSlug(std::string_view slug);
-/** @brief Checks that an asset path is normalized, relative, and outside reserved
- * entries. */
-[[nodiscard]] bool isValidProjectAssetPath(std::string_view path);
-/**
- * @brief Parses and validates the optional HDL descriptor in serialized scene JSON.
- * @return No value when the scene has no `hdl` member.
- * @throws std::runtime_error for malformed JSON, unsupported HDL types, extra descriptor
- * fields, or invalid project asset paths.
- */
-[[nodiscard]] std::optional<HdlDescriptor> parseHdlDescriptor(std::string_view sceneJson);
-
 class Document {
 public:
-  Document(std::string path, std::string sceneJson,
+  Document(std::string path, std::string contents,
            std::optional<std::string> coreCircuitJson = std::nullopt);
 
   [[nodiscard]] const std::string&                getPath() const;
-  [[nodiscard]] const std::string&                getSceneJson() const;
+  [[nodiscard]] const std::string&                getContents() const;
   [[nodiscard]] const std::optional<std::string>& getCoreCircuitJson() const;
-  [[nodiscard]] DocumentKind                      kind() const;
+  [[nodiscard]] DocumentType                      getType() const;
   [[nodiscard]] std::optional<std::string>        subcircuitSlug() const;
 
-  void setSceneJson(std::string                sceneJson,
-                    std::optional<std::string> coreCircuitJson = std::nullopt);
+  void setContents(std::string                contents,
+                   std::optional<std::string> coreCircuitJson = std::nullopt);
 
 private:
   std::string                path;
-  std::string                sceneJson;
+  std::string                contents;
   std::optional<std::string> coreCircuitJson;
 };
 
@@ -85,7 +58,7 @@ public:
   [[nodiscard]] const Document*            find(std::string_view documentPath) const;
   [[nodiscard]] bool                       contains(std::string_view documentPath) const;
   [[nodiscard]] std::vector<Document>      getDocuments() const;
-  [[nodiscard]] std::vector<Document>      getDocuments(DocumentKind kind) const;
+  [[nodiscard]] std::vector<Document>      getDocuments(DocumentType type) const;
   [[nodiscard]] std::optional<std::size_t> indexOf(std::string_view documentPath) const;
 
   std::uint64_t addListener(Listener listener);

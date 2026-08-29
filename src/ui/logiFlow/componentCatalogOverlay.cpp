@@ -109,8 +109,8 @@ std::vector<ComponentCatalogOverlay::CatalogRow> componentCatalogRows(
 
   for (const auto& document :
        SILICON::project::DocumentStore::active().getDocuments(
-           SILICON::project::DocumentKind::Subcircuit)) {
-    if (!subcircuitHasGraphicalMetadata(document.getSceneJson()))
+           SILICON::project::DocumentType::Subcircuit)) {
+    if (!subcircuitHasGraphicalMetadata(document.getContents()))
       continue;
 
     const auto slug = document.subcircuitSlug().value_or(std::string{});

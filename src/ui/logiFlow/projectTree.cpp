@@ -1,16 +1,19 @@
 /*
-  Copyright (c) 2026. Giulio Cocconi
+Copyright (c) 2026. Giulio Cocconi
 
-   This program is free software: you can redistribute it and/or modify
-   it under the terms of the GNU General Public License as published by
-   the Free Software Foundation, either version 3 of the License, or
-   (at your option) any later version.
+ This program is free software: you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
 */
 
 #include "projectTree.hpp"
 
+#include <ranges>
+
 #include <QAbstractItemView>
 #include <QFileInfo>
+#include <QFont>
 #include <QIcon>
 #include <QSignalBlocker>
 
@@ -18,44 +21,48 @@
 
 #include <ui/common/icons.hpp>
 
-
 namespace SILICON {
 namespace ui {
 
 namespace {
 
-constexpr int ItemKindRole = Qt::UserRole;
-constexpr int PathRole     = Qt::UserRole + 1;
+  constexpr int ItemKindRole = Qt::UserRole;
+  constexpr int PathRole     = Qt::UserRole + 1;
 
-QString documentDisplayName(const SILICON::project::Document& document)
-{
-  try {
-    const auto scene = nlohmann::json::parse(document.getSceneJson());
-    if (scene.contains("circuit") && scene["circuit"].is_object()) {
-      const auto name = scene["circuit"].value("name", "");
-      if (!name.empty())
-        return QString::fromStdString(name);
+  QString documentDisplayName(const SILICON::project::Document& document)
+  {
+    try {
+      const auto scene = nlohmann::json::parse(document.getContents());
+      if (scene.contains("circuit") && scene["circuit"].is_object()) {
+        const auto name = scene["circuit"].value("name", "");
+        if (!name.empty())
+          return QString::fromStdString(name);
+      }
+    } catch (const nlohmann::json::exception&) {
     }
-  } catch (const nlohmann::json::exception&) {
+
+    const QString fileName =
+        QFileInfo(QString::fromStdString(document.getPath())).baseName();
+    return fileName.isEmpty() ? QString::fromStdString(document.getPath()) : fileName;
   }
 
-  const QString fileName = QFileInfo(QString::fromStdString(document.getPath())).baseName();
-  return fileName.isEmpty() ? QString::fromStdString(document.getPath()) : fileName;
-}
+  ProjectTreeItemKind sectionKind(const SILICON::project::DocumentType type)
+  {
+    if (type == SILICON::project::DocumentType::Circuit)
+      return ProjectTreeItemKind::CircuitSection;
+    if (type == SILICON::project::DocumentType::Subcircuit)
+      return ProjectTreeItemKind::SubcircuitSection;
+    return ProjectTreeItemKind::CodeSection;
+  }
 
-ProjectTreeItemKind sectionKind(const SILICON::project::DocumentKind kind)
-{
-  return kind == SILICON::project::DocumentKind::Circuit
-             ? ProjectTreeItemKind::CircuitSection
-             : ProjectTreeItemKind::SubcircuitSection;
-}
-
-ProjectTreeItemKind documentKind(const SILICON::project::DocumentKind kind)
-{
-  return kind == SILICON::project::DocumentKind::Circuit
-             ? ProjectTreeItemKind::Circuit
-             : ProjectTreeItemKind::Subcircuit;
-}
+  ProjectTreeItemKind documentKind(const SILICON::project::DocumentType type)
+  {
+    if (type == SILICON::project::DocumentType::Circuit)
+      return ProjectTreeItemKind::Circuit;
+    if (type == SILICON::project::DocumentType::Subcircuit)
+      return ProjectTreeItemKind::Subcircuit;
+    return ProjectTreeItemKind::CodeFile;
+  }
 
 }  // namespace
 
@@ -70,6 +77,7 @@ ProjectTree::ProjectTree(QWidget* parent) : QTreeWidget(parent)
 void ProjectTree::rebuild(const SILICON::project::ProjectInfo&           project,
                           const std::vector<SILICON::project::Document>& circuits,
                           const std::vector<SILICON::project::Document>& subcircuits,
+                          const std::vector<SILICON::project::Document>& codeFiles,
                           const std::string& activeDocumentPath)
 {
   const QSignalBlocker blocker(this);
@@ -79,37 +87,51 @@ void ProjectTree::rebuild(const SILICON::project::ProjectInfo&           project
   projectItem->setText(0, QString::fromStdString(project.name));
   projectItem->setData(0, ItemKindRole, static_cast<int>(ProjectTreeItemKind::Project));
   projectItem->setExpanded(true);
-  addSection(projectItem, SILICON::project::DocumentKind::Circuit, circuits);
-  addSection(projectItem, SILICON::project::DocumentKind::Subcircuit, subcircuits);
+  addSection(projectItem, SILICON::project::DocumentType::Circuit, circuits);
+  addSection(projectItem, SILICON::project::DocumentType::Subcircuit, subcircuits);
+  addCodeSection(projectItem, codeFiles);
   expandAll();
 
   if (!activeDocumentPath.empty())
     selectDocument(activeDocumentPath);
 }
 
-void ProjectTree::updateLabels(const SILICON::project::ProjectInfo&           project,
-                               const std::vector<SILICON::project::Document>& circuits,
-                               const std::vector<SILICON::project::Document>& subcircuits)
+void
+ProjectTree::updateLabels(const SILICON::project::ProjectInfo&           project,
+                          const std::vector<SILICON::project::Document>& circuits,
+                          const std::vector<SILICON::project::Document>& subcircuits,
+                          const std::vector<SILICON::project::Document>& codeFiles)
 {
   const QSignalBlocker blocker(this);
   if (topLevelItemCount() == 0)
     return;
 
   topLevelItem(0)->setText(0, QString::fromStdString(project.name));
-  for (const auto& [kind, documents] :
-       {std::pair{SILICON::project::DocumentKind::Circuit, &circuits},
-        std::pair{SILICON::project::DocumentKind::Subcircuit, &subcircuits}}) {
-    auto* section = sectionFor(kind);
+  for (const auto& [type, documents] :
+       {std::pair{SILICON::project::DocumentType::Circuit, &circuits},
+        std::pair{SILICON::project::DocumentType::Subcircuit, &subcircuits}}) {
+    auto* section = sectionFor(type);
     if (!section)
       continue;
-    for (int i = 0; i < section->childCount() && i < static_cast<int>(documents->size());
-         ++i) {
+    for (int i = 0;
+         i < section->childCount() && i < static_cast<int>(documents->size()); ++i) {
       const auto& document = documents->at(static_cast<std::size_t>(i));
       section->child(i)->setText(
-          0, kind == SILICON::project::DocumentKind::Circuit
+          0, type == SILICON::project::DocumentType::Circuit
                  ? documentDisplayName(document)
                  : QString::fromStdString(
                        document.subcircuitSlug().value_or(document.getPath())));
+    }
+  }
+  if (auto* section = sectionFor(SILICON::project::DocumentType::Code)) {
+    for (int group = 0; group < section->childCount(); ++group) {
+      for (int child = 0; child < section->child(group)->childCount(); ++child) {
+        auto*      item = section->child(group)->child(child);
+        const auto path = item->data(0, PathRole).toString().toStdString();
+        if (std::ranges::find(codeFiles, path, &SILICON::project::Document::getPath)
+            != codeFiles.end())
+          item->setText(0, QFileInfo(QString::fromStdString(path)).fileName());
+      }
     }
   }
 }
@@ -118,19 +140,22 @@ void ProjectTree::selectDocument(const std::string& path)
 {
   const QSignalBlocker blocker(this);
   clearSelection();
-  const auto kind    = SILICON::project::classifyDocumentPath(path);
-  auto*      section = kind ? sectionFor(*kind) : nullptr;
+  const auto type    = SILICON::project::documentTypeForPath(path);
+  auto*      section = type ? sectionFor(*type) : nullptr;
   if (!section)
     return;
 
-  const auto targetPath = QString::fromStdString(path);
-  for (int i = 0; i < section->childCount(); ++i) {
-    auto* item = section->child(i);
+  const auto              targetPath = QString::fromStdString(path);
+  QList<QTreeWidgetItem*> pending{section};
+  while (!pending.empty()) {
+    auto* item = pending.takeFirst();
     if (item->data(0, PathRole).toString() == targetPath) {
       item->setSelected(true);
       setCurrentItem(item);
       return;
     }
+    for (int i = 0; i < item->childCount(); ++i)
+      pending.push_back(item->child(i));
   }
 }
 
@@ -146,14 +171,15 @@ QTreeWidgetItem* ProjectTree::selectedProjectItem() const
   return items.empty() ? nullptr : items.front();
 }
 
-QTreeWidgetItem* ProjectTree::sectionFor(const SILICON::project::DocumentKind kind) const
+QTreeWidgetItem*
+ProjectTree::sectionFor(const SILICON::project::DocumentType type) const
 {
   if (topLevelItemCount() == 0)
     return nullptr;
   auto* projectItem = topLevelItem(0);
   for (int i = 0; i < projectItem->childCount(); ++i) {
     auto* child = projectItem->child(i);
-    if (itemKind(child) == sectionKind(kind))
+    if (itemKind(child) == sectionKind(type))
       return child;
   }
   return nullptr;
@@ -170,23 +196,63 @@ std::string ProjectTree::documentPath(const QTreeWidgetItem* item)
 }
 
 void ProjectTree::addSection(QTreeWidgetItem*                               projectItem,
-                             const SILICON::project::DocumentKind           kind,
+                             const SILICON::project::DocumentType           type,
                              const std::vector<SILICON::project::Document>& documents)
 {
-  const bool circuits = kind == SILICON::project::DocumentKind::Circuit;
+  const bool circuits = type == SILICON::project::DocumentType::Circuit;
   auto*      section  = new QTreeWidgetItem(projectItem);
   section->setText(0, circuits ? tr("Circuits") : tr("Subcircuits"));
-  section->setData(0, ItemKindRole, static_cast<int>(sectionKind(kind)));
+  section->setData(0, ItemKindRole, static_cast<int>(sectionKind(type)));
   section->setExpanded(true);
 
   for (const auto& document : documents) {
     auto* item = new QTreeWidgetItem(section);
-    item->setText(0, circuits ? documentDisplayName(document)
-                              : QString::fromStdString(
-                                    document.subcircuitSlug().value_or(document.getPath())));
+    item->setText(0, circuits
+                         ? documentDisplayName(document)
+                         : QString::fromStdString(
+                               document.subcircuitSlug().value_or(document.getPath())));
     item->setIcon(0, Icon("circuit-board"));
-    item->setData(0, ItemKindRole, static_cast<int>(documentKind(kind)));
+    item->setData(0, ItemKindRole, static_cast<int>(documentKind(type)));
     item->setData(0, PathRole, QString::fromStdString(document.getPath()));
+  }
+}
+
+void
+ProjectTree::addCodeSection(QTreeWidgetItem*                               projectItem,
+                            const std::vector<SILICON::project::Document>& documents)
+{
+  auto* section = new QTreeWidgetItem(projectItem);
+  section->setText(0, tr("Code"));
+  section->setData(0, ItemKindRole, static_cast<int>(ProjectTreeItemKind::CodeSection));
+  section->setExpanded(true);
+
+  for (const auto& typeInfo : SILICON::project::codeFileTypeRegistry()) {
+    const bool hasDocuments =
+        std::ranges::any_of(documents, [&typeInfo](const auto& document) {
+          return SILICON::project::codeFileTypeForPath(document.getPath())
+                 == typeInfo.type;
+        });
+    if (!hasDocuments)
+      continue;
+
+    auto* language = new QTreeWidgetItem(section);
+    language->setText(0, QString::fromUtf8(typeInfo.displayName));
+    auto font = language->font(0);
+    font.setBold(true);
+    language->setFont(0, font);
+    language->setData(0, ItemKindRole,
+                      static_cast<int>(ProjectTreeItemKind::CodeLanguage));
+    language->setExpanded(true);
+    for (const auto& document : documents) {
+      if (SILICON::project::codeFileTypeForPath(document.getPath()) != typeInfo.type)
+        continue;
+      auto* item = new QTreeWidgetItem(language);
+      item->setText(0,
+                    QFileInfo(QString::fromStdString(document.getPath())).fileName());
+      item->setIcon(0, Icon("code"));
+      item->setData(0, ItemKindRole, static_cast<int>(ProjectTreeItemKind::CodeFile));
+      item->setData(0, PathRole, QString::fromStdString(document.getPath()));
+    }
   }
 }
 

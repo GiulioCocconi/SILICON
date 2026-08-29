@@ -1326,6 +1326,18 @@ TEST(YosysToolTest, ImportsCombinationalVerilogAndFlattensHelpers)
                std::runtime_error);
 }
 
+TEST(YosysToolTest, ImportsOnlyASingleDiscoveredModule)
+{
+  const auto circuit = SILICON::yosys::importSingleModuleVerilog(
+      "module sole(input a, output y); assign y = ~a; endmodule");
+  EXPECT_EQ(circuit.getName(), "sole");
+
+  EXPECT_THROW((void)SILICON::yosys::importSingleModuleVerilog(""), std::runtime_error);
+  EXPECT_THROW((void)SILICON::yosys::importSingleModuleVerilog(
+                   "module first; endmodule module second; endmodule"),
+               std::runtime_error);
+}
+
 TEST(YosysToolTest, ImportsZeroExtendedOutputAsUnsignedExtender)
 {
   constexpr std::string_view source = R"(
