@@ -27,6 +27,7 @@
 #include <ranges>
 #include <stdexcept>
 #include <string_view>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -172,6 +173,30 @@ namespace {
     return entries;
   }
 
+  [[nodiscard]] std::vector<std::string> assetEntries(zip_t* archive)
+  {
+    std::vector<std::string> entries;
+    enumerateZipEntries(archive, [&](const std::string_view name) {
+      if (name == "mimetype" || name == MetadataPath || name == ProjectPath
+          || documentTypeForPath(name))
+        return;
+      if (name.ends_with('/')) {
+        const auto directory = name.substr(0, name.size() - 1);
+        if (directory == "circuits" || directory == "subcircuits"
+            || directory == "code" || isValidProjectAssetPath(directory))
+          return;
+        throw std::runtime_error(
+            std::format("Project archive contains invalid directory entry {}", name));
+      }
+      if (!isValidProjectAssetPath(name))
+        throw std::runtime_error(
+            std::format("Project archive contains invalid or reserved entry {}", name));
+      entries.emplace_back(name);
+    });
+    std::ranges::sort(entries);
+    return entries;
+  }
+
   void validateCircuitPaths(std::string_view                mainCircuit,
                             const std::vector<std::string>& circuits)
   {
@@ -224,6 +249,19 @@ namespace {
       throw std::runtime_error("Project archive contains duplicate subcircuit slugs");
 
     validateCircuitPaths(mainCircuit, circuits);
+  }
+
+  void validateAssets(const std::vector<ProjectAsset>& assets)
+  {
+    std::unordered_set<std::string> paths;
+    for (const auto& asset : assets) {
+      if (!isValidProjectAssetPath(asset.path))
+        throw std::runtime_error(
+            std::format("Project contains invalid asset path {}", asset.path));
+      if (!paths.insert(asset.path).second)
+        throw std::runtime_error(
+            std::format("Project contains duplicate asset path {}", asset.path));
+    }
   }
 
   [[nodiscard]] ProjectMetadata parseMetadata(zip_t* archive)
@@ -312,14 +350,22 @@ ProjectFile readProjectFile(const std::filesystem::path& path)
 
   validateDocuments(project.mainCircuit, documents);
 
+  std::vector<ProjectAsset> assets;
+  for (const auto& assetPath : assetEntries(archive.get()))
+    assets.push_back({.path = assetPath,
+                      .contents = readEntry(archive.get(), assetPath)});
+  validateAssets(assets);
+
   return ProjectFile{.metadata  = std::move(metadata),
                      .project   = std::move(project),
-                     .documents = std::move(documents)};
+                     .documents = std::move(documents),
+                     .assets    = std::move(assets)};
 }
 
 void writeProjectFile(const std::filesystem::path& path, const ProjectFile& projectFile)
 {
   validateDocuments(projectFile.project.mainCircuit, projectFile.documents);
+  validateAssets(projectFile.assets);
 
   int       errorCode = 0;
   UniqueZip archive(
@@ -337,6 +383,8 @@ void writeProjectFile(const std::filesystem::path& path, const ProjectFile& proj
 
   for (const auto& document : projectFile.documents)
     addEntry(archive.get(), document.getPath(), document.getContents());
+  for (const auto& asset : projectFile.assets)
+    addEntry(archive.get(), asset.path, asset.contents);
 
   if (zip_close(archive.get()) != 0)
     throw std::runtime_error("Cannot finalize Silicon project archive");

@@ -56,10 +56,15 @@ void SubcircuitComponent::subscribeToDocuments()
 {
   if (!documents || registryListenerId != 0)
     return;
-  registryListenerId = documents->addListener([this](std::string_view path) {
-        const auto configuredPath = SILICON::project::subcircuitPathForSlug(
-            getPropertyValue<std::string>("slug").value_or(std::string()));
-        if (path.empty() || path == configuredPath)
+  registryListenerId = documents->addListener(
+      [this](const SILICON::project::DocumentChange& change) {
+        const auto slug =
+            getPropertyValue<std::string>("slug").value_or(std::string());
+        const bool affectsConfiguredDocument =
+            SILICON::project::isValidSubcircuitSlug(slug) && change.path
+            && *change.path == SILICON::project::subcircuitPathForSlug(slug);
+        if (change.kind == SILICON::project::DocumentChangeKind::Reset
+            || affectsConfiguredDocument)
           reloadFromRegistry();
       });
 }

@@ -642,9 +642,7 @@ void LogiFlowWindow::commitConvertedDocument(SILICON::project::Document document
   const bool replacing = oldDocument.has_value();
   auto       apply     = [this, document, targetPath, insertionIndex, replacing] {
     if (replacing) {
-      if (document.getType() != SILICON::project::DocumentType::Code)
-        dependencyGraph.replaceDocumentDependencies(targetPath, document.getContents());
-      projectContext.documents.upsertDocument(document);
+      projectContext.upsertDocument(document);
       rebuildProjectTree();
       switchToDocument(targetPath, true);
     } else {
@@ -656,10 +654,7 @@ void LogiFlowWindow::commitConvertedDocument(SILICON::project::Document document
       // Leave the generated target first so saving the active editor cannot
       // immediately overwrite the document snapshot being restored.
       switchToDocument(sourcePath, true);
-      if (oldDocument->getType() != SILICON::project::DocumentType::Code)
-        dependencyGraph.replaceDocumentDependencies(targetPath,
-                                                     oldDocument->getContents());
-      projectContext.documents.upsertDocument(*oldDocument);
+      projectContext.upsertDocument(*oldDocument);
       rebuildProjectTree();
     } else if (projectContext.documents.contains(targetPath)) {
       removeDocument(targetPath);
@@ -761,7 +756,7 @@ void LogiFlowWindow::editActiveSubcircuitShape()
     return;
   try {
     saveActiveDocumentPayload();
-      editGraphicalSubcircuitShape(slug, projectContext.documents, undoStack, this);
+    editGraphicalSubcircuitShape(slug, projectContext, undoStack, this);
   } catch (const std::exception& e) {
     SILICON::ui::inputDialog::warning(
         this, tr("Edit shape"),

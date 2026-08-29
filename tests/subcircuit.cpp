@@ -33,6 +33,7 @@
 #include <core/elaboration.hpp>
 #include <core/gates.hpp>
 #include <core/projectDocument.hpp>
+#include <core/projectContext.hpp>
 #include <core/serialization/component_registration.hpp>
 #include <core/serialization/component_registry.hpp>
 #include <core/simulationSession.hpp>
@@ -985,10 +986,10 @@ TEST_F(SubcircuitTest, RejectsUnknownSlug)
 TEST_F(SubcircuitTest, DocumentStoreNotifiesSpecificAndGlobalChanges)
 {
   auto&                    registry = project.documents;
-  std::vector<std::string> notifications;
-  const auto               listenerId =
-      registry.addListener([&notifications](const std::string_view path) {
-        notifications.emplace_back(path);
+  std::vector<SILICON::project::DocumentChange> notifications;
+  const auto listenerId = registry.addListener(
+      [&notifications](const SILICON::project::DocumentChange& change) {
+        notifications.push_back(change);
       });
 
   registry.upsertDocument(subcircuitDocument("adder", andSubcircuitDocument()));
@@ -997,6 +998,11 @@ TEST_F(SubcircuitTest, DocumentStoreNotifiesSpecificAndGlobalChanges)
   registry.removeListener(listenerId);
   registry.clear();
 
-  EXPECT_EQ(notifications, std::vector<std::string>(
-                               {"subcircuits/adder.json", "subcircuits/adder.json", ""}));
+  ASSERT_EQ(notifications.size(), 3);
+  EXPECT_EQ(notifications[0].kind, SILICON::project::DocumentChangeKind::Added);
+  EXPECT_EQ(notifications[0].path, "subcircuits/adder.json");
+  EXPECT_EQ(notifications[1].kind, SILICON::project::DocumentChangeKind::Removed);
+  EXPECT_EQ(notifications[1].path, "subcircuits/adder.json");
+  EXPECT_EQ(notifications[2].kind, SILICON::project::DocumentChangeKind::Reset);
+  EXPECT_FALSE(notifications[2].path);
 }

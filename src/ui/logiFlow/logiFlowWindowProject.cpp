@@ -153,9 +153,9 @@ std::string LogiFlowWindow::projectMainCircuitPath() const
 
 void LogiFlowWindow::ensureProjectDocuments()
 {
-    auto& store = projectContext.documents;
+  auto& store = projectContext.documents;
   if (store.getDocuments(SILICON::project::DocumentType::Circuit).empty())
-    store.upsertDocument(defaultCircuitDocument());
+    projectContext.upsertDocument(defaultCircuitDocument());
 }
 
 void LogiFlowWindow::initializeProjectTree()
@@ -296,7 +296,7 @@ void LogiFlowWindow::saveActiveDocumentPayload()
     throw std::runtime_error("Active project document path is invalid");
 
   if (*type == SILICON::project::DocumentType::Code) {
-    store.upsertDocument(SILICON::project::Document(
+    projectContext.upsertDocument(SILICON::project::Document(
         activeDocumentPath, codeEditor->toPlainText().toStdString()));
     codeEditor->document()->setModified(false);
     return;
@@ -318,12 +318,8 @@ void LogiFlowWindow::saveActiveDocumentPayload()
     }
   }
 
-  dependencyGraph.replaceDocumentDependencies(activeDocumentPath, serializedScene);
-  if (*type == SILICON::project::DocumentType::Subcircuit)
-    store.upsertDocument(
-          SILICON::project::Document(activeDocumentPath, std::move(serializedScene)));
-  else
-    store.upsertDocument({activeDocumentPath, std::move(serializedScene)});
+  projectContext.upsertDocument(
+      SILICON::project::Document(activeDocumentPath, std::move(serializedScene)));
 }
 
 void LogiFlowWindow::selectProjectTreeDocument(const std::string& path)
@@ -417,17 +413,20 @@ bool LogiFlowWindow::switchToDocument(const std::string& path, const bool select
 
 void LogiFlowWindow::removeDocument(const std::string& path)
 {
-    auto& store = projectContext.documents;
+  auto& store = projectContext.documents;
   if (!store.contains(path))
     return;
 
-  if (activeDocumentPath == path)
-    switchToDocument(projectMainCircuitPath(), true);
+  const bool graphical = SILICON::project::documentTypeForPath(path)
+                         != SILICON::project::DocumentType::Code;
+  if (graphical)
+    projectContext.circuitDependencies.validateDocumentRemoval(path);
 
-  store.removeDocument(path);
-  if (SILICON::project::documentTypeForPath(path)
-      != SILICON::project::DocumentType::Code)
-    dependencyGraph.removeDocument(path);
+  if (activeDocumentPath == path
+      && !switchToDocument(projectMainCircuitPath(), true))
+    return;
+
+  projectContext.removeDocument(path);
   rebuildProjectTree();
   selectProjectTreeDocument(activeProjectCircuitPath());
   updatePropertyDock();
@@ -437,27 +436,17 @@ void LogiFlowWindow::insertDocument(SILICON::project::Document          document
                                     const std::optional<std::ptrdiff_t> insertAt,
                                     const bool                          activate)
 {
-    auto&      store = projectContext.documents;
+  auto&      store = projectContext.documents;
   const auto path  = document.getPath();
   if (store.contains(path))
     return;
 
-  if (document.getType() != SILICON::project::DocumentType::Code) {
-    dependencyGraph.addDocument(path);
-    try {
-      dependencyGraph.replaceDocumentDependencies(path, document.getContents());
-    } catch (...) {
-      dependencyGraph.removeDocument(path);
-      throw;
-    }
-  }
-
   if (insertAt)
-    store.insertDocument(
+    projectContext.insertDocument(
         std::move(document),
         static_cast<std::size_t>(std::max<std::ptrdiff_t>(0, *insertAt)));
   else
-    store.upsertDocument(std::move(document));
+    projectContext.upsertDocument(std::move(document));
 
   rebuildProjectTree();
   if (activate)

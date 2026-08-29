@@ -45,6 +45,7 @@
 #include <QVBoxLayout>
 
 #include <core/projectDocument.hpp>
+#include <core/projectContext.hpp>
 #include <core/subcircuit.hpp>
 #include <ui/common/inputDialogUtils.hpp>
 #include <ui/common/portGeometry.hpp>
@@ -458,15 +459,15 @@ void setPortTablePositions(QTableWidget*                                       t
 
 }  // namespace
 
-void editGraphicalSubcircuitShape(const std::string&               slug,
-                                  SILICON::project::DocumentStore& documents,
+void editGraphicalSubcircuitShape(const std::string&                slug,
+                                  SILICON::project::ProjectContext& project,
                                   QUndoStack* undoStack, QWidget* parent)
 {
   if (slug.empty())
     return;
 
   const auto  path     = SILICON::project::subcircuitPathForSlug(slug);
-  const auto* document = documents.find(path);
+  const auto* document = project.documents.find(path);
   if (!document)
     return;
 
@@ -579,9 +580,9 @@ void editGraphicalSubcircuitShape(const std::string&               slug,
   QObject::connect(buttons, &QDialogButtonBox::accepted, dialog, &QDialog::accept);
   QObject::connect(buttons, &QDialogButtonBox::rejected, dialog, &QDialog::reject);
     QObject::connect(
-        dialog, &QDialog::accepted, dialog, [draft, path, undoStack, parent, &documents] {
+        dialog, &QDialog::accepted, dialog, [draft, path, undoStack, parent, &project] {
     try {
-            const auto* currentDocument = documents.find(path);
+      const auto* currentDocument = project.documents.find(path);
       if (!currentDocument)
         return;
 
@@ -595,14 +596,14 @@ void editGraphicalSubcircuitShape(const std::string&               slug,
             // Shape edits are registry document edits, so route them through the window
             // undo stack.
       if (undoStack) {
-              auto apply = [path, &documents](const std::string& sceneJson) {
-                documents.upsertDocument(SILICON::project::Document(path, sceneJson));
+        auto apply = [path, &project](const std::string& sceneJson) {
+          project.upsertDocument(SILICON::project::Document(path, sceneJson));
         };
               undoStack->push(
                   new MetadataEditCommand(QObject::tr("Edit Subcircuit Shape"),
                                           oldSceneJson, newSceneJson, std::move(apply)));
       } else {
-              documents.upsertDocument(SILICON::project::Document(path, newSceneJson));
+        project.upsertDocument(SILICON::project::Document(path, newSceneJson));
       }
     } catch (const std::exception& e) {
             SILICON::ui::inputDialog::warning(parent, QObject::tr("Edit shape"),

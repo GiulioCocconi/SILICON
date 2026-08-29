@@ -110,8 +110,9 @@ QPixmap componentPreviewPixmap(const ComponentCatalogOverlay::CatalogRow& rowDat
                            .initialProperties = {}});
   }
 
-  for (const auto& document :
-           documents.getDocuments(SILICON::project::DocumentType::Subcircuit)) {
+  for (const auto documentReference :
+       documents.getDocuments(SILICON::project::DocumentType::Subcircuit)) {
+    const auto& document = documentReference.get();
     if (!subcircuitHasGraphicalMetadata(document.getContents()))
       continue;
 

@@ -26,27 +26,36 @@
 
 #include <boost/graph/adjacency_list.hpp>
 
-#include <core/serialization/projectFile.hpp>
+#include <core/projectDocument.hpp>
 
 namespace SILICON::project {
 
 /**
- * @brief Runtime-only graph of project document containment dependencies.
+ * @brief Runtime-only graph of Circuit-to-Circuit instantiation dependencies.
  *
  * Vertices are project-relative document paths such as `circuits/main.json` and
  * `subcircuits/adder.json`. Edges point from a document to the subcircuit
- * document it instantiates. The graph is derived from scene JSON and is never
+ * document it instantiates. Only Circuit documents participate; code and archive
+ * assets are outside this deliberately narrow model. The graph is derived from
+ * persisted Circuit JSON and is never
  * serialized into project archives.
  *
  * The graph uses `boost::vecS` for its vertex container, which means vertex
  * descriptors are integer indices. As a consequence, removing a vertex
  * reindexes every subsequent vertex, so the `pathToVertex` index must be
- * rebuilt after a removal. Lookups, inserts, and additions remain O(1) thanks
- * to the `std::unordered_map` index; only `removeDocument` incurs an O(V)
- * rebuild.
+ * rebuilt after a removal. Path lookup remains average O(1) thanks to the
+ * `std::unordered_map` index. Public mutations use project-sized candidate
+ * copies for strong exception safety; removal additionally incurs an O(V)
+ * path-index rebuild.
  */
-class ProjectDependencyGraph {
+class CircuitDependencyGraph {
 public:
+  CircuitDependencyGraph() = default;
+  CircuitDependencyGraph(const CircuitDependencyGraph&) = default;
+  CircuitDependencyGraph& operator=(const CircuitDependencyGraph&) = default;
+  CircuitDependencyGraph(CircuitDependencyGraph&&) noexcept = default;
+  CircuitDependencyGraph& operator=(CircuitDependencyGraph&&) noexcept = default;
+
   /// @brief List of project-relative document paths.
   using DocumentPathList = std::vector<std::string>;
 
@@ -63,15 +72,19 @@ public:
   void addDocument(std::string_view documentPath);
 
   /**
-   * @brief Removes a document and all of its outgoing dependency edges.
+   * @brief Removes an unreferenced document atomically.
    *
-   * If @p documentPath is not present in the graph this call is a no-op.
+   * If @p documentPath is not present in the graph this call is a no-op. If any
+   * document depends on it, removal is rejected and the graph is unchanged.
    * Removing a vertex reindexes the remaining vertices (due to `vecS`), so the
    * internal path index is rebuilt afterwards.
    *
    * @param documentPath Project-relative path of the document to remove.
    */
   void removeDocument(std::string_view documentPath);
+
+  /** Validates that a document can be removed without losing a source reference. */
+  void validateDocumentRemoval(std::string_view documentPath) const;
 
   /**
    * @brief Rebuilds the graph from a full project description.
@@ -81,7 +94,7 @@ public:
    * if it is not, a `std::runtime_error` is thrown and the graph is left
    * unchanged.
    *
-   * @param documents The project's ordered circuit and subcircuit documents.
+   * @param documents The project's ordered documents. Code documents are ignored.
    * @throw std::runtime_error If the described dependencies form a cycle.
    */
   void rebuildFromProject(const std::vector<Document>& documents);
@@ -95,12 +108,23 @@ public:
    * is left unchanged.
    *
    * @param documentPath Project-relative path of the document to update.
-   * @param sceneJson    Scene JSON to extract subcircuit dependencies from.
-   * @throw std::runtime_error If @p sceneJson references a missing subcircuit
-   *                           or would create recursive subcircuit dependencies.
+   * @param contents     Persisted Circuit document JSON to inspect.
+   * Both `{"components":[...]}` and the serialized scene form
+   * `{"circuit":{"components":[...]}}` are supported. A missing components
+   * member is accepted for legacy empty circuits; a present member must be an array.
+   *
+   * @throw std::runtime_error If @p contents is malformed, references a missing
+   *                           subcircuit, or would create recursive dependencies.
    */
   void replaceDocumentDependencies(std::string_view documentPath,
-                                   std::string_view sceneJson);
+                                   std::string_view contents);
+
+  /**
+   * Validates a candidate dependency update without mutating the graph.
+   * Missing documents, malformed references, and recursion retain distinct errors.
+   */
+  void validateDocumentDependencies(std::string_view documentPath,
+                                    std::string_view contents) const;
 
   /**
    * @brief Tests whether rewiring a document's dependencies would create a cycle.
@@ -108,11 +132,12 @@ public:
    * Operates on a private copy of the graph, so it has no side effects.
    *
    * @param documentPath Project-relative path of the document to test.
-   * @param sceneJson    Scene JSON to extract candidate dependencies from.
-   * @return `true` if applying the dependencies would introduce a cycle.
+   * @param contents     Persisted Circuit document JSON to inspect.
+   * @return `true` only if an otherwise valid candidate introduces a cycle.
+   * Other validation failures propagate their specific exception.
    */
   [[nodiscard]] bool wouldIntroduceCycle(std::string_view documentPath,
-                                         std::string_view sceneJson) const;
+                                         std::string_view contents) const;
 
   /**
    * @brief Returns the sorted list of documents that depend on a subcircuit.
@@ -156,11 +181,11 @@ private:
 
   [[nodiscard]] std::optional<Vertex> findVertex(std::string_view documentPath) const;
 
-  [[nodiscard]] ProjectDependencyGraph
+  [[nodiscard]] CircuitDependencyGraph
   withDocumentDependencies(std::string_view documentPath,
-                           std::string_view sceneJson) const;
+                           std::string_view contents) const;
 
-  void replaceDependencyEdges(std::string_view documentPath, std::string_view sceneJson);
+  void replaceDependencyEdges(std::string_view documentPath, std::string_view contents);
 
   /**
    * @brief Finds one recursive dependency cycle and returns it as ordered slugs.

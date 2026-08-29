@@ -75,6 +75,7 @@ set(COMMON_SOURCE_FILES
         ${src_dir}/core/component.cpp
         ${src_dir}/core/circuit.cpp
         ${src_dir}/core/projectDocument.cpp
+        ${src_dir}/core/projectContext.cpp
         ${src_dir}/core/simulator.cpp
         ${src_dir}/core/serialization/component_registry.cpp
         ${src_dir}/core/serialization/component_registration.cpp
@@ -82,7 +83,7 @@ set(COMMON_SOURCE_FILES
         ${src_dir}/core/serialization/yosys_deserialization.cpp
         ${src_dir}/core/serialization/yosys_components.cpp
         ${src_dir}/core/serialization/yosys_tool.cpp
-        ${src_dir}/core/projectDependencyGraph.cpp
+        ${src_dir}/core/circuitDependencyGraph.cpp
         ${src_dir}/core/fstTraceWriter.cpp
         ${src_dir}/core/siliconWaveform.cpp
         ${src_dir}/core/siliconFst.cpp
