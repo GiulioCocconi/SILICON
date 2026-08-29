@@ -265,7 +265,7 @@ TEST(ProjectFileTest, WritesAndReadsProjectArchiveWithMultipleCircuits)
   EXPECT_EQ(controllerIt->getContents(), controllerJson);
 }
 
-TEST(ProjectFileTest, IgnoresUnknownNestedCircuitEntry)
+TEST(ProjectFileTest, RejectsEntriesCollidingWithCircuitNamespace)
 {
   const auto  path = tempProjectPath("nested_circuit_entry");
   FileCleanup cleanup{path};
@@ -276,8 +276,7 @@ TEST(ProjectFileTest, IgnoresUnknownNestedCircuitEntry)
                   {std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), "{}"},
                   {"circuits/nested/controller.json", "{}"}});
 
-  const auto loaded = SILICON::project::readProjectFile(path);
-  ASSERT_EQ(loaded.documents.size(), 1);
+  EXPECT_THROW(readProjectFileIgnoringResult(path), std::runtime_error);
 }
 
 TEST(ProjectFileTest, WritesAndReadsMixedCircuitAndSubcircuitDocuments)
@@ -335,24 +334,33 @@ TEST(ProjectFileTest, RoundTripsCodeDocuments)
   EXPECT_EQ(loaded.documents[1].getContents(), source);
 }
 
-TEST(ProjectFileTest, IgnoresUnknownEntriesAndAssets)
+TEST(ProjectFileTest, ReadsValidatedAssetsAndRejectsDocumentNamespaceCollisions)
 {
-  for (const auto& entry : {std::string("notes/readme.txt"),
-                            std::string("code/adder.sv")}) {
-    const auto  path = tempProjectPath("unsupported_entry");
-    FileCleanup cleanup{path};
-    writeZip(path,
-             {{"mimetype", std::string(SILICON::project::MIME_TYPE)},
-              {"metadata.json", validMetadata().dump(2)},
-              {"project.json", validProject().dump(2)},
-              {std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), "{}"},
-              {entry, "unsupported"}});
-    const auto loaded = SILICON::project::readProjectFile(path);
-    ASSERT_EQ(loaded.documents.size(), 1);
-  }
+  const auto  assetPath = tempProjectPath("asset_entry");
+  FileCleanup assetCleanup{assetPath};
+  writeZip(assetPath,
+           {{"mimetype", std::string(SILICON::project::MIME_TYPE)},
+            {"metadata.json", validMetadata().dump(2)},
+            {"project.json", validProject().dump(2)},
+            {std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), "{}"},
+            {"notes/readme.txt", "preserved"}});
+  const auto loaded = SILICON::project::readProjectFile(assetPath);
+  ASSERT_EQ(loaded.assets.size(), 1);
+  EXPECT_EQ(loaded.assets.front(),
+            (SILICON::project::ProjectAsset{"notes/readme.txt", "preserved"}));
+
+  const auto  collisionPath = tempProjectPath("asset_namespace_collision");
+  FileCleanup collisionCleanup{collisionPath};
+  writeZip(collisionPath,
+           {{"mimetype", std::string(SILICON::project::MIME_TYPE)},
+            {"metadata.json", validMetadata().dump(2)},
+            {"project.json", validProject().dump(2)},
+            {std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), "{}"},
+            {"code/adder.sv", "unsupported"}});
+  EXPECT_THROW(readProjectFileIgnoringResult(collisionPath), std::runtime_error);
 }
 
-TEST(ProjectFileTest, IgnoresInvalidCodeDocumentPaths)
+TEST(ProjectFileTest, RejectsInvalidEntriesInsideCodeNamespace)
 {
   for (const auto& entry : {std::string("code/nested/adder.v"),
                             std::string("code/../adder.v")}) {
@@ -364,8 +372,7 @@ TEST(ProjectFileTest, IgnoresInvalidCodeDocumentPaths)
               {"project.json", validProject().dump(2)},
               {std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), "{}"},
               {entry, "module adder; endmodule"}});
-    const auto loaded = SILICON::project::readProjectFile(path);
-    ASSERT_EQ(loaded.documents.size(), 1);
+    EXPECT_THROW(readProjectFileIgnoringResult(path), std::runtime_error);
   }
 }
 
@@ -384,7 +391,7 @@ TEST(ProjectFileTest, RejectsNestedSubcircuitPathBeforeCreatingArchive)
                std::invalid_argument);
 }
 
-TEST(ProjectFileTest, IgnoresUnknownNestedSubcircuitEntry)
+TEST(ProjectFileTest, RejectsEntriesCollidingWithSubcircuitNamespace)
 {
   const auto  path = tempProjectPath("nested_subcircuit_entry");
   FileCleanup cleanup{path};
@@ -395,8 +402,49 @@ TEST(ProjectFileTest, IgnoresUnknownNestedSubcircuitEntry)
                   {std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), "{}"},
                   {"subcircuits/nested/adder.json", "{}"}});
 
+  EXPECT_THROW(readProjectFileIgnoringResult(path), std::runtime_error);
+}
+
+TEST(ProjectFileTest, WritesAndRoundTripsAssets)
+{
+  const auto  path = tempProjectPath("asset_roundtrip");
+  FileCleanup cleanup{path};
+  SILICON::project::ProjectFile projectFile{
+      .metadata  = SILICON::project::metadataForNewFile(),
+      .project   = {.name        = "Assets",
+                    .mainCircuit = std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH),
+                    .description = ""},
+      .documents = {{std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), "{}"}},
+      .assets    = {{"assets/data.bin", std::string("a\0b", 3)}}};
+
+  SILICON::project::writeProjectFile(path, projectFile);
+  EXPECT_EQ(readZipEntry(path, "assets/data.bin"), std::string("a\0b", 3));
   const auto loaded = SILICON::project::readProjectFile(path);
-  ASSERT_EQ(loaded.documents.size(), 1);
+  EXPECT_EQ(loaded.assets, projectFile.assets);
+}
+
+TEST(ProjectFileTest, RejectsInvalidAndDuplicateAssetsBeforeWriting)
+{
+  const auto makeProject = [] {
+    return SILICON::project::ProjectFile{
+        .metadata  = SILICON::project::metadataForNewFile(),
+        .project   = {.name        = "Assets",
+                      .mainCircuit = std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH),
+                      .description = ""},
+        .documents = {{std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), "{}"}}};
+  };
+
+  auto invalid = makeProject();
+  invalid.assets.push_back({"circuits/hidden.bin", ""});
+  EXPECT_THROW(SILICON::project::writeProjectFile(tempProjectPath("invalid_asset"),
+                                                  invalid),
+               std::runtime_error);
+
+  auto duplicate = makeProject();
+  duplicate.assets = {{"assets/data.bin", "one"}, {"assets/data.bin", "two"}};
+  EXPECT_THROW(SILICON::project::writeProjectFile(tempProjectPath("duplicate_asset"),
+                                                  duplicate),
+               std::runtime_error);
 }
 
 TEST(ProjectFileTest, RejectsDuplicateDocumentPathsBeforeCreatingArchive)

@@ -188,6 +188,7 @@ void LogiFlowWindow::resetProjectState()
 {
   currentProjectMetadata.reset();
   currentProjectInfo = defaultProjectInfo(currentFileName);
+  currentProjectAssets.clear();
   activeDocumentPath = defaultMainCircuitPath();
   codeDocumentsDirty = false;
   codeEditor->clearFileType();
@@ -368,14 +369,6 @@ void LogiFlowWindow::loadCircuitContent(const QString&    fileName,
 
     auto projectFile = SILICON::project::readProjectFile(archivePath.toStdString());
 
-    // Clear the current scene items to prepare for the new circuit.
-    diagramScene->clear();
-
-    // 3. Update application state on success
-    currentProjectMetadata = std::move(projectFile.metadata);
-    currentProjectInfo     = std::move(projectFile.project);
-    codeDocumentsDirty     = false;
-    activeDocumentPath     = projectMainCircuitPath();
     std::vector<SILICON::project::Document> documents;
     documents.reserve(projectFile.documents.size());
     for (auto& document : projectFile.documents) {
@@ -386,9 +379,23 @@ void LogiFlowWindow::loadCircuitContent(const QString&    fileName,
         documents.push_back(std::move(document));
     }
 
+    SILICON::project::ProjectDependencyGraph rebuiltDependencies;
+    rebuiltDependencies.rebuildFromProject(documents);
+    const auto mainDocumentPath = projectFile.project.mainCircuit;
+    const auto mainDocument = std::ranges::find(
+        documents, mainDocumentPath, &SILICON::project::Document::getPath);
+    if (mainDocument == documents.end())
+      throw std::runtime_error("Main circuit payload is missing");
+
+    // Commit project-level derived and authoritative state only after validation.
+    diagramScene->clear();
+    currentProjectMetadata = std::move(projectFile.metadata);
+    currentProjectInfo     = std::move(projectFile.project);
+    currentProjectAssets   = std::move(projectFile.assets);
+    codeDocumentsDirty     = false;
+    activeDocumentPath     = mainDocumentPath;
+    dependencyGraph        = std::move(rebuiltDependencies);
     SILICON::project::DocumentStore::active().setDocuments(std::move(documents));
-    dependencyGraph.rebuildFromProject(
-        SILICON::project::DocumentStore::active().getDocuments());
 
     auto&       guiFactory   = GUIComponentFactory::instance();
     auto&       coreRegistry = ComponentRegistry::instance();
@@ -468,7 +475,8 @@ bool LogiFlowWindow::save()
     const auto  documents = SILICON::project::DocumentStore::active().getDocuments();
     SILICON::project::ProjectFile projectFile{.metadata  = metadata,
                                               .project   = project,
-                                              .documents = documents};
+                                              .documents = documents,
+                                              .assets    = currentProjectAssets};
 
 #ifdef __EMSCRIPTEN__
     QTemporaryFile archive;

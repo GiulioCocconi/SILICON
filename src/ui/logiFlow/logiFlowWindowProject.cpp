@@ -421,13 +421,18 @@ void LogiFlowWindow::removeDocument(const std::string& path)
   if (!store.contains(path))
     return;
 
-  if (activeDocumentPath == path)
-    switchToDocument(projectMainCircuitPath(), true);
+  const bool graphical = SILICON::project::documentTypeForPath(path)
+                         != SILICON::project::DocumentType::Code;
+  if (graphical)
+    dependencyGraph.validateDocumentRemoval(path);
 
-  store.removeDocument(path);
-  if (SILICON::project::documentTypeForPath(path)
-      != SILICON::project::DocumentType::Code)
+  if (activeDocumentPath == path
+      && !switchToDocument(projectMainCircuitPath(), true))
+    return;
+
+  if (graphical)
     dependencyGraph.removeDocument(path);
+  store.removeDocument(path);
   rebuildProjectTree();
   selectProjectTreeDocument(activeProjectCircuitPath());
   updatePropertyDock();
@@ -452,12 +457,22 @@ void LogiFlowWindow::insertDocument(SILICON::project::Document          document
     }
   }
 
-  if (insertAt)
-    store.insertDocument(
-        std::move(document),
-        static_cast<std::size_t>(std::max<std::ptrdiff_t>(0, *insertAt)));
-  else
-    store.upsertDocument(std::move(document));
+  try {
+    if (insertAt)
+      store.insertDocument(
+          std::move(document),
+          static_cast<std::size_t>(std::max<std::ptrdiff_t>(0, *insertAt)));
+    else
+      store.upsertDocument(std::move(document));
+  } catch (...) {
+    // If insertion failed before the authoritative document became visible,
+    // restore the graph to its prior state as well.
+    if (!store.contains(path)
+        && SILICON::project::documentTypeForPath(path)
+               != SILICON::project::DocumentType::Code)
+      dependencyGraph.removeDocument(path);
+    throw;
+  }
 
   rebuildProjectTree();
   if (activate)

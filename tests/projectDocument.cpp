@@ -30,8 +30,52 @@ TEST(ProjectDocumentTest, ClassifiesCanonicalFlatPaths)
   EXPECT_FALSE(SILICON::project::documentTypeForPath(""));
   EXPECT_FALSE(SILICON::project::documentTypeForPath("circuits/nested/main.json"));
   EXPECT_FALSE(SILICON::project::documentTypeForPath("circuits/main.txt"));
+  EXPECT_EQ(SILICON::project::documentTypeForPath("circuits/foo..bar.json"),
+            DocumentType::Circuit);
+  EXPECT_FALSE(SILICON::project::documentTypeForPath("circuits/../main.json"));
+  EXPECT_FALSE(SILICON::project::documentTypeForPath("subcircuits/...json"));
   EXPECT_EQ(SILICON::project::subcircuitSlugForPath("subcircuits/adder.json"), "adder");
   EXPECT_FALSE(SILICON::project::subcircuitSlugForPath("circuits/adder.json"));
+}
+
+TEST(ProjectDocumentTest, ValidatesSubcircuitSlugsAndRoundTripsValidOnes)
+{
+  for (const std::string_view invalid : {"", ".", "..", "a/b", "a\\b",
+                                         "../foo", "foo/bar", "line\nbreak"}) {
+    EXPECT_FALSE(isValidSubcircuitSlug(invalid));
+    EXPECT_THROW(static_cast<void>(subcircuitPathForSlug(invalid)),
+                 std::invalid_argument);
+  }
+
+  for (const std::string_view valid : {"adder", "foo..bar", "name with spaces"}) {
+    ASSERT_TRUE(isValidSubcircuitSlug(valid));
+    const auto path = subcircuitPathForSlug(valid);
+    ASSERT_TRUE(subcircuitSlugForPath(path));
+    EXPECT_EQ(*subcircuitSlugForPath(path), valid);
+  }
+}
+
+TEST(ProjectDocumentTest, RejectsCircuitOnlyStateForCodeDocuments)
+{
+  EXPECT_THROW(Document("code/adder.v", "module adder; endmodule", "{}"),
+               std::invalid_argument);
+
+  Document code("code/adder.v", "old");
+  EXPECT_THROW(code.setContents("new", "{}"), std::invalid_argument);
+  EXPECT_EQ(code.getContents(), "old");
+  EXPECT_FALSE(code.getCoreCircuitJson());
+}
+
+TEST(ProjectDocumentTest, ValidatesAssetNamespaceOwnership)
+{
+  EXPECT_TRUE(isValidProjectAssetPath("assets/readme.txt"));
+  EXPECT_TRUE(isValidProjectAssetPath("foo..bar/data.bin"));
+  for (const std::string_view invalid : {
+           "", "/absolute", "C:/absolute", "trailing/", "a//b", "a/./b",
+           "a/../b", "a\\b",
+           "mimetype", "metadata.json", "project.json", "circuits/other.bin",
+           "subcircuits/nested/adder.json", "code/unsupported.sv"})
+    EXPECT_FALSE(isValidProjectAssetPath(invalid));
 }
 
 TEST(ProjectDocumentTest, ContentReplacementClearsOrReplacesPreparedCoreJson)
@@ -82,13 +126,14 @@ TEST(ProjectDocumentStoreTest, PreservesOrderAcrossMixedKindsAndUpserts)
 
   const auto circuits = store.getDocuments(DocumentType::Circuit);
   ASSERT_EQ(circuits.size(), 2);
-  EXPECT_EQ(circuits[0].getPath(), "circuits/main.json");
-  EXPECT_EQ(circuits[1].getPath(), "circuits/control.json");
+  EXPECT_EQ(circuits[0].get().getPath(), "circuits/main.json");
+  EXPECT_EQ(circuits[1].get().getPath(), "circuits/control.json");
 
   const auto codeFiles = store.getDocuments(DocumentType::Code);
   ASSERT_EQ(codeFiles.size(), 1);
-  EXPECT_EQ(codeFiles.front().getContents(), "module adder; endmodule");
-  EXPECT_EQ(codeFileTypeForPath(codeFiles.front().getPath()), CodeFileType::Verilog);
+  EXPECT_EQ(codeFiles.front().get().getContents(), "module adder; endmodule");
+  EXPECT_EQ(codeFileTypeForPath(codeFiles.front().get().getPath()),
+            CodeFileType::Verilog);
 
   store.removeDocument("subcircuits/adder.json");
   EXPECT_FALSE(store.contains("subcircuits/adder.json"));
@@ -106,24 +151,35 @@ TEST(ProjectDocumentStoreTest, RejectsDuplicatePaths)
 TEST(ProjectDocumentStoreTest, NotificationsUseSnapshotAndCanonicalPaths)
 {
   DocumentStore            store;
-  std::vector<std::string> notifications;
+  std::vector<std::pair<DocumentChangeKind, std::optional<std::string>>> notifications;
   std::uint64_t            selfRemovingId = 0;
   std::uint64_t            addedId        = 0;
 
-  selfRemovingId = store.addListener([&](const std::string_view path) {
-    notifications.emplace_back(path);
+  selfRemovingId = store.addListener([&](const DocumentChange& change) {
+    notifications.emplace_back(change.kind, change.path);
     store.removeListener(selfRemovingId);
     if (addedId == 0) {
-      addedId = store.addListener([&](const std::string_view nextPath) {
-        notifications.emplace_back("late:" + std::string(nextPath));
+      addedId = store.addListener([&](const DocumentChange& nextChange) {
+        notifications.emplace_back(nextChange.kind, nextChange.path);
       });
     }
   });
 
   store.upsertDocument({"circuits/main.json", "{}"});
-  EXPECT_EQ(notifications, (std::vector<std::string>{"circuits/main.json"}));
+  EXPECT_EQ(notifications,
+            (decltype(notifications){{DocumentChangeKind::Added,
+                                      std::string("circuits/main.json")}}));
+
+  store.upsertDocument({"circuits/main.json", "updated"});
+  store.removeDocument("missing.json");
+  store.removeDocument("circuits/main.json");
 
   store.clear();
-  EXPECT_EQ(notifications, (std::vector<std::string>{"circuits/main.json", "late:"}));
+  EXPECT_EQ(notifications,
+            (decltype(notifications){
+                {DocumentChangeKind::Added, std::string("circuits/main.json")},
+                {DocumentChangeKind::Updated, std::string("circuits/main.json")},
+                {DocumentChangeKind::Removed, std::string("circuits/main.json")},
+                {DocumentChangeKind::Reset, std::nullopt}}));
   store.removeListener(addedId);
 }

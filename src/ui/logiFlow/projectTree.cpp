@@ -75,9 +75,9 @@ ProjectTree::ProjectTree(QWidget* parent) : QTreeWidget(parent)
 }
 
 void ProjectTree::rebuild(const SILICON::project::ProjectInfo&           project,
-                          const std::vector<SILICON::project::Document>& circuits,
-                          const std::vector<SILICON::project::Document>& subcircuits,
-                          const std::vector<SILICON::project::Document>& codeFiles,
+                          const SILICON::project::DocumentStore::DocumentReferences& circuits,
+                          const SILICON::project::DocumentStore::DocumentReferences& subcircuits,
+                          const SILICON::project::DocumentStore::DocumentReferences& codeFiles,
                           const std::string& activeDocumentPath)
 {
   const QSignalBlocker blocker(this);
@@ -98,9 +98,9 @@ void ProjectTree::rebuild(const SILICON::project::ProjectInfo&           project
 
 void
 ProjectTree::updateLabels(const SILICON::project::ProjectInfo&           project,
-                          const std::vector<SILICON::project::Document>& circuits,
-                          const std::vector<SILICON::project::Document>& subcircuits,
-                          const std::vector<SILICON::project::Document>& codeFiles)
+                          const SILICON::project::DocumentStore::DocumentReferences& circuits,
+                          const SILICON::project::DocumentStore::DocumentReferences& subcircuits,
+                          const SILICON::project::DocumentStore::DocumentReferences& codeFiles)
 {
   const QSignalBlocker blocker(this);
   if (topLevelItemCount() == 0)
@@ -115,7 +115,7 @@ ProjectTree::updateLabels(const SILICON::project::ProjectInfo&           project
       continue;
     for (int i = 0;
          i < section->childCount() && i < static_cast<int>(documents->size()); ++i) {
-      const auto& document = documents->at(static_cast<std::size_t>(i));
+      const auto& document = documents->at(static_cast<std::size_t>(i)).get();
       section->child(i)->setText(
           0, type == SILICON::project::DocumentType::Circuit
                  ? documentDisplayName(document)
@@ -128,8 +128,9 @@ ProjectTree::updateLabels(const SILICON::project::ProjectInfo&           project
       for (int child = 0; child < section->child(group)->childCount(); ++child) {
         auto*      item = section->child(group)->child(child);
         const auto path = item->data(0, PathRole).toString().toStdString();
-        if (std::ranges::find(codeFiles, path, &SILICON::project::Document::getPath)
-            != codeFiles.end())
+        if (std::ranges::any_of(codeFiles, [&path](const auto document) {
+              return document.get().getPath() == path;
+            }))
           item->setText(0, QFileInfo(QString::fromStdString(path)).fileName());
       }
     }
@@ -197,7 +198,7 @@ std::string ProjectTree::documentPath(const QTreeWidgetItem* item)
 
 void ProjectTree::addSection(QTreeWidgetItem*                               projectItem,
                              const SILICON::project::DocumentType           type,
-                             const std::vector<SILICON::project::Document>& documents)
+                             const SILICON::project::DocumentStore::DocumentReferences& documents)
 {
   const bool circuits = type == SILICON::project::DocumentType::Circuit;
   auto*      section  = new QTreeWidgetItem(projectItem);
@@ -205,7 +206,8 @@ void ProjectTree::addSection(QTreeWidgetItem*                               proj
   section->setData(0, ItemKindRole, static_cast<int>(sectionKind(type)));
   section->setExpanded(true);
 
-  for (const auto& document : documents) {
+  for (const auto documentReference : documents) {
+    const auto& document = documentReference.get();
     auto* item = new QTreeWidgetItem(section);
     item->setText(0, circuits
                          ? documentDisplayName(document)
@@ -219,7 +221,7 @@ void ProjectTree::addSection(QTreeWidgetItem*                               proj
 
 void
 ProjectTree::addCodeSection(QTreeWidgetItem*                               projectItem,
-                            const std::vector<SILICON::project::Document>& documents)
+                            const SILICON::project::DocumentStore::DocumentReferences& documents)
 {
   auto* section = new QTreeWidgetItem(projectItem);
   section->setText(0, tr("Code"));
@@ -228,8 +230,8 @@ ProjectTree::addCodeSection(QTreeWidgetItem*                               proje
 
   for (const auto& typeInfo : SILICON::project::codeFileTypeRegistry()) {
     const bool hasDocuments =
-        std::ranges::any_of(documents, [&typeInfo](const auto& document) {
-          return SILICON::project::codeFileTypeForPath(document.getPath())
+        std::ranges::any_of(documents, [&typeInfo](const auto document) {
+          return SILICON::project::codeFileTypeForPath(document.get().getPath())
                  == typeInfo.type;
         });
     if (!hasDocuments)
@@ -243,7 +245,8 @@ ProjectTree::addCodeSection(QTreeWidgetItem*                               proje
     language->setData(0, ItemKindRole,
                       static_cast<int>(ProjectTreeItemKind::CodeLanguage));
     language->setExpanded(true);
-    for (const auto& document : documents) {
+    for (const auto documentReference : documents) {
+      const auto& document = documentReference.get();
       if (SILICON::project::codeFileTypeForPath(document.getPath()) != typeInfo.type)
         continue;
       auto* item = new QTreeWidgetItem(language);

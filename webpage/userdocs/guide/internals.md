@@ -96,8 +96,10 @@ example.sil
 │   └── controller.json
 ├── subcircuits/
 │   └── adder.json
-└── code/
-    └── adder.v
+├── code/
+│   └── adder.v
+└── assets/
+    └── pinout.svg
 ```
 
 `metadata.json` contains the archive `formatVersion`, the Silicon version that wrote the
@@ -105,9 +107,11 @@ file, and UTC creation/modification timestamps. `project.json` contains the proj
 description, and `mainCircuit`, which must name an existing flat JSON entry below
 `circuits/`. There must be at least one circuit. Additional circuit files are discovered
 under `circuits/`; project-local subcircuits are flat entries under `subcircuits/`, and
-source documents use registered extensions under `code/`. Other archive entries are
-ignored. Duplicate document paths, duplicate subcircuit slugs, or a main-circuit
-reference outside `circuits/` are rejected.
+source documents use registered extensions under `code/`. Other normalized, safe paths
+are preserved as project assets. Absolute paths, traversal segments, reserved entries,
+and assets colliding with the document namespaces are rejected. Duplicate document or
+asset paths, duplicate subcircuit slugs, or a main-circuit reference outside `circuits/`
+are also rejected.
 
 Inside a running editor, all three document types are represented by the same
 `silicon::project::Document`. Its validated project-relative path is its only identity
@@ -120,7 +124,14 @@ Every open document lives in the ordered `DocumentStore`. Circuit, subcircuit, a
 creation, deletion, activation, tree selection, undo restoration, and saving all use
 the same canonical path and lifecycle. The store preserves insertion order, including
 when an undo restores a document at its former index, and emits path-based change
-notifications so components can refresh a referenced subcircuit safely.
+events (`Added`, `Updated`, `Removed`, or `Reset`) so components can refresh a referenced
+subcircuit without relying on an empty-path sentinel.
+
+`ProjectDependencyGraph` is a runtime-only index rebuilt from circuit and subcircuit
+contents; it is never serialized. An edge points from a containing document to the flat
+subcircuit document named by a component slug. Dependency extraction validates malformed
+subcircuit components, missing targets, and recursion before committing an update. Code
+documents and project assets do not participate in this containment graph.
 
 Each circuit or subcircuit entry is a serialized editor scene. Its two main sections have
 different responsibilities:

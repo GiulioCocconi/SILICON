@@ -107,9 +107,10 @@ std::vector<ComponentCatalogOverlay::CatalogRow> componentCatalogRows(
                            .initialProperties = {}});
   }
 
-  for (const auto& document :
+  for (const auto documentReference :
        SILICON::project::DocumentStore::active().getDocuments(
            SILICON::project::DocumentType::Subcircuit)) {
+    const auto& document = documentReference.get();
     if (!subcircuitHasGraphicalMetadata(document.getContents()))
       continue;
 

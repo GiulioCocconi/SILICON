@@ -44,14 +44,14 @@ public:
   explicit ProjectTree(QWidget* parent = nullptr);
 
   void rebuild(const SILICON::project::ProjectInfo&           project,
-               const std::vector<SILICON::project::Document>& circuits,
-               const std::vector<SILICON::project::Document>& subcircuits,
-               const std::vector<SILICON::project::Document>& codeFiles,
+               const SILICON::project::DocumentStore::DocumentReferences& circuits,
+               const SILICON::project::DocumentStore::DocumentReferences& subcircuits,
+               const SILICON::project::DocumentStore::DocumentReferences& codeFiles,
                const std::string&                             activeDocumentPath);
   void updateLabels(const SILICON::project::ProjectInfo&           project,
-                    const std::vector<SILICON::project::Document>& circuits,
-                    const std::vector<SILICON::project::Document>& subcircuits,
-                    const std::vector<SILICON::project::Document>& codeFiles);
+                    const SILICON::project::DocumentStore::DocumentReferences& circuits,
+                    const SILICON::project::DocumentStore::DocumentReferences& subcircuits,
+                    const SILICON::project::DocumentStore::DocumentReferences& codeFiles);
 
   void selectDocument(const std::string& path);
   void clearDocumentSelection();
@@ -63,9 +63,9 @@ public:
 
 private:
   void addSection(QTreeWidgetItem* projectItem, SILICON::project::DocumentType type,
-                  const std::vector<SILICON::project::Document>& documents);
+                  const SILICON::project::DocumentStore::DocumentReferences& documents);
   void addCodeSection(QTreeWidgetItem*                               projectItem,
-                      const std::vector<SILICON::project::Document>& documents);
+                      const SILICON::project::DocumentStore::DocumentReferences& documents);
 };
 
 }  // namespace ui

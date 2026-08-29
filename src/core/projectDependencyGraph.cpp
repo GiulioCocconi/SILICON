@@ -23,6 +23,7 @@
 #include <ranges>
 #include <stdexcept>
 #include <unordered_set>
+#include <utility>
 
 #include <boost/graph/topological_sort.hpp>
 #include <nlohmann/json.hpp>
@@ -50,38 +51,64 @@ namespace {
   }
 
   [[nodiscard]] std::vector<std::string>
-  extractSubcircuitDependencies(const std::string_view sceneJson)
+  extractSubcircuitDependencies(const std::string_view documentPath,
+                                const std::string_view contents)
   {
     std::vector<std::string> dependencies;
 
-    const auto  parsed  = nlohmann::json::parse(sceneJson);
+    nlohmann::json parsed;
+    try {
+      parsed = nlohmann::json::parse(contents);
+    } catch (const nlohmann::json::parse_error& error) {
+      throw std::runtime_error(std::format(
+          "{} contains invalid JSON: {}", documentPath, error.what()));
+    }
+    if (!parsed.is_object())
+      throw std::runtime_error(
+          std::format("{} must contain a JSON object", documentPath));
+
     const auto* circuit = &parsed;
-    if (const auto circuitIt = parsed.find("circuit");
-        circuitIt != parsed.end() && circuitIt->is_object()) {
+    if (const auto circuitIt = parsed.find("circuit"); circuitIt != parsed.end()) {
+      if (!circuitIt->is_object())
+        throw std::runtime_error(
+            std::format("{}.circuit must be an object", documentPath));
       circuit = &*circuitIt;
     }
 
     const auto componentsIt = circuit->find("components");
-    if (componentsIt == circuit->end() || !componentsIt->is_array())
+    // Older project documents without a components member represent an empty circuit.
+    if (componentsIt == circuit->end())
       return dependencies;
+    if (!componentsIt->is_array())
+      throw std::runtime_error(
+          std::format("{}.components must be an array", documentPath));
 
     std::unordered_set<std::string> seen;
     for (const auto& component : *componentsIt) {
-      if (!component.is_object()
-          || component.value("type", std::string()) != "Subcircuit")
+      if (!component.is_object())
+        continue;
+      const auto typeIt = component.find("type");
+      if (typeIt == component.end() || !typeIt->is_string()
+          || typeIt->get_ref<const std::string&>() != "Subcircuit")
         continue;
 
       const auto propertiesIt = component.find("properties");
       if (propertiesIt == component.end() || !propertiesIt->is_object())
-        continue;
+        throw std::runtime_error(std::format(
+            "{} contains a Subcircuit component whose 'properties' must be an object",
+            documentPath));
 
       const auto slugIt = propertiesIt->find("slug");
       if (slugIt == propertiesIt->end() || !slugIt->is_string())
-        continue;
+        throw std::runtime_error(std::format(
+            "{} contains a Subcircuit component with no string 'slug' property",
+            documentPath));
 
       const auto slug = slugIt->get<std::string>();
-      if (slug.empty())
-        continue;
+      if (!isValidSubcircuitSlug(slug))
+        throw std::runtime_error(std::format(
+            "{} contains a Subcircuit component with invalid slug '{}'", documentPath,
+            slug));
 
       auto path = subcircuitPathForSlug(slug);
       if (seen.insert(path).second)
@@ -90,6 +117,17 @@ namespace {
 
     std::ranges::sort(dependencies);
     return dependencies;
+  }
+
+  [[nodiscard]] std::string
+  formatReferencedDocumentMessage(const std::string_view documentPath,
+                                  const std::vector<std::string>& dependents)
+  {
+    auto message =
+        std::format("Cannot remove {} because it is referenced by:", documentPath);
+    for (const auto& dependent : dependents)
+      message += std::format("\n  {}", dependent);
+    return message;
   }
 
 }  // namespace
@@ -102,7 +140,16 @@ void ProjectDependencyGraph::clear()
 
 void ProjectDependencyGraph::addDocument(const std::string_view documentPath)
 {
-  static_cast<void>(ensureVertex(documentPath));
+  const auto type = documentTypeForPath(documentPath);
+  if (!type || *type == DocumentType::Code)
+    throw std::invalid_argument(
+        "Dependency graph documents must be circuits or subcircuits");
+  if (containsDocument(documentPath))
+    return;
+
+  auto updated = *this;
+  static_cast<void>(updated.ensureVertex(documentPath));
+  *this = std::move(updated);
 }
 
 void ProjectDependencyGraph::removeDocument(const std::string_view documentPath)
@@ -111,18 +158,40 @@ void ProjectDependencyGraph::removeDocument(const std::string_view documentPath)
   if (!vertex)
     return;
 
-  boost::clear_vertex(*vertex, graph);
-  boost::remove_vertex(*vertex, graph);
-  rebuildPathIndex();
+  validateDocumentRemoval(documentPath);
+
+  auto updated       = *this;
+  const auto removed = updated.findVertex(documentPath);
+  boost::clear_vertex(*removed, updated.graph);
+  boost::remove_vertex(*removed, updated.graph);
+  updated.rebuildPathIndex();
+  *this = std::move(updated);
+}
+
+void ProjectDependencyGraph::validateDocumentRemoval(
+    const std::string_view documentPath) const
+{
+  if (!containsDocument(documentPath))
+    return;
+  auto dependents = dependentsOf(documentPath);
+  if (!dependents.empty()) {
+    auto message = formatReferencedDocumentMessage(documentPath, dependents);
+    throw std::runtime_error(std::move(message));
+  }
 }
 
 void ProjectDependencyGraph::rebuildFromProject(const std::vector<Document>& documents)
 {
   ProjectDependencyGraph rebuilt;
+  std::unordered_set<std::string_view> registeredPaths;
 
   for (const auto& document : documents) {
-    if (document.getType() != DocumentType::Code)
-      rebuilt.addDocument(document.getPath());
+    if (document.getType() == DocumentType::Code)
+      continue;
+    if (!registeredPaths.insert(document.getPath()).second)
+      throw std::runtime_error(
+          std::format("Duplicate dependency graph document {}", document.getPath()));
+    static_cast<void>(rebuilt.ensureVertex(document.getPath()));
   }
 
   for (const auto& document : documents) {
@@ -135,18 +204,25 @@ void ProjectDependencyGraph::rebuildFromProject(const std::vector<Document>& doc
 }
 
 void ProjectDependencyGraph::replaceDocumentDependencies(
-    const std::string_view documentPath, const std::string_view sceneJson)
+    const std::string_view documentPath, const std::string_view contents)
 {
-  auto updated = withDocumentDependencies(documentPath, sceneJson);
+  auto updated = withDocumentDependencies(documentPath, contents);
   updated.throwIfCyclic();
   *this = std::move(updated);
 }
 
-bool ProjectDependencyGraph::wouldIntroduceCycle(const std::string_view documentPath,
-                                                 const std::string_view sceneJson) const
+void ProjectDependencyGraph::validateDocumentDependencies(
+    const std::string_view documentPath, const std::string_view contents) const
 {
+  auto candidate = withDocumentDependencies(documentPath, contents);
+  candidate.throwIfCyclic();
+}
+
+bool ProjectDependencyGraph::wouldIntroduceCycle(const std::string_view documentPath,
+                                                 const std::string_view contents) const
+{
+  const auto candidate = withDocumentDependencies(documentPath, contents);
   try {
-    const auto candidate = withDocumentDependencies(documentPath, sceneJson);
     candidate.validateAcyclic();
   } catch (const boost::not_a_dag&) {
     return true;
@@ -189,18 +265,22 @@ ProjectDependencyGraph::findVertex(const std::string_view documentPath) const
 
 ProjectDependencyGraph
 ProjectDependencyGraph::withDocumentDependencies(const std::string_view documentPath,
-                                                 const std::string_view sceneJson) const
+                                                 const std::string_view contents) const
 {
   auto updated = *this;
-  updated.replaceDependencyEdges(documentPath, sceneJson);
+  updated.replaceDependencyEdges(documentPath, contents);
   return updated;
 }
 
 void ProjectDependencyGraph::replaceDependencyEdges(const std::string_view documentPath,
-                                                    const std::string_view sceneJson)
+                                                    const std::string_view contents)
 {
-  const auto          documentVertex = ensureVertex(documentPath);
-  const auto          dependencies   = extractSubcircuitDependencies(sceneJson);
+  const auto documentVertex = findVertex(documentPath);
+  if (!documentVertex)
+    throw std::runtime_error(
+        std::format("Unknown dependency graph document {}", documentPath));
+
+  const auto dependencies = extractSubcircuitDependencies(documentPath, contents);
   std::vector<Vertex> dependencyVertices;
   dependencyVertices.reserve(dependencies.size());
 
@@ -213,9 +293,9 @@ void ProjectDependencyGraph::replaceDependencyEdges(const std::string_view docum
     }
   }
 
-  boost::clear_out_edges(documentVertex, graph);
+  boost::clear_out_edges(*documentVertex, graph);
   for (const auto dependencyVertex : dependencyVertices)
-    boost::add_edge(documentVertex, dependencyVertex, graph);
+    boost::add_edge(*documentVertex, dependencyVertex, graph);
 }
 
 std::vector<std::string> ProjectDependencyGraph::findCycleTrace() const

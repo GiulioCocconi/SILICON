@@ -561,6 +561,9 @@ private:
   /** @brief Optional persisted project information for the current project. */
   std::optional<SILICON::project::ProjectInfo> currentProjectInfo;
 
+  /** @brief Non-document archive entries preserved across load/save. */
+  std::vector<SILICON::project::ProjectAsset> currentProjectAssets;
+
   /** @brief Project-relative path of the circuit loaded in the diagram scene. */
   std::string activeDocumentPath;
   /** @brief Tracks code edits already flushed to DocumentStore but not to disk. */

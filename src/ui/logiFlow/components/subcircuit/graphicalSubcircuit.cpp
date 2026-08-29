@@ -61,10 +61,13 @@ GraphicalSubcircuitComponent::GraphicalSubcircuitComponent(QGraphicsItem* parent
 
   registryListenerId =
       SILICON::project::DocumentStore::active().addListener(
-          [this](std::string_view path) {
-        if (path.empty()
-            || path
-                   == SILICON::project::subcircuitPathForSlug(currentSlug()))
+          [this](const SILICON::project::DocumentChange& change) {
+        const auto slug = currentSlug();
+        const bool affectsConfiguredDocument =
+            SILICON::project::isValidSubcircuitSlug(slug) && change.path
+            && *change.path == SILICON::project::subcircuitPathForSlug(slug);
+        if (change.kind == SILICON::project::DocumentChangeKind::Reset
+            || affectsConfiguredDocument)
           refreshFromMetadata();
       });
   refreshFromMetadata();
