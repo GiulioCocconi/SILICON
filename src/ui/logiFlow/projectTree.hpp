@@ -1,10 +1,10 @@
 /*
-  Copyright (c) 2026. Giulio Cocconi
+Copyright (c) 2026. Giulio Cocconi
 
-   This program is free software: you can redistribute it and/or modify
-   it under the terms of the GNU General Public License as published by
-   the Free Software Foundation, either version 3 of the License, or
-   (at your option) any later version.
+ This program is free software: you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
 */
 
 #pragma once
@@ -16,7 +16,6 @@
 
 #include <core/serialization/projectFile.hpp>
 
-
 namespace SILICON {
 namespace ui {
 
@@ -26,7 +25,10 @@ enum class ProjectTreeItemKind {
   CircuitSection,
   Circuit,
   SubcircuitSection,
-  Subcircuit
+  Subcircuit,
+  CodeSection,
+  CodeLanguage,
+  CodeFile
 };
 
 /**
@@ -44,22 +46,26 @@ public:
   void rebuild(const SILICON::project::ProjectInfo&           project,
                const std::vector<SILICON::project::Document>& circuits,
                const std::vector<SILICON::project::Document>& subcircuits,
+               const std::vector<SILICON::project::Document>& codeFiles,
                const std::string&                             activeDocumentPath);
   void updateLabels(const SILICON::project::ProjectInfo&           project,
                     const std::vector<SILICON::project::Document>& circuits,
-                    const std::vector<SILICON::project::Document>& subcircuits);
+                    const std::vector<SILICON::project::Document>& subcircuits,
+                    const std::vector<SILICON::project::Document>& codeFiles);
 
   void selectDocument(const std::string& path);
   void clearDocumentSelection();
 
   [[nodiscard]] QTreeWidgetItem* selectedProjectItem() const;
-  [[nodiscard]] QTreeWidgetItem* sectionFor(SILICON::project::DocumentKind kind) const;
+  [[nodiscard]] QTreeWidgetItem* sectionFor(SILICON::project::DocumentType type) const;
   [[nodiscard]] static ProjectTreeItemKind itemKind(const QTreeWidgetItem* item);
   [[nodiscard]] static std::string         documentPath(const QTreeWidgetItem* item);
 
 private:
-  void addSection(QTreeWidgetItem* projectItem, SILICON::project::DocumentKind kind,
+  void addSection(QTreeWidgetItem* projectItem, SILICON::project::DocumentType type,
                   const std::vector<SILICON::project::Document>& documents);
+  void addCodeSection(QTreeWidgetItem*                               projectItem,
+                      const std::vector<SILICON::project::Document>& documents);
 };
 
 }  // namespace ui

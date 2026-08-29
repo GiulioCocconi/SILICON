@@ -37,7 +37,16 @@ struct SubcircuitDefinition {
 
 [[nodiscard]] std::string extractCoreCircuitJson(std::string_view sceneJson);
 
+}  // namespace SILICON::core
+
+namespace SILICON::project {
+class DocumentStore;
+}
+
+namespace SILICON::core {
+
 [[nodiscard]] SubcircuitDefinition
-loadSubcircuitDefinition(std::string_view slug, const ComponentRegistry& registry);
+loadSubcircuitDefinition(std::string_view slug, const ComponentRegistry& registry,
+                         SILICON::project::DocumentStore& documents);
 
 }  // namespace SILICON::core

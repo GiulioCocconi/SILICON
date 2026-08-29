@@ -23,13 +23,17 @@
 #include <cstdint>
 #include <string_view>
 
+namespace SILICON::project {
+class DocumentStore;
+}
+
 namespace SILICON::core {
 
 class SubcircuitComponent : public Component {
 public:
   static constexpr std::string_view Type = "Subcircuit";
 
-  SubcircuitComponent();
+  explicit SubcircuitComponent(SILICON::project::DocumentStore* documents = nullptr);
   ~SubcircuitComponent() override;
 
   std::string_view  typeName() const override { return Type; }
@@ -43,12 +47,17 @@ public:
   void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
 
   void reloadFromRegistry();
+  void setDocumentStore(SILICON::project::DocumentStore* documents);
+  [[nodiscard]] SILICON::project::DocumentStore* documentStore() const noexcept;
 
 private:
   std::uint64_t registryListenerId = 0;
+  SILICON::project::DocumentStore* documents          = nullptr;
 
   void configureFromSlug(std::string_view slug);
   void clearResolvedCircuit();
+  void subscribeToDocuments();
+  void unsubscribeFromDocuments();
 };
 
 }  // namespace SILICON::core

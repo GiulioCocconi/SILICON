@@ -49,6 +49,9 @@
 #include <ui/common/componentSearchBox.hpp>
 #include <ui/common/wireManager.hpp>
 
+namespace SILICON::project {
+class DocumentStore;
+}
 
 namespace SILICON {
 namespace ui {
@@ -103,6 +106,9 @@ public:
    */
   explicit DiagramScene(QObject* parent = nullptr);
 
+    void setDocumentStore(SILICON::project::DocumentStore* documents) noexcept;
+    [[nodiscard]] SILICON::project::DocumentStore* documentStore() const noexcept;
+
   /**
    * @brief Sets the interaction mode.
    * @param mode The new mode
@@ -131,7 +137,8 @@ public:
   [[nodiscard]] GraphicalComponent* getComponentToBeDrawn() const;
 
   /**
-   * @brief Returns whether a wire currently has a starting endpoint and is being routed.
+     * @brief Returns whether a wire currently has a starting endpoint and is being
+     * routed.
    */
   [[nodiscard]] bool isWireCreationInProgress() const
   {
@@ -175,7 +182,8 @@ public:
   /**
    * @brief Begins placing a component of the given type.
    * @param typeName The component type name
-   * @param showSearchBox Whether entering placement mode should show the quick search box
+     * @param showSearchBox Whether entering placement mode should show the quick search
+     * box
    */
   void placeComponent(std::string_view typeName, bool showSearchBox);
 
@@ -274,7 +282,8 @@ public:
   [[nodiscard]] nlohmann::ordered_json serializeSelection() const;
 
   /**
-   * @brief Serializes arbitrary scene items using the internal selection payload format.
+     * @brief Serializes arbitrary scene items using the internal selection payload
+     * format.
    *
    * The returned object follows the clipboard payload described in
    * serializeSelection(), which in turn is a scene-fragment variant of
@@ -289,7 +298,10 @@ public:
   [[nodiscard]] GraphicalItem* findGraphicalItemByUiId(uint64_t uiId) const;
   void                         registerGraphicalItem(GraphicalItem* item);
   void                         unregisterGraphicalItem(GraphicalItem* item);
-  [[nodiscard]] bool itemCollisionChecksEnabled() const { return isItemCollisionEnabled; }
+    [[nodiscard]] bool           itemCollisionChecksEnabled() const
+    {
+      return isItemCollisionEnabled;
+    }
   void setItemCollisionChecksEnabled(bool enabled) { isItemCollisionEnabled = enabled; }
 
   /**
@@ -341,7 +353,8 @@ public:
   void autoPlaceCircuit(bool interactive = false);
 
   /**
-   * @brief Removes items matching a serialized selection payload from the current scene.
+     * @brief Removes items matching a serialized selection payload from the current
+     * scene.
    *
    * Matching is performed against the same visual serialization used for clipboard and
    * undo operations.
@@ -357,9 +370,9 @@ public:
   /**
    * @brief Enables or disables simulation FST tracing.
    *
-   * When enabled during simulation mode, the active simulator immediately starts writing
-   * snapshots to the configured file. When enabled before entering simulation mode, the
-   * writer is attached during simulation initialization.
+     * When enabled during simulation mode, the active simulator immediately starts
+     * writing snapshots to the configured file. When enabled before entering simulation
+     * mode, the writer is attached during simulation initialization.
    */
   void setFstTraceFile(std::optional<std::string> fileName);
 
@@ -370,8 +383,7 @@ public:
    * @param duration Total waveform duration to simulate
    * @param inputSnapshots Input-only timestamped values ordered like waveform inputs
    */
-  void simulateEditedWaveform(qulonglong                         duration,
-                              std::vector<Sample> inputSnapshots);
+    void simulateEditedWaveform(qulonglong duration, std::vector<Sample> inputSnapshots);
 
   ~DiagramScene() override;
 
@@ -439,7 +451,8 @@ signals:
    * @brief Emitted when a completed simulation job produced multiple waveform states.
    * @param snapshots Ordered timestamp and signal-value snapshots
    */
-  void waveformTraceSnapshots(QList<QPair<qulonglong, std::vector<BusValue>>> snapshots);
+    void
+    waveformTraceSnapshots(QList<QPair<qulonglong, std::vector<BusValue>>> snapshots);
 
 private:
   /**
@@ -486,6 +499,8 @@ private:
   /** @brief Whether this scene currently represents a subcircuit document. */
   bool subcircuitDocumentMode = false;
 
+    SILICON::project::DocumentStore* documents = nullptr;
+
   /** @brief Component being placed (shadow) */
   GraphicalComponent* componentToBeDrawn = nullptr;
 
@@ -519,7 +534,8 @@ private:
   /** @brief Persistence and clipboard payload handling */
   std::unique_ptr<DiagramSceneSerializer> serializer;
 
-  /** @brief Disabled while applying batch layouts that must not be rejected mid-move. */
+    /** @brief Disabled while applying batch layouts that must not be rejected mid-move.
+     */
   bool isItemCollisionEnabled = true;
 };
 

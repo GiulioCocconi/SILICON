@@ -18,8 +18,8 @@
 
 /* Per-component lowering from Silicon semantics to native Yosys cells. */
 
-#include "yosys_helpers.hpp"
 #include "yosys_cells.hpp"
+#include "yosys_helpers.hpp"
 
 #include <core/flipflops.hpp>
 #include <core/gates.hpp>
@@ -360,8 +360,7 @@ void emitDff(SerializationContext& context, const Component& component, Json dat
 {
   const bool hasControls = connected(clear) || connected(preset);
   Json parameters{
-      {"CLK_POLARITY",
-       SerializationContext::parameter(positiveClock(component), 1)}};
+              {"CLK_POLARITY", SerializationContext::parameter(positiveClock(component), 1)}};
   Json portDirections = directions({{"D", "input"}, {"CLK", "input"}});
   Json connections{{"D", std::move(data)}, {"CLK", std::move(clock)}};
   if (enable) {
@@ -517,7 +516,7 @@ void SubcircuitComponent::serializeYosys(SerializationContext& context) const
   // Resolve the referenced definition by slug, serialize it once as its own Yosys
   // module, and instantiate that module with this component's buses as named ports.
   const auto slug = getPropertyValue<std::string>("slug").value_or(std::string());
-  context.addSubcircuitInstance(slug, inputBuses(), outputBuses());
+  context.addSubcircuitInstance(slug, inputBuses(), outputBuses(), documentStore());
 }
 
 }  // namespace SILICON::core

@@ -40,14 +40,13 @@
 #include <QTableWidgetItem>
 #include <QVBoxLayout>
 
+#include <core/projectDocument.hpp>
 #include <ui/common/componentSearchMatcher.hpp>
 #include <ui/common/diagramScene/diagramScene.hpp>
 #include <ui/logiFlow/components/graphicalLogicComponent.hpp>
 #include <ui/logiFlow/components/subcircuit/graphicalSubcircuit.hpp>
 #include <ui/logiFlow/components/subcircuit/metadata.hpp>
-#include <core/projectDocument.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
-
 
 namespace SILICON {
 namespace ui {
@@ -60,9 +59,12 @@ constexpr int CatalogCategoryRowHeight         = 32;
 constexpr int CatalogMinimumComponentRowHeight = 32;
 constexpr int CatalogNameColumnPadding         = 28;
 
-QPixmap componentPreviewPixmap(const ComponentCatalogOverlay::CatalogRow& rowData)
+QPixmap componentPreviewPixmap(const ComponentCatalogOverlay::CatalogRow& rowData,
+                               SILICON::project::DocumentStore& documents)
 {
-  auto         component = GUIComponentFactory::instance().create(rowData.guiType);
+  auto component = GUIComponentFactory::instance().create(rowData.guiType);
+  if (auto* subcircuit = dynamic_cast<GraphicalSubcircuitComponent*>(component.get()))
+    subcircuit->setDocumentStore(&documents);
   if (!rowData.initialProperties.empty()) {
     if (auto* logicComponent = dynamic_cast<GraphicalLogicComponent*>(component.get())) {
       for (const auto& [key, value] : rowData.initialProperties)
@@ -91,8 +93,9 @@ QPixmap componentPreviewPixmap(const ComponentCatalogOverlay::CatalogRow& rowDat
   return pixmap;
 }
 
-std::vector<ComponentCatalogOverlay::CatalogRow> componentCatalogRows(
-    const bool editingSubcircuit)
+    std::vector<ComponentCatalogOverlay::CatalogRow>
+    componentCatalogRows(const bool                             editingSubcircuit,
+                         const SILICON::project::DocumentStore& documents)
 {
   Q_UNUSED(editingSubcircuit);
 
@@ -108,17 +111,14 @@ std::vector<ComponentCatalogOverlay::CatalogRow> componentCatalogRows(
   }
 
   for (const auto& document :
-       SILICON::project::DocumentStore::active().getDocuments(
-           SILICON::project::DocumentKind::Subcircuit)) {
-    if (!subcircuitHasGraphicalMetadata(document.getSceneJson()))
+           documents.getDocuments(SILICON::project::DocumentType::Subcircuit)) {
+    if (!subcircuitHasGraphicalMetadata(document.getContents()))
       continue;
 
     const auto slug = document.subcircuitSlug().value_or(std::string{});
     PropertyMap initialProperties;
-    initialProperties.emplace(std::string("slug"),
-                              PropertyValue(slug));
-    catalogRows.push_back(
-        {.guiType = std::string(SubcircuitComponent::Type),
+        initialProperties.emplace(std::string("slug"), PropertyValue(slug));
+        catalogRows.push_back({.guiType  = std::string(SubcircuitComponent::Type),
          .metadata = {.displayName = slug,
                       .description = "Project subcircuit",
                       .category    = ComponentCategory::Subcircuits},
@@ -137,8 +137,9 @@ std::vector<ComponentCatalogOverlay::CatalogRow> componentCatalogRows(
 
 }  // namespace
 
-ComponentCatalogOverlay::ComponentCatalogOverlay(DiagramScene* scene, QWidget* parent)
-  : QWidget(parent), diagramScene(scene)
+  ComponentCatalogOverlay::ComponentCatalogOverlay(
+      DiagramScene* scene, SILICON::project::DocumentStore& documents, QWidget* parent)
+    : QWidget(parent), diagramScene(scene), documents(documents)
 {
   setObjectName(QStringLiteral("componentCatalogOverlay"));
   setAutoFillBackground(true);
@@ -178,14 +179,16 @@ ComponentCatalogOverlay::ComponentCatalogOverlay(DiagramScene* scene, QWidget* p
       activateRow(item->row());
   });
 
-  catalogRows = componentCatalogRows(diagramScene && diagramScene->isSubcircuitDocumentMode());
+  catalogRows = componentCatalogRows(
+      diagramScene && diagramScene->isSubcircuitDocumentMode(), documents);
   rebuildRows();
   hide();
 }
 
 void ComponentCatalogOverlay::open()
 {
-  catalogRows = componentCatalogRows(diagramScene && diagramScene->isSubcircuitDocumentMode());
+  catalogRows = componentCatalogRows(
+      diagramScene && diagramScene->isSubcircuitDocumentMode(), documents);
   QSignalBlocker blocker(searchInput);
   searchInput->clear();
   blocker.unblock();
@@ -224,7 +227,8 @@ void ComponentCatalogOverlay::rebuildRows()
     }
 
     std::vector<bool> selected(catalogRows.size(), false);
-    for (const auto& match : SILICON::ui::componentSearchMatcher::rank(candidates, query, false)) {
+      for (const auto& match :
+           SILICON::ui::componentSearchMatcher::rank(candidates, query, false)) {
       const size_t rowIndex = candidateRows[static_cast<size_t>(match.index)];
       if (selected[rowIndex])
         continue;
@@ -248,8 +252,8 @@ void ComponentCatalogOverlay::rebuildRows()
   selectFirstComponentRow();
 }
 
-void ComponentCatalogOverlay::addCategoryRow(
-    ComponentRegistry::ComponentCategory category)
+  void
+  ComponentCatalogOverlay::addCategoryRow(ComponentRegistry::ComponentCategory category)
 {
   const int row = table->rowCount();
   table->insertRow(row);
@@ -270,19 +274,19 @@ void ComponentCatalogOverlay::addComponentRow(const CatalogRow& rowData)
   const int row = table->rowCount();
   table->insertRow(row);
 
-  QPixmap previewPixmap = componentPreviewPixmap(rowData);
+    QPixmap previewPixmap = componentPreviewPixmap(rowData, documents);
   auto*   preview       = new QLabel(table);
   preview->setFixedSize(previewPixmap.size());
   preview->setAlignment(Qt::AlignCenter);
   preview->setPixmap(previewPixmap);
   table->setCellWidget(row, 0, preview);
-  table->setRowHeight(row,
-                      std::max(CatalogMinimumComponentRowHeight, previewPixmap.height()));
+    table->setRowHeight(
+        row, std::max(CatalogMinimumComponentRowHeight, previewPixmap.height()));
 
-  auto* name = new QTableWidgetItem(QString::fromStdString(rowData.metadata.displayName));
+    auto* name =
+        new QTableWidgetItem(QString::fromStdString(rowData.metadata.displayName));
   name->setData(Qt::UserRole, QString::fromStdString(rowData.guiType));
-  name->setData(Qt::UserRole + 1,
-                static_cast<int>(&rowData - catalogRows.data()));
+    name->setData(Qt::UserRole + 1, static_cast<int>(&rowData - catalogRows.data()));
   table->setItem(row, 1, name);
 
   auto* description =
@@ -349,8 +353,8 @@ void ComponentCatalogOverlay::resizeCatalogColumns()
     if (!item)
       continue;
 
-    nameColumnWidth = std::max(nameColumnWidth,
-                               fontMetrics.horizontalAdvance(item->text()));
+    nameColumnWidth =
+        std::max(nameColumnWidth, fontMetrics.horizontalAdvance(item->text()));
   }
 
   table->setColumnWidth(1, nameColumnWidth + CatalogNameColumnPadding);

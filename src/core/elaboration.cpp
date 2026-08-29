@@ -40,6 +40,7 @@ namespace {
 
   struct ElaborationContext {
     const ComponentRegistry& registry;
+    SILICON::project::DocumentStore* documents;
     Component_set            components;
   };
 
@@ -157,7 +158,10 @@ namespace {
     ActiveKeyGuard activeSubcircuit(activeSubcircuits, *slug,
                                     "Recursive subcircuit dependency detected: ");
 
-    auto definition = loadSubcircuitDefinition(*slug, context.registry);
+    if (!context.documents)
+      throw std::runtime_error("Subcircuit elaboration requires project documents");
+    auto definition =
+        loadSubcircuitDefinition(*slug, context.registry, *context.documents);
     validateInterface(key, "input", definition.inputs, component->getInputs());
     validateInterface(key, "output", definition.outputs, component->getOutputs());
 
@@ -221,14 +225,16 @@ namespace {
 
 }  // namespace
 
-CircuitElaborator::CircuitElaborator(const ComponentRegistry& registry)
-  : registry(registry)
+CircuitElaborator::CircuitElaborator(const ComponentRegistry&         registry,
+                                     SILICON::project::DocumentStore* documents)
+  : registry(registry), documents(documents)
 {
 }
 
 std::shared_ptr<Circuit> CircuitElaborator::elaborate(const Circuit& sourceCircuit) const
 {
-  ElaborationContext       context{.registry = registry, .components = {}};
+  ElaborationContext context{
+      .registry = registry, .documents = documents, .components = {}};
   auto                     rootWireMap = seedRootWireMap(sourceCircuit);
   std::vector<std::string> activeSubcircuits;
   appendCircuit(sourceCircuit, context, std::move(rootWireMap), activeSubcircuits);

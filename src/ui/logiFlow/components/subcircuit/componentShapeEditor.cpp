@@ -54,7 +54,6 @@
 #include <ui/logiFlow/components/subcircuit/metadata.hpp>
 #include <ui/logiFlow/components/subcircuit/utils.hpp>
 
-
 namespace SILICON {
 namespace ui {
 using namespace SILICON::core;
@@ -203,7 +202,8 @@ protected:
 private:
   [[nodiscard]] PortSide currentSide() const
   {
-    return nearestPortSide(DiagramScene::snapToGrid(pos()), shapeRect(m_shapeSize)).first;
+        return nearestPortSide(DiagramScene::snapToGrid(pos()), shapeRect(m_shapeSize))
+            .first;
   }
 
   [[nodiscard]] QRectF markerRect() const
@@ -220,12 +220,15 @@ private:
 
     switch (currentSide()) {
       case PortSide::LEFT:
-        return {-gap - text.width(), -text.height() / 2.0, text.width(), text.height()};
+            return {-gap - text.width(), -text.height() / 2.0, text.width(),
+                    text.height()};
       case PortSide::RIGHT:
         return {gap, -text.height() / 2.0, text.width(), text.height()};
       case PortSide::UP:
-        return {-text.width() / 2.0, -gap - text.height(), text.width(), text.height()};
-      case PortSide::DOWN: return {-text.width() / 2.0, gap, text.width(), text.height()};
+            return {-text.width() / 2.0, -gap - text.height(), text.width(),
+                    text.height()};
+          case PortSide::DOWN:
+            return {-text.width() / 2.0, gap, text.width(), text.height()};
     }
     std::unreachable();
   }
@@ -251,7 +254,8 @@ public:
   }
 
   void setPortMovedCallback(
-      std::function<void(bool inputPort, std::size_t index, QPoint position)> callback)
+          std::function<void(bool inputPort, std::size_t index, QPoint position)>
+              callback)
   {
     portMovedCallback = std::move(callback);
   }
@@ -330,7 +334,8 @@ private:
     }
   }
 
-  void addPorts(const std::vector<GraphicalSubcircuitPortMetadata>& ports, bool inputPort)
+      void addPorts(const std::vector<GraphicalSubcircuitPortMetadata>& ports,
+                    bool                                                inputPort)
   {
     auto& visuals = inputPort ? inputVisuals : outputVisuals;
     visuals.reserve(ports.size());
@@ -453,21 +458,22 @@ void setPortTablePositions(QTableWidget*                                       t
 
 }  // namespace
 
-void editGraphicalSubcircuitShape(const std::string& slug, QUndoStack* undoStack,
-                                  QWidget* parent)
+void editGraphicalSubcircuitShape(const std::string&               slug,
+                                  SILICON::project::DocumentStore& documents,
+                                  QUndoStack* undoStack, QWidget* parent)
 {
   if (slug.empty())
     return;
 
   const auto  path     = SILICON::project::subcircuitPathForSlug(slug);
-  const auto* document = SILICON::project::DocumentStore::active().find(path);
+  const auto* document = documents.find(path);
   if (!document)
     return;
 
-  auto metadata = parseGraphicalSubcircuitMetadata(document->getSceneJson());
+  auto metadata = parseGraphicalSubcircuitMetadata(document->getContents());
   if (!metadata)
     return;
-  metadata   = synchronizeGraphicalSubcircuitMetadata(document->getSceneJson(), *metadata);
+  metadata   = synchronizeGraphicalSubcircuitMetadata(document->getContents(), *metadata);
   auto draft = std::make_shared<GraphicalSubcircuitMetadata>(*metadata);
   sanitizePortPositions(*draft);
 
@@ -516,7 +522,8 @@ void editGraphicalSubcircuitShape(const std::string& slug, QUndoStack* undoStack
     preview->setMetadata(*draft);
   };
 
-  QObject::connect(width, &QSpinBox::valueChanged, dialog,
+    QObject::connect(
+        width, &QSpinBox::valueChanged, dialog,
                    [height, applySize](int value) { applySize(value, height->value()); });
   QObject::connect(height, &QSpinBox::valueChanged, dialog,
                    [width, applySize](int value) { applySize(width->value(), value); });
@@ -554,8 +561,9 @@ void editGraphicalSubcircuitShape(const std::string& slug, QUndoStack* undoStack
                      applyTableEdit(outputTable, false, item);
                    });
 
-  preview->setPortMovedCallback([draft, inputTable, outputTable](
-                                    bool inputPort, std::size_t index, QPoint position) {
+    preview->setPortMovedCallback([draft, inputTable, outputTable](bool        inputPort,
+                                                                   std::size_t index,
+                                                                   QPoint      position) {
     auto& ports = inputPort ? draft->inputs : draft->outputs;
     if (index >= ports.size())
       return;
@@ -570,35 +578,35 @@ void editGraphicalSubcircuitShape(const std::string& slug, QUndoStack* undoStack
   layout->addWidget(buttons);
   QObject::connect(buttons, &QDialogButtonBox::accepted, dialog, &QDialog::accept);
   QObject::connect(buttons, &QDialogButtonBox::rejected, dialog, &QDialog::reject);
-  QObject::connect(dialog, &QDialog::accepted, dialog, [draft, path, undoStack, parent] {
+    QObject::connect(
+        dialog, &QDialog::accepted, dialog, [draft, path, undoStack, parent, &documents] {
     try {
-      const auto* currentDocument = SILICON::project::DocumentStore::active().find(path);
+            const auto* currentDocument = documents.find(path);
       if (!currentDocument)
         return;
 
-      const auto oldSceneJson    = currentDocument->getSceneJson();
+      const auto oldSceneJson    = currentDocument->getContents();
       auto       json            = nlohmann::json::parse(oldSceneJson);
       json["graphicalComponent"] = graphicalSubcircuitMetadataToJson(*draft);
       const auto newSceneJson    = json.dump(2);
       if (newSceneJson == oldSceneJson)
         return;
 
-      // Shape edits are registry document edits, so route them through the window undo
-      // stack.
+            // Shape edits are registry document edits, so route them through the window
+            // undo stack.
       if (undoStack) {
-        auto apply = [path](const std::string& sceneJson) {
-          SILICON::project::DocumentStore::active().upsertDocument(
-              preparedSubcircuitDocument(path, sceneJson));
+              auto apply = [path, &documents](const std::string& sceneJson) {
+                documents.upsertDocument(SILICON::project::Document(path, sceneJson));
         };
-        undoStack->push(new MetadataEditCommand(QObject::tr("Edit Subcircuit Shape"),
-                                                oldSceneJson, newSceneJson,
-                                                std::move(apply)));
+              undoStack->push(
+                  new MetadataEditCommand(QObject::tr("Edit Subcircuit Shape"),
+                                          oldSceneJson, newSceneJson, std::move(apply)));
       } else {
-        SILICON::project::DocumentStore::active().upsertDocument(
-            preparedSubcircuitDocument(path, newSceneJson));
+              documents.upsertDocument(SILICON::project::Document(path, newSceneJson));
       }
     } catch (const std::exception& e) {
-      SILICON::ui::inputDialog::warning(parent, QObject::tr("Edit shape"), e.what());
+            SILICON::ui::inputDialog::warning(parent, QObject::tr("Edit shape"),
+                                              e.what());
     }
   });
 

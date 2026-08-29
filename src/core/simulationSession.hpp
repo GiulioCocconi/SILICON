@@ -63,7 +63,8 @@ public:
    * @throws std::invalid_argument if @p sourceCircuit is null.
    */
   explicit Session(std::shared_ptr<Circuit>     sourceCircuit,
-                   Simulator::CancellationCheck isCancelled = {});
+                   Simulator::CancellationCheck     isCancelled = {},
+                   SILICON::project::DocumentStore* documents   = nullptr);
 
   ~Session() = default;
 

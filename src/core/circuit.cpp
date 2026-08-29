@@ -27,6 +27,7 @@
 #include <core/component.hpp>
 #include <core/serialization/component_registry.hpp>
 #include <core/serialization/yosys.hpp>
+#include <core/subcircuit.hpp>
 #include <utils/num_formatting.hpp>
 
 #include <logging/logger.hpp>
@@ -820,7 +821,8 @@ Circuit Circuit::deserializeYosys(const std::string_view                json,
   return SILICON::yosys::deserialize(json, moduleName);
 }
 
-Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry& reg)
+Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry& reg,
+                             SILICON::project::DocumentStore* documents)
 {
   const auto j = nlohmann::json::parse(jsonStr);
 
@@ -894,6 +896,9 @@ Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry
 
       const auto type      = typeIt->get<std::string>();
       auto       component = reg.create(type);
+
+      if (auto subcircuit = std::dynamic_pointer_cast<SubcircuitComponent>(component))
+        subcircuit->setDocumentStore(documents);
 
       if (!component) {
         throw std::runtime_error(

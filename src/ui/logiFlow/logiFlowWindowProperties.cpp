@@ -90,6 +90,7 @@
 #include <core/subcircuitDefinition.hpp>
 #include <logging/logger.hpp>
 #include <ui/common/aboutDialog.hpp>
+#include <ui/common/codeEditor.hpp>
 #include <ui/common/diagramScene/diagramScene.hpp>
 #include <ui/common/diagramView.hpp>
 #include <ui/common/fileDialogUtils.hpp>
@@ -106,11 +107,9 @@
 #include <ui/logiFlow/components/subcircuit/componentShapeEditor.hpp>
 #include <ui/logiFlow/components/subcircuit/metadata.hpp>
 #include <ui/logiFlow/components/subcircuit/utils.hpp>
-#include <ui/logiFlow/hdlCodeEditor.hpp>
 #include <ui/logiFlow/metadataDescriptionEdit.hpp>
 #include <ui/logiFlow/projectTree.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
-
 
 namespace SILICON {
 namespace ui {
@@ -124,7 +123,7 @@ std::pair<std::string, std::string>
 circuitMetadata(const SILICON::project::Document& document)
 {
   try {
-    const auto scene = nlohmann::json::parse(document.getSceneJson());
+    const auto scene = nlohmann::json::parse(document.getContents());
     if (scene.contains("circuit") && scene["circuit"].is_object())
       return {scene["circuit"].value("name", ""),
               scene["circuit"].value("description", "")};
@@ -137,6 +136,15 @@ circuitMetadata(const SILICON::project::Document& document)
 
 void LogiFlowWindow::updatePropertyDock()
 {
+  const auto* selectedProjectItem =
+      projectTree ? projectTree->selectedProjectItem() : nullptr;
+  const bool codeFileSelected =
+      selectedProjectItem
+      && ProjectTree::itemKind(selectedProjectItem) == ProjectTreeItemKind::CodeFile;
+  propertyDock->setVisible(!codeFileSelected);
+  if (codeFileSelected)
+    return;
+
   // 1. Assign the container immediately.
   // QDockWidget::setWidget automatically deletes the previous widget.
   auto* container = new QWidget();
@@ -154,12 +162,9 @@ void LogiFlowWindow::updatePropertyDock()
   }
 
   if (selectedNodes.empty()) {
-    QTreeWidgetItem* selectedProjectItem =
-        projectTree ? projectTree->selectedProjectItem() : nullptr;
-
     if (!selectedProjectItem) {
-      layout->addRow(new QLabel(tr(
-          "Select a project, circuit, or one or more components\nto view properties.")));
+        layout->addRow(new QLabel(tr("Select a project, circuit, or one or more "
+                                     "components\nto view properties.")));
       return;
     }
 
@@ -167,7 +172,8 @@ void LogiFlowWindow::updatePropertyDock()
 
     if (itemKind == ProjectTreeItemKind::CircuitSection
         || itemKind == ProjectTreeItemKind::SubcircuitSection) {
-      layout->addRow(new QLabel(itemKind == ProjectTreeItemKind::CircuitSection
+        layout->addRow(
+            new QLabel(itemKind == ProjectTreeItemKind::CircuitSection
                                     ? tr("Select a circuit to view its properties.")
                                     : tr("Select a subcircuit to view its properties.")));
       return;
@@ -244,8 +250,7 @@ void LogiFlowWindow::updatePropertyDock()
           name        = circuit->getName();
           description = circuit->getDescription();
         }
-      } else if (const auto* document =
-                     SILICON::project::DocumentStore::active().find(circuitPath)) {
+        } else if (const auto* document = projectContext.documents.find(circuitPath)) {
         std::tie(name, description) = circuitMetadata(*document);
       }
       nameEdit->setText(QString::fromStdString(name));
@@ -317,7 +322,8 @@ void LogiFlowWindow::updatePropertyDock()
   }
 
   if (commonProps.empty()) {
-    layout->addRow(new QLabel(tr("No common configurable\nproperties among selection.")));
+      layout->addRow(
+          new QLabel(tr("No common configurable\nproperties among selection.")));
     return;
   }
 
@@ -364,7 +370,8 @@ void LogiFlowWindow::updatePropertyDock()
           checkBox->setChecked(arg);
         }
 
-        connect(checkBox, &QCheckBox::checkStateChanged, this, [=](Qt::CheckState state) {
+          connect(checkBox, &QCheckBox::checkStateChanged, this,
+                  [=](Qt::CheckState state) {
           if (state == Qt::PartiallyChecked)
             return;
           checkBox->setTristate(false);
@@ -454,7 +461,8 @@ void LogiFlowWindow::updatePropertyDock()
                 key, SILICON::core::busValueFromBits(lineEdit->text().toStdString()));
             lineEdit->setModified(false);
           } catch (const std::exception& error) {
-            SILICON::ui::inputDialog::warning(this, tr("Invalid Property"), error.what());
+              SILICON::ui::inputDialog::warning(this, tr("Invalid Property"),
+                                                error.what());
           }
         });
 
@@ -466,7 +474,8 @@ void LogiFlowWindow::updatePropertyDock()
   }
 }
 
-// --- Property SpinBox ------------------------------------------------------------------
+  // --- Property SpinBox
+  // ------------------------------------------------------------------
 
 PropertySpinBox::PropertySpinBox(QWidget* parent) : QSpinBox(parent)
 {
