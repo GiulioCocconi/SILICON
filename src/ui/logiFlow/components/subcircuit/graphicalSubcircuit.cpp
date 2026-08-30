@@ -20,6 +20,7 @@
 
 #include <core/projectDocument.hpp>
 
+#include <algorithm>
 #include <memory>
 #include <utility>
 
@@ -49,14 +50,15 @@ portPairs(const std::vector<GraphicalSubcircuitPortMetadata>& ports)
 }  // namespace
 
 GraphicalSubcircuitComponent::GraphicalSubcircuitComponent(
-    QGraphicsItem* parent, SILICON::project::DocumentStore* documents)
+    QGraphicsItem* parent, SILICON::project::DocumentStore* documents,
+    const CircuitResolver* resolver)
   : GraphicalLogicComponent(
-        std::make_shared<SubcircuitComponent>(documents),
+        std::make_shared<SubcircuitComponent>(resolver),
         new SubcircuitRectShape(QSize(
             GraphicalSubcircuitDefaultSize * DiagramScene::GRID_SIZE,
             GraphicalSubcircuitDefaultSize * DiagramScene::GRID_SIZE)),
         parent, false),
-    documents(documents)
+    documents(documents), resolver(resolver)
 {
   printPortNames = true;
 
@@ -75,8 +77,12 @@ void GraphicalSubcircuitComponent::subscribeToDocuments()
             SILICON::project::isValidSubcircuitSlug(slug) && change.path
             && *change.path == SILICON::project::subcircuitPathForSlug(slug);
         if (change.kind == SILICON::project::DocumentChangeKind::Reset
-            || affectsConfiguredDocument)
+            || affectsConfiguredDocument) {
+          if (const auto subcircuit =
+                  std::dynamic_pointer_cast<SubcircuitComponent>(associatedComponent))
+            subcircuit->reloadFromResolver();
           refreshFromMetadata();
+        }
       });
 }
 
@@ -90,8 +96,9 @@ void GraphicalSubcircuitComponent::unsubscribeFromDocuments()
 GraphicalSubcircuitComponent::GraphicalSubcircuitComponent(std::string slug,
                                                            QGraphicsItem* parent,
                                                            SILICON::project::DocumentStore*
-                                                               documents)
-  : GraphicalSubcircuitComponent(parent, documents)
+                                                               documents,
+                                                           const CircuitResolver* resolver)
+  : GraphicalSubcircuitComponent(parent, documents, resolver)
 {
   if (!slug.empty())
     applyProperty("slug", std::move(slug));
@@ -106,7 +113,7 @@ void GraphicalSubcircuitComponent::setComponent(const Component_ptr& component)
 {
   GraphicalLogicComponent::setComponent(component);
   if (const auto subcircuit = std::dynamic_pointer_cast<SubcircuitComponent>(component))
-    setDocumentStore(subcircuit->documentStore());
+    setCircuitResolver(subcircuit->circuitResolver());
   refreshFromMetadata();
 }
 
@@ -117,10 +124,17 @@ void GraphicalSubcircuitComponent::setDocumentStore(
     return;
   unsubscribeFromDocuments();
   documents = newDocuments;
+  subscribeToDocuments();
+  refreshFromMetadata();
+}
+
+void GraphicalSubcircuitComponent::setCircuitResolver(
+    const CircuitResolver* newResolver)
+{
+  resolver = newResolver;
   if (const auto subcircuit =
           std::dynamic_pointer_cast<SubcircuitComponent>(associatedComponent))
-    subcircuit->setDocumentStore(documents);
-  subscribeToDocuments();
+    subcircuit->setCircuitResolver(resolver);
   refreshFromMetadata();
 }
 
@@ -191,7 +205,7 @@ void GraphicalSubcircuitComponent::refreshFromMetadata()
 
     const auto* document = documents->find(SILICON::project::subcircuitPathForSlug(slug));
   if (!document) {
-    applyEmptyMetadata();
+    useAttachedInterfaceMetadata();
     return;
   }
 
@@ -215,6 +229,29 @@ void GraphicalSubcircuitComponent::refreshFromMetadata()
     applyMetadata(metadata);
   } catch (const std::exception&) {
   }
+}
+
+void GraphicalSubcircuitComponent::useAttachedInterfaceMetadata()
+{
+  GraphicalSubcircuitMetadata metadata;
+  if (associatedComponent) {
+    metadata.inputs = synchronizePortsWithBuses(
+        {}, associatedComponent->getInputs(), metadata, true);
+    metadata.outputs = synchronizePortsWithBuses(
+        {}, associatedComponent->getOutputs(), metadata, false);
+
+    if (const auto imported =
+            std::dynamic_pointer_cast<SubcircuitComponent>(associatedComponent)) {
+      const auto& inputNames = imported->importedInputNames();
+      for (std::size_t i = 0; i < std::min(metadata.inputs.size(), inputNames.size()); ++i)
+        metadata.inputs[i].name = inputNames[i];
+      const auto& outputNames = imported->importedOutputNames();
+      for (std::size_t i = 0;
+           i < std::min(metadata.outputs.size(), outputNames.size()); ++i)
+        metadata.outputs[i].name = outputNames[i];
+    }
+  }
+  applyMetadata(metadata);
 }
 
 }  // namespace ui

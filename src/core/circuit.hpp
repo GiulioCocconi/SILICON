@@ -40,11 +40,9 @@ enum class PortRole;
 
 }  // namespace SILICON::core
 
-namespace SILICON::project {
-class DocumentStore;
-}
-
 namespace SILICON::core {
+
+class CircuitResolver;
 
 /** @brief Property stored in each vertex of the circuit graph */
 struct VertexProperty {
@@ -484,7 +482,7 @@ public:
    */
   [[nodiscard]] static Circuit
   deserialize(const std::string& jsonStr, const ComponentRegistry& reg,
-              SILICON::project::DocumentStore* documents = nullptr);
+              const CircuitResolver* resolver = nullptr);
 };
 
 /** @brief Represents a block of components for simulation execution */

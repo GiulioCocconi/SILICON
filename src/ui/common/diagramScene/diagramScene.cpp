@@ -77,16 +77,26 @@ DiagramScene::DiagramScene(QObject* parent) : QGraphicsScene(parent)
   });
 }
 
-  void DiagramScene::setDocumentStore(
-      SILICON::project::DocumentStore* projectDocuments) noexcept
-  {
-    documents = projectDocuments;
-  }
+void DiagramScene::setDocumentStore(
+    SILICON::project::DocumentStore* projectDocuments) noexcept
+{
+  documents = projectDocuments;
+}
 
-  SILICON::project::DocumentStore* DiagramScene::documentStore() const noexcept
-  {
-    return documents;
-  }
+SILICON::project::DocumentStore* DiagramScene::documentStore() const noexcept
+{
+  return documents;
+}
+
+void DiagramScene::setCircuitResolver(const CircuitResolver* projectResolver) noexcept
+{
+  resolver = projectResolver;
+}
+
+const CircuitResolver* DiagramScene::circuitResolver() const noexcept
+{
+  return resolver;
+}
 
 namespace {
 
@@ -200,12 +210,12 @@ bool DiagramScene::cancelCurrentInteraction()
 
 void DiagramScene::setInteractionMode(const InteractionMode newMode, const bool force)
 {
-  if (!force && views().size() != 1)
-    throw std::logic_error("setInteractionMode: scene must have exactly one view");
-
   const auto currentMode = getInteractionMode();
   if (currentMode == newMode && !force)
     return;
+
+  if (!force && views().size() != 1)
+    throw std::logic_error("setInteractionMode: scene must have exactly one view");
 
   clearSelection();
 
@@ -707,9 +717,11 @@ void DiagramScene::placeComponent(std::string_view typeName, const bool showSear
     throw std::logic_error("placeComponent: previous component not yet placed");
 
   componentToBeDrawn      = GUIComponentFactory::instance().create(typeName).release();
-    if (auto* subcircuit =
-            dynamic_cast<GraphicalSubcircuitComponent*>(componentToBeDrawn))
+  if (auto* subcircuit =
+          dynamic_cast<GraphicalSubcircuitComponent*>(componentToBeDrawn)) {
       subcircuit->setDocumentStore(documents);
+    subcircuit->setCircuitResolver(resolver);
+  }
   lastPlacedComponentType = typeName;
   lastPlacedComponentProperties = initialProperties;
   suppressNextComponentSearch   = !showSearchBox;
@@ -783,6 +795,13 @@ void DiagramScene::deserialize(const std::string&       jsonStr,
                                const ComponentRegistry& coreRegistry)
 {
   serializer->deserialize(jsonStr, guiFactory, coreRegistry);
+}
+
+void DiagramScene::loadCircuit(std::shared_ptr<Circuit> circuit,
+                               GUIComponentFactory&     guiFactory,
+                               const bool resolveSubcircuitMetadata)
+{
+  serializer->loadCircuit(std::move(circuit), guiFactory, resolveSubcircuitMetadata);
 }
 
 bool DiagramScene::insertSelection(const nlohmann::json&    payload,

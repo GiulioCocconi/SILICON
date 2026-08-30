@@ -1,0 +1,41 @@
+/*
+ Copyright (c) 2026. Giulio Cocconi
+ ...
+ */
+
+#pragma once
+
+#include <string_view>
+#include <vector>
+
+#include <core/circuit.hpp>
+
+namespace SILICON::core {
+
+class ComponentRegistry;
+
+/** Semantic reusable-circuit implementation and interface. */
+struct SubcircuitDefinition {
+  Circuit                  circuit;
+  std::vector<CircuitPort> inputs;
+  std::vector<CircuitPort> outputs;
+};
+
+/** Explicit source of project-local reusable Circuit definitions. */
+class CircuitResolver {
+public:
+  virtual ~CircuitResolver() = default;
+
+  [[nodiscard]] virtual SubcircuitDefinition resolve(std::string_view slug) const = 0;
+};
+
+/**
+ * Parses persisted Circuit document contents without constructing graphical objects.
+ * Boundary I/O components define the reusable interface and are removed from the
+ * returned implementation circuit.
+ */
+[[nodiscard]] SubcircuitDefinition
+parseCircuitDocument(std::string_view contents, const ComponentRegistry& registry,
+                     const CircuitResolver* resolver = nullptr);
+
+}  // namespace SILICON::core

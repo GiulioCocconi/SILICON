@@ -30,6 +30,9 @@
 namespace SILICON::project {
 class DocumentStore;
 }
+namespace SILICON::core {
+class CircuitResolver;
+}
 
 class QLineEdit;
 class QTableWidget;
@@ -48,9 +51,10 @@ public:
     PropertyMap                          initialProperties;
   };
 
-    explicit ComponentCatalogOverlay(DiagramScene*                    scene,
-                                     SILICON::project::DocumentStore& documents,
-                                     QWidget*                         parent = nullptr);
+  explicit ComponentCatalogOverlay(DiagramScene* scene,
+                                   SILICON::project::DocumentStore& documents,
+                                   const CircuitResolver* resolver,
+                                   QWidget* parent = nullptr);
 
   void open();
 
@@ -64,7 +68,8 @@ private:
   [[nodiscard]] static QStringList searchableFields(const CatalogRow& rowData);
 
   DiagramScene*           diagramScene = nullptr;
-    SILICON::project::DocumentStore& documents;
+  SILICON::project::DocumentStore& documents;
+  const CircuitResolver*           resolver;
   QLineEdit*              searchInput  = nullptr;
   QTableWidget*           table        = nullptr;
   std::vector<CatalogRow> catalogRows;

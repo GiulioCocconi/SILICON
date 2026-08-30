@@ -26,10 +26,6 @@ namespace SILICON::core {
 class ComponentRegistry;
 }
 
-namespace SILICON::project {
-class DocumentStore;
-}
-
 namespace SILICON::simulation {
 
 using namespace SILICON::core;
@@ -61,8 +57,8 @@ public:
    * @brief Creates an elaborator using the given component registry for cloning and
    * deserialization.
    */
-  explicit CircuitElaborator(const core::ComponentRegistry&   registry,
-                             SILICON::project::DocumentStore* documents = nullptr);
+  explicit CircuitElaborator(const core::ComponentRegistry& registry,
+                             const core::CircuitResolver* resolver = nullptr);
 
   /**
    * @brief Builds a simulator-ready runtime circuit from a source design.
@@ -76,7 +72,7 @@ public:
 
 private:
   const core::ComponentRegistry& registry;
-  SILICON::project::DocumentStore* documents;
+  const core::CircuitResolver* resolver;
 };
 
 }  // namespace SILICON::simulation

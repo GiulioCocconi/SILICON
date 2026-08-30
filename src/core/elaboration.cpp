@@ -28,7 +28,7 @@
 #include <core/activeKeyGuard.hpp>
 #include <core/serialization/component_registry.hpp>
 #include <core/subcircuit.hpp>
-#include <core/subcircuitDefinition.hpp>
+#include <core/circuitDocument.hpp>
 
 namespace SILICON::simulation {
 
@@ -40,7 +40,7 @@ namespace {
 
   struct ElaborationContext {
     const ComponentRegistry& registry;
-    SILICON::project::DocumentStore* documents;
+    const CircuitResolver*   resolver;
     Component_set            components;
   };
 
@@ -158,10 +158,9 @@ namespace {
     ActiveKeyGuard activeSubcircuit(activeSubcircuits, *slug,
                                     "Recursive subcircuit dependency detected: ");
 
-    if (!context.documents)
-      throw std::runtime_error("Subcircuit elaboration requires project documents");
-    auto definition =
-        loadSubcircuitDefinition(*slug, context.registry, *context.documents);
+    if (!context.resolver)
+      throw std::runtime_error("Subcircuit elaboration requires a circuit resolver");
+    auto definition = context.resolver->resolve(*slug);
     validateInterface(key, "input", definition.inputs, component->getInputs());
     validateInterface(key, "output", definition.outputs, component->getOutputs());
 
@@ -225,16 +224,16 @@ namespace {
 
 }  // namespace
 
-CircuitElaborator::CircuitElaborator(const ComponentRegistry&         registry,
-                                     SILICON::project::DocumentStore* documents)
-  : registry(registry), documents(documents)
+CircuitElaborator::CircuitElaborator(const ComponentRegistry& registry,
+                                     const CircuitResolver* resolver)
+  : registry(registry), resolver(resolver)
 {
 }
 
 std::shared_ptr<Circuit> CircuitElaborator::elaborate(const Circuit& sourceCircuit) const
 {
   ElaborationContext context{
-      .registry = registry, .documents = documents, .components = {}};
+      .registry = registry, .resolver = resolver, .components = {}};
   auto                     rootWireMap = seedRootWireMap(sourceCircuit);
   std::vector<std::string> activeSubcircuits;
   appendCircuit(sourceCircuit, context, std::move(rootWireMap), activeSubcircuits);

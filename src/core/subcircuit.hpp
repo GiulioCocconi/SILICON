@@ -21,20 +21,42 @@
 #include <core/component.hpp>
 
 #include <cstdint>
+#include <memory>
+#include <string>
 #include <string_view>
-
-namespace SILICON::project {
-class DocumentStore;
-}
+#include <vector>
 
 namespace SILICON::core {
+
+class CircuitResolver;
 
 class SubcircuitComponent : public Component {
 public:
   static constexpr std::string_view Type = "Subcircuit";
 
-  explicit SubcircuitComponent(SILICON::project::DocumentStore* documents = nullptr);
-  ~SubcircuitComponent() override;
+  explicit SubcircuitComponent(const CircuitResolver* resolver = nullptr);
+
+  /**
+   * @brief Creates an imported module instance before its project document exists.
+   *
+   * The supplied buses are authoritative for the transient imported circuit. Once the
+   * circuit is serialized into a project document, normal registry-backed construction
+   * is used on subsequent loads.
+   */
+  [[nodiscard]] static std::shared_ptr<SubcircuitComponent>
+  imported(std::string slug, std::vector<std::string> inputNames,
+           std::vector<Bus> inputs, std::vector<std::string> outputNames,
+           std::vector<Bus> outputs);
+
+  /** Port names retained while an imported module has no project document yet. */
+  [[nodiscard]] const std::vector<std::string>& importedInputNames() const
+  {
+    return transientInputNames;
+  }
+  [[nodiscard]] const std::vector<std::string>& importedOutputNames() const
+  {
+    return transientOutputNames;
+  }
 
   std::string_view  typeName() const override { return Type; }
   ComponentMetadata metadata() const override
@@ -46,18 +68,17 @@ public:
   void simulate(SILICON::simulation::Simulator& sim) override;
   void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
 
-  void reloadFromRegistry();
-  void setDocumentStore(SILICON::project::DocumentStore* documents);
-  [[nodiscard]] SILICON::project::DocumentStore* documentStore() const noexcept;
+  void reloadFromResolver();
+  void setCircuitResolver(const CircuitResolver* resolver);
+  [[nodiscard]] const CircuitResolver* circuitResolver() const noexcept;
 
 private:
-  std::uint64_t registryListenerId = 0;
-  SILICON::project::DocumentStore* documents          = nullptr;
+  const CircuitResolver* resolver = nullptr;
+  std::vector<std::string> transientInputNames;
+  std::vector<std::string> transientOutputNames;
 
   void configureFromSlug(std::string_view slug);
   void clearResolvedCircuit();
-  void subscribeToDocuments();
-  void unsubscribeFromDocuments();
 };
 
 }  // namespace SILICON::core

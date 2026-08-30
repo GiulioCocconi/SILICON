@@ -44,18 +44,20 @@ class GraphicalSubcircuitComponent : public GraphicalLogicComponent {
   Q_OBJECT
 public:
   /** @brief Creates a graphical subcircuit with an empty slug. */
-    explicit GraphicalSubcircuitComponent(
-        QGraphicsItem*                   parent    = nullptr,
-        SILICON::project::DocumentStore* documents = nullptr);
+  explicit GraphicalSubcircuitComponent(
+      QGraphicsItem*                   parent    = nullptr,
+      SILICON::project::DocumentStore* documents = nullptr,
+      const CircuitResolver* resolver = nullptr);
 
   /**
    * @brief Creates a graphical subcircuit and immediately selects a slug.
    * @param slug Subcircuit registry slug.
    * @param parent Optional parent graphics item.
    */
-    explicit GraphicalSubcircuitComponent(
-        std::string slug, QGraphicsItem* parent = nullptr,
-        SILICON::project::DocumentStore* documents = nullptr);
+  explicit GraphicalSubcircuitComponent(
+      std::string slug, QGraphicsItem* parent = nullptr,
+      SILICON::project::DocumentStore* documents = nullptr,
+      const CircuitResolver* resolver = nullptr);
 
   /** @brief Unregisters the subcircuit registry listener. */
   ~GraphicalSubcircuitComponent() override;
@@ -69,12 +71,17 @@ public:
   /** @brief Reloads shape and ports from the active registry document. */
   void refreshFromMetadata();
   void setDocumentStore(SILICON::project::DocumentStore* documents);
+  void setCircuitResolver(const CircuitResolver* resolver);
+
+  /** @brief Uses default metadata derived only from the attached imported buses. */
+  void useAttachedInterfaceMetadata();
 
   int type() const override { return SiliconTypes::SUBCIRCUIT; }
 
 private:
   std::uint64_t registryListenerId = 0;
   SILICON::project::DocumentStore* documents = nullptr;
+  const CircuitResolver*           resolver  = nullptr;
 
   void subscribeToDocuments();
   void unsubscribeFromDocuments();

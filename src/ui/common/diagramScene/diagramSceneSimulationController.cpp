@@ -161,7 +161,7 @@ bool DiagramSceneSimulationController::enterSimulationMode()
     };
 
       simulator = std::make_unique<SILICON::simulation::Session>(circuit, isCancelled,
-                                                                 scene.documentStore());
+                                                                 scene.circuitResolver());
     configureSimulatorTrace(trace, traceFile);
     return settleInteractiveSimulation(*simulator, isCancelled);
   });
@@ -352,7 +352,7 @@ void DiagramSceneSimulationController::simulateEditedWaveform(
     };
 
       simulator = std::make_unique<SILICON::simulation::Session>(circuit, isCancelled,
-                                                                 scene.documentStore());
+                                                                 scene.circuitResolver());
     configureSimulatorTrace(trace, traceFile);
 
     return simulator->simulateWaveform(duration, inputSnapshots, inputDrivers,

@@ -60,11 +60,14 @@ constexpr int CatalogMinimumComponentRowHeight = 32;
 constexpr int CatalogNameColumnPadding         = 28;
 
 QPixmap componentPreviewPixmap(const ComponentCatalogOverlay::CatalogRow& rowData,
-                               SILICON::project::DocumentStore& documents)
+                               SILICON::project::DocumentStore& documents,
+                               const CircuitResolver* resolver)
 {
   auto component = GUIComponentFactory::instance().create(rowData.guiType);
   if (auto* subcircuit = dynamic_cast<GraphicalSubcircuitComponent*>(component.get()))
     subcircuit->setDocumentStore(&documents);
+  if (auto* subcircuit = dynamic_cast<GraphicalSubcircuitComponent*>(component.get()))
+    subcircuit->setCircuitResolver(resolver);
   if (!rowData.initialProperties.empty()) {
     if (auto* logicComponent = dynamic_cast<GraphicalLogicComponent*>(component.get())) {
       for (const auto& [key, value] : rowData.initialProperties)
@@ -138,9 +141,10 @@ QPixmap componentPreviewPixmap(const ComponentCatalogOverlay::CatalogRow& rowDat
 
 }  // namespace
 
-  ComponentCatalogOverlay::ComponentCatalogOverlay(
-      DiagramScene* scene, SILICON::project::DocumentStore& documents, QWidget* parent)
-    : QWidget(parent), diagramScene(scene), documents(documents)
+ComponentCatalogOverlay::ComponentCatalogOverlay(
+    DiagramScene* scene, SILICON::project::DocumentStore& documents,
+    const CircuitResolver* resolver, QWidget* parent)
+  : QWidget(parent), diagramScene(scene), documents(documents), resolver(resolver)
 {
   setObjectName(QStringLiteral("componentCatalogOverlay"));
   setAutoFillBackground(true);
@@ -275,7 +279,7 @@ void ComponentCatalogOverlay::addComponentRow(const CatalogRow& rowData)
   const int row = table->rowCount();
   table->insertRow(row);
 
-    QPixmap previewPixmap = componentPreviewPixmap(rowData, documents);
+    QPixmap previewPixmap = componentPreviewPixmap(rowData, documents, resolver);
   auto*   preview       = new QLabel(table);
   preview->setFixedSize(previewPixmap.size());
   preview->setAlignment(Qt::AlignCenter);

@@ -516,7 +516,7 @@ void SubcircuitComponent::serializeYosys(SerializationContext& context) const
   // Resolve the referenced definition by slug, serialize it once as its own Yosys
   // module, and instantiate that module with this component's buses as named ports.
   const auto slug = getPropertyValue<std::string>("slug").value_or(std::string());
-  context.addSubcircuitInstance(slug, inputBuses(), outputBuses(), documentStore());
+  context.addSubcircuitInstance(slug, inputBuses(), outputBuses(), circuitResolver());
 }
 
 }  // namespace SILICON::core

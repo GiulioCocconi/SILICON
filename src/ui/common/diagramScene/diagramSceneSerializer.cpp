@@ -47,6 +47,7 @@
 #include <ui/common/graphicalWire.hpp>
 #include <ui/logiFlow/components/graphicalIO.hpp>
 #include <ui/logiFlow/components/graphicalLogicComponent.hpp>
+#include <ui/logiFlow/components/subcircuit/graphicalSubcircuit.hpp>
 #include <ui/logiFlow/components/graphicalUtils.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
 
@@ -67,13 +68,13 @@ struct PendingWireSegment {
 std::shared_ptr<Circuit>
 deserializeCircuitPayload(const nlohmann::json&            payload,
                           const ComponentRegistry&         coreRegistry,
-                          SILICON::project::DocumentStore* documents)
+                          const CircuitResolver* resolver)
 {
   if (!payload.contains("circuit"))
     return nullptr;
 
   return std::make_shared<Circuit>(
-      Circuit::deserialize(payload["circuit"].dump(), coreRegistry, documents));
+      Circuit::deserialize(payload["circuit"].dump(), coreRegistry, resolver));
 }
 
 void attachCoreComponent(GraphicalComponent* component, const nlohmann::json& compJson,
@@ -494,7 +495,7 @@ void DiagramSceneSerializer::deserialize(const std::string&       jsonStr,
   std::shared_ptr<Circuit> authoritativeCircuit;
   if (hasCircuitPart) {
       authoritativeCircuit =
-          deserializeCircuitPayload(j, coreRegistry, scene.documentStore());
+          deserializeCircuitPayload(j, coreRegistry, scene.circuitResolver());
     scene.setCircuit(authoritativeCircuit);
   } else {
     QMessageBox::warning(QApplication::activeWindow(),
@@ -504,20 +505,7 @@ void DiagramSceneSerializer::deserialize(const std::string&       jsonStr,
   }
 
   if (!hasVisualPart) {
-    auto components = createAutoplacedVisualComponents(scene.getCircuit(), guiFactory);
-    addVisualComponents(scene, std::move(components), false);
-
-    std::vector<GraphicalLogicComponent*> logicComponents;
-    for (auto* item : scene.items()) {
-        if (auto* component = category_cast<GraphicalLogicComponent>(
-                item, ItemCategory::LogicComponent))
-        logicComponents.push_back(component);
-    }
-
-    if (!logicComponents.empty() && scene.getCircuit())
-      scene.autoPlaceCircuit();
-
-    scene.setInteractionMode(InteractionMode::NORMAL_MODE);
+    loadCircuit(std::move(authoritativeCircuit), guiFactory);
     return;
   }
 
@@ -534,6 +522,29 @@ void DiagramSceneSerializer::deserialize(const std::string&       jsonStr,
   scene.getWireManager().calculateJunctions();
   scene.updateSceneAfterEdit();
 
+  scene.setInteractionMode(InteractionMode::NORMAL_MODE);
+}
+
+void DiagramSceneSerializer::loadCircuit(std::shared_ptr<Circuit> circuit,
+                                         GUIComponentFactory&     guiFactory,
+                                         const bool resolveSubcircuitMetadata)
+{
+  scene.clear(false, false);
+  scene.setCircuit(std::move(circuit));
+  auto components = createAutoplacedVisualComponents(scene.getCircuit(), guiFactory);
+  if (!resolveSubcircuitMetadata) {
+    for (auto& component : components)
+      if (auto* subcircuit = dynamic_cast<GraphicalSubcircuitComponent*>(component.get()))
+        subcircuit->useAttachedInterfaceMetadata();
+  }
+  addVisualComponents(scene, std::move(components), false);
+
+  const bool hasLogicComponents = std::ranges::any_of(scene.items(), [](auto* item) {
+    return category_cast<GraphicalLogicComponent>(item, ItemCategory::LogicComponent)
+           != nullptr;
+  });
+  if (hasLogicComponents && scene.getCircuit())
+    scene.autoPlaceCircuit();
   scene.setInteractionMode(InteractionMode::NORMAL_MODE);
 }
 
@@ -554,7 +565,8 @@ bool DiagramSceneSerializer::insertSelection(const nlohmann::json&    payload,
   const QPointF pasteOffset =
       DiagramScene::snapToGrid(targetOrigin - payloadOrigin(remappedPayload));
     auto pastedCircuit =
-        deserializeCircuitPayload(remappedPayload, coreRegistry, scene.documentStore());
+        deserializeCircuitPayload(remappedPayload, coreRegistry,
+                                  scene.circuitResolver());
   auto pendingComponents = deserializeVisualComponents(
       remappedPayload["visual"], guiFactory, pastedCircuit, pasteOffset);
   auto pendingWires =
