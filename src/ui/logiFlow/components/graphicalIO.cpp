@@ -720,6 +720,7 @@ void GraphicalBusInput::setComponent(const Component_ptr& component)
   GraphicalIO::setComponent(component);
   installPropertyCallbacks();
   refreshFromComponent();
+  updatePortOrientation();
 }
 
 void GraphicalBusInput::setValue(const BusValue& value)
@@ -957,6 +958,7 @@ void GraphicalBusOutput::setComponent(const Component_ptr& component)
   GraphicalIO::setComponent(component);
   installPropertyCallbacks();
   refreshFromComponent();
+  updatePortOrientation();
 }
 
 void GraphicalBusOutput::setBusState(const Bus& bus)
