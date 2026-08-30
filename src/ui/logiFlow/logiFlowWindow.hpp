@@ -283,6 +283,10 @@ private:
   void               commitConvertedDocument(SILICON::project::Document document,
                                              const std::string&         sourcePath,
                                              const QString&             commandText);
+  void commitConvertedDocuments(std::vector<SILICON::project::Document> documents,
+                                const std::string& sourcePath,
+                                const std::string& activatePath,
+                                const QString&     commandText);
   [[nodiscard]] bool isCodeDocumentActive() const;
 
   /**

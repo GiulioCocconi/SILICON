@@ -67,6 +67,21 @@ SubcircuitComponent::~SubcircuitComponent()
     SILICON::project::DocumentStore::active().removeListener(registryListenerId);
 }
 
+std::shared_ptr<SubcircuitComponent>
+SubcircuitComponent::imported(std::string slug, std::vector<std::string> inputNames,
+                              std::vector<Bus> inputs,
+                              std::vector<std::string> outputNames,
+                              std::vector<Bus> outputs)
+{
+  auto component = std::make_shared<SubcircuitComponent>();
+  component->properties["slug"] = std::move(slug);
+  component->transientInputNames  = std::move(inputNames);
+  component->transientOutputNames = std::move(outputNames);
+  component->setInputs(inputs);
+  component->setOutputs(outputs);
+  return component;
+}
+
 void SubcircuitComponent::clearResolvedCircuit()
 {
   inputs.clear();

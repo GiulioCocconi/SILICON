@@ -62,6 +62,9 @@ public:
   /** @brief Reloads shape and ports from the active registry document. */
   void refreshFromMetadata();
 
+  /** @brief Uses default metadata derived only from the attached imported buses. */
+  void useAttachedInterfaceMetadata();
+
   int type() const override { return SiliconTypes::SUBCIRCUIT; }
 
 private:

@@ -139,12 +139,9 @@ void Circuit::makeInteractive()
 
 Component_ptr Circuit::getComponentByVertexId(VertexDescriptor vertexId) const
 {
-  auto it = std::ranges::find_if(ownedComponents, [&](const auto& comp) {
-    auto id = getVertexId(comp.get());
-    return id && *id == vertexId;
-  });
-
-  return it != ownedComponents.end() ? *it : nullptr;
+  if (vertexId >= boost::num_vertices(graph))
+    return nullptr;
+  return graph[vertexId].component;
 }
 
 void Circuit::updateComponentIO(const Component_ptr& component)

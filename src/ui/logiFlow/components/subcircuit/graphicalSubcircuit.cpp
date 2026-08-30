@@ -20,6 +20,7 @@
 
 #include <core/projectDocument.hpp>
 
+#include <algorithm>
 #include <memory>
 #include <utility>
 
@@ -156,7 +157,7 @@ void GraphicalSubcircuitComponent::refreshFromMetadata()
   const auto* document = SILICON::project::DocumentStore::active().find(
       SILICON::project::subcircuitPathForSlug(slug));
   if (!document) {
-    applyEmptyMetadata();
+    useAttachedInterfaceMetadata();
     return;
   }
 
@@ -181,6 +182,29 @@ void GraphicalSubcircuitComponent::refreshFromMetadata()
     applyMetadata(metadata);
   } catch (const std::exception&) {
   }
+}
+
+void GraphicalSubcircuitComponent::useAttachedInterfaceMetadata()
+{
+  GraphicalSubcircuitMetadata metadata;
+  if (associatedComponent) {
+    metadata.inputs = synchronizePortsWithBuses(
+        {}, associatedComponent->getInputs(), metadata, true);
+    metadata.outputs = synchronizePortsWithBuses(
+        {}, associatedComponent->getOutputs(), metadata, false);
+
+    if (const auto imported =
+            std::dynamic_pointer_cast<SubcircuitComponent>(associatedComponent)) {
+      const auto& inputNames = imported->importedInputNames();
+      for (std::size_t i = 0; i < std::min(metadata.inputs.size(), inputNames.size()); ++i)
+        metadata.inputs[i].name = inputNames[i];
+      const auto& outputNames = imported->importedOutputNames();
+      for (std::size_t i = 0;
+           i < std::min(metadata.outputs.size(), outputNames.size()); ++i)
+        metadata.outputs[i].name = outputNames[i];
+    }
+  }
+  applyMetadata(metadata);
 }
 
 }  // namespace ui

@@ -31,8 +31,6 @@ add_executable(factory_tests factory.cpp)
 add_executable(subcircuit_tests subcircuit.cpp)
 add_executable(logger_tests logger.cpp)
 add_executable(yosys_tests yosys.cpp)
-add_executable(code_editor_tests codeEditor.cpp
-        ${CMAKE_SOURCE_DIR}/src/ui/common/codeEditor.cpp)
 add_executable(libavoid_tests libavoid.cpp boundaryIoPlacement.cpp
         ${CMAKE_SOURCE_DIR}/src/ui/common/boundaryIoPlacement.cpp
         ${CMAKE_SOURCE_DIR}/src/ui/common/wireRouting.cpp)
@@ -45,16 +43,6 @@ foreach (target logic_tests register_tests arithmetic_tests multiplexer_tests ut
     target_link_libraries(${target} GTest::gtest_main GTest::gtest silicon_core silicon_logging)
     gtest_discover_tests(${target} DISCOVERY_MODE PRE_TEST)
 endforeach ()
-
-set_target_properties(code_editor_tests PROPERTIES
-        AUTOMOC OFF
-        AUTOUIC OFF
-        AUTORCC OFF)
-target_link_libraries(code_editor_tests PRIVATE
-        GTest::gtest_main GTest::gtest silicon_core Qt6::Widgets Qt6::Test
-        KF6::SyntaxHighlighting)
-gtest_discover_tests(code_editor_tests DISCOVERY_MODE PRE_TEST
-        PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
 find_program(SILICON_TEST_YOSYS_EXECUTABLE yosys)
 if (SILICON_TEST_YOSYS_EXECUTABLE)

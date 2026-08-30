@@ -187,12 +187,12 @@ bool DiagramScene::cancelCurrentInteraction()
 
 void DiagramScene::setInteractionMode(const InteractionMode newMode, const bool force)
 {
-  if (!force && views().size() != 1)
-    throw std::logic_error("setInteractionMode: scene must have exactly one view");
-
   const auto currentMode = getInteractionMode();
   if (currentMode == newMode && !force)
     return;
+
+  if (!force && views().size() != 1)
+    throw std::logic_error("setInteractionMode: scene must have exactly one view");
 
   clearSelection();
 
@@ -766,6 +766,13 @@ void DiagramScene::deserialize(const std::string&       jsonStr,
                                const ComponentRegistry& coreRegistry)
 {
   serializer->deserialize(jsonStr, guiFactory, coreRegistry);
+}
+
+void DiagramScene::loadCircuit(std::shared_ptr<Circuit> circuit,
+                               GUIComponentFactory&     guiFactory,
+                               const bool resolveSubcircuitMetadata)
+{
+  serializer->loadCircuit(std::move(circuit), guiFactory, resolveSubcircuitMetadata);
 }
 
 bool DiagramScene::insertSelection(const nlohmann::json&    payload,

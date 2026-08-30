@@ -304,6 +304,10 @@ public:
   void deserialize(const std::string& jsonStr, GUIComponentFactory& guiFactory,
                    const ComponentRegistry& coreRegistry);
 
+  /** Replaces the scene with an autoplaced view of an existing core circuit. */
+  void loadCircuit(std::shared_ptr<Circuit> circuit, GUIComponentFactory& guiFactory,
+                   bool resolveSubcircuitMetadata = true);
+
   /**
    * @brief Inserts a clipboard selection payload into the current scene.
    *

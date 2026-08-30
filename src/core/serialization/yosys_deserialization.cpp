@@ -25,6 +25,7 @@
 #include <array>
 #include <charconv>
 #include <format>
+#include <functional>
 #include <limits>
 #include <map>
 #include <memory>
@@ -43,6 +44,7 @@
 #include <core/gates.hpp>
 #include <core/io.hpp>
 #include <core/register.hpp>
+#include <core/subcircuit.hpp>
 #include <extraComponents/arithmetic.hpp>
 #include <extraComponents/multiplexer.hpp>
 #include <extraComponents/utils.hpp>
@@ -163,6 +165,7 @@ namespace {
       const auto [name, module] = selectModule(modules, requestedModule);
       moduleName                = name;
       importModule(module);
+      normalizeBusConnections();
 
       Component_set componentSet(components.begin(), components.end());
       Circuit       result(componentSet, false);
@@ -222,6 +225,15 @@ namespace {
       [[nodiscard]] const Json& connection(const std::string_view name) const
       {
         return requireObjectMember(connectionsJson, name, context);
+      }
+
+      void requireConnectionNames(const std::span<const std::string> names) const
+      {
+        if (connectionsJson.size() != names.size())
+          fail(context, "cell has missing or unexpected connections");
+        for (const auto& name : names)
+          if (!connectionsJson.contains(name))
+            fail(context, std::format("missing '{}' connection", name));
       }
 
       [[nodiscard]] std::size_t width(const std::string_view name) const
@@ -304,13 +316,159 @@ namespace {
       }
     };
 
-    Json                                         design;
-    std::string                                  moduleName;
-    std::map<std::uint64_t, Wire_ptr>            signals;
-    std::map<State, Wire_ptr>                    constants;
-    std::map<BusValue, Bus>                      constantBuses;
-    std::set<std::uint64_t>                      drivenSignals;
-    std::vector<Component_ptr>                   components;
+    Json                              design;
+    std::string                       moduleName;
+    std::map<std::uint64_t, Wire_ptr> signals;
+    std::map<State, Wire_ptr>         constants;
+    std::map<BusValue, Bus>           constantBuses;
+    std::set<std::uint64_t>           drivenSignals;
+    std::vector<Component_ptr>        components;
+
+    using BusKey = std::vector<Wire_ptr>;
+
+    struct ProducerBus {
+      BusKey key;
+    };
+
+    struct ConsumerBus {
+      Component_ptr component;
+      std::size_t   inputIndex;
+    };
+
+    [[nodiscard]] static BusKey busKey(const Bus& bus)
+    {
+      return static_cast<std::vector<Wire_ptr>>(bus);
+    }
+
+    [[nodiscard]] static bool fullyConnected(const BusKey& key)
+    {
+      return std::ranges::all_of(key,
+                                 [](const Wire_ptr& wire) { return wire != nullptr; });
+    }
+
+    void normalizeBusConnections()
+    {
+      // Yosys represents every net as individual signal bits. Silicon instead uses
+      // explicit components whenever a multi-bit connection crosses a scalar, sliced,
+      // concatenated, or reordered boundary. Snapshot the imported topology before
+      // adding those components so the generated helpers do not get normalized again.
+      std::vector<ProducerBus>                                   producers;
+      std::map<Wire_ptr, std::size_t, std::owner_less<Wire_ptr>> producerByWire;
+      std::map<BusKey, std::vector<ConsumerBus>>                 consumers;
+
+      for (const auto& component : components) {
+        for (const auto& output : component->outputBuses()) {
+          if (output.size() == 0)
+            continue;
+          const auto producerIndex = producers.size();
+          producers.push_back({busKey(output)});
+          for (const auto& wire : producers.back().key)
+            if (wire)
+              producerByWire.try_emplace(wire, producerIndex);
+        }
+
+        for (std::size_t inputIndex = 0; inputIndex < component->inputBuses().size();
+             ++inputIndex) {
+          const auto& input = component->inputBuses()[inputIndex];
+          if (input.size() != 0)
+            consumers[busKey(input)].push_back({component, inputIndex});
+        }
+      }
+
+      std::map<Wire_ptr, std::vector<const BusKey*>, std::owner_less<Wire_ptr>>
+          consumerKeysByWire;
+      for (const auto& [key, _] : consumers) {
+        for (const auto& wire : key)
+          if (wire)
+            consumerKeysByWire[wire].push_back(&key);
+      }
+
+      std::map<Wire_ptr, Wire_ptr, std::owner_less<Wire_ptr>> splitLaneByWire;
+      std::vector<Component_ptr>                              helpers;
+      for (const auto& producer : producers) {
+        if (producer.key.size() <= 1 || !fullyConnected(producer.key))
+          continue;
+
+        const bool needsSplitter =
+            std::ranges::any_of(producer.key, [&](const auto& wire) {
+              const auto consumersForWire = consumerKeysByWire.find(wire);
+              return consumersForWire != consumerKeysByWire.end()
+                     && std::ranges::any_of(consumersForWire->second,
+                                            [&](const BusKey* consumerKey) {
+                                              return *consumerKey != producer.key;
+                                            });
+            });
+        if (!needsSplitter)
+          continue;
+
+        std::vector<Bus> outputs;
+        outputs.reserve(producer.key.size());
+        for (const auto& wire : producer.key) {
+          auto lane = std::make_shared<Wire>();
+          splitLaneByWire.try_emplace(wire, lane);
+          outputs.emplace_back(Bus{std::move(lane)});
+        }
+
+        auto splitter = std::make_shared<WireSplitter>();
+        splitter->setProperty("size", static_cast<int>(producer.key.size()));
+        splitter->setInputs({Bus(producer.key)});
+        splitter->setOutputs(outputs);
+        helpers.push_back(std::move(splitter));
+      }
+
+      for (const auto& [key, occurrences] : consumers) {
+        if (!fullyConnected(key))
+          continue;
+
+        bool                       exactProducer = !key.empty();
+        std::optional<std::size_t> producerIndex;
+        for (const auto& wire : key) {
+          const auto producer = producerByWire.find(wire);
+          if (producer == producerByWire.end()) {
+            exactProducer = false;
+            break;
+          }
+          if (!producerIndex)
+            producerIndex = producer->second;
+          if (*producerIndex != producer->second) {
+            exactProducer = false;
+            break;
+          }
+        }
+        exactProducer =
+            exactProducer && producerIndex && producers[*producerIndex].key == key;
+
+        Bus replacement;
+        if (exactProducer) {
+          replacement = Bus(key);
+        } else {
+          std::vector<Bus> mergerInputs;
+          mergerInputs.reserve(key.size());
+          for (const auto& wire : key) {
+            const auto splitLane = splitLaneByWire.find(wire);
+            mergerInputs.emplace_back(
+                Bus{splitLane == splitLaneByWire.end() ? wire : splitLane->second});
+          }
+
+          if (key.size() == 1) {
+            replacement = mergerInputs.front();
+          } else {
+            replacement = Bus(static_cast<unsigned short>(key.size()));
+            auto merger = std::make_shared<WireMerger>();
+            merger->setProperty("size", static_cast<int>(key.size()));
+            merger->setInputs(mergerInputs);
+            merger->setOutputs({replacement});
+            helpers.push_back(std::move(merger));
+          }
+        }
+
+        for (const auto& occurrence : occurrences)
+          occurrence.component->setInput(static_cast<unsigned int>(occurrence.inputIndex),
+                                         replacement);
+      }
+
+      components.insert(components.end(), helpers.begin(), helpers.end());
+    }
 
     [[nodiscard]] std::pair<std::string, const Json&>
     selectModule(const Json&                           modules,
@@ -1134,14 +1292,261 @@ namespace {
           return (this->*handler)(view);
       }
 
+      const auto& modules = requireObjectMember(design, "modules", "design");
+      if (const auto dependency = modules.find(view.cellType());
+          dependency != modules.end()) {
+        const auto attributes = dependency->find("attributes");
+        const bool blackbox =
+            attributes != dependency->end() && attributes->is_object()
+            && attributes->contains("blackbox")
+            && parseUnsigned(attributes->at("blackbox"),
+                             std::format("design.modules.{}.attributes.blackbox",
+                                         view.cellType()))
+                   != 0;
+        if (!blackbox)
+          return importSubcircuit(view, *dependency);
+      }
+
       if (view.cellType().starts_with("SILICON_"))
         fail(view.where(), std::format("unsupported SILICON technology cell type '{}'",
                                        view.cellType()));
       fail(view.where(), std::format("unsupported cell type '{}'", view.cellType()));
     }
+
+    void importSubcircuit(const Cell& cell, const Json& dependencyModule)
+    {
+      if (!dependencyModule.is_object())
+        fail(std::format("design.modules.{}", cell.cellType()), "expected an object");
+      const auto& ports = requireObjectMember(
+          dependencyModule, "ports", std::format("design.modules.{}", cell.cellType()));
+      if (!ports.is_object())
+        fail(std::format("design.modules.{}.ports", cell.cellType()),
+             "expected an object");
+
+      std::vector<std::string> portNames;
+      portNames.reserve(ports.size());
+      for (const auto& [portName, _] : ports.items())
+        portNames.push_back(portName);
+      cell.requireConnectionNames(portNames);
+
+      std::vector<Bus> inputs;
+      std::vector<Bus> outputs;
+      std::vector<std::string> inputNames;
+      std::vector<std::string> outputNames;
+      for (const auto& [portName, port] : ports.items()) {
+        const auto context = std::format("design.modules.{}.ports.{}", cell.cellType(),
+                                         portName);
+        if (!port.is_object())
+          fail(context, "expected an object");
+        const auto& directionJson = requireObjectMember(port, "direction", context);
+        const auto& bitsJson      = requireObjectMember(port, "bits", context);
+        if (!directionJson.is_string() || !bitsJson.is_array() || bitsJson.empty())
+          fail(context, "expected a direction and a non-empty bit array");
+
+        const auto direction = directionJson.get<std::string>();
+        if (direction == "input") {
+          inputNames.push_back(portName);
+          inputs.push_back(cell.consumer(portName, bitsJson.size()));
+        } else if (direction == "output") {
+          outputNames.push_back(portName);
+          outputs.push_back(cell.driver(portName, bitsJson.size()));
+        } else if (direction == "inout")
+          fail(context, "inout ports are not supported");
+        else
+          fail(context, std::format("invalid port direction '{}'", direction));
+      }
+
+      components.push_back(SubcircuitComponent::imported(
+          cell.cellType(), std::move(inputNames), std::move(inputs),
+          std::move(outputNames), std::move(outputs)));
+    }
   };
 
 }  // namespace
+
+void ModuleDependencyGraph::addModule(const std::string_view moduleName)
+{
+  ensureVertex(moduleName);
+}
+
+void ModuleDependencyGraph::addDependency(const std::string_view from,
+                                          const std::string_view to)
+{
+  const Vertex source = ensureVertex(from);
+  const Vertex target = ensureVertex(to);
+  boost::add_edge(source, target, graph);
+}
+
+ModuleDependencyGraph::ModuleNameList
+ModuleDependencyGraph::dependencyOrder(const ModuleNameList& roots) const
+{
+  enum class VisitState { Unvisited, Visiting, Visited };
+  std::vector<VisitState> states(boost::num_vertices(graph), VisitState::Unvisited);
+  ModuleNameList          result;
+  ModuleNameList          stack;
+
+  std::function<void(Vertex)> visit = [&](const Vertex vertex) {
+    if (states[vertex] == VisitState::Visited)
+      return;
+    if (states[vertex] == VisitState::Visiting) {
+      const auto repeated = graph[vertex].name;
+      const auto begin    = std::ranges::find(stack, repeated);
+      ModuleNameList cycle(begin, stack.end());
+      cycle.push_back(repeated);
+      std::string trace;
+      for (const auto& module : cycle) {
+        if (!trace.empty())
+          trace += " -> ";
+        trace += module;
+      }
+      throw std::runtime_error(std::format(
+          "Recursive Verilog module dependency detected: {}", trace));
+    }
+
+    states[vertex] = VisitState::Visiting;
+    stack.push_back(graph[vertex].name);
+    auto dependencies = dependenciesOf(graph[vertex].name);
+    for (const auto& dependency : dependencies)
+      visit(*findVertex(dependency));
+    stack.pop_back();
+    states[vertex] = VisitState::Visited;
+    result.push_back(graph[vertex].name);
+  };
+
+  auto sortedRoots = roots;
+  std::ranges::sort(sortedRoots);
+  sortedRoots.erase(std::ranges::unique(sortedRoots).begin(), sortedRoots.end());
+  for (const auto& root : sortedRoots) {
+    const auto vertex = findVertex(root);
+    if (!vertex)
+      throw std::invalid_argument(std::format("Unknown Verilog module '{}'", root));
+    visit(*vertex);
+  }
+  return result;
+}
+
+ModuleDependencyGraph::ModuleNameList
+ModuleDependencyGraph::dependenciesOf(const std::string_view moduleName) const
+{
+  const auto vertex = findVertex(moduleName);
+  if (!vertex)
+    return {};
+
+  ModuleNameList dependencies;
+  for (const auto edge : boost::make_iterator_range(boost::out_edges(*vertex, graph)))
+    dependencies.push_back(graph[boost::target(edge, graph)].name);
+  std::ranges::sort(dependencies);
+  return dependencies;
+}
+
+ModuleDependencyGraph::ModuleNameList ModuleDependencyGraph::modules() const
+{
+  ModuleNameList names;
+  names.reserve(boost::num_vertices(graph));
+  for (const auto vertex : boost::make_iterator_range(boost::vertices(graph)))
+    names.push_back(graph[vertex].name);
+  std::ranges::sort(names);
+  return names;
+}
+
+bool ModuleDependencyGraph::containsModule(const std::string_view moduleName) const
+{
+  return findVertex(moduleName).has_value();
+}
+
+std::optional<ModuleDependencyGraph::Vertex>
+ModuleDependencyGraph::findVertex(std::string_view moduleName) const
+{
+  const auto it = nameToVertex.find(std::string(moduleName));
+  if (it == nameToVertex.end())
+    return std::nullopt;
+  return it->second;
+}
+
+ModuleDependencyGraph::Vertex
+ModuleDependencyGraph::ensureVertex(const std::string_view moduleName)
+{
+  if (const auto existing = findVertex(moduleName))
+    return *existing;
+  const auto vertex = boost::add_vertex(VertexProperty{std::string(moduleName)}, graph);
+  nameToVertex.emplace(std::string(moduleName), vertex);
+  return vertex;
+}
+
+void ModuleDependencyGraph::rebuildNameIndex()
+{
+  nameToVertex.clear();
+  for (const auto vertex : boost::make_iterator_range(boost::vertices(graph)))
+    nameToVertex.emplace(graph[vertex].name, vertex);
+}
+
+ModuleDependencyGraph moduleDependencyGraph(const std::string_view json)
+{
+  try {
+    const Json design = Json::parse(json);
+    if (!design.is_object())
+      throw std::runtime_error("Invalid Yosys JSON: design must be an object");
+
+    const auto modules = design.find("modules");
+    if (modules == design.end() || !modules->is_object())
+      throw std::runtime_error("Invalid Yosys JSON: design.modules must be an object");
+
+    const auto isBlackbox = [](const std::string& moduleName, const Json& module) {
+      const auto attributes = module.find("attributes");
+      if (attributes == module.end())
+        return false;
+      if (!attributes->is_object())
+        throw std::runtime_error(std::format(
+            "Invalid Yosys JSON: design.modules.{}.attributes must be an object",
+            moduleName));
+      const auto blackbox = attributes->find("blackbox");
+      return blackbox != attributes->end()
+             && parseUnsigned(*blackbox,
+                              std::format("design.modules.{}.attributes.blackbox",
+                                          moduleName))
+                    != 0;
+    };
+
+    ModuleDependencyGraph result;
+    for (const auto& [moduleName, module] : modules->items()) {
+      if (!module.is_object())
+        throw std::runtime_error(std::format(
+            "Invalid Yosys JSON: design.modules.{} must be an object", moduleName));
+      if (!isBlackbox(moduleName, module))
+        result.addModule(moduleName);
+    }
+
+    for (const auto& [moduleName, module] : modules->items()) {
+      if (!result.containsModule(moduleName))
+        continue;
+      const auto cells = module.find("cells");
+      if (cells == module.end())
+        continue;
+      if (!cells->is_object())
+        throw std::runtime_error(std::format(
+            "Invalid Yosys JSON: design.modules.{}.cells must be an object", moduleName));
+
+      for (const auto& [cellName, cell] : cells->items()) {
+        if (!cell.is_object())
+          throw std::runtime_error(std::format(
+              "Invalid Yosys JSON: design.modules.{}.cells.{} must be an object",
+              moduleName, cellName));
+        const auto type = cell.find("type");
+        if (type == cell.end() || !type->is_string())
+          throw std::runtime_error(std::format(
+              "Invalid Yosys JSON: design.modules.{}.cells.{}.type must be a string",
+              moduleName, cellName));
+
+        const auto dependency = type->get<std::string>();
+        if (result.containsModule(dependency))
+          result.addDependency(moduleName, dependency);
+      }
+    }
+    return result;
+  } catch (const nlohmann::json::exception& error) {
+    throw std::runtime_error(std::format("Invalid Yosys JSON: {}", error.what()));
+  }
+}
 
 Circuit deserialize(const std::string_view                json,
                     const std::optional<std::string_view> moduleName)

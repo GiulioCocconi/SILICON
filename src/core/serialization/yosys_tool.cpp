@@ -76,26 +76,23 @@ ScriptResult runScript(const std::string_view script, const ToolOptions& options
       "when compiled for Emscripten. See the 'yosys' logs for details.");
 }
 
-Circuit importVerilog(const std::string_view source, const std::string_view topModule,
-                      const ToolOptions& options)
-{
-  (void)source;
-  (void)topModule;
-  (void)runScript({}, options);
-  throw std::logic_error("Unreachable after unavailable Yosys execution");
-}
-
-Circuit importSingleModuleVerilog(const std::string_view source,
-                                  const ToolOptions&     options)
+std::string readVerilog(const std::string_view source, const ToolOptions& options)
 {
   (void)source;
   (void)runScript({}, options);
   throw std::logic_error("Unreachable after unavailable Yosys execution");
 }
 
-std::string exportVerilog(const Circuit& circuit, const ToolOptions& options)
+std::string elaborateHierarchy(const std::string_view json, const ToolOptions& options)
 {
-  (void)circuit;
+  (void)json;
+  (void)runScript({}, options);
+  throw std::logic_error("Unreachable after unavailable Yosys execution");
+}
+
+std::string exportVerilog(std::string_view json, const ToolOptions& options)
+{
+  (void)json;
   (void)runScript({}, options);
   throw std::logic_error("Unreachable after unavailable Yosys execution");
 }
@@ -601,37 +598,46 @@ ScriptResult runScript(const std::string_view script, const ToolOptions& options
   return result;
 }
 
-Circuit importVerilog(const std::string_view source, const std::string_view topModule,
-                      const ToolOptions& options)
+std::string readVerilog(const std::string_view source, const ToolOptions& options)
 {
-  if (!isVerilogIdentifier(topModule)) {
-    throw std::invalid_argument(std::format(
-        "Invalid Verilog top-module identifier '{}': expected a simple Verilog-2005 "
-        "identifier",
-        topModule));
-  }
-
   TemporaryWorkspace workspace;
-  const auto         library    = technologyLibrary(options);
   const auto         sourcePath = workspace.path() / "source.v";
   const auto         jsonPath   = workspace.path() / "design.json";
-  writeFile(sourcePath, source, "Verilog-import input-writing phase");
+  writeFile(sourcePath, source, "Verilog-read input-writing phase");
 
-  const auto plugin = verilogPlugin();
+  (void)runScript(std::format("read_verilog {}\n"
+                              // `proc` converts processes ($dff/$mux cells) so the JSON
+                              // backend can emit them; it is required before write_json
+                              // even though readVerilog performs no further elaboration.
+                              "proc\n"
+                              "write_json {}\n",
+                              quotePath(sourcePath), quotePath(jsonPath)),
+                  options);
+  return readFile(jsonPath, "Verilog-read output-reading phase");
+}
+
+std::string elaborateHierarchy(const std::string_view json, const ToolOptions& options)
+{
+  TemporaryWorkspace workspace;
+  const auto         inputPath  = workspace.path() / "design.json";
+  const auto         outputPath = workspace.path() / "elaborated.json";
+  writeFile(inputPath, json, "Yosys-elaboration input-writing phase");
+
+  const auto library = technologyLibrary(options);
+  const auto plugin  = verilogPlugin();
   const auto pluginLoad =
       plugin ? std::format("plugin -i {}\n", quotePath(*plugin)) : std::string();
   const auto muxImport =
       plugin ? std::string("silicon_pmux_bmux\nsilicon_eq_decoder\n") : std::string();
 
-  (void)runScript(std::format("{}"
-                              "read_verilog -lib -D SILICON_BLACKBOX {}\n"
-                              "read_verilog {}\n"
-                              "hierarchy -check -top {}\n"
+  (void)runScript(std::format("read_verilog -lib -D SILICON_BLACKBOX {}\n"
+                              "read_json {}\n"
+                              "{}"
+                              "hierarchy -check\n"
                               "proc\n"
                               "muxpack\n"
                               "{}"
                               "pmuxtree\n"
-                              "flatten\n"
                               "delete t:$scopeinfo\n"
                               "opt\n"
                               // Preserve vector bitwise operations as one native Silicon
@@ -643,53 +649,26 @@ Circuit importVerilog(const std::string_view source, const std::string_view topM
                               "t:$or r:Y_WIDTH=1 %i "
                               "t:$xor r:Y_WIDTH=1 %i "
                               "t:$not r:Y_WIDTH=1 %i "
-                              "t:$logic_not t:$reduce_and t:$reduce_or t:$reduce_xor\n"
+                              "t:$logic_not t:$logic_and t:$logic_or "
+                              "t:$reduce_and t:$reduce_or t:$reduce_xor\n"
                               "extract_fa\n"
                               "techmap -map {}\n"
                               "opt_clean\n"
                               "write_json {}\n",
-                              pluginLoad, quotePath(library.cells), quotePath(sourcePath),
-                              topModule, muxImport, quotePath(library.technologyMap),
-                              quotePath(jsonPath)),
+                              quotePath(library.cells), quotePath(inputPath), pluginLoad,
+                              muxImport, quotePath(library.technologyMap),
+                              quotePath(outputPath)),
                   options);
-  return deserialize(readFile(jsonPath, "Verilog-import output-reading phase"),
-                     topModule);
+  return readFile(outputPath, "Yosys-elaboration output-reading phase");
 }
 
-Circuit importSingleModuleVerilog(const std::string_view source,
-                                  const ToolOptions&     options)
-{
-  TemporaryWorkspace workspace;
-  const auto         sourcePath = workspace.path() / "source.v";
-  const auto         jsonPath   = workspace.path() / "modules.json";
-  writeFile(sourcePath, source, "Verilog module-discovery input-writing phase");
-  (void)runScript(std::format("read_verilog {}\n"
-                              "hierarchy -check\n"
-                              "write_json {}\n",
-                              quotePath(sourcePath), quotePath(jsonPath)),
-                  options);
-
-  Json design;
-  try {
-    design =
-        Json::parse(readFile(jsonPath, "Verilog module-discovery output-reading phase"));
-  } catch (const nlohmann::json::exception&) {
-    throw std::runtime_error("Yosys module discovery produced invalid JSON");
-  }
-  const auto modules = design.find("modules");
-  if (modules == design.end() || !modules->is_object() || modules->size() != 1)
-    throw std::runtime_error("Verilog source must declare exactly one module");
-
-  return importVerilog(source, modules->begin().key(), options);
-}
-
-std::string exportVerilog(const Circuit& circuit, const ToolOptions& options)
+std::string exportVerilog(std::string_view json, const ToolOptions& options)
 {
   TemporaryWorkspace workspace;
   const auto         library     = technologyLibrary(options);
   const auto         jsonPath    = workspace.path() / "design.json";
   const auto         verilogPath = workspace.path() / "design.v";
-  writeFile(jsonPath, serialize(circuit), "Verilog-export input-writing phase");
+  writeFile(jsonPath, json, "Verilog-export input-writing phase");
 
   const auto plugin = verilogPlugin();
   const auto muxExport =
@@ -709,11 +688,16 @@ std::string exportVerilog(const Circuit& circuit, const ToolOptions& options)
                               quotePath(library.cells), quotePath(jsonPath),
                               quotePath(library.cells), muxExport,
                               quotePath(verilogPath)),
-                  options);
+                   options);
   return useAnsiPortDeclarations(
       cleanProcessVerilog(readFile(verilogPath, "Verilog-export output-reading phase")));
 }
 
 #endif
+
+std::string exportVerilog(const Circuit& circuit, const ToolOptions& options)
+{
+  return exportVerilog(serialize(circuit), options);
+}
 
 }  // namespace SILICON::yosys

@@ -42,6 +42,7 @@ Copyright (c) 2026. Giulio Cocconi
 #include <QContextMenuEvent>
 #include <QCursor>
 #include <QDialog>
+#include <QDialogButtonBox>
 #include <QDockWidget>
 #include <QEvent>
 #include <QFile>
@@ -51,6 +52,7 @@ Copyright (c) 2026. Giulio Cocconi
 #include <QFormLayout>
 #include <QGraphicsView>
 #include <QHBoxLayout>
+#include <QHeaderView>
 #include <QIcon>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -61,6 +63,7 @@ Copyright (c) 2026. Giulio Cocconi
 #include <QMenuBar>
 #include <QMimeData>
 #include <QPlainTextEdit>
+#include <QPushButton>
 #include <QResizeEvent>
 #include <QSignalBlocker>
 #include <QSpinBox>
@@ -133,6 +136,134 @@ namespace {
     Fn undoFn;
     Fn redoFn;
   };
+
+  [[nodiscard]] std::optional<std::vector<std::string>>
+  selectVerilogModules(QWidget* parent, const SILICON::yosys::ModuleDependencyGraph& graph)
+  {
+    auto modules = graph.modules();
+    if (modules.size() <= 1)
+      return modules;
+
+    std::ranges::sort(modules, [&graph](const auto& lhs, const auto& rhs) {
+      const auto lhsDependencies = graph.dependenciesOf(lhs).size();
+      const auto rhsDependencies = graph.dependenciesOf(rhs).size();
+      if (lhsDependencies != rhsDependencies)
+        return lhsDependencies > rhsDependencies;
+      return lhs < rhs;
+    });
+
+    QDialog dialog(parent);
+    dialog.setWindowTitle(QObject::tr("Import Verilog Modules"));
+    dialog.setModal(true);
+    dialog.resize(560, 420);
+
+    auto* layout = new QVBoxLayout(&dialog);
+    layout->addWidget(new QLabel(
+        QObject::tr("Select one or more modules. Their dependencies are imported "
+                    "automatically."),
+        &dialog));
+
+    auto* tree = new QTreeWidget(&dialog);
+    tree->setColumnCount(1);
+    tree->setHeaderLabels({QObject::tr("Module")});
+    tree->setRootIsDecorated(true);
+    tree->setSelectionMode(QAbstractItemView::NoSelection);
+    constexpr int explicitlySelectedRole = Qt::UserRole;
+
+    const auto addDependencies = [&graph](this auto&& addDependencies,
+                                          QTreeWidgetItem* parentItem,
+                                          const std::string& module) -> void {
+      for (const auto& dependency : graph.dependenciesOf(module)) {
+        auto* dependencyItem = new QTreeWidgetItem(parentItem);
+        dependencyItem->setText(0, QString::fromStdString(dependency));
+        dependencyItem->setFlags(dependencyItem->flags() & ~Qt::ItemIsUserCheckable);
+        addDependencies(dependencyItem, dependency);
+      }
+    };
+
+    for (const auto& module : modules) {
+      auto* item = new QTreeWidgetItem(tree);
+      item->setText(0, QString::fromStdString(module));
+      item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
+      item->setCheckState(0, Qt::Unchecked);
+      item->setData(0, explicitlySelectedRole, false);
+      addDependencies(item, module);
+    }
+    tree->collapseAll();
+    tree->header()->setSectionResizeMode(0, QHeaderView::Stretch);
+    layout->addWidget(tree);
+
+    auto* buttons =
+        new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    auto* importButton = buttons->button(QDialogButtonBox::Ok);
+    importButton->setText(QObject::tr("Import"));
+    importButton->setEnabled(false);
+    layout->addWidget(buttons);
+    QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+    QObject::connect(tree, &QTreeWidget::itemChanged, &dialog,
+                     [tree, importButton, &graph,
+                      explicitlySelectedRole](QTreeWidgetItem* changedItem, int) {
+                       const QSignalBlocker blocker(tree);
+                       if (!changedItem->parent()
+                           && changedItem->flags().testFlag(Qt::ItemIsEnabled)) {
+                         changedItem->setData(
+                             0, explicitlySelectedRole,
+                             changedItem->checkState(0) == Qt::Checked);
+                       }
+
+                       std::vector<std::string> roots;
+                       for (int index = 0; index < tree->topLevelItemCount(); ++index) {
+                         const auto* item = tree->topLevelItem(index);
+                         if (item->data(0, explicitlySelectedRole).toBool())
+                           roots.push_back(item->text(0).toStdString());
+                       }
+
+                       importButton->setEnabled(!roots.empty());
+                       std::vector<std::string> dependencies;
+                       for (const auto& root : roots) {
+                         for (const auto& included :
+                              graph.dependencyOrder(std::vector<std::string>{root})) {
+                           if (included != root
+                               && !std::ranges::contains(dependencies, included)) {
+                             dependencies.push_back(included);
+                           }
+                         }
+                       }
+
+                       for (int index = 0; index < tree->topLevelItemCount(); ++index) {
+                         auto* item = tree->topLevelItem(index);
+                         const auto name = item->text(0).toStdString();
+                         const bool selected =
+                             item->data(0, explicitlySelectedRole).toBool();
+                         const bool dependency =
+                             std::ranges::contains(dependencies, name);
+
+                         auto flags = item->flags() | Qt::ItemIsUserCheckable;
+                         flags.setFlag(Qt::ItemIsEnabled, !dependency);
+                         item->setFlags(flags);
+                         item->setCheckState(
+                             0, selected || dependency ? Qt::Checked : Qt::Unchecked);
+
+                         auto font = item->font(0);
+                         font.setBold(selected && !dependency);
+                         font.setItalic(dependency);
+                         item->setFont(0, font);
+                       }
+                     });
+
+    if (dialog.exec() != QDialog::Accepted)
+      return std::nullopt;
+
+    std::vector<std::string> roots;
+    for (int index = 0; index < tree->topLevelItemCount(); ++index) {
+      const auto* item = tree->topLevelItem(index);
+      if (item->data(0, explicitlySelectedRole).toBool())
+        roots.push_back(item->text(0).toStdString());
+    }
+    return roots;
+  }
 
   QAction* makeAction(QObject* parent, const QIcon& icon, const QString& text,
                       const QString& statusTip = {})
@@ -631,44 +762,50 @@ void LogiFlowWindow::commitConvertedDocument(SILICON::project::Document document
                                              const std::string&         sourcePath,
                                              const QString&             commandText)
 {
-  auto&      store      = SILICON::project::DocumentStore::active();
   const auto targetPath = document.getPath();
-  const auto oldIndex   = store.indexOf(targetPath);
-  const auto oldDocument =
-      store.find(targetPath) ? std::optional(*store.find(targetPath)) : std::nullopt;
-  const auto insertionIndex =
-      oldIndex ? std::optional<std::ptrdiff_t>(static_cast<std::ptrdiff_t>(*oldIndex))
-               : std::nullopt;
+  std::vector<SILICON::project::Document> documents;
+  documents.push_back(std::move(document));
+  commitConvertedDocuments(std::move(documents), sourcePath, targetPath, commandText);
+}
 
-  const bool replacing = oldDocument.has_value();
-  auto       apply     = [this, document, targetPath, insertionIndex, replacing] {
-    if (replacing) {
-      if (document.getType() != SILICON::project::DocumentType::Code)
-        dependencyGraph.replaceDocumentDependencies(targetPath,
-                                                    document.getContents());
-      SILICON::project::DocumentStore::active().upsertDocument(document);
-      rebuildProjectTree();
-      switchToDocument(targetPath, true);
-    } else {
-      insertDocument(document, insertionIndex, true);
-    }
+void LogiFlowWindow::commitConvertedDocuments(
+    std::vector<SILICON::project::Document> documents, const std::string& sourcePath,
+    const std::string& activatePath, const QString& commandText)
+{
+  auto& store = SILICON::project::DocumentStore::active();
+  auto  beforeDocuments = store.getDocuments();
+  auto  afterDocuments  = beforeDocuments;
+
+  for (auto& document : documents) {
+    const auto existing = std::ranges::find(
+        afterDocuments, document.getPath(), &SILICON::project::Document::getPath);
+    if (existing == afterDocuments.end())
+      afterDocuments.push_back(std::move(document));
+    else
+      *existing = std::move(document);
+  }
+
+  SILICON::project::ProjectDependencyGraph beforeGraph;
+  beforeGraph.rebuildFromProject(beforeDocuments);
+  SILICON::project::ProjectDependencyGraph afterGraph;
+  afterGraph.rebuildFromProject(afterDocuments);
+
+  auto apply = [this, afterDocuments, afterGraph, activatePath] {
+    SILICON::project::DocumentStore::active().setDocuments(afterDocuments);
+    dependencyGraph = afterGraph;
+    rebuildProjectTree();
+    switchToDocument(activatePath, true);
   };
-  auto restore = [this, oldDocument, targetPath, sourcePath] {
-    if (oldDocument) {
-      // Leave the generated target first so saving the active editor cannot
-      // immediately overwrite the document snapshot being restored.
-      switchToDocument(sourcePath, true);
-      if (oldDocument->getType() != SILICON::project::DocumentType::Code)
-        dependencyGraph.replaceDocumentDependencies(targetPath,
-                                                    oldDocument->getContents());
-      SILICON::project::DocumentStore::active().upsertDocument(*oldDocument);
-      rebuildProjectTree();
-    } else if (SILICON::project::DocumentStore::active().contains(targetPath)) {
-      removeDocument(targetPath);
-      switchToDocument(sourcePath, true);
-    }
+  auto restore = [this, beforeDocuments, beforeGraph, sourcePath] {
+    if (SILICON::project::DocumentStore::active().contains(sourcePath))
+      switchToDocument(sourcePath, false);
+    SILICON::project::DocumentStore::active().setDocuments(beforeDocuments);
+    dependencyGraph = beforeGraph;
+    rebuildProjectTree();
+    switchToDocument(sourcePath, true);
   };
-  undoStack->push(new ConversionCommand(commandText, restore, apply));
+  undoStack->push(new ConversionCommand(commandText, std::move(restore),
+                                        std::move(apply)));
 }
 
 void LogiFlowWindow::convertActiveSubcircuitToVerilog()
@@ -710,29 +847,62 @@ void LogiFlowWindow::convertActiveVerilogToSubcircuit()
              != SILICON::project::CodeFileType::Verilog)
     throw std::runtime_error("Only Verilog code files can be converted to subcircuits");
 
-  auto circuit    = SILICON::yosys::importSingleModuleVerilog(existing->getContents());
-  const auto slug = circuit.getName();
-  const auto path = SILICON::project::subcircuitPathForSlug(slug);
-  auto       json = nlohmann::ordered_json::object();
-  json["circuit"] = nlohmann::json::parse(circuit.serialize());
-  json["graphicalComponent"] =
-      graphicalSubcircuitMetadataToJson(GraphicalSubcircuitMetadata{});
-  diagramScene->clear(false, false);
-  diagramScene->setSubcircuitDocumentMode(true);
-  diagramScene->deserialize(json.dump(), GUIComponentFactory::instance(),
-                            ComponentRegistry::instance());
-  auto sceneJson                  = diagramScene->serialize();
-  auto completed                  = nlohmann::ordered_json::parse(sceneJson);
-  completed["graphicalComponent"] = graphicalSubcircuitMetadataToJson(
-      synchronizeGraphicalSubcircuitMetadata(sceneJson, GraphicalSubcircuitMetadata{}));
-  const auto result = preparedSubcircuitDocument(path, completed.dump(2));
-  auto       commit = [this, result, sourcePath] {
-    commitConvertedDocument(result, sourcePath, tr("Convert to Subcircuit"));
+  const auto designJson = SILICON::yosys::elaborateHierarchy(
+      SILICON::yosys::readVerilog(existing->getContents()));
+  const auto modules = SILICON::yosys::moduleDependencyGraph(designJson);
+  if (modules.modules().empty())
+    throw std::runtime_error("Verilog source must declare at least one module");
+  // Validate the complete design before opening the selector so recursive source
+  // hierarchies fail with a normal conversion error instead of from a UI callback.
+  static_cast<void>(modules.dependencyOrder(modules.modules()));
+
+  const auto selectedRoots = selectVerilogModules(this, modules);
+  if (!selectedRoots || selectedRoots->empty())
+    return;
+  const auto exportOrder = modules.dependencyOrder(*selectedRoots);
+
+  for (const auto& module : exportOrder) {
+    if (!SILICON::project::isValidSubcircuitSlug(module))
+      throw std::runtime_error(std::format(
+          "Verilog module '{}' cannot be used as a project subcircuit name", module));
+  }
+
+  std::vector<SILICON::project::Document> generated;
+  generated.reserve(exportOrder.size());
+  for (const auto& module : exportOrder) {
+    auto circuit =
+        std::make_shared<Circuit>(SILICON::yosys::deserialize(designJson, module));
+    DiagramScene generatedScene;
+    generatedScene.setSubcircuitDocumentMode(true);
+    generatedScene.loadCircuit(std::move(circuit), GUIComponentFactory::instance(),
+                               false);
+
+    auto sceneJson = generatedScene.serialize();
+    auto completed = nlohmann::ordered_json::parse(sceneJson);
+    completed["graphicalComponent"] = graphicalSubcircuitMetadataToJson(
+        synchronizeGraphicalSubcircuitMetadata(sceneJson,
+                                               GraphicalSubcircuitMetadata{}));
+    generated.push_back(preparedSubcircuitDocument(
+        SILICON::project::subcircuitPathForSlug(module), completed.dump(2)));
+  }
+
+  const auto activatePath =
+      SILICON::project::subcircuitPathForSlug(selectedRoots->front());
+  auto commit = [this, generated, sourcePath, activatePath]() mutable {
+    commitConvertedDocuments(std::move(generated), sourcePath, activatePath,
+                             tr("Convert Verilog Modules to Subcircuits"));
   };
-  if (hasDocument(path)) {
+
+  QStringList conflicts;
+  for (const auto& document : generated)
+    if (hasDocument(document.getPath()))
+      conflicts.push_back(QString::fromStdString(document.getPath()));
+
+  if (!conflicts.empty()) {
     SILICON::ui::inputDialog::question(
-        this, tr("Replace Subcircuit"),
-        tr("'%1' already exists. Replace it?").arg(QString::fromStdString(path)),
+        this, tr("Replace Subcircuits"),
+        tr("The following subcircuits already exist and will be replaced:\n\n%1")
+            .arg(conflicts.join('\n')),
         std::move(commit));
   } else {
     commit();
