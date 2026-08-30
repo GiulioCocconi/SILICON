@@ -106,8 +106,10 @@ public:
    */
   explicit DiagramScene(QObject* parent = nullptr);
 
-    void setDocumentStore(SILICON::project::DocumentStore* documents) noexcept;
-    [[nodiscard]] SILICON::project::DocumentStore* documentStore() const noexcept;
+  void setDocumentStore(SILICON::project::DocumentStore* documents) noexcept;
+  [[nodiscard]] SILICON::project::DocumentStore* documentStore() const noexcept;
+  void setCircuitResolver(const CircuitResolver* resolver) noexcept;
+  [[nodiscard]] const CircuitResolver* circuitResolver() const noexcept;
 
   /**
    * @brief Sets the interaction mode.
@@ -316,6 +318,10 @@ public:
   void deserialize(const std::string& jsonStr, GUIComponentFactory& guiFactory,
                    const ComponentRegistry& coreRegistry);
 
+  /** Replaces the scene with an autoplaced view of an existing core circuit. */
+  void loadCircuit(std::shared_ptr<Circuit> circuit, GUIComponentFactory& guiFactory,
+                   bool resolveSubcircuitMetadata = true);
+
   /**
    * @brief Inserts a clipboard selection payload into the current scene.
    *
@@ -499,7 +505,8 @@ private:
   /** @brief Whether this scene currently represents a subcircuit document. */
   bool subcircuitDocumentMode = false;
 
-    SILICON::project::DocumentStore* documents = nullptr;
+  SILICON::project::DocumentStore* documents = nullptr;
+  const CircuitResolver*           resolver  = nullptr;
 
   /** @brief Component being placed (shadow) */
   GraphicalComponent* componentToBeDrawn = nullptr;

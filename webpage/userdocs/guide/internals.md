@@ -159,16 +159,22 @@ Code documents store their source directly in entries such as `code/adder.v`. Ve
 the currently registered language. Extensions and document categories remain project
 metadata, while display names and syntax-highlighter definitions are mapped in the UI.
 Converting a subcircuit to Verilog creates or replaces
-the corresponding code document; converting it back creates or replaces the subcircuit
-document. Editing a code document hides circuit-only tools and disables simulation.
+the corresponding code document. Converting a single-module Verilog file back creates or
+replaces that subcircuit directly. For a multi-module file, the editor presents the module
+dependency graph and accepts one or more roots; each selected root and its recursive
+dependencies are created together as one undoable batch. Editing a code document hides
+circuit-only tools and disables simulation.
 
 A `Document` contains only its path and persisted contents. Logical circuit data is
 derived deterministically from those contents, so an editor cannot leave a second,
 in-memory semantic representation stale.
 
-Subcircuit placeholders resolve their slug to a canonical path using the explicitly
-provided project `DocumentStore`. Definition loading returns a core `SubcircuitDefinition`
-containing the implementation circuit and its interface. Subcircuit interfaces use
+The Qt-independent Circuit document parser is the authoritative interpretation of
+persisted Circuit contents. It derives the reusable interface from boundary components,
+removes those editor-facing boundaries from the implementation, and constructs no scene
+or graphics objects. Subcircuit placeholders use an explicit `CircuitResolver`; the
+project implementation reads only its owning `ProjectContext`. Resolution returns a core
+`SubcircuitDefinition` containing the implementation circuit and its interface. Interfaces use
 named `CircuitPort` values, keeping each port name attached to its bus for elaboration
 and hierarchical Yosys export rather than maintaining parallel name arrays.
 Elaboration operates only on subcircuit documents and never invokes Yosys.
@@ -228,10 +234,13 @@ and [FST adapter](https://github.com/GiulioCocconi/SILICON/blob/main/src/core/si
 Yosys JSON remains the netlist transport format. `Circuit::getYosysJson()` and
 `Circuit::deserializeYosys()` run in process and produce or consume the shape written by
 Yosys' `write_json` command. Native builds can additionally launch an external Yosys
-process: `importVerilog()` runs a controlled Verilog-to-JSON script and `exportVerilog()`
-runs a JSON-to-structural-Verilog script. Yosys is invoked directly, without a shell, and
-is not embedded in SILICON. By default the `yosys` executable is resolved from `PATH` on
-every native platform; `ToolOptions::executable` is an explicit override.
+process. Verilog is consumed *only* to obtain Yosys JSON: `readVerilog()` runs a controlled
+Verilog-to-JSON script and returns the JSON string, which is the sole operation that reads
+Verilog. Every other external Yosys operation works on that JSON. `importVerilog()` is
+`deserialize(readVerilog(...))`, and `exportVerilog()` runs a JSON-to-structural-Verilog
+script. Yosys is invoked directly, without a shell, and is not embedded in SILICON. By
+default the `yosys` executable is resolved from `PATH` on every native platform;
+`ToolOptions::executable` is an explicit override.
 
 Three layers have deliberately different jobs:
 
@@ -392,12 +401,13 @@ Emscripten builds cannot launch an external Yosys process, so `runScript()`,
 `importVerilog()`, and `exportVerilog()` report a platform-availability error. In-process
 JSON import/export, including exact `SILICON_*` round trips, remains available.
 
-Project subcircuits are hierarchical on export: each definition is emitted once as a
-module and instances become module-typed cells; recursive definitions and duplicate
-module names fail. Import is intentionally narrower. It reconstructs one selected module
-and does not turn arbitrary module-instance cells back into project subcircuits. Flatten
-or otherwise lower a hierarchical design in an external Yosys run before importing it
-when the selected module contains such instances.
+Project subcircuits are hierarchical in both directions. On export, each definition is
+emitted once as a module and instances become module-typed cells. On multi-module import,
+SILICON lowers the complete design without flattening, derives module dependencies from
+module-typed cells, and reconstructs those cells as project subcircuit instances. The UI
+creates selected roots and their dependency closure in dependency-first order, preserving
+shared definitions as one project document. Recursive definitions and duplicate module
+names fail.
 
 Unknown cells are never silently converted to black boxes. An unsupported cell, memory,
 inout port, high-impedance literal, malformed connection set, ambiguous module choice, or

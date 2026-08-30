@@ -140,12 +140,9 @@ void Circuit::makeInteractive()
 
 Component_ptr Circuit::getComponentByVertexId(VertexDescriptor vertexId) const
 {
-  auto it = std::ranges::find_if(ownedComponents, [&](const auto& comp) {
-    auto id = getVertexId(comp.get());
-    return id && *id == vertexId;
-  });
-
-  return it != ownedComponents.end() ? *it : nullptr;
+  if (vertexId >= boost::num_vertices(graph))
+    return nullptr;
+  return graph[vertexId].component;
 }
 
 void Circuit::updateComponentIO(const Component_ptr& component)
@@ -822,7 +819,7 @@ Circuit Circuit::deserializeYosys(const std::string_view                json,
 }
 
 Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry& reg,
-                             SILICON::project::DocumentStore* documents)
+                             const CircuitResolver* resolver)
 {
   const auto j = nlohmann::json::parse(jsonStr);
 
@@ -898,7 +895,7 @@ Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry
       auto       component = reg.create(type);
 
       if (auto subcircuit = std::dynamic_pointer_cast<SubcircuitComponent>(component))
-        subcircuit->setDocumentStore(documents);
+        subcircuit->setCircuitResolver(resolver);
 
       if (!component) {
         throw std::runtime_error(

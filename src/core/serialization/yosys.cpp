@@ -35,7 +35,7 @@
 #include <core/component.hpp>
 #include <core/serialization/component_registry.hpp>
 #include <core/subcircuit.hpp>
-#include <core/subcircuitDefinition.hpp>
+#include <core/circuitDocument.hpp>
 #include <utils/num_formatting.hpp>
 
 namespace SILICON::yosys {
@@ -218,8 +218,8 @@ namespace {
     }
 
     [[nodiscard]] ModuleInterface
-    ensureSubcircuit(const std::string_view           slug,
-                     SILICON::project::DocumentStore* documents)
+    ensureSubcircuit(const std::string_view slug,
+                     const SILICON::core::CircuitResolver* resolver)
     {
       const std::string slugString(slug);
       if (slugString.empty())
@@ -229,10 +229,9 @@ namespace {
         return it->second;
       }
 
-      if (!documents)
-        throw std::runtime_error("Subcircuit serialization requires project documents");
-      auto definition =
-          loadSubcircuitDefinition(slugString, ComponentRegistry::instance(), *documents);
+      if (!resolver)
+        throw std::runtime_error("Subcircuit serialization requires a circuit resolver");
+      auto definition = resolver->resolve(slugString);
 
       ModuleInterface interface;
       interface.moduleName = slugString;
@@ -411,9 +410,9 @@ void SerializationContext::addPort(std::string name, const std::string_view dire
 
 void SerializationContext::addSubcircuitInstance(
     const std::string_view slug, const std::vector<Bus>& inputs,
-    const std::vector<Bus>& outputs, SILICON::project::DocumentStore* documents)
+    const std::vector<Bus>& outputs, const SILICON::core::CircuitResolver* resolver)
 {
-  const auto interface = impl.design->ensureSubcircuit(slug, documents);
+  const auto interface = impl.design->ensureSubcircuit(slug, resolver);
   if (inputs.size() != interface.inputs.size()
       || outputs.size() != interface.outputs.size()) {
     throw std::runtime_error(std::format("Subcircuit '{}' interface mismatch: expected "

@@ -64,7 +64,7 @@ public:
    */
   explicit Session(std::shared_ptr<Circuit>     sourceCircuit,
                    Simulator::CancellationCheck     isCancelled = {},
-                   SILICON::project::DocumentStore* documents   = nullptr);
+                   const SILICON::core::CircuitResolver* resolver = nullptr);
 
   ~Session() = default;
 

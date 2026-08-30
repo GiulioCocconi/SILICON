@@ -56,6 +56,7 @@ struct ShortcutSetting;
 class ProjectTree;
 
 #include <core/projectContext.hpp>
+#include <core/projectCircuitResolver.hpp>
 #include <core/serialization/projectFile.hpp>
 
 #ifdef __EMSCRIPTEN__
@@ -283,6 +284,10 @@ private:
   void               commitConvertedDocument(SILICON::project::Document document,
                                              const std::string&         sourcePath,
                                              const QString&             commandText);
+  void commitConvertedDocuments(std::vector<SILICON::project::Document> documents,
+                                const std::string& sourcePath,
+                                const std::string& activatePath,
+                                const QString&     commandText);
   [[nodiscard]] bool isCodeDocumentActive() const;
 
   /**
@@ -569,6 +574,7 @@ private:
   /** @brief Tracks code edits already flushed to DocumentStore but not to disk. */
   bool                                     codeDocumentsDirty = false;
   SILICON::project::ProjectContext projectContext;
+  SILICON::project::ProjectCircuitResolver circuitResolver{projectContext};
 
   /** @brief Lazily shown application about dialog. */
   AboutDialog* aboutDialog = nullptr;

@@ -87,7 +87,7 @@ Copyright (c) 2026. Giulio Cocconi
 #include <core/serialization/projectFile.hpp>
 #include <core/serialization/yosys.hpp>
 #include <core/simulator.hpp>
-#include <core/subcircuitDefinition.hpp>
+#include <core/circuitDocument.hpp>
 #include <logging/logger.hpp>
 #include <ui/common/aboutDialog.hpp>
 #include <ui/common/codeEditor.hpp>
@@ -202,7 +202,8 @@ LogiFlowWindow::LogiFlowWindow()
   splitDockWidget(componentsDock, propertyDock, Qt::Vertical);
 
   diagramScene = new DiagramScene(this);
-    diagramScene->setDocumentStore(&projectContext.documents);
+  diagramScene->setDocumentStore(&projectContext.documents);
+  diagramScene->setCircuitResolver(&circuitResolver);
   diagramView  = new DiagramView(this);
   diagramView->setScene(diagramScene);
   codeEditor = new CodeEditor(this);
@@ -224,8 +225,9 @@ LogiFlowWindow::LogiFlowWindow()
           &LogiFlowWindow::selectionChanged);
 
   layout->addWidget(editorStack);
-    componentCatalogOverlay = new ComponentCatalogOverlay(
-        diagramScene, projectContext.documents, diagramView->viewport());
+  componentCatalogOverlay = new ComponentCatalogOverlay(
+      diagramScene, projectContext.documents, &circuitResolver,
+      diagramView->viewport());
   diagramView->viewport()->installEventFilter(this);
   updateComponentCatalogGeometry();
   initializeProjectTree();

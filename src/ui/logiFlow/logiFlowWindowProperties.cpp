@@ -87,7 +87,7 @@
 #include <core/serialization/projectFile.hpp>
 #include <core/serialization/yosys.hpp>
 #include <core/simulator.hpp>
-#include <core/subcircuitDefinition.hpp>
+#include <core/circuitDocument.hpp>
 #include <logging/logger.hpp>
 #include <ui/common/aboutDialog.hpp>
 #include <ui/common/codeEditor.hpp>

@@ -88,15 +88,6 @@ parseGraphicalSubcircuitMetadata(std::string_view sceneJson);
 [[nodiscard]] bool subcircuitHasGraphicalMetadata(std::string_view sceneJson);
 
 /**
- * @brief Builds the core circuit JSON for a graphical subcircuit document.
- *
- * Graphical boundary I/O components are editor-only; this strips their associated
- * core vertices by using the visual component categories and vertex IDs.
- */
-[[nodiscard]] std::optional<std::string>
-graphicalSubcircuitCoreCircuitJson(std::string_view sceneJson);
-
-/**
  * @brief Reconciles saved graphical metadata with the current subcircuit document.
  *
  * Boundary ports are re-derived from the circuit contents while matching existing

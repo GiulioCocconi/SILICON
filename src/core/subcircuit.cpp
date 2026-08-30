@@ -18,11 +18,11 @@
 
 #include "subcircuit.hpp"
 
-#include "subcircuitDefinition.hpp"
+#include "circuitDocument.hpp"
 #include <stdexcept>
 #include <vector>
 
-#include <core/projectDocument.hpp>
+#include <core/circuitDocument.hpp>
 #include <core/serialization/component_registry.hpp>
 
 namespace SILICON::core {
@@ -41,44 +41,28 @@ namespace {
 
 }  // namespace
 
-SubcircuitComponent::SubcircuitComponent(SILICON::project::DocumentStore* documents)
-  : documents(documents)
+SubcircuitComponent::SubcircuitComponent(const CircuitResolver* resolver)
+  : resolver(resolver)
 {
   defineProperty(std::string("slug"), std::string(), [this](const PropertyValue& value) {
     configureFromSlug(std::get<std::string>(value));
     return value;
   });
-
-  subscribeToDocuments();
 }
 
-void SubcircuitComponent::subscribeToDocuments()
+std::shared_ptr<SubcircuitComponent>
+SubcircuitComponent::imported(std::string slug, std::vector<std::string> inputNames,
+                              std::vector<Bus> inputs,
+                              std::vector<std::string> outputNames,
+                              std::vector<Bus> outputs)
 {
-  if (!documents || registryListenerId != 0)
-    return;
-  registryListenerId = documents->addListener(
-      [this](const SILICON::project::DocumentChange& change) {
-        const auto slug =
-            getPropertyValue<std::string>("slug").value_or(std::string());
-        const bool affectsConfiguredDocument =
-            SILICON::project::isValidSubcircuitSlug(slug) && change.path
-            && *change.path == SILICON::project::subcircuitPathForSlug(slug);
-        if (change.kind == SILICON::project::DocumentChangeKind::Reset
-            || affectsConfiguredDocument)
-          reloadFromRegistry();
-      });
-}
-
-void SubcircuitComponent::unsubscribeFromDocuments()
-{
-  if (documents && registryListenerId != 0)
-    documents->removeListener(registryListenerId);
-  registryListenerId = 0;
-}
-
-SubcircuitComponent::~SubcircuitComponent()
-{
-  unsubscribeFromDocuments();
+  auto component = std::make_shared<SubcircuitComponent>();
+  component->properties["slug"] = std::move(slug);
+  component->transientInputNames  = std::move(inputNames);
+  component->transientOutputNames = std::move(outputNames);
+  component->setInputs(inputs);
+  component->setOutputs(outputs);
+  return component;
 }
 
 void SubcircuitComponent::clearResolvedCircuit()
@@ -95,35 +79,32 @@ void SubcircuitComponent::configureFromSlug(std::string_view slug)
     return;
   }
 
-  if (!documents) {
+  if (!resolver) {
     clearResolvedCircuit();
     return;
   }
 
-  auto definition = SILICON::core::loadSubcircuitDefinition(
-      slug, ComponentRegistry::instance(), *documents);
+  auto definition = resolver->resolve(slug);
   auto externalInputs  = makeExternalBuses(definition.inputs);
   auto externalOutputs = makeExternalBuses(definition.outputs);
   setInputs(externalInputs);
   setOutputs(externalOutputs);
 }
 
-void SubcircuitComponent::setDocumentStore(SILICON::project::DocumentStore* newDocuments)
+void SubcircuitComponent::setCircuitResolver(const CircuitResolver* newResolver)
 {
-  if (documents == newDocuments)
+  if (resolver == newResolver)
     return;
-  unsubscribeFromDocuments();
-  documents = newDocuments;
-  subscribeToDocuments();
-  reloadFromRegistry();
+  resolver = newResolver;
+  reloadFromResolver();
 }
 
-SILICON::project::DocumentStore* SubcircuitComponent::documentStore() const noexcept
+const CircuitResolver* SubcircuitComponent::circuitResolver() const noexcept
 {
-  return documents;
+  return resolver;
 }
 
-void SubcircuitComponent::reloadFromRegistry()
+void SubcircuitComponent::reloadFromResolver()
 {
   configureFromSlug(getPropertyValue<std::string>("slug").value_or(std::string()));
 }

@@ -69,7 +69,8 @@ set(COMMON_SOURCE_FILES
         ${src_dir}/core/flipflops.cpp
         ${src_dir}/core/register.cpp
         ${src_dir}/core/subcircuit.cpp
-        ${src_dir}/core/subcircuitDefinition.cpp
+        ${src_dir}/core/circuitDocument.cpp
+        ${src_dir}/core/projectCircuitResolver.cpp
         ${src_dir}/core/elaboration.cpp
         ${src_dir}/core/simulationSession.cpp
         ${src_dir}/core/component.cpp
@@ -342,7 +343,7 @@ if ((CMAKE_CXX_COMPILER_ID MATCHES "Clang") OR EMSCRIPTEN)
     target_link_libraries(silicon_core PUBLIC range-v3)
 endif ()
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets SvgWidgets Test)
+find_package(Qt6 REQUIRED COMPONENTS Widgets SvgWidgets)
 find_package(KF6SyntaxHighlighting REQUIRED)
 if (UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
     find_package(Fontconfig QUIET)

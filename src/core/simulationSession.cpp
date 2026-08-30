@@ -31,9 +31,9 @@ using namespace SILICON::waveform::fst;
 
 Session::Session(std::shared_ptr<Circuit>     sourceCircuit,
                  Simulator::CancellationCheck     isCancelled,
-                 SILICON::project::DocumentStore* documents)
+                 const SILICON::core::CircuitResolver* resolver)
   : sourceCircuit(std::move(sourceCircuit)),
-    elaborator(ComponentRegistry::instance(), documents)
+    elaborator(ComponentRegistry::instance(), resolver)
 {
   if (!this->sourceCircuit)
     throw std::invalid_argument("Session requires a valid Circuit pointer");

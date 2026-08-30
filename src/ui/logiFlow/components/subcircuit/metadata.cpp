@@ -31,7 +31,7 @@
 
 #include <core/circuit.hpp>
 #include <core/serialization/component_registry.hpp>
-#include <core/subcircuitDefinition.hpp>
+#include <core/circuitDocument.hpp>
 #include <ui/common/enums.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
 
@@ -120,59 +120,6 @@ enum class BoundaryRole { None, Input, Output };
   return inputPort ? role == BoundaryRole::Input : role == BoundaryRole::Output;
 }
 
-[[nodiscard]] std::unordered_set<int> boundaryVertexIds(const nlohmann::json& visual)
-{
-  std::unordered_set<int> vertexIds;
-
-  const auto componentsIt = visual.find("components");
-  if (componentsIt == visual.end() || !componentsIt->is_array())
-    return vertexIds;
-
-  for (const auto& component : *componentsIt) {
-    if (!component.contains("vertexId") || !component["vertexId"].is_number_integer())
-      continue;
-
-    if (boundaryRoleForType(component.value("type", std::string()))
-        != BoundaryRole::None) {
-      vertexIds.insert(component["vertexId"].get<int>());
-    }
-  }
-
-  return vertexIds;
-}
-
-[[nodiscard]] std::optional<nlohmann::json>
-graphicalCoreCircuitJsonObject(const nlohmann::json& document)
-{
-  const auto circuitIt = document.find("circuit");
-  if (circuitIt == document.end() || !circuitIt->is_object())
-    return std::nullopt;
-
-  auto coreCircuit = *circuitIt;
-
-  const auto visualIt = document.find("visual");
-  if (visualIt == document.end() || !visualIt->is_object())
-    return coreCircuit;
-
-  const auto vertexIds = boundaryVertexIds(*visualIt);
-  if (vertexIds.empty())
-    return coreCircuit;
-
-  if (auto componentsIt = coreCircuit.find("components");
-      componentsIt != coreCircuit.end() && componentsIt->is_array()) {
-    componentsIt->erase(std::remove_if(componentsIt->begin(), componentsIt->end(),
-                                       [&vertexIds](const nlohmann::json& component) {
-                                         return component.contains("id")
-                                                && component["id"].is_number_integer()
-                                                && vertexIds.contains(
-                                                    component["id"].get<int>());
-                                       }),
-                        componentsIt->end());
-  }
-
-  return coreCircuit;
-}
-
 [[nodiscard]] nlohmann::json metadataToJson(const GraphicalSubcircuitMetadata& metadata)
 {
   nlohmann::json inputs = nlohmann::json::array();
@@ -236,17 +183,14 @@ graphicalCoreCircuitJsonObject(const nlohmann::json& document)
 interfaceBusWireIdsFromDocument(const nlohmann::json& document, const bool inputPort)
 {
   try {
-    const auto coreCircuit = graphicalCoreCircuitJsonObject(document);
-    if (!coreCircuit)
-      return {};
-    const auto coreJson = coreCircuit->dump();
-    const auto circuit  = Circuit::deserialize(coreJson, ComponentRegistry::instance());
-    const auto selectedBuses = inputPort ? circuit.getInputs() : circuit.getOutputs();
+    const auto definition =
+        parseCircuitDocument(document.dump(), ComponentRegistry::instance());
+    const auto& selectedPorts = inputPort ? definition.inputs : definition.outputs;
 
     std::vector<BusWireIds> ids;
-    ids.reserve(selectedBuses.size());
-    for (const auto& bus : selectedBuses)
-      ids.push_back(busWireIds(bus));
+    ids.reserve(selectedPorts.size());
+    for (const auto& port : selectedPorts)
+      ids.push_back(busWireIds(port.bus));
     return ids;
   } catch (const std::exception&) {
     return {};
@@ -497,19 +441,6 @@ parseGraphicalSubcircuitMetadata(std::string_view sceneJson)
 bool subcircuitHasGraphicalMetadata(std::string_view sceneJson)
 {
   return parseGraphicalSubcircuitMetadata(sceneJson).has_value();
-}
-
-std::optional<std::string> graphicalSubcircuitCoreCircuitJson(std::string_view sceneJson)
-{
-  try {
-    const auto document    = nlohmann::json::parse(sceneJson);
-    const auto coreCircuit = graphicalCoreCircuitJsonObject(document);
-    if (!coreCircuit)
-      return std::nullopt;
-    return coreCircuit->dump();
-  } catch (const nlohmann::json::exception&) {
-    return std::nullopt;
-  }
 }
 
 GraphicalSubcircuitMetadata synchronizeGraphicalSubcircuitMetadata(

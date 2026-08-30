@@ -123,8 +123,10 @@ int main()
     writeFile(verilogPath, verilog);
 
     const std::string importedSource = readFile(verilogPath);
-    const Circuit     restored =
-        SILICON::yosys::importVerilog(importedSource, TopModule, options);
+    const auto        importedJson =
+        SILICON::yosys::readVerilog(importedSource, options);
+    const auto restored = SILICON::yosys::deserialize(
+        SILICON::yosys::elaborateHierarchy(importedJson, options), TopModule);
     writeFile(circuitJsonPath, restored.serialize());
 
     std::cout << "Exported SILICON counter to " << verilogPath << '\n';
