@@ -22,6 +22,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -31,6 +32,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <core/sourceFile.hpp>
 #include <core/wire.hpp>
 
 namespace SILICON::core {
@@ -200,6 +202,20 @@ struct ScriptResult {
  * embedding an arbitrarily large tool transcript.
  */
 [[nodiscard]] std::string readVerilog(std::string_view   source,
+                                      const ToolOptions& options = {});
+
+/**
+ * @brief Lower one entry file from a set of named Verilog sources into Yosys JSON.
+ *
+ * Every source is materialized in the same temporary workspace, preserving its
+ * relative path, so Yosys can resolve transitive `include` directives. Only @p entryPath
+ * is passed to `read_verilog`; files that are not included remain outside the design.
+ *
+ * @throws std::invalid_argument If paths are unsafe or duplicated, or if @p entryPath
+ * does not name one of @p sources.
+ */
+[[nodiscard]] std::string readVerilog(std::span<const SILICON::core::SourceFile> sources,
+                                      std::string_view entryPath,
                                       const ToolOptions& options = {});
 
 /**
