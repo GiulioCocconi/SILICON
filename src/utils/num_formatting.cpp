@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <cctype>
 #include <format>
+#include <limits>
 #include <map>
 #include <ranges>
 #include <stdexcept>
@@ -174,7 +175,137 @@ namespace {
     return firstNonZero == std::string::npos ? "0" : result.substr(firstNonZero);
   }
 
+  [[nodiscard]] std::uint64_t widthMask(const std::size_t width)
+  {
+    return width == 64 ? std::numeric_limits<std::uint64_t>::max()
+                       : (std::uint64_t{1} << width) - 1;
+  }
+
+  [[nodiscard]] std::optional<unsigned> digitValue(const char     character,
+                                                   const unsigned base)
+  {
+    const char     normalized = upper(character);
+    const unsigned value      = normalized >= '0' && normalized <= '9'
+                                    ? static_cast<unsigned>(normalized - '0')
+                                : normalized >= 'A' && normalized <= 'F'
+                                    ? static_cast<unsigned>(normalized - 'A' + 10)
+                                    : base;
+    return value < base ? std::optional(value) : std::nullopt;
+  }
+
+  [[nodiscard]] std::optional<std::uint64_t> parseMagnitude(const std::string_view digits,
+                                                            const unsigned         base,
+                                                            const std::uint64_t maximum)
+  {
+    if (digits.empty())
+      return std::nullopt;
+    std::uint64_t result = 0;
+    for (const char character : digits) {
+      const auto digit = digitValue(character, base);
+      if (!digit || *digit > maximum || result > (maximum - *digit) / base)
+        return std::nullopt;
+      result = result * base + *digit;
+    }
+    return result;
+  }
+
+  [[nodiscard]] std::string unsignedToBase(std::uint64_t value, const unsigned base)
+  {
+    constexpr std::string_view digits = "0123456789ABCDEF";
+    if (value == 0)
+      return "0";
+    std::string result;
+    while (value != 0) {
+      result.push_back(digits[static_cast<std::size_t>(value % base)]);
+      value /= base;
+    }
+    std::ranges::reverse(result);
+    return result;
+  }
+
 }  // namespace
+
+std::string formatInteger(std::uint64_t value, const BusValueFormat format,
+                          const std::size_t bitWidth)
+{
+  if (bitWidth == 0 || bitWidth > 64)
+    throw std::invalid_argument("Integer bit width must be between 1 and 64");
+
+  const auto mask = widthMask(bitWidth);
+  value &= mask;
+
+  switch (format) {
+    case BusValueFormat::Signed: {
+      const bool negative = (value & (std::uint64_t{1} << (bitWidth - 1))) != 0;
+      if (!negative)
+        return unsignedToBase(value, 10);
+      const auto magnitude = ((~value) & mask) + 1;
+      return "-" + unsignedToBase(magnitude, 10);
+    }
+    case BusValueFormat::Unsigned: return unsignedToBase(value, 10);
+    case BusValueFormat::Bin: {
+      auto result = unsignedToBase(value, 2);
+      if (result.size() < bitWidth)
+        result.insert(result.begin(), bitWidth - result.size(), '0');
+      return result;
+    }
+    case BusValueFormat::Oct: return unsignedToBase(value, 8);
+    case BusValueFormat::Hex: return unsignedToBase(value, 16);
+    case BusValueFormat::Raw:
+    case BusValueFormat::Unknown:
+      throw std::invalid_argument("Invalid integer output format");
+  }
+  throw std::invalid_argument("Invalid integer output format");
+}
+
+std::optional<std::uint64_t> parseInteger(std::string_view     text,
+                                          const BusValueFormat format,
+                                          const std::size_t    bitWidth)
+{
+  if (bitWidth == 0 || bitWidth > 64)
+    return std::nullopt;
+  text = trim(text);
+  if (text.empty())
+    return std::nullopt;
+
+  const auto mask = widthMask(bitWidth);
+  if (format == BusValueFormat::Signed) {
+    bool negative = false;
+    if (text.front() == '+' || text.front() == '-') {
+      negative = text.front() == '-';
+      text.remove_prefix(1);
+    }
+    const auto positiveMaximum =
+        bitWidth == 64
+            ? static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())
+            : (std::uint64_t{1} << (bitWidth - 1)) - 1;
+    const auto negativeMaximum = std::uint64_t{1} << (bitWidth - 1);
+    const auto magnitude =
+        parseMagnitude(text, 10, negative ? negativeMaximum : positiveMaximum);
+    if (!magnitude)
+      return std::nullopt;
+    return negative ? ((~*magnitude) + 1) & mask : *magnitude;
+  }
+
+  unsigned base = 0;
+  switch (format) {
+    case BusValueFormat::Unsigned: base = 10; break;
+    case BusValueFormat::Bin: base = 2; break;
+    case BusValueFormat::Oct: base = 8; break;
+    case BusValueFormat::Hex: base = 16; break;
+    default: return std::nullopt;
+  }
+
+  if (format == BusValueFormat::Unsigned && text.front() == '+')
+    text.remove_prefix(1);
+  if (format == BusValueFormat::Bin && startsWithIgnoreCase(text, "0b"))
+    text.remove_prefix(2);
+  else if (format == BusValueFormat::Oct && startsWithIgnoreCase(text, "0o"))
+    text.remove_prefix(2);
+  else if (format == BusValueFormat::Hex && startsWithIgnoreCase(text, "0x"))
+    text.remove_prefix(2);
+  return parseMagnitude(text, base, mask);
+}
 
 BusValue maxValueForBusWidth(const std::size_t width)
 {

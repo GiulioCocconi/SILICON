@@ -89,6 +89,7 @@ Copyright (c) 2026. Giulio Cocconi
 #include <core/subcircuitDefinition.hpp>
 #include <logging/logger.hpp>
 #include <ui/common/aboutDialog.hpp>
+#include <ui/common/binaryEditor.hpp>
 #include <ui/common/codeEditor.hpp>
 #include <ui/common/diagramScene/diagramScene.hpp>
 #include <ui/common/diagramView.hpp>
@@ -191,7 +192,9 @@ void LogiFlowWindow::resetProjectState()
   currentProjectAssets.clear();
   activeDocumentPath = defaultMainCircuitPath();
   codeDocumentsDirty = false;
+  binaryDocumentsDirty = false;
   codeEditor->clearFileType();
+  binaryEditor->setData({});
   editorStack->setCurrentWidget(diagramView);
   diagramScene->clear();
   diagramScene->setCircuit(std::make_shared<Circuit>());
@@ -227,6 +230,8 @@ bool LogiFlowWindow::copySelectionToClipboard()
 
 void LogiFlowWindow::copy()
 {
+  if (isBinaryDocumentActive())
+    return;
   if (isCodeDocumentActive()) {
     codeEditor->copy();
     return;
@@ -236,6 +241,8 @@ void LogiFlowWindow::copy()
 
 void LogiFlowWindow::cut()
 {
+  if (isBinaryDocumentActive())
+    return;
   if (isCodeDocumentActive()) {
     codeEditor->cut();
     return;
@@ -246,6 +253,8 @@ void LogiFlowWindow::cut()
 
 void LogiFlowWindow::paste()
 {
+  if (isBinaryDocumentActive())
+    return;
   if (isCodeDocumentActive()) {
     codeEditor->paste();
     return;
@@ -326,6 +335,8 @@ void LogiFlowWindow::autoPlace()
 
 void LogiFlowWindow::del()
 {
+  if (isBinaryDocumentActive())
+    return;
   if (isCodeDocumentActive()) {
     auto cursor = codeEditor->textCursor();
     if (cursor.hasSelection())
@@ -382,8 +393,8 @@ void LogiFlowWindow::loadCircuitContent(const QString&    fileName,
     SILICON::project::ProjectDependencyGraph rebuiltDependencies;
     rebuiltDependencies.rebuildFromProject(documents);
     const auto mainDocumentPath = projectFile.project.mainCircuit;
-    const auto mainDocument = std::ranges::find(
-        documents, mainDocumentPath, &SILICON::project::Document::getPath);
+    const auto mainDocument     = std::ranges::find(documents, mainDocumentPath,
+                                                    &SILICON::project::Document::getPath);
     if (mainDocument == documents.end())
       throw std::runtime_error("Main circuit payload is missing");
 
@@ -393,6 +404,8 @@ void LogiFlowWindow::loadCircuitContent(const QString&    fileName,
     currentProjectInfo     = std::move(projectFile.project);
     currentProjectAssets   = std::move(projectFile.assets);
     codeDocumentsDirty     = false;
+    binaryDocumentsDirty   = false;
+    binaryEditor->setData({});
     activeDocumentPath     = mainDocumentPath;
     dependencyGraph        = std::move(rebuiltDependencies);
     SILICON::project::DocumentStore::active().setDocuments(std::move(documents));
@@ -505,6 +518,7 @@ bool LogiFlowWindow::save()
     updateProjectTreeLabels();
     undoStack->setClean();
     codeDocumentsDirty = false;
+    binaryDocumentsDirty = false;
     return true;
   } catch (const std::exception& e) {
     SILICON::ui::inputDialog::critical(
@@ -515,8 +529,9 @@ bool LogiFlowWindow::save()
 
 void LogiFlowWindow::confirmSaveIfDirty(std::function<void()> continuation)
 {
-  if ((!undoStack || undoStack->isClean()) && !codeDocumentsDirty
-      && (!codeEditor || !codeEditor->document()->isModified())) {
+  if ((!undoStack || undoStack->isClean()) && !codeDocumentsDirty && !binaryDocumentsDirty
+      && (!codeEditor || !codeEditor->document()->isModified())
+      && (!binaryEditor || !binaryEditor->isModified())) {
     continuation();
     return;
   }
@@ -525,8 +540,8 @@ void LogiFlowWindow::confirmSaveIfDirty(std::function<void()> continuation)
       this, tr("Unsaved Changes"),
       tr("The current project has unsaved changes. Do you want to save them?"),
       tr("Save"), tr("Discard"),
-      [this, continuation = std::move(continuation)](
-          const SILICON::ui::inputDialog::Choice choice) {
+      [this, continuation =
+                 std::move(continuation)](const SILICON::ui::inputDialog::Choice choice) {
         if (choice == SILICON::ui::inputDialog::Choice::Cancel)
           return;
         if (choice == SILICON::ui::inputDialog::Choice::Primary && !save())
@@ -566,7 +581,7 @@ void LogiFlowWindow::setWireCreationMode()
 
 void LogiFlowWindow::setSimulationMode()
 {
-  if (isCodeDocumentActive())
+  if (isCodeDocumentActive() || isBinaryDocumentActive())
     return;
   diagramScene->setInteractionMode(InteractionMode::SIMULATION_MODE);
 }
@@ -594,7 +609,7 @@ void LogiFlowWindow::toggleFstTracing(bool enabled)
 {
   if (!waveformWindow)
     return;
-  if (enabled && isCodeDocumentActive()) {
+  if (enabled && (isCodeDocumentActive() || isBinaryDocumentActive())) {
     const QSignalBlocker blocker(toggleFstTraceAct);
     toggleFstTraceAct->setChecked(false);
     return;
@@ -617,9 +632,9 @@ void LogiFlowWindow::updateStatus() const
 
 void LogiFlowWindow::selectionChanged()
 {
-  if (isCodeDocumentActive()) {
+  if (isCodeDocumentActive() || isBinaryDocumentActive()) {
     rotateAct->setEnabled(false);
-    setActionsEnabled({cutAct, copyAct, pasteAct, deleteAct}, true);
+    setActionsEnabled({cutAct, copyAct, pasteAct, deleteAct}, isCodeDocumentActive());
     updatePropertyDock();
     return;
   }
@@ -646,8 +661,7 @@ void LogiFlowWindow::selectionChanged()
 
 void LogiFlowWindow::projectTreeSelectionChanged()
 {
-  auto* selectedProjectItem =
-      projectTree ? projectTree->selectedProjectItem() : nullptr;
+  auto* selectedProjectItem = projectTree ? projectTree->selectedProjectItem() : nullptr;
   if (!selectedProjectItem) {
     updatePropertyDock();
     return;
@@ -656,7 +670,8 @@ void LogiFlowWindow::projectTreeSelectionChanged()
   const auto itemKind = ProjectTree::itemKind(selectedProjectItem);
   if (itemKind == ProjectTreeItemKind::Circuit
       || itemKind == ProjectTreeItemKind::Subcircuit
-      || itemKind == ProjectTreeItemKind::CodeFile) {
+      || itemKind == ProjectTreeItemKind::CodeFile
+      || itemKind == ProjectTreeItemKind::BinaryFile) {
     const QSignalBlocker blocker(diagramScene);
     diagramScene->clearSelection();
     switchToDocument(ProjectTree::documentPath(selectedProjectItem), false);
@@ -686,26 +701,30 @@ void LogiFlowWindow::showProjectTreeContextMenu(const QPoint& position)
   QMenu stackMenu(this);
   auto* menu = &stackMenu;
 #endif
-  menu->addAction(Icon("plus"), tr("New Circuit"), this,
-                  &LogiFlowWindow::createCircuit);
+  menu->addAction(Icon("plus"), tr("New Circuit"), this, &LogiFlowWindow::createCircuit);
   menu->addAction(Icon("plus"), tr("New Subcircuit"), this,
                   &LogiFlowWindow::createSubcircuit);
   menu->addAction(Icon("code"), tr("New Code File"), this,
                   &LogiFlowWindow::createCodeFile);
+  menu->addAction(Icon("file"), tr("New Binary File"), this,
+                  &LogiFlowWindow::createBinaryFile);
 
-  auto* selectedProjectItem =
-      projectTree ? projectTree->selectedProjectItem() : nullptr;
+  auto* selectedProjectItem = projectTree ? projectTree->selectedProjectItem() : nullptr;
   if (selectedProjectItem) {
     const auto kind = ProjectTree::itemKind(selectedProjectItem);
     if (kind == ProjectTreeItemKind::Circuit || kind == ProjectTreeItemKind::Subcircuit
-        || kind == ProjectTreeItemKind::CodeFile) {
+        || kind == ProjectTreeItemKind::CodeFile
+        || kind == ProjectTreeItemKind::BinaryFile) {
       const auto path         = ProjectTree::documentPath(selectedProjectItem);
       const bool circuit      = kind == ProjectTreeItemKind::Circuit;
       const bool code         = kind == ProjectTreeItemKind::CodeFile;
+      const bool binary       = kind == ProjectTreeItemKind::BinaryFile;
       auto*      deleteAction = menu->addAction(
           Icon("delete"),
-          circuit ? tr("Delete Circuit")
-                       : (code ? tr("Delete Code File") : tr("Delete Subcircuit")),
+          circuit
+                   ? tr("Delete Circuit")
+                   : (code ? tr("Delete Code File")
+                           : (binary ? tr("Delete Binary File") : tr("Delete Subcircuit"))),
           this, &LogiFlowWindow::deleteSelectedDocument);
       deleteAction->setEnabled(path != projectMainCircuitPath());
     }
@@ -780,10 +799,68 @@ void LogiFlowWindow::createCodeFile()
               insertDocument(document, std::nullopt, true);
             };
             auto removeCreated = [this, path] { removeDocument(path); };
-            undoStack->push(new ProjectStateCommand(tr("Create Code File"),
-                                                    removeCreated, addDocument));
+            undoStack->push(new ProjectStateCommand(tr("Create Code File"), removeCreated,
+                                                    addDocument));
             dialog->accept();
           });
+  nameEdit->selectAll();
+  nameEdit->setFocus();
+  dialog->open();
+}
+
+void LogiFlowWindow::createBinaryFile()
+{
+  constexpr int MaximumBinarySize = 256 * 1024 * 1024;
+
+  auto* dialog = new QDialog(this);
+  dialog->setAttribute(Qt::WA_DeleteOnClose);
+  dialog->setWindowTitle(tr("New Binary File"));
+  dialog->setModal(true);
+
+  auto* form     = new QFormLayout(dialog);
+  auto* nameEdit = new QLineEdit(tr("untitled"), dialog);
+  auto* sizeEdit = new QSpinBox(dialog);
+  sizeEdit->setRange(1, MaximumBinarySize);
+  sizeEdit->setValue(256);
+  sizeEdit->setSuffix(tr(" bytes"));
+  form->addRow(tr("Name"), nameEdit);
+  form->addRow(tr("Size"), sizeEdit);
+
+  auto* buttons =
+      new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, dialog);
+  form->addRow(buttons);
+  connect(buttons, &QDialogButtonBox::rejected, dialog, &QDialog::reject);
+  connect(
+      buttons, &QDialogButtonBox::accepted, dialog, [this, dialog, nameEdit, sizeEdit] {
+        const auto slug = nameEdit->text().trimmed().toStdString();
+        if (!SILICON::project::isValidBinarySlug(slug)) {
+          SILICON::ui::inputDialog::warning(
+              this, tr("New Binary File"),
+              tr("The name must be non-empty and cannot contain path separators."));
+          return;
+        }
+        const auto path = SILICON::project::binaryPathForSlug(slug);
+        if (hasDocument(path)) {
+          SILICON::ui::inputDialog::warning(this, tr("New Binary File"),
+                                            tr("A binary file named '%1' already exists.")
+                                                .arg(QString::fromStdString(path)));
+          return;
+        }
+
+        const SILICON::project::Document document(
+            path, std::string(static_cast<std::size_t>(sizeEdit->value()), '\0'));
+        auto addDocument = [this, document] {
+          try {
+            saveActiveDocumentPayload();
+          } catch (const std::exception&) {
+          }
+          insertDocument(document, std::nullopt, true);
+        };
+        auto removeCreated = [this, path] { removeDocument(path); };
+        undoStack->push(new ProjectStateCommand(tr("Create Binary File"), removeCreated,
+                                                addDocument));
+        dialog->accept();
+      });
   nameEdit->selectAll();
   nameEdit->setFocus();
   dialog->open();
@@ -839,15 +916,15 @@ void LogiFlowWindow::deleteSelectedSubcircuit()
 
 void LogiFlowWindow::deleteSelectedDocument()
 {
-  auto* selectedProjectItem =
-      projectTree ? projectTree->selectedProjectItem() : nullptr;
+  auto* selectedProjectItem = projectTree ? projectTree->selectedProjectItem() : nullptr;
   if (!selectedProjectItem)
     return;
 
   const auto itemKind = ProjectTree::itemKind(selectedProjectItem);
   if (itemKind != ProjectTreeItemKind::Circuit
       && itemKind != ProjectTreeItemKind::Subcircuit
-      && itemKind != ProjectTreeItemKind::CodeFile)
+      && itemKind != ProjectTreeItemKind::CodeFile
+      && itemKind != ProjectTreeItemKind::BinaryFile)
     return;
 
   const auto path = ProjectTree::documentPath(selectedProjectItem);
@@ -855,17 +932,21 @@ void LogiFlowWindow::deleteSelectedDocument()
     return;
   const bool circuit = itemKind == ProjectTreeItemKind::Circuit;
   const bool code    = itemKind == ProjectTreeItemKind::CodeFile;
+  const bool binary  = itemKind == ProjectTreeItemKind::BinaryFile;
 
   try {
     saveActiveDocumentPayload();
   } catch (const std::exception& e) {
     SILICON::ui::inputDialog::warning(
-        this, circuit ? tr("Delete Circuit") : tr("Delete Subcircuit"),
+        this,
+        circuit ? tr("Delete Circuit")
+                : (code ? tr("Delete Code File")
+                        : (binary ? tr("Delete Binary File") : tr("Delete Subcircuit"))),
         tr("Failed to save the active document before deleting it:\n%1").arg(e.what()));
     return;
   }
 
-  if (!circuit && !code) {
+  if (!circuit && !code && !binary) {
     const auto dependents = dependencyGraph.dependentsOf(path);
     if (!dependents.empty()) {
       QStringList dependentNames;
@@ -881,12 +962,14 @@ void LogiFlowWindow::deleteSelectedDocument()
   SILICON::ui::inputDialog::question(
       this,
       circuit ? tr("Delete Circuit")
-              : (code ? tr("Delete Code File") : tr("Delete Subcircuit")),
-      (circuit
-           ? tr("Delete circuit \"%1\"?")
-           : (code ? tr("Delete code file \"%1\"?") : tr("Delete subcircuit \"%1\"?")))
+              : (code ? tr("Delete Code File")
+                      : (binary ? tr("Delete Binary File") : tr("Delete Subcircuit"))),
+      (circuit ? tr("Delete circuit \"%1\"?")
+               : (code ? tr("Delete code file \"%1\"?")
+                       : (binary ? tr("Delete binary file \"%1\"?")
+                                 : tr("Delete subcircuit \"%1\"?"))))
           .arg(selectedProjectItem->text(0)),
-      [this, path, circuit, code] {
+      [this, path, circuit, code, binary] {
         auto&       store          = SILICON::project::DocumentStore::active();
         const auto* storedDocument = store.find(path);
         const auto  storedIndex    = store.indexOf(path);
@@ -901,8 +984,10 @@ void LogiFlowWindow::deleteSelectedDocument()
         };
 
         undoStack->push(new ProjectStateCommand(
-            circuit ? tr("Delete Circuit")
-                    : (code ? tr("Delete Code File") : tr("Delete Subcircuit")),
+            circuit
+                ? tr("Delete Circuit")
+                : (code ? tr("Delete Code File")
+                        : (binary ? tr("Delete Binary File") : tr("Delete Subcircuit"))),
             restoreDocument, removeStored));
       });
 }

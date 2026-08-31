@@ -90,6 +90,7 @@ Copyright (c) 2026. Giulio Cocconi
 #include <core/subcircuitDefinition.hpp>
 #include <logging/logger.hpp>
 #include <ui/common/aboutDialog.hpp>
+#include <ui/common/binaryEditor.hpp>
 #include <ui/common/codeEditor.hpp>
 #include <ui/common/diagramScene/diagramScene.hpp>
 #include <ui/common/diagramView.hpp>
@@ -126,7 +127,8 @@ LogiFlowWindow::~LogiFlowWindow()
   // C++ members have already been destroyed. Some children (notably QUndoStack)
   // emit state-change signals from their destructors, so disconnect every owned
   // sender while LogiFlowWindow is still fully alive.
-  const auto ownedObjects = findChildren<QObject*>(QString(), Qt::FindChildrenRecursively);
+  const auto ownedObjects =
+      findChildren<QObject*>(QString(), Qt::FindChildrenRecursively);
   for (auto* object : ownedObjects)
     disconnect(object, nullptr, this, nullptr);
 
@@ -137,13 +139,11 @@ LogiFlowWindow::~LogiFlowWindow()
                              Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
     QApplication::sendEvent(toolBar, &releaseEvent);
   }
-
 }
 
 #ifdef __EMSCRIPTEN__
-EM_BOOL LogiFlowWindow::wasmKeyDownCallback(int,
-                                            const EmscriptenKeyboardEvent* keyEvent,
-                                            void*                          userData)
+EM_BOOL LogiFlowWindow::wasmKeyDownCallback(int, const EmscriptenKeyboardEvent* keyEvent,
+                                            void* userData)
 {
   if (!userData || !keyEvent)
     return EM_FALSE;
@@ -210,13 +210,19 @@ LogiFlowWindow::LogiFlowWindow()
             if (modified && codeEditor->fileType())
               codeDocumentsDirty = true;
           });
+  binaryEditor = new BinaryEditor(this);
+  connect(binaryEditor->history(), &QUndoStack::cleanChanged, this,
+          [this](const bool clean) {
+            if (!clean && isBinaryDocumentActive())
+              binaryDocumentsDirty = true;
+          });
   editorStack = new QStackedWidget(this);
   editorStack->addWidget(diagramView);
   editorStack->addWidget(codeEditor);
+  editorStack->addWidget(binaryEditor);
   editorStack->setCurrentWidget(diagramView);
 
-  connect(diagramScene, &DiagramScene::modeChanged, this,
-          &LogiFlowWindow::updateStatus);
+  connect(diagramScene, &DiagramScene::modeChanged, this, &LogiFlowWindow::updateStatus);
   updateStatus();
 
   connect(diagramScene, &DiagramScene::selectionChanged, this,

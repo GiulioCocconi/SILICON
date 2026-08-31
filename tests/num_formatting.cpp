@@ -12,6 +12,7 @@
 #include <core/wireUtils.hpp>
 #include <utils/num_formatting.hpp>
 
+#include <limits>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -146,4 +147,30 @@ TEST(NumFormattingTest, SupportsValuesWiderThanMachineIntegers)
   const auto [wide, format] = valueFromStr("36893488147419103231");
   EXPECT_EQ(format, BusValueFormat::Unsigned);
   EXPECT_EQ(wide, BusValue(65, State::HIGH));
+}
+
+TEST(NumFormattingTest, FormatsMachineIntegersWithoutBusValues)
+{
+  EXPECT_EQ(formatInteger(0xf3, BusValueFormat::Signed, 8), "-13");
+  EXPECT_EQ(formatInteger(0xf3, BusValueFormat::Unsigned, 8), "243");
+  EXPECT_EQ(formatInteger(0xf3, BusValueFormat::Bin, 8), "11110011");
+  EXPECT_EQ(formatInteger(0xf3, BusValueFormat::Oct, 8), "363");
+  EXPECT_EQ(formatInteger(0x0ff3, BusValueFormat::Signed, 16), "4083");
+  EXPECT_EQ(formatInteger(0xffffffffffffffffULL, BusValueFormat::Signed, 64), "-1");
+}
+
+TEST(NumFormattingTest, ParsesWidthLimitedMachineIntegers)
+{
+  EXPECT_EQ(parseInteger("-128", BusValueFormat::Signed, 8), 0x80);
+  EXPECT_EQ(parseInteger("127", BusValueFormat::Signed, 8), 0x7f);
+  EXPECT_EQ(parseInteger("255", BusValueFormat::Unsigned, 8), 0xff);
+  EXPECT_EQ(parseInteger("0b11110011", BusValueFormat::Bin, 8), 0xf3);
+  EXPECT_EQ(parseInteger("0o363", BusValueFormat::Oct, 8), 0xf3);
+  EXPECT_EQ(parseInteger("0xF3", BusValueFormat::Hex, 8), 0xf3);
+  EXPECT_EQ(parseInteger("18446744073709551615", BusValueFormat::Unsigned, 64),
+            std::numeric_limits<std::uint64_t>::max());
+  EXPECT_FALSE(parseInteger("-129", BusValueFormat::Signed, 8));
+  EXPECT_FALSE(parseInteger("128", BusValueFormat::Signed, 8));
+  EXPECT_FALSE(parseInteger("256", BusValueFormat::Unsigned, 8));
+  EXPECT_FALSE(parseInteger("0b102", BusValueFormat::Bin, 8));
 }

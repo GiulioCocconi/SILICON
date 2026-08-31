@@ -90,6 +90,7 @@
 #include <core/subcircuitDefinition.hpp>
 #include <logging/logger.hpp>
 #include <ui/common/aboutDialog.hpp>
+#include <ui/common/codeEditor.hpp>
 #include <ui/common/diagramScene/diagramScene.hpp>
 #include <ui/common/diagramView.hpp>
 #include <ui/common/fileDialogUtils.hpp>
@@ -106,11 +107,9 @@
 #include <ui/logiFlow/components/subcircuit/componentShapeEditor.hpp>
 #include <ui/logiFlow/components/subcircuit/metadata.hpp>
 #include <ui/logiFlow/components/subcircuit/utils.hpp>
-#include <ui/common/codeEditor.hpp>
 #include <ui/logiFlow/metadataDescriptionEdit.hpp>
 #include <ui/logiFlow/projectTree.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
-
 
 namespace SILICON {
 namespace ui {
@@ -142,8 +141,11 @@ void LogiFlowWindow::updatePropertyDock()
   const bool codeFileSelected =
       selectedProjectItem
       && ProjectTree::itemKind(selectedProjectItem) == ProjectTreeItemKind::CodeFile;
-  propertyDock->setVisible(!codeFileSelected);
-  if (codeFileSelected)
+  const bool binaryFileSelected =
+      selectedProjectItem
+      && ProjectTree::itemKind(selectedProjectItem) == ProjectTreeItemKind::BinaryFile;
+  propertyDock->setVisible(!codeFileSelected && !binaryFileSelected);
+  if (codeFileSelected || binaryFileSelected)
     return;
 
   // 1. Assign the container immediately.
@@ -164,8 +166,8 @@ void LogiFlowWindow::updatePropertyDock()
 
   if (selectedNodes.empty()) {
     if (!selectedProjectItem) {
-      layout->addRow(new QLabel(tr(
-          "Select a project, circuit, or one or more components\nto view properties.")));
+      layout->addRow(new QLabel(tr("Select a project, circuit, or one or more "
+                                   "components\nto view properties.")));
       return;
     }
 
@@ -472,7 +474,8 @@ void LogiFlowWindow::updatePropertyDock()
   }
 }
 
-// --- Property SpinBox ------------------------------------------------------------------
+// --- Property SpinBox
+// ------------------------------------------------------------------
 
 PropertySpinBox::PropertySpinBox(QWidget* parent) : QSpinBox(parent)
 {

@@ -88,9 +88,8 @@ nlohmann::ordered_json validMetadata()
 nlohmann::ordered_json validProject(
     const std::string_view mainCircuit = SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH)
 {
-  return nlohmann::ordered_json{{"name", "CPU demo"},
-                                {"mainCircuit", mainCircuit},
-                                {"description", ""}};
+  return nlohmann::ordered_json{
+      {"name", "CPU demo"}, {"mainCircuit", mainCircuit}, {"description", ""}};
 }
 
 void addZipEntry(zip_t* archive, const std::string& name, const std::string_view contents)
@@ -334,16 +333,37 @@ TEST(ProjectFileTest, RoundTripsCodeDocuments)
   EXPECT_EQ(loaded.documents[1].getContents(), source);
 }
 
+TEST(ProjectFileTest, RoundTripsRawBinaryDocumentsByteForByte)
+{
+  const auto                    path = tempProjectPath("binary_files");
+  FileCleanup                   cleanup{path};
+  const std::string             raw("\0\x01\x7f\x80\xff", 5);
+  SILICON::project::ProjectFile projectFile{
+      .metadata  = SILICON::project::metadataForNewFile(),
+      .project   = {.name        = "Binary",
+                    .mainCircuit = std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH),
+                    .description = ""},
+      .documents = {{std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), "{}"},
+                    {"bin/firmware", raw}}};
+
+  SILICON::project::writeProjectFile(path, projectFile);
+  EXPECT_EQ(readZipEntry(path, "bin/firmware"), raw);
+  const auto loaded = SILICON::project::readProjectFile(path);
+  ASSERT_EQ(loaded.documents.size(), 2);
+  EXPECT_EQ(loaded.documents[1].getType(), SILICON::project::DocumentType::Binary);
+  EXPECT_EQ(loaded.documents[1].getContents(), raw);
+  EXPECT_TRUE(loaded.assets.empty());
+}
+
 TEST(ProjectFileTest, ReadsValidatedAssetsAndRejectsDocumentNamespaceCollisions)
 {
   const auto  assetPath = tempProjectPath("asset_entry");
   FileCleanup assetCleanup{assetPath};
-  writeZip(assetPath,
-           {{"mimetype", std::string(SILICON::project::MIME_TYPE)},
-            {"metadata.json", validMetadata().dump(2)},
-            {"project.json", validProject().dump(2)},
-            {std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), "{}"},
-            {"notes/readme.txt", "preserved"}});
+  writeZip(assetPath, {{"mimetype", std::string(SILICON::project::MIME_TYPE)},
+                       {"metadata.json", validMetadata().dump(2)},
+                       {"project.json", validProject().dump(2)},
+                       {std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), "{}"},
+                       {"notes/readme.txt", "preserved"}});
   const auto loaded = SILICON::project::readProjectFile(assetPath);
   ASSERT_EQ(loaded.assets.size(), 1);
   EXPECT_EQ(loaded.assets.front(),
@@ -362,16 +382,15 @@ TEST(ProjectFileTest, ReadsValidatedAssetsAndRejectsDocumentNamespaceCollisions)
 
 TEST(ProjectFileTest, RejectsInvalidEntriesInsideCodeNamespace)
 {
-  for (const auto& entry : {std::string("code/nested/adder.v"),
-                            std::string("code/../adder.v")}) {
+  for (const auto& entry :
+       {std::string("code/nested/adder.v"), std::string("code/../adder.v")}) {
     const auto  path = tempProjectPath("invalid_code_path");
     FileCleanup cleanup{path};
-    writeZip(path,
-             {{"mimetype", std::string(SILICON::project::MIME_TYPE)},
-              {"metadata.json", validMetadata().dump(2)},
-              {"project.json", validProject().dump(2)},
-              {std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), "{}"},
-              {entry, "module adder; endmodule"}});
+    writeZip(path, {{"mimetype", std::string(SILICON::project::MIME_TYPE)},
+                    {"metadata.json", validMetadata().dump(2)},
+                    {"project.json", validProject().dump(2)},
+                    {std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), "{}"},
+                    {entry, "module adder; endmodule"}});
     EXPECT_THROW(readProjectFileIgnoringResult(path), std::runtime_error);
   }
 }
@@ -428,23 +447,24 @@ TEST(ProjectFileTest, RejectsInvalidAndDuplicateAssetsBeforeWriting)
   const auto makeProject = [] {
     return SILICON::project::ProjectFile{
         .metadata  = SILICON::project::metadataForNewFile(),
-        .project   = {.name        = "Assets",
-                      .mainCircuit = std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH),
+        .project   = {.name = "Assets",
+                      .mainCircuit =
+                          std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH),
                       .description = ""},
         .documents = {{std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), "{}"}}};
   };
 
   auto invalid = makeProject();
   invalid.assets.push_back({"circuits/hidden.bin", ""});
-  EXPECT_THROW(SILICON::project::writeProjectFile(tempProjectPath("invalid_asset"),
-                                                  invalid),
-               std::runtime_error);
+  EXPECT_THROW(
+      SILICON::project::writeProjectFile(tempProjectPath("invalid_asset"), invalid),
+      std::runtime_error);
 
   auto duplicate = makeProject();
   duplicate.assets = {{"assets/data.bin", "one"}, {"assets/data.bin", "two"}};
-  EXPECT_THROW(SILICON::project::writeProjectFile(tempProjectPath("duplicate_asset"),
-                                                  duplicate),
-               std::runtime_error);
+  EXPECT_THROW(
+      SILICON::project::writeProjectFile(tempProjectPath("duplicate_asset"), duplicate),
+      std::runtime_error);
 }
 
 TEST(ProjectFileTest, RejectsDuplicateDocumentPathsBeforeCreatingArchive)

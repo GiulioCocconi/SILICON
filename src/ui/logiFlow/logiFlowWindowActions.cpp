@@ -91,6 +91,7 @@ Copyright (c) 2026. Giulio Cocconi
 #include <core/subcircuitDefinition.hpp>
 #include <logging/logger.hpp>
 #include <ui/common/aboutDialog.hpp>
+#include <ui/common/binaryEditor.hpp>
 #include <ui/common/codeEditor.hpp>
 #include <ui/common/diagramScene/diagramScene.hpp>
 #include <ui/common/diagramView.hpp>
@@ -202,56 +203,52 @@ namespace {
     QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
 
-    QObject::connect(tree, &QTreeWidget::itemChanged, &dialog,
-                     [tree, importButton, &graph,
-                      explicitlySelectedRole](QTreeWidgetItem* changedItem, int) {
-                       const QSignalBlocker blocker(tree);
-                       if (!changedItem->parent()
-                           && changedItem->flags().testFlag(Qt::ItemIsEnabled)) {
-                         changedItem->setData(
-                             0, explicitlySelectedRole,
-                             changedItem->checkState(0) == Qt::Checked);
-                       }
+    QObject::connect(
+        tree, &QTreeWidget::itemChanged, &dialog,
+        [tree, importButton, &graph, explicitlySelectedRole](QTreeWidgetItem* changedItem,
+                                                             int) {
+          const QSignalBlocker blocker(tree);
+          if (!changedItem->parent()
+              && changedItem->flags().testFlag(Qt::ItemIsEnabled)) {
+            changedItem->setData(0, explicitlySelectedRole,
+                                 changedItem->checkState(0) == Qt::Checked);
+          }
 
-                       std::vector<std::string> roots;
-                       for (int index = 0; index < tree->topLevelItemCount(); ++index) {
-                         const auto* item = tree->topLevelItem(index);
-                         if (item->data(0, explicitlySelectedRole).toBool())
-                           roots.push_back(item->text(0).toStdString());
-                       }
+          std::vector<std::string> roots;
+          for (int index = 0; index < tree->topLevelItemCount(); ++index) {
+            const auto* item = tree->topLevelItem(index);
+            if (item->data(0, explicitlySelectedRole).toBool())
+              roots.push_back(item->text(0).toStdString());
+          }
 
-                       importButton->setEnabled(!roots.empty());
-                       std::vector<std::string> dependencies;
-                       for (const auto& root : roots) {
-                         for (const auto& included :
-                              graph.dependencyOrder(std::vector<std::string>{root})) {
-                           if (included != root
-                               && !std::ranges::contains(dependencies, included)) {
-                             dependencies.push_back(included);
-                           }
-                         }
-                       }
+          importButton->setEnabled(!roots.empty());
+          std::vector<std::string> dependencies;
+          for (const auto& root : roots) {
+            for (const auto& included :
+                 graph.dependencyOrder(std::vector<std::string>{root})) {
+              if (included != root && !std::ranges::contains(dependencies, included)) {
+                dependencies.push_back(included);
+              }
+            }
+          }
 
-                       for (int index = 0; index < tree->topLevelItemCount(); ++index) {
-                         auto* item = tree->topLevelItem(index);
-                         const auto name = item->text(0).toStdString();
-                         const bool selected =
-                             item->data(0, explicitlySelectedRole).toBool();
-                         const bool dependency =
-                             std::ranges::contains(dependencies, name);
+          for (int index = 0; index < tree->topLevelItemCount(); ++index) {
+            auto*      item       = tree->topLevelItem(index);
+            const auto name       = item->text(0).toStdString();
+            const bool selected   = item->data(0, explicitlySelectedRole).toBool();
+            const bool dependency = std::ranges::contains(dependencies, name);
 
-                         auto flags = item->flags() | Qt::ItemIsUserCheckable;
-                         flags.setFlag(Qt::ItemIsEnabled, !dependency);
-                         item->setFlags(flags);
-                         item->setCheckState(
-                             0, selected || dependency ? Qt::Checked : Qt::Unchecked);
+            auto flags = item->flags() | Qt::ItemIsUserCheckable;
+            flags.setFlag(Qt::ItemIsEnabled, !dependency);
+            item->setFlags(flags);
+            item->setCheckState(0, selected || dependency ? Qt::Checked : Qt::Unchecked);
 
-                         auto font = item->font(0);
-                         font.setBold(selected && !dependency);
-                         font.setItalic(dependency);
-                         item->setFont(0, font);
-                       }
-                     });
+            auto font = item->font(0);
+            font.setBold(selected && !dependency);
+            font.setItalic(dependency);
+            item->setFont(0, font);
+          }
+        });
 
     if (dialog.exec() != QDialog::Accepted)
       return std::nullopt;
@@ -274,8 +271,7 @@ namespace {
     return action;
   }
 
-  QAction* makeAction(QObject* parent, const QString& text,
-                      const QString& statusTip = {})
+  QAction* makeAction(QObject* parent, const QString& text, const QString& statusTip = {})
   {
     auto* action = new QAction(text, parent);
     if (!statusTip.isEmpty())
@@ -413,6 +409,8 @@ void LogiFlowWindow::createActions()
   newAct         = makeAction(this, Icon("file"), tr("&New"), tr("Create a new file"));
   newCodeFileAct = makeAction(this, Icon("code"), tr("New Code File..."),
                               tr("Create an empty source-code document"));
+  newBinaryFileAct = makeAction(this, Icon("file"), tr("New Binary File..."),
+                                tr("Create a fixed-size raw binary document"));
   openAct        = makeAction(this, Icon("open"), tr("&Open..."),
                               tr("Open an existing logiFlow file"));
   saveAct = makeAction(this, Icon("save"), tr("&Save"), tr("Save the circuit to disk"));
@@ -422,9 +420,8 @@ void LogiFlowWindow::createActions()
   cutAct  = makeAction(this, Icon("cut"), tr("Cu&t"),
                        tr("Cut the current selection's contents to the clipboard"));
   copyAct = makeAction(this, Icon("copy"), tr("&Copy"));
-  pasteAct =
-      makeAction(this, Icon("paste"), tr("&Paste"),
-                 tr("Paste the clipboard's contents into the current selection"));
+  pasteAct       = makeAction(this, Icon("paste"), tr("&Paste"),
+                              tr("Paste the clipboard's contents into the current selection"));
   rotateAct    = makeAction(this, Icon("rotate"), tr("&Rotate"));
   autoPlaceAct = makeAction(this, Icon("rearrange"), tr("&Auto place"),
                             tr("Automatically place components and reroute wires"));
@@ -469,6 +466,7 @@ void LogiFlowWindow::createActions()
 
   connect(newAct, &QAction::triggered, this, &LogiFlowWindow::newFile);
   connect(newCodeFileAct, &QAction::triggered, this, &LogiFlowWindow::createCodeFile);
+  connect(newBinaryFileAct, &QAction::triggered, this, &LogiFlowWindow::createBinaryFile);
   connect(openAct, &QAction::triggered, this, &LogiFlowWindow::open);
   connect(saveAct, &QAction::triggered, this, &LogiFlowWindow::save);
   connect(exportImageAct, &QAction::triggered, this, &LogiFlowWindow::exportImage);
@@ -482,24 +480,30 @@ void LogiFlowWindow::createActions()
   connect(aboutAct, &QAction::triggered, this, &LogiFlowWindow::about);
   connect(settingsAct, &QAction::triggered, this, &LogiFlowWindow::openSettings);
   connect(undoAct, &QAction::triggered, this, [this] {
-    if (isCodeDocumentActive() && codeEditor->document()->isUndoAvailable())
+    if (isBinaryDocumentActive() && binaryEditor->history()->canUndo())
+      binaryEditor->history()->undo();
+    else if (isCodeDocumentActive() && codeEditor->document()->isUndoAvailable())
       codeEditor->undo();
     else
       undoStack->undo();
   });
   connect(redoAct, &QAction::triggered, this, [this] {
-    if (isCodeDocumentActive() && codeEditor->document()->isRedoAvailable())
+    if (isBinaryDocumentActive() && binaryEditor->history()->canRedo())
+      binaryEditor->history()->redo();
+    else if (isCodeDocumentActive() && codeEditor->document()->isRedoAvailable())
       codeEditor->redo();
     else
       undoStack->redo();
   });
   const auto updateHistoryActions = [this] {
-    undoAct->setEnabled(undoStack->canUndo()
-                        || (isCodeDocumentActive()
-                            && codeEditor->document()->isUndoAvailable()));
-    redoAct->setEnabled(undoStack->canRedo()
-                        || (isCodeDocumentActive()
-                            && codeEditor->document()->isRedoAvailable()));
+    undoAct->setEnabled(
+        undoStack->canUndo()
+        || (isCodeDocumentActive() && codeEditor->document()->isUndoAvailable())
+        || (isBinaryDocumentActive() && binaryEditor->history()->canUndo()));
+    redoAct->setEnabled(
+        undoStack->canRedo()
+        || (isCodeDocumentActive() && codeEditor->document()->isRedoAvailable())
+        || (isBinaryDocumentActive() && binaryEditor->history()->canRedo()));
   };
   connect(undoStack, &QUndoStack::canUndoChanged, this,
           [updateHistoryActions](bool) { updateHistoryActions(); });
@@ -508,6 +512,10 @@ void LogiFlowWindow::createActions()
   connect(codeEditor, &QPlainTextEdit::undoAvailable, this,
           [updateHistoryActions](bool) { updateHistoryActions(); });
   connect(codeEditor, &QPlainTextEdit::redoAvailable, this,
+          [updateHistoryActions](bool) { updateHistoryActions(); });
+  connect(binaryEditor->history(), &QUndoStack::canUndoChanged, this,
+          [updateHistoryActions](bool) { updateHistoryActions(); });
+  connect(binaryEditor->history(), &QUndoStack::canRedoChanged, this,
           [updateHistoryActions](bool) { updateHistoryActions(); });
   connect(editorStack, &QStackedWidget::currentChanged, this,
           [updateHistoryActions](int) { updateHistoryActions(); });
@@ -529,8 +537,7 @@ void LogiFlowWindow::createActions()
           &LogiFlowWindow::setComponentPlacingMode);
   connect(cancelInteractionAct, &QAction::triggered, this,
           &LogiFlowWindow::cancelCurrentInteraction);
-  connect(toggleFstTraceAct, &QAction::toggled, this,
-          &LogiFlowWindow::toggleFstTracing);
+  connect(toggleFstTraceAct, &QAction::toggled, this, &LogiFlowWindow::toggleFstTracing);
 
   addAction(setComponentPlacingModeAct);
   addAction(cancelInteractionAct);
@@ -618,6 +625,7 @@ void LogiFlowWindow::createMenus()
   fileMenu = menuBar()->addMenu(tr("&File"));
   fileMenu->addAction(newAct);
   fileMenu->addAction(newCodeFileAct);
+  fileMenu->addAction(newBinaryFileAct);
   fileMenu->addAction(openAct);
   fileMenu->addAction(saveAct);
   fileMenu->addAction(exportImageAct);
@@ -714,6 +722,12 @@ bool LogiFlowWindow::isCodeDocumentActive() const
          == SILICON::project::DocumentType::Code;
 }
 
+bool LogiFlowWindow::isBinaryDocumentActive() const
+{
+  return SILICON::project::documentTypeForPath(activeDocumentPath)
+         == SILICON::project::DocumentType::Binary;
+}
+
 void LogiFlowWindow::updateCodeAction()
 {
   if (!codeConversionAct)
@@ -736,22 +750,24 @@ void LogiFlowWindow::updateCodeAction()
   codeConversionAct->setEnabled(subcircuit || verilog);
 #endif
   const bool code = isCodeDocumentActive();
+  const bool binary       = isBinaryDocumentActive();
+  const bool nonGraphical = code || binary;
   setActionsEnabled({setNormalModeAct, setPanModeAct, setWireCreationModeAct,
                      setSimulationModeAct, toggleFstTraceAct, openComponentCatalogAct,
                      setComponentPlacingModeAct, autoPlaceAct},
-                    !code);
+                    !nonGraphical);
 
   if (toolBar) {
-    for (auto* action : {setNormalModeAct, setPanModeAct, setWireCreationModeAct,
-                         setSimulationModeAct, toggleFstTraceAct,
-                         openComponentCatalogAct}) {
+    for (auto* action :
+         {setNormalModeAct, setPanModeAct, setWireCreationModeAct, setSimulationModeAct,
+          toggleFstTraceAct, openComponentCatalogAct}) {
       if (auto* widget = toolBar->widgetForAction(action))
-        widget->setVisible(!code);
+        widget->setVisible(!nonGraphical);
     }
     if (auto* widget = toolBar->widgetForAction(diagramToolsSeparator))
-      widget->setVisible(!code);
+      widget->setVisible(!nonGraphical);
     if (auto* widget = toolBar->widgetForAction(documentToolsSeparator))
-      widget->setVisible(!code || codeConversionAct->isEnabled());
+      widget->setVisible(!nonGraphical || codeConversionAct->isEnabled());
     if (auto* widget = toolBar->widgetForAction(codeConversionAct))
       widget->setVisible(codeConversionAct->isVisible()
                          && codeConversionAct->isEnabled());
@@ -777,8 +793,8 @@ void LogiFlowWindow::commitConvertedDocuments(
   auto  afterDocuments  = beforeDocuments;
 
   for (auto& document : documents) {
-    const auto existing = std::ranges::find(
-        afterDocuments, document.getPath(), &SILICON::project::Document::getPath);
+    const auto existing = std::ranges::find(afterDocuments, document.getPath(),
+                                            &SILICON::project::Document::getPath);
     if (existing == afterDocuments.end())
       afterDocuments.push_back(std::move(document));
     else
@@ -804,8 +820,8 @@ void LogiFlowWindow::commitConvertedDocuments(
     rebuildProjectTree();
     switchToDocument(sourcePath, true);
   };
-  undoStack->push(new ConversionCommand(commandText, std::move(restore),
-                                        std::move(apply)));
+  undoStack->push(
+      new ConversionCommand(commandText, std::move(restore), std::move(apply)));
 }
 
 void LogiFlowWindow::convertActiveSubcircuitToVerilog()
@@ -816,9 +832,9 @@ void LogiFlowWindow::convertActiveSubcircuitToVerilog()
   const auto* existing   = SILICON::project::DocumentStore::active().find(sourcePath);
   if (!existing || slug.empty())
     throw std::runtime_error("Only subcircuits can be converted to Verilog");
-  auto circuit = Circuit::deserialize(
-      SILICON::core::extractCoreCircuitJson(existing->getContents()),
-      ComponentRegistry::instance());
+  auto circuit =
+      Circuit::deserialize(SILICON::core::extractCoreCircuitJson(existing->getContents()),
+                           ComponentRegistry::instance());
   circuit.setName(slug);
   const auto source = SILICON::yosys::exportVerilog(circuit);
   const auto path =
@@ -880,8 +896,7 @@ void LogiFlowWindow::convertActiveVerilogToSubcircuit()
     auto sceneJson = generatedScene.serialize();
     auto completed = nlohmann::ordered_json::parse(sceneJson);
     completed["graphicalComponent"] = graphicalSubcircuitMetadataToJson(
-        synchronizeGraphicalSubcircuitMetadata(sceneJson,
-                                               GraphicalSubcircuitMetadata{}));
+        synchronizeGraphicalSubcircuitMetadata(sceneJson, GraphicalSubcircuitMetadata{}));
     generated.push_back(preparedSubcircuitDocument(
         SILICON::project::subcircuitPathForSlug(module), completed.dump(2)));
   }

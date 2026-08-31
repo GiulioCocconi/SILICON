@@ -16,8 +16,8 @@ using namespace SILICON::core;
 using namespace SILICON::project;
 
 using SILICON::project::Document;
-using SILICON::project::DocumentType;
 using SILICON::project::DocumentStore;
+using SILICON::project::DocumentType;
 
 TEST(ProjectDocumentTest, ClassifiesCanonicalFlatPaths)
 {
@@ -25,8 +25,8 @@ TEST(ProjectDocumentTest, ClassifiesCanonicalFlatPaths)
             DocumentType::Circuit);
   EXPECT_EQ(SILICON::project::documentTypeForPath("subcircuits/adder.json"),
             DocumentType::Subcircuit);
-  EXPECT_EQ(SILICON::project::documentTypeForPath("code/adder.v"),
-            DocumentType::Code);
+  EXPECT_EQ(SILICON::project::documentTypeForPath("code/adder.v"), DocumentType::Code);
+  EXPECT_EQ(SILICON::project::documentTypeForPath("bin/firmware"), DocumentType::Binary);
   EXPECT_FALSE(SILICON::project::documentTypeForPath(""));
   EXPECT_FALSE(SILICON::project::documentTypeForPath("circuits/nested/main.json"));
   EXPECT_FALSE(SILICON::project::documentTypeForPath("circuits/main.txt"));
@@ -36,12 +36,27 @@ TEST(ProjectDocumentTest, ClassifiesCanonicalFlatPaths)
   EXPECT_FALSE(SILICON::project::documentTypeForPath("subcircuits/...json"));
   EXPECT_EQ(SILICON::project::subcircuitSlugForPath("subcircuits/adder.json"), "adder");
   EXPECT_FALSE(SILICON::project::subcircuitSlugForPath("circuits/adder.json"));
+  EXPECT_EQ(SILICON::project::binarySlugForPath("bin/firmware"), "firmware");
+  EXPECT_FALSE(SILICON::project::binarySlugForPath("bin/nested/firmware"));
+}
+
+TEST(ProjectDocumentTest, ValidatesBinarySlugsAndRoundTripsExactNames)
+{
+  for (const std::string_view invalid : {"", ".", "..", "a/b", "a\\b", "line\nbreak"}) {
+    EXPECT_FALSE(isValidBinarySlug(invalid));
+    EXPECT_THROW(static_cast<void>(binaryPathForSlug(invalid)), std::invalid_argument);
+  }
+  for (const std::string_view valid : {"firmware", "rom.bin", "name with spaces"}) {
+    const auto path = binaryPathForSlug(valid);
+    ASSERT_TRUE(binarySlugForPath(path));
+    EXPECT_EQ(*binarySlugForPath(path), valid);
+  }
 }
 
 TEST(ProjectDocumentTest, ValidatesSubcircuitSlugsAndRoundTripsValidOnes)
 {
-  for (const std::string_view invalid : {"", ".", "..", "a/b", "a\\b",
-                                         "../foo", "foo/bar", "line\nbreak"}) {
+  for (const std::string_view invalid :
+       {"", ".", "..", "a/b", "a\\b", "../foo", "foo/bar", "line\nbreak"}) {
     EXPECT_FALSE(isValidSubcircuitSlug(invalid));
     EXPECT_THROW(static_cast<void>(subcircuitPathForSlug(invalid)),
                  std::invalid_argument);
@@ -70,11 +85,10 @@ TEST(ProjectDocumentTest, ValidatesAssetNamespaceOwnership)
 {
   EXPECT_TRUE(isValidProjectAssetPath("assets/readme.txt"));
   EXPECT_TRUE(isValidProjectAssetPath("foo..bar/data.bin"));
-  for (const std::string_view invalid : {
-           "", "/absolute", "C:/absolute", "trailing/", "a//b", "a/./b",
-           "a/../b", "a\\b",
-           "mimetype", "metadata.json", "project.json", "circuits/other.bin",
-           "subcircuits/nested/adder.json", "code/unsupported.sv"})
+  for (const std::string_view invalid :
+       {"", "/absolute", "C:/absolute", "trailing/", "a//b", "a/./b", "a/../b", "a\\b",
+        "mimetype", "metadata.json", "project.json", "circuits/other.bin",
+        "subcircuits/nested/adder.json", "code/unsupported.sv", "bin/raw"})
     EXPECT_FALSE(isValidProjectAssetPath(invalid));
 }
 
@@ -117,10 +131,11 @@ TEST(ProjectDocumentStoreTest, PreservesOrderAcrossMixedKindsAndUpserts)
   store.setDocuments({{"circuits/main.json", "main"},
                       {"subcircuits/adder.json", "adder"},
                       {"code/adder.v", "module adder; endmodule"},
+                      {"bin/firmware", std::string("\0\xff", 2)},
                       {"circuits/control.json", "control"}});
 
   store.upsertDocument({"subcircuits/adder.json", "updated"});
-  ASSERT_EQ(store.getDocuments().size(), 4);
+  ASSERT_EQ(store.getDocuments().size(), 5);
   EXPECT_EQ(store.getDocuments()[1].getPath(), "subcircuits/adder.json");
   EXPECT_EQ(store.getDocuments()[1].getContents(), "updated");
 
@@ -135,9 +150,13 @@ TEST(ProjectDocumentStoreTest, PreservesOrderAcrossMixedKindsAndUpserts)
   EXPECT_EQ(codeFileTypeForPath(codeFiles.front().get().getPath()),
             CodeFileType::Verilog);
 
+  const auto binaries = store.getDocuments(DocumentType::Binary);
+  ASSERT_EQ(binaries.size(), 1);
+  EXPECT_EQ(binaries.front().get().getContents(), std::string("\0\xff", 2));
+
   store.removeDocument("subcircuits/adder.json");
   EXPECT_FALSE(store.contains("subcircuits/adder.json"));
-  EXPECT_EQ(store.indexOf("circuits/control.json"), 2);
+  EXPECT_EQ(store.indexOf("circuits/control.json"), 3);
 }
 
 TEST(ProjectDocumentStoreTest, RejectsDuplicatePaths)
@@ -167,8 +186,8 @@ TEST(ProjectDocumentStoreTest, NotificationsUseSnapshotAndCanonicalPaths)
 
   store.upsertDocument({"circuits/main.json", "{}"});
   EXPECT_EQ(notifications,
-            (decltype(notifications){{DocumentChangeKind::Added,
-                                      std::string("circuits/main.json")}}));
+            (decltype(notifications){
+                {DocumentChangeKind::Added, std::string("circuits/main.json")}}));
 
   store.upsertDocument({"circuits/main.json", "updated"});
   store.removeDocument("missing.json");

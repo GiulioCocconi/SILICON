@@ -41,10 +41,9 @@ namespace {
     std::size_t segmentStart = 0;
     while (segmentStart < path.size()) {
       const auto separator = path.find('/', segmentStart);
-      const auto segment = path.substr(segmentStart,
-                                       separator == std::string_view::npos
-                                           ? path.size() - segmentStart
-                                           : separator - segmentStart);
+      const auto segment   = path.substr(segmentStart, separator == std::string_view::npos
+                                                           ? path.size() - segmentStart
+                                                           : separator - segmentStart);
       if (segment.empty() || segment == "." || segment == "..")
         return false;
       if (separator == std::string_view::npos)
@@ -77,13 +76,12 @@ namespace {
       throw std::invalid_argument("Document path is invalid");
   }
 
-  void validateDocumentState(
-      const DocumentType type,
-      const std::optional<std::string>& coreCircuitJson)
+  void validateDocumentState(const DocumentType                type,
+                             const std::optional<std::string>& coreCircuitJson)
   {
-    if (type == DocumentType::Code && coreCircuitJson)
+    if (!isGraphicalDocumentType(type) && coreCircuitJson)
       throw std::invalid_argument(
-          "Code documents cannot contain core circuit JSON");
+          "Non-graphical documents cannot contain core circuit JSON");
   }
 
 }  // namespace
@@ -92,11 +90,15 @@ std::optional<DocumentType> documentTypeForPath(const std::string_view path)
 {
   if (auto type = classifyFlatJsonPath(path, "circuits/", DocumentType::Circuit))
     return type;
-  if (auto type =
-          classifyFlatJsonPath(path, "subcircuits/", DocumentType::Subcircuit))
+  if (auto type = classifyFlatJsonPath(path, "subcircuits/", DocumentType::Subcircuit))
     return type;
   if (codeFileTypeForPath(path))
     return DocumentType::Code;
+  if (path.starts_with("bin/")) {
+    const auto slug = path.substr(std::string_view("bin/").size());
+    if (isValidBinarySlug(slug))
+      return DocumentType::Binary;
+  }
   return std::nullopt;
 }
 
@@ -123,19 +125,43 @@ std::string subcircuitPathForSlug(const std::string_view slug)
   return std::format("subcircuits/{}.json", slug);
 }
 
+std::optional<std::string> binarySlugForPath(const std::string_view path)
+{
+  if (documentTypeForPath(path) != DocumentType::Binary)
+    return std::nullopt;
+  return std::string(path.substr(std::string_view("bin/").size()));
+}
+
+bool isValidBinarySlug(const std::string_view slug)
+{
+  return !slug.empty() && slug != "." && slug != ".." && !slug.contains('/')
+         && !slug.contains('\\') && !containsControlCharacter(slug);
+}
+
+std::string binaryPathForSlug(const std::string_view slug)
+{
+  if (!isValidBinarySlug(slug))
+    throw std::invalid_argument("Invalid binary slug");
+  return std::format("bin/{}", slug);
+}
+
+bool isGraphicalDocumentType(const DocumentType type)
+{
+  return type == DocumentType::Circuit || type == DocumentType::Subcircuit;
+}
+
 bool isValidProjectAssetPath(const std::string_view path)
 {
   if (path.empty() || path.front() == '/' || path.back() == '/' || path.contains('\\')
       || containsControlCharacter(path) || !hasSafePathSegments(path)
-      || (path.size() >= 3
-          && std::isalpha(static_cast<unsigned char>(path[0])) && path[1] == ':'
-          && path[2] == '/')
+      || (path.size() >= 3 && std::isalpha(static_cast<unsigned char>(path[0]))
+          && path[1] == ':' && path[2] == '/')
       || path == "mimetype" || path == "metadata.json" || path == "project.json")
     return false;
 
   const auto firstSeparator = path.find('/');
   const auto root = path.substr(0, firstSeparator);
-  return root != "circuits" && root != "subcircuits" && root != "code";
+  return root != "circuits" && root != "subcircuits" && root != "code" && root != "bin";
 }
 
 Document::Document(std::string path, std::string contents,
@@ -196,7 +222,8 @@ void DocumentStore::setDocuments(std::vector<Document> documents)
           std::format("Duplicate project document path: {}", document.getPath()));
   }
   this->documents = std::move(documents);
-  listeners.notify(DocumentChange{.kind = DocumentChangeKind::Reset, .path = std::nullopt});
+  listeners.notify(
+      DocumentChange{.kind = DocumentChangeKind::Reset, .path = std::nullopt});
 }
 
 void DocumentStore::upsertDocument(Document document)
@@ -204,8 +231,7 @@ void DocumentStore::upsertDocument(Document document)
   const auto path = document.getPath();
   if (auto index = indexOf(document.getPath())) {
     documents[*index] = std::move(document);
-    listeners.notify(
-        DocumentChange{.kind = DocumentChangeKind::Updated, .path = path});
+    listeners.notify(DocumentChange{.kind = DocumentChangeKind::Updated, .path = path});
     return;
   }
   documents.push_back(std::move(document));
@@ -237,7 +263,8 @@ void DocumentStore::removeDocument(const std::string_view documentPath)
 void DocumentStore::clear()
 {
   documents.clear();
-  listeners.notify(DocumentChange{.kind = DocumentChangeKind::Reset, .path = std::nullopt});
+  listeners.notify(
+      DocumentChange{.kind = DocumentChangeKind::Reset, .path = std::nullopt});
 }
 
 const Document* DocumentStore::find(const std::string_view documentPath) const noexcept

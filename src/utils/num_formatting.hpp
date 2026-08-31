@@ -41,6 +41,20 @@ struct ParsedBusValue {
                                       std::size_t fixedWidth = 0);
 
 /**
+ * Format the low @p bitWidth bits of a machine integer without constructing a
+ * BusValue. Prefixes are omitted; binary output is padded to the full bit width.
+ */
+[[nodiscard]] std::string formatInteger(std::uint64_t value, BusValueFormat format,
+                                        std::size_t bitWidth);
+
+/**
+ * Parse an integer in the explicitly selected format and return its width-limited
+ * two's-complement bit pattern. Invalid and out-of-range values return nullopt.
+ */
+[[nodiscard]] std::optional<std::uint64_t>
+parseInteger(std::string_view text, BusValueFormat format, std::size_t bitWidth);
+
+/**
  * @brief Parse user-facing decimal, hexadecimal, octal, binary, or four-state text.
  *
  * Unprefixed binary/four-state text is interpreted as an MSB-first raw value; other
