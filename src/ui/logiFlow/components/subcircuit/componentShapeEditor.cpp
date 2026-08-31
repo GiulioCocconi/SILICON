@@ -459,7 +459,8 @@ void editGraphicalSubcircuitShape(const std::string& slug, QUndoStack* undoStack
   if (slug.empty())
     return;
 
-  const auto  path     = SILICON::project::subcircuitPathForSlug(slug);
+  const auto path = SILICON::project::documentPathForSlug(
+      SILICON::project::DocumentType::Subcircuit, slug);
   const auto* document = SILICON::project::DocumentStore::active().find(path);
   if (!document)
     return;

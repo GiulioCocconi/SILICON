@@ -53,8 +53,10 @@ SubcircuitComponent::SubcircuitComponent()
         const auto slug =
             getPropertyValue<std::string>("slug").value_or(std::string());
         const bool affectsConfiguredDocument =
-            SILICON::project::isValidSubcircuitSlug(slug) && change.path
-            && *change.path == SILICON::project::subcircuitPathForSlug(slug);
+            SILICON::project::isValidDocumentSlug(slug) && change.path
+            && *change.path
+                   == SILICON::project::documentPathForSlug(
+                       SILICON::project::DocumentType::Subcircuit, slug);
         if (change.kind == SILICON::project::DocumentChangeKind::Reset
             || affectsConfiguredDocument)
           reloadFromRegistry();

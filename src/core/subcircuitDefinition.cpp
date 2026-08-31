@@ -105,7 +105,8 @@ SubcircuitDefinition loadSubcircuitDefinition(const std::string_view   slug,
   ActiveKeyGuard activeSlug(activeResolutionSlugs, std::string(slug),
                             "Recursive subcircuit dependency detected: ");
 
-  const auto  path     = SILICON::project::subcircuitPathForSlug(slug);
+  const auto  path     = SILICON::project::documentPathForSlug(
+      SILICON::project::DocumentType::Subcircuit, slug);
   const auto* document = SILICON::project::DocumentStore::active().find(path);
   if (!document)
     throw std::runtime_error(std::format("Unknown subcircuit slug '{}'", slug));

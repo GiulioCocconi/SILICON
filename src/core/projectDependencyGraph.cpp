@@ -33,8 +33,10 @@ namespace {
 
   [[nodiscard]] std::string slugForDocumentPath(const std::string_view documentPath)
   {
-    if (const auto slug = subcircuitSlugForPath(documentPath))
-      return *slug;
+    if (documentTypeForPath(documentPath) == DocumentType::Subcircuit) {
+      if (const auto slug = documentSlugForPath(documentPath))
+        return *slug;
+    }
     return std::string(documentPath);
   }
 
@@ -105,12 +107,12 @@ namespace {
             documentPath));
 
       const auto slug = slugIt->get<std::string>();
-      if (!isValidSubcircuitSlug(slug))
+      if (!isValidDocumentSlug(slug))
         throw std::runtime_error(
             std::format("{} contains a Subcircuit component with invalid slug '{}'",
                         documentPath, slug));
 
-      auto path = subcircuitPathForSlug(slug);
+      auto path = documentPathForSlug(DocumentType::Subcircuit, slug);
       if (seen.insert(path).second)
         dependencies.push_back(std::move(path));
     }
@@ -141,7 +143,7 @@ void ProjectDependencyGraph::clear()
 void ProjectDependencyGraph::addDocument(const std::string_view documentPath)
 {
   const auto type = documentTypeForPath(documentPath);
-  if (!type || !isGraphicalDocumentType(*type))
+  if (!type || !documentTypeInfo(*type).isGraphical)
     throw std::invalid_argument(
         "Dependency graph documents must be circuits or subcircuits");
   if (containsDocument(documentPath))
@@ -186,7 +188,7 @@ void ProjectDependencyGraph::rebuildFromProject(const std::vector<Document>& doc
   std::unordered_set<std::string_view> registeredPaths;
 
   for (const auto& document : documents) {
-    if (!isGraphicalDocumentType(document.getType()))
+    if (!documentTypeInfo(document.getType()).isGraphical)
       continue;
     if (!registeredPaths.insert(document.getPath()).second)
       throw std::runtime_error(
@@ -195,7 +197,7 @@ void ProjectDependencyGraph::rebuildFromProject(const std::vector<Document>& doc
   }
 
   for (const auto& document : documents) {
-    if (isGraphicalDocumentType(document.getType()))
+    if (documentTypeInfo(document.getType()).isGraphical)
       rebuilt.replaceDependencyEdges(document.getPath(), document.getContents());
   }
 

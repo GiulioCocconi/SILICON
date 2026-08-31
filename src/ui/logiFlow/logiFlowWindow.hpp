@@ -22,7 +22,6 @@ Copyright (c) 2026. Giulio Cocconi
 #include <memory>
 #include <optional>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include <QMainWindow>
@@ -30,14 +29,7 @@ Copyright (c) 2026. Giulio Cocconi
 #include <QString>
 #include <QVector>
 
-#include <core/circuit.hpp>
-
-class AboutDialog;
 class QAction;
-class ComponentCatalogOverlay;
-class DiagramScene;
-class DiagramView;
-class GraphicalLogStream;
 class QByteArray;
 class QDialog;
 class QDockWidget;
@@ -49,11 +41,7 @@ class QPoint;
 class QResizeEvent;
 class QStackedWidget;
 class QToolBar;
-class QTreeWidgetItem;
 class QUndoStack;
-class LogSideView;
-struct ShortcutSetting;
-class ProjectTree;
 
 #include <core/projectDependencyGraph.hpp>
 #include <core/serialization/projectFile.hpp>
@@ -66,10 +54,12 @@ class ProjectTree;
 class QContextMenuEvent;
 #endif
 
+namespace SILICON::core {
+class Circuit;
+}
+
 namespace SILICON {
 namespace ui {
-using namespace SILICON::core;
-
 class AboutDialog;
 class ComponentCatalogOverlay;
 class CodeEditor;
@@ -110,22 +100,12 @@ public:
   /** @brief Returns the dock widget view that displays application log output. */
   [[nodiscard]] LogSideView* getLogSideView() const { return this->logSideView; }
 
-  /**
-   * @brief Returns the project path of the currently active circuit.
-   *
-   * Falls back to the project's configured main circuit path when no explicit
-   * active circuit has been recorded yet.
-   */
-  [[nodiscard]] std::string activeProjectCircuitPath() const;
-  [[nodiscard]] std::string activeProjectSubcircuitSlug() const;
-  bool                      activateProjectDocument(const std::string& documentPath);
+  [[nodiscard]] const std::string& activeProjectDocumentPath() const noexcept
+  {
+    return activeDocumentPath;
+  }
+  bool activateProjectDocument(const std::string& documentPath);
 
-  /**
-   * @brief Switches the editor to a circuit in the active project.
-   * @param circuitPath Project-relative path of the circuit JSON entry
-   * @return True when the circuit exists and is active after the call
-   */
-  bool activateProjectCircuit(const std::string& circuitPath);
 
 protected:
 #ifndef QT_NO_CONTEXTMENU
@@ -249,12 +229,9 @@ private slots:
   /** @brief Prompts for and inserts a new circuit into the current project. */
   void createCircuit();
 
-  /** @brief Deletes the selected circuit from the current project when allowed. */
-  void deleteSelectedCircuit();
   void createSubcircuit();
   void createCodeFile();
   void createBinaryFile();
-  void deleteSelectedSubcircuit();
 
   /** @brief Rebuilds the property dock for the current selection or active circuit. */
   void updatePropertyDock();
@@ -282,14 +259,12 @@ private:
   void               updateCodeAction();
   void               convertActiveSubcircuitToVerilog();
   void               convertActiveVerilogToSubcircuit();
-  void               commitConvertedDocument(SILICON::project::Document document,
-                                             const std::string& sourcePath, const QString& commandText);
   void commitConvertedDocuments(std::vector<SILICON::project::Document> documents,
                                 const std::string& sourcePath,
                                 const std::string& activatePath,
                                 const QString&     commandText);
-  [[nodiscard]] bool isCodeDocumentActive() const;
-  [[nodiscard]] bool isBinaryDocumentActive() const;
+  [[nodiscard]] std::optional<SILICON::project::DocumentType>
+  activeDocumentType() const noexcept;
 
   /**
    * @brief Updates the current project filename and window title.
@@ -307,90 +282,50 @@ private:
   /** @brief Creates and wires the project tree widget shown in the project dock. */
   void initializeProjectTree();
 
-  /** @brief Rebuilds the project tree from the in-memory project circuit list. */
+  /** @brief Rebuilds the project tree from the active project documents. */
   void rebuildProjectTree();
 
-  /** @brief Refreshes displayed project and circuit names in the project tree. */
-  void updateProjectTreeLabels();
-
-  /** @brief Clears project-tree selection without switching circuits. */
-  void clearProjectTreeSelection();
-
-  /** @brief Serializes the active scene into the shared project document store. */
+  /** @brief Serializes the active editor into the shared project document store. */
   void saveActiveDocumentPayload();
+  void loadDocumentPayload(const SILICON::project::Document& document);
 
   /**
    * @brief Prompts to save when the project undo stack contains unsaved edits.
    * @param continuation Operation to run after saving or discarding changes
    */
   void confirmSaveIfDirty(std::function<void()> continuation);
+  [[nodiscard]] bool hasUnsavedChanges() const;
 
-  /**
-   * @brief Switches the diagram scene to a project circuit.
-   * @param circuitPath Project-relative path of the target circuit
-   * @param selectInTree Whether to select the circuit in the project tree
-   * @return True when the target circuit was loaded or already active
-   */
+  /** Switches to a project document, optionally selecting it in the tree. */
   bool switchToDocument(const std::string& path, bool selectInTree);
 
-  /**
-   * @brief Selects a circuit item in the project tree without emitting selection
-   * changes.
-   * @param circuitPath Project-relative path to select
-   */
+  /** Selects a project document in the tree without switching editors. */
   void selectProjectTreeDocument(const std::string& path);
 
   /** @brief Resets the window to a fresh, single-circuit project state. */
   void resetProjectState();
 
-  /**
-   * @brief Removes a circuit from every in-memory project container.
-   * @param path Project-relative path of the circuit to remove
-   */
+  /** Removes a document from the store and derived dependency graph. */
   void removeDocument(const std::string& path);
 
-  /**
-   * @brief Inserts or appends a circuit entry and optionally switches to it.
-   * @param file Project file entry to insert
-   * @param sceneJson Serialized scene JSON for the circuit
-   * @param name Display name to cache for the circuit
-   * @param description Description to cache for the circuit
-   * @param insertAt Optional insertion index in the circuit list
-   * @param switchToPath Circuit path to activate after insertion, or empty to keep
-   *                     the current one
-   */
+  /** Inserts a document and optionally activates it. */
   void insertDocument(SILICON::project::Document    document,
                       std::optional<std::ptrdiff_t> insertAt, bool activate);
 
-  /**
-   * @brief Generates a unique project-relative circuit path from a requested name.
-   * @param requestedName Human-readable circuit name entered by the user
-   * @return A non-conflicting path under the project circuits directory
-   */
+  /** Generates a unique project path for a graphical document. */
   [[nodiscard]] std::string uniqueDocumentPath(SILICON::project::DocumentType type,
                                                const QString& requestedName) const;
 
-  /**
-   * @brief Creates an empty serialized scene for a new circuit.
-   * @param name Circuit name to store in the payload
-   * @return Pretty-printed JSON scene document
-   */
-  [[nodiscard]] std::string emptyCircuitSceneJson(const std::string& name) const;
-  [[nodiscard]] std::string emptySubcircuitSceneJson(const std::string& name) const;
-  void                      createDocument(SILICON::project::DocumentType type);
-  void                      deleteSelectedDocument();
-  [[nodiscard]] QTreeWidgetItem*
-  projectDocumentSectionItem(SILICON::project::DocumentType type) const;
-
-  /**
-   * @brief Checks whether the current project contains a circuit path.
-   * @param circuitPath Project-relative circuit path
-   * @return True when the path exists in the project circuit list
-   */
-  [[nodiscard]] bool hasDocument(const std::string& path) const;
-
+  /** Creates an empty serialized graphical document. */
+  [[nodiscard]] std::string
+  emptyGraphicalDocumentJson(SILICON::project::DocumentType type,
+                             const std::string& name) const;
+  void createDocument(SILICON::project::DocumentType type);
+  void pushCreateDocumentCommand(SILICON::project::Document document,
+                                 const QString& commandText);
+  void deleteSelectedDocument();
   /** @brief Returns the logical circuit currently owned by the diagram scene. */
-  [[nodiscard]] std::shared_ptr<Circuit> activeCircuit();
+  [[nodiscard]] std::shared_ptr<SILICON::core::Circuit> activeCircuit();
 
 #ifdef __EMSCRIPTEN__
   /**
@@ -420,7 +355,8 @@ private:
   /** @brief Builds the editable shortcut table shown in the settings dialog. */
   QVector<ShortcutSetting> shortcutSettings() const;
 
-  [[nodiscard]] static std::string                defaultMainCircuitPath();
+  [[nodiscard]] static QString documentTypeName(SILICON::project::DocumentType type);
+  [[nodiscard]] static std::string defaultMainCircuitPath();
   [[nodiscard]] static SILICON::project::Document defaultCircuitDocument();
   [[nodiscard]] static SILICON::project::ProjectInfo
                             defaultProjectInfo(const QString& currentFileName);
@@ -570,9 +506,6 @@ private:
   /** @brief Optional persisted project information for the current project. */
   std::optional<SILICON::project::ProjectInfo> currentProjectInfo;
 
-  /** @brief Non-document archive entries preserved across load/save. */
-  std::vector<SILICON::project::ProjectAsset> currentProjectAssets;
-
   /** @brief Project-relative path of the circuit loaded in the diagram scene. */
   std::string activeDocumentPath;
   /** @brief Tracks code edits already flushed to DocumentStore but not to disk. */
@@ -625,3 +558,4 @@ private:
 
 }  // namespace ui
 }  // namespace SILICON
+

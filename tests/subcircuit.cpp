@@ -323,8 +323,9 @@ SILICON::project::Document subcircuitDocument(
     std::string slug, std::string sceneJson,
     std::optional<std::string> coreJson = std::nullopt)
 {
-  return {SILICON::project::subcircuitPathForSlug(slug), std::move(sceneJson),
-          std::move(coreJson)};
+  return {SILICON::project::documentPathForSlug(SILICON::project::DocumentType::Subcircuit,
+                                                slug),
+          std::move(sceneJson), std::move(coreJson)};
 }
 
 }  // namespace

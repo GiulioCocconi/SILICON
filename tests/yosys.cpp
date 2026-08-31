@@ -1418,7 +1418,8 @@ TEST(YosysTest, ExportsSubcircuitsAsHierarchicalModules)
   auto& registry = SILICON::project::DocumentStore::active();
   registry.clear();
   registry.upsertDocument(
-      {SILICON::project::subcircuitPathForSlug("and_child"),
+      {SILICON::project::documentPathForSlug(SILICON::project::DocumentType::Subcircuit,
+                                             "and_child"),
        andSubcircuitDocument()});
 
   {

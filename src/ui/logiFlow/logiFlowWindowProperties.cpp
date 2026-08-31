@@ -21,95 +21,35 @@
 #include <utils/num_formatting.hpp>
 
 #include <algorithm>
-#include <cctype>
-#include <cstdint>
-#include <cstring>
-#include <functional>
-#include <initializer_list>
 #include <limits>
+#include <optional>
 #include <ranges>
-#include <stdexcept>
+#include <string>
 #include <tuple>
-#include <unordered_map>
+#include <type_traits>
+#include <utility>
 #include <variant>
 #include <vector>
 
-#include <QAbstractItemView>
-#include <QApplication>
-#include <QByteArray>
 #include <QCheckBox>
-#include <QClipboard>
-#include <QCloseEvent>
 #include <QComboBox>
-#include <QContextMenuEvent>
-#include <QCursor>
-#include <QDialog>
 #include <QDockWidget>
-#include <QEvent>
-#include <QFile>
-#include <QFileDialog>
-#include <QFileInfo>
-#include <QFocusEvent>
 #include <QFormLayout>
-#include <QGraphicsView>
-#include <QHBoxLayout>
-#include <QIcon>
-#include <QJsonArray>
-#include <QJsonDocument>
-#include <QKeySequence>
+#include <QGraphicsItem>
 #include <QLabel>
 #include <QLineEdit>
-#include <QMenu>
-#include <QMenuBar>
-#include <QMimeData>
-#include <QPlainTextEdit>
-#include <QResizeEvent>
-#include <QSignalBlocker>
 #include <QSpinBox>
-#include <QStackedWidget>
-#include <QStatusBar>
-#include <QString>
-#include <QStringList>
-#include <QTemporaryFile>
 #include <QTimer>
-#include <QToolBar>
-#include <QTreeWidget>
-#include <QTreeWidgetItem>
-#include <QUndoCommand>
-#include <QUndoStack>
-#include <QVBoxLayout>
+#include <QWidget>
 
-#ifdef __EMSCRIPTEN__
-  #include <emscripten/emscripten.h>
-#endif
+#include <nlohmann/json.hpp>
 
-#include <core/serialization/component_registry.hpp>
-#include <core/serialization/projectFile.hpp>
-#include <core/serialization/yosys.hpp>
-#include <core/simulator.hpp>
-#include <core/subcircuitDefinition.hpp>
-#include <logging/logger.hpp>
-#include <ui/common/aboutDialog.hpp>
-#include <ui/common/codeEditor.hpp>
 #include <ui/common/diagramScene/diagramScene.hpp>
-#include <ui/common/diagramView.hpp>
-#include <ui/common/fileDialogUtils.hpp>
-#include <ui/common/graphicalLogStream.hpp>
-#include <ui/common/icons.hpp>
 #include <ui/common/inputDialogUtils.hpp>
-#include <ui/common/logSideView.hpp>
-#include <ui/common/settingsWindow.hpp>
-#include <ui/common/theme.hpp>
 #include <ui/common/undoCommands.hpp>
-#include <ui/common/waveformViewer.hpp>
-#include <ui/logiFlow/componentCatalogOverlay.hpp>
 #include <ui/logiFlow/components/graphicalLogicComponent.hpp>
-#include <ui/logiFlow/components/subcircuit/componentShapeEditor.hpp>
-#include <ui/logiFlow/components/subcircuit/metadata.hpp>
-#include <ui/logiFlow/components/subcircuit/utils.hpp>
 #include <ui/logiFlow/metadataDescriptionEdit.hpp>
 #include <ui/logiFlow/projectTree.hpp>
-#include <ui/serialization/gui_component_factory.hpp>
 
 namespace SILICON {
 namespace ui {
@@ -117,10 +57,8 @@ using namespace SILICON::core;
 
 namespace {
 
-const SILICON::logging::Logger uiLog("ui");
-
 std::pair<std::string, std::string>
-circuitMetadata(const SILICON::project::Document& document)
+graphicalDocumentMetadata(const SILICON::project::Document& document)
 {
   try {
     const auto scene = nlohmann::json::parse(document.getContents());
@@ -136,16 +74,21 @@ circuitMetadata(const SILICON::project::Document& document)
 
 void LogiFlowWindow::updatePropertyDock()
 {
-  const auto* selectedProjectItem =
+  auto* selectedProjectItem =
       projectTree ? projectTree->selectedProjectItem() : nullptr;
-  const bool codeFileSelected =
-      selectedProjectItem
-      && ProjectTree::itemKind(selectedProjectItem) == ProjectTreeItemKind::CodeFile;
-  const bool binaryFileSelected =
-      selectedProjectItem
-      && ProjectTree::itemKind(selectedProjectItem) == ProjectTreeItemKind::BinaryFile;
-  propertyDock->setVisible(!codeFileSelected && !binaryFileSelected);
-  if (codeFileSelected || binaryFileSelected)
+
+  const auto itemKind = selectedProjectItem
+                            ? std::optional{ProjectTree::itemKind(selectedProjectItem)}
+                            : std::nullopt;
+  const auto itemType = selectedProjectItem
+                            ? ProjectTree::itemDocumentType(selectedProjectItem)
+                            : std::nullopt;
+
+  const bool hasProperties =
+      itemKind != ProjectTreeItemKind::CodeLanguage
+      && (!itemType || SILICON::project::documentTypeInfo(*itemType).isGraphical);
+  propertyDock->setVisible(hasProperties);
+  if (!hasProperties)
     return;
 
   // 1. Assign the container immediately.
@@ -171,13 +114,10 @@ void LogiFlowWindow::updatePropertyDock()
       return;
     }
 
-    const auto itemKind = ProjectTree::itemKind(selectedProjectItem);
-
-    if (itemKind == ProjectTreeItemKind::CircuitSection
-        || itemKind == ProjectTreeItemKind::SubcircuitSection) {
-      layout->addRow(new QLabel(itemKind == ProjectTreeItemKind::CircuitSection
-                                    ? tr("Select a circuit to view its properties.")
-                                    : tr("Select a subcircuit to view its properties.")));
+    if (itemKind == ProjectTreeItemKind::Section && itemType) {
+      layout->addRow(new QLabel(
+          tr("Select a %1 to view its properties.")
+              .arg(documentTypeName(*itemType).toLower())));
       return;
     }
 
@@ -222,7 +162,7 @@ void LogiFlowWindow::updatePropertyDock()
                       if (!currentProjectInfo)
                         return;
                       currentProjectInfo->name = value;
-                      updateProjectTreeLabels();
+                      rebuildProjectTree();
                       schedulePropertyDockRefresh();
                     });
               });
@@ -243,67 +183,69 @@ void LogiFlowWindow::updatePropertyDock()
                          });
       };
     } else {
-      const auto  circuitPath = ProjectTree::documentPath(selectedProjectItem);
+      const auto documentPath = ProjectTree::documentPath(selectedProjectItem);
+      const auto noun = itemType ? documentTypeName(*itemType) : tr("Document");
+
       std::string name;
       std::string description;
-      if (activeProjectCircuitPath() == circuitPath) {
-        const auto circuit = activeCircuit();
-        if (circuit) {
+      if (activeDocumentPath == documentPath) {
+        if (const auto circuit = activeCircuit()) {
           name        = circuit->getName();
           description = circuit->getDescription();
         }
       } else if (const auto* document =
-                     SILICON::project::DocumentStore::active().find(circuitPath)) {
-        std::tie(name, description) = circuitMetadata(*document);
+                     SILICON::project::DocumentStore::active().find(documentPath)) {
+        std::tie(name, description) = graphicalDocumentMetadata(*document);
       }
+
       nameEdit->setText(QString::fromStdString(name));
       descriptionEdit->setPlainText(QString::fromStdString(description));
       descriptionEdit->document()->setModified(false);
 
-      connect(
-          nameEdit, &QLineEdit::editingFinished, this,
-          [this, nameEdit, circuitPath, pushMetadataEdit, schedulePropertyDockRefresh] {
-            if (!nameEdit->isModified())
+      connect(nameEdit, &QLineEdit::editingFinished, this,
+              [this, nameEdit, documentPath, noun, oldValue = name,
+               pushMetadataEdit, schedulePropertyDockRefresh] {
+                if (!nameEdit->isModified())
+                  return;
+
+                const auto newValue = nameEdit->text().toStdString();
+                nameEdit->setModified(false);
+                pushMetadataEdit(
+                    tr("Modify %1 Name").arg(noun), oldValue, newValue,
+                    [this, documentPath,
+                     schedulePropertyDockRefresh](const std::string& value) {
+                      if (!activateProjectDocument(documentPath))
+                        return;
+                      if (const auto circuit = activeCircuit()) {
+                        circuit->setName(value);
+                        saveActiveDocumentPayload();
+                      }
+                      rebuildProjectTree();
+                      schedulePropertyDockRefresh();
+                    });
+              });
+
+      descriptionEdit->commit =
+          [this, documentPath, noun, descriptionEdit, oldValue = description,
+           pushMetadataEdit, schedulePropertyDockRefresh] {
+            if (!descriptionEdit->document()->isModified())
               return;
 
-            const auto oldValue =
-                activeCircuit() ? activeCircuit()->getName() : std::string{};
-            const auto newValue = nameEdit->text().toStdString();
-            nameEdit->setModified(false);
-            pushMetadataEdit(tr("Modify Circuit Name"), oldValue, newValue,
-                             [this, circuitPath,
-                              schedulePropertyDockRefresh](const std::string& value) {
-                               if (!activateProjectCircuit(circuitPath))
-                                 return;
-                               if (const auto circuit = activeCircuit()) {
-                                 circuit->setName(value);
-                                 saveActiveDocumentPayload();
-                               }
-                               updateProjectTreeLabels();
-                               schedulePropertyDockRefresh();
-                             });
-          });
-      descriptionEdit->commit = [this, circuitPath, descriptionEdit, pushMetadataEdit,
-                                 schedulePropertyDockRefresh] {
-        if (!descriptionEdit->document()->isModified())
-          return;
-
-        const auto oldValue =
-            activeCircuit() ? activeCircuit()->getDescription() : std::string{};
-        const auto newValue = descriptionEdit->toPlainText().toStdString();
-        descriptionEdit->document()->setModified(false);
-        pushMetadataEdit(
-            tr("Modify Circuit Description"), oldValue, newValue,
-            [this, circuitPath, schedulePropertyDockRefresh](const std::string& value) {
-              if (!activateProjectCircuit(circuitPath))
-                return;
-              if (const auto circuit = activeCircuit()) {
-                circuit->setDescription(value);
-                saveActiveDocumentPayload();
-              }
-              schedulePropertyDockRefresh();
-            });
-      };
+            const auto newValue = descriptionEdit->toPlainText().toStdString();
+            descriptionEdit->document()->setModified(false);
+            pushMetadataEdit(
+                tr("Modify %1 Description").arg(noun), oldValue, newValue,
+                [this, documentPath,
+                 schedulePropertyDockRefresh](const std::string& value) {
+                  if (!activateProjectDocument(documentPath))
+                    return;
+                  if (const auto circuit = activeCircuit()) {
+                    circuit->setDescription(value);
+                    saveActiveDocumentPayload();
+                  }
+                  schedulePropertyDockRefresh();
+                });
+          };
     }
 
     layout->addRow(tr("Name"), nameEdit);
@@ -499,12 +441,9 @@ bool PropertySpinBox::isMixed() const
   return m_isMixed;
 }
 
-QString PropertySpinBox::textFromValue(int val) const
+QString PropertySpinBox::textFromValue(const int val) const
 {
-  if (m_isMixed && val == minimum()) {
-    return "";
-  }
-  return QSpinBox::textFromValue(val);
+  return m_isMixed && val == minimum() ? QString{} : QSpinBox::textFromValue(val);
 }
 
 }  // namespace ui

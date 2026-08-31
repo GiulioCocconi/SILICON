@@ -18,97 +18,34 @@ Copyright (c) 2026. Giulio Cocconi
 
 #include "logiFlowWindow.hpp"
 
-#include <algorithm>
-#include <cctype>
-#include <cstdint>
 #include <cstring>
-#include <functional>
-#include <initializer_list>
-#include <limits>
-#include <ranges>
-#include <stdexcept>
-#include <tuple>
-#include <unordered_map>
-#include <variant>
-#include <vector>
 
-#include <QAbstractItemView>
 #include <QApplication>
-#include <QByteArray>
-#include <QCheckBox>
-#include <QClipboard>
-#include <QCloseEvent>
-#include <QComboBox>
-#include <QContextMenuEvent>
-#include <QCursor>
-#include <QDialog>
 #include <QDockWidget>
 #include <QEvent>
-#include <QFile>
-#include <QFileDialog>
-#include <QFileInfo>
-#include <QFocusEvent>
-#include <QFormLayout>
-#include <QGraphicsView>
 #include <QHBoxLayout>
-#include <QIcon>
-#include <QJsonArray>
-#include <QJsonDocument>
-#include <QKeySequence>
-#include <QLabel>
-#include <QLineEdit>
-#include <QMenu>
-#include <QMenuBar>
-#include <QMimeData>
 #include <QMouseEvent>
-#include <QPlainTextEdit>
-#include <QResizeEvent>
-#include <QSignalBlocker>
-#include <QSpinBox>
+#include <QObject>
+#include <QPointF>
 #include <QStackedWidget>
-#include <QStatusBar>
-#include <QString>
-#include <QStringList>
-#include <QTemporaryFile>
 #include <QTextDocument>
-#include <QTimer>
 #include <QToolBar>
-#include <QTreeWidget>
-#include <QTreeWidgetItem>
-#include <QUndoCommand>
 #include <QUndoStack>
-#include <QVBoxLayout>
+#include <QWidget>
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten/emscripten.h>
 #endif
 
-#include <core/serialization/component_registry.hpp>
-#include <core/serialization/projectFile.hpp>
-#include <core/serialization/yosys.hpp>
-#include <core/simulator.hpp>
-#include <core/subcircuitDefinition.hpp>
 #include <logging/logger.hpp>
 #include <ui/common/aboutDialog.hpp>
 #include <ui/common/binaryEditor.hpp>
 #include <ui/common/codeEditor.hpp>
 #include <ui/common/diagramScene/diagramScene.hpp>
 #include <ui/common/diagramView.hpp>
-#include <ui/common/fileDialogUtils.hpp>
 #include <ui/common/graphicalLogStream.hpp>
-#include <ui/common/icons.hpp>
-#include <ui/common/inputDialogUtils.hpp>
 #include <ui/common/logSideView.hpp>
-#include <ui/common/settingsWindow.hpp>
-#include <ui/common/theme.hpp>
-#include <ui/common/undoCommands.hpp>
-#include <ui/common/waveformViewer.hpp>
 #include <ui/logiFlow/componentCatalogOverlay.hpp>
-#include <ui/logiFlow/components/graphicalLogicComponent.hpp>
-#include <ui/logiFlow/components/subcircuit/componentShapeEditor.hpp>
-#include <ui/logiFlow/components/subcircuit/metadata.hpp>
-#include <ui/logiFlow/components/subcircuit/utils.hpp>
-#include <ui/serialization/gui_component_factory.hpp>
 
 namespace SILICON {
 namespace ui {
@@ -213,7 +150,8 @@ LogiFlowWindow::LogiFlowWindow()
   binaryEditor = new BinaryEditor(this);
   connect(binaryEditor->history(), &QUndoStack::cleanChanged, this,
           [this](const bool clean) {
-            if (!clean && isBinaryDocumentActive())
+            if (!clean
+                && activeDocumentType() == SILICON::project::DocumentType::Binary)
               binaryDocumentsDirty = true;
           });
   editorStack = new QStackedWidget(this);
@@ -275,3 +213,4 @@ LogiFlowWindow::LogiFlowWindow()
 
 }  // namespace ui
 }  // namespace SILICON
+

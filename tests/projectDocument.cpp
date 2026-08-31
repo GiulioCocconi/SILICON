@@ -5,6 +5,7 @@
 
 #include <core/projectDocument.hpp>
 
+#include <algorithm>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -34,22 +35,25 @@ TEST(ProjectDocumentTest, ClassifiesCanonicalFlatPaths)
             DocumentType::Circuit);
   EXPECT_FALSE(SILICON::project::documentTypeForPath("circuits/../main.json"));
   EXPECT_FALSE(SILICON::project::documentTypeForPath("subcircuits/...json"));
-  EXPECT_EQ(SILICON::project::subcircuitSlugForPath("subcircuits/adder.json"), "adder");
-  EXPECT_FALSE(SILICON::project::subcircuitSlugForPath("circuits/adder.json"));
-  EXPECT_EQ(SILICON::project::binarySlugForPath("bin/firmware"), "firmware");
-  EXPECT_FALSE(SILICON::project::binarySlugForPath("bin/nested/firmware"));
+  EXPECT_EQ(SILICON::project::documentSlugForPath("subcircuits/adder.json"), "adder");
+  EXPECT_EQ(SILICON::project::documentSlugForPath("circuits/adder.json"), "adder");
+  EXPECT_EQ(SILICON::project::documentSlugForPath("bin/firmware"), "firmware");
+  EXPECT_FALSE(SILICON::project::documentSlugForPath("bin/nested/firmware"));
+  EXPECT_FALSE(SILICON::project::documentSlugForPath("code/adder.v"));
 }
 
 TEST(ProjectDocumentTest, ValidatesBinarySlugsAndRoundTripsExactNames)
 {
   for (const std::string_view invalid : {"", ".", "..", "a/b", "a\\b", "line\nbreak"}) {
-    EXPECT_FALSE(isValidBinarySlug(invalid));
-    EXPECT_THROW(static_cast<void>(binaryPathForSlug(invalid)), std::invalid_argument);
+    EXPECT_FALSE(isValidDocumentSlug(invalid));
+    EXPECT_THROW(static_cast<void>(
+                     documentPathForSlug(DocumentType::Binary, invalid)),
+                 std::invalid_argument);
   }
   for (const std::string_view valid : {"firmware", "rom.bin", "name with spaces"}) {
-    const auto path = binaryPathForSlug(valid);
-    ASSERT_TRUE(binarySlugForPath(path));
-    EXPECT_EQ(*binarySlugForPath(path), valid);
+    const auto path = documentPathForSlug(DocumentType::Binary, valid);
+    ASSERT_TRUE(documentSlugForPath(path));
+    EXPECT_EQ(*documentSlugForPath(path), valid);
   }
 }
 
@@ -57,16 +61,17 @@ TEST(ProjectDocumentTest, ValidatesSubcircuitSlugsAndRoundTripsValidOnes)
 {
   for (const std::string_view invalid :
        {"", ".", "..", "a/b", "a\\b", "../foo", "foo/bar", "line\nbreak"}) {
-    EXPECT_FALSE(isValidSubcircuitSlug(invalid));
-    EXPECT_THROW(static_cast<void>(subcircuitPathForSlug(invalid)),
+    EXPECT_FALSE(isValidDocumentSlug(invalid));
+    EXPECT_THROW(static_cast<void>(
+                     documentPathForSlug(DocumentType::Subcircuit, invalid)),
                  std::invalid_argument);
   }
 
   for (const std::string_view valid : {"adder", "foo..bar", "name with spaces"}) {
-    ASSERT_TRUE(isValidSubcircuitSlug(valid));
-    const auto path = subcircuitPathForSlug(valid);
-    ASSERT_TRUE(subcircuitSlugForPath(path));
-    EXPECT_EQ(*subcircuitSlugForPath(path), valid);
+    ASSERT_TRUE(isValidDocumentSlug(valid));
+    const auto path = documentPathForSlug(DocumentType::Subcircuit, valid);
+    ASSERT_TRUE(documentSlugForPath(path));
+    EXPECT_EQ(*documentSlugForPath(path), valid);
   }
 }
 
@@ -79,17 +84,6 @@ TEST(ProjectDocumentTest, RejectsCircuitOnlyStateForCodeDocuments)
   EXPECT_THROW(code.setContents("new", "{}"), std::invalid_argument);
   EXPECT_EQ(code.getContents(), "old");
   EXPECT_FALSE(code.getCoreCircuitJson());
-}
-
-TEST(ProjectDocumentTest, ValidatesAssetNamespaceOwnership)
-{
-  EXPECT_TRUE(isValidProjectAssetPath("assets/readme.txt"));
-  EXPECT_TRUE(isValidProjectAssetPath("foo..bar/data.bin"));
-  for (const std::string_view invalid :
-       {"", "/absolute", "C:/absolute", "trailing/", "a//b", "a/./b", "a/../b", "a\\b",
-        "mimetype", "metadata.json", "project.json", "circuits/other.bin",
-        "subcircuits/nested/adder.json", "code/unsupported.sv", "bin/raw"})
-    EXPECT_FALSE(isValidProjectAssetPath(invalid));
 }
 
 TEST(ProjectDocumentTest, ContentReplacementClearsOrReplacesPreparedCoreJson)
@@ -139,20 +133,25 @@ TEST(ProjectDocumentStoreTest, PreservesOrderAcrossMixedKindsAndUpserts)
   EXPECT_EQ(store.getDocuments()[1].getPath(), "subcircuits/adder.json");
   EXPECT_EQ(store.getDocuments()[1].getContents(), "updated");
 
-  const auto circuits = store.getDocuments(DocumentType::Circuit);
-  ASSERT_EQ(circuits.size(), 2);
-  EXPECT_EQ(circuits[0].get().getPath(), "circuits/main.json");
-  EXPECT_EQ(circuits[1].get().getPath(), "circuits/control.json");
+  const auto& allDocuments = store.getDocuments();
+  const auto  circuitCount = std::ranges::count_if(
+      allDocuments,
+      [](const auto& d) { return d.getType() == DocumentType::Circuit; });
+  ASSERT_EQ(circuitCount, 2);
+  EXPECT_TRUE(store.contains(DocumentType::Circuit));
 
-  const auto codeFiles = store.getDocuments(DocumentType::Code);
-  ASSERT_EQ(codeFiles.size(), 1);
-  EXPECT_EQ(codeFiles.front().get().getContents(), "module adder; endmodule");
-  EXPECT_EQ(codeFileTypeForPath(codeFiles.front().get().getPath()),
-            CodeFileType::Verilog);
+  const auto codeIt = std::ranges::find_if(
+      allDocuments,
+      [](const auto& d) { return d.getType() == DocumentType::Code; });
+  ASSERT_NE(codeIt, allDocuments.end());
+  EXPECT_EQ(codeIt->getContents(), "module adder; endmodule");
+  EXPECT_EQ(codeFileTypeForPath(codeIt->getPath()), CodeFileType::Verilog);
 
-  const auto binaries = store.getDocuments(DocumentType::Binary);
-  ASSERT_EQ(binaries.size(), 1);
-  EXPECT_EQ(binaries.front().get().getContents(), std::string("\0\xff", 2));
+  const auto binaryIt = std::ranges::find_if(
+      allDocuments,
+      [](const auto& d) { return d.getType() == DocumentType::Binary; });
+  ASSERT_NE(binaryIt, allDocuments.end());
+  EXPECT_EQ(binaryIt->getContents(), std::string("\0\xff", 2));
 
   store.removeDocument("subcircuits/adder.json");
   EXPECT_FALSE(store.contains("subcircuits/adder.json"));

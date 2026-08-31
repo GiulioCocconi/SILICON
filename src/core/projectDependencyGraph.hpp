@@ -81,12 +81,11 @@ public:
   /**
    * @brief Rebuilds the graph from a full project description.
    *
-   * All circuits and subcircuits are first registered as vertices and then
-   * wired with their dependency edges. The resulting graph must be acyclic;
-   * if it is not, a `std::runtime_error` is thrown and the graph is left
-   * unchanged.
+   * All graphical documents are first registered as vertices and then wired with
+   * their dependency edges. The resulting graph must be acyclic; if it is not,
+   * a `std::runtime_error` is thrown and the graph is left unchanged.
    *
-   * @param documents The project's ordered documents. Code documents are ignored.
+   * @param documents The project's ordered documents. Non-graphical documents are ignored.
    * @throw std::runtime_error If the described dependencies form a cycle.
    */
   void rebuildFromProject(const std::vector<Document>& documents);

@@ -25,7 +25,6 @@
 #include <utility>
 
 #include <core/serialization/component_registry.hpp>
-#include <core/serialization/projectFile.hpp>
 #include <ui/common/diagramScene/diagramScene.hpp>
 #include <ui/logiFlow/logiFlowWindow.hpp>
 #include <ui/logiFlow/components/graphicalLogicComponent.hpp>
@@ -55,13 +54,8 @@ LogiFlowWindow* sceneWindow(DiagramScene* scene)
 
 std::string activeDocumentPath(DiagramScene* scene)
 {
-  if (auto* window = sceneWindow(scene)) {
-    const auto subcircuitSlug = window->activeProjectSubcircuitSlug();
-    if (!subcircuitSlug.empty())
-      return SILICON::project::subcircuitPathForSlug(subcircuitSlug);
-
-    return window->activeProjectCircuitPath();
-  }
+  if (auto* window = sceneWindow(scene))
+    return window->activeProjectDocumentPath();
 
   return {};
 }

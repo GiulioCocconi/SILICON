@@ -65,8 +65,10 @@ GraphicalSubcircuitComponent::GraphicalSubcircuitComponent(QGraphicsItem* parent
           [this](const SILICON::project::DocumentChange& change) {
         const auto slug = currentSlug();
         const bool affectsConfiguredDocument =
-            SILICON::project::isValidSubcircuitSlug(slug) && change.path
-            && *change.path == SILICON::project::subcircuitPathForSlug(slug);
+            SILICON::project::isValidDocumentSlug(slug) && change.path
+            && *change.path
+                   == SILICON::project::documentPathForSlug(
+                       SILICON::project::DocumentType::Subcircuit, slug);
         if (change.kind == SILICON::project::DocumentChangeKind::Reset
             || affectsConfiguredDocument)
           refreshFromMetadata();
@@ -155,7 +157,8 @@ void GraphicalSubcircuitComponent::refreshFromMetadata()
   }
 
   const auto* document = SILICON::project::DocumentStore::active().find(
-      SILICON::project::subcircuitPathForSlug(slug));
+      SILICON::project::documentPathForSlug(SILICON::project::DocumentType::Subcircuit,
+                                            slug));
   if (!document) {
     useAttachedInterfaceMetadata();
     return;

@@ -352,10 +352,9 @@ TEST(ProjectFileTest, RoundTripsRawBinaryDocumentsByteForByte)
   ASSERT_EQ(loaded.documents.size(), 2);
   EXPECT_EQ(loaded.documents[1].getType(), SILICON::project::DocumentType::Binary);
   EXPECT_EQ(loaded.documents[1].getContents(), raw);
-  EXPECT_TRUE(loaded.assets.empty());
 }
 
-TEST(ProjectFileTest, ReadsValidatedAssetsAndRejectsDocumentNamespaceCollisions)
+TEST(ProjectFileTest, RejectsNonDocumentEntries)
 {
   const auto  assetPath = tempProjectPath("asset_entry");
   FileCleanup assetCleanup{assetPath};
@@ -364,10 +363,7 @@ TEST(ProjectFileTest, ReadsValidatedAssetsAndRejectsDocumentNamespaceCollisions)
                        {"project.json", validProject().dump(2)},
                        {std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), "{}"},
                        {"notes/readme.txt", "preserved"}});
-  const auto loaded = SILICON::project::readProjectFile(assetPath);
-  ASSERT_EQ(loaded.assets.size(), 1);
-  EXPECT_EQ(loaded.assets.front(),
-            (SILICON::project::ProjectAsset{"notes/readme.txt", "preserved"}));
+  EXPECT_THROW(readProjectFileIgnoringResult(assetPath), std::runtime_error);
 
   const auto  collisionPath = tempProjectPath("asset_namespace_collision");
   FileCleanup collisionCleanup{collisionPath};
@@ -422,49 +418,6 @@ TEST(ProjectFileTest, RejectsEntriesCollidingWithSubcircuitNamespace)
                   {"subcircuits/nested/adder.json", "{}"}});
 
   EXPECT_THROW(readProjectFileIgnoringResult(path), std::runtime_error);
-}
-
-TEST(ProjectFileTest, WritesAndRoundTripsAssets)
-{
-  const auto  path = tempProjectPath("asset_roundtrip");
-  FileCleanup cleanup{path};
-  SILICON::project::ProjectFile projectFile{
-      .metadata  = SILICON::project::metadataForNewFile(),
-      .project   = {.name        = "Assets",
-                    .mainCircuit = std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH),
-                    .description = ""},
-      .documents = {{std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), "{}"}},
-      .assets    = {{"assets/data.bin", std::string("a\0b", 3)}}};
-
-  SILICON::project::writeProjectFile(path, projectFile);
-  EXPECT_EQ(readZipEntry(path, "assets/data.bin"), std::string("a\0b", 3));
-  const auto loaded = SILICON::project::readProjectFile(path);
-  EXPECT_EQ(loaded.assets, projectFile.assets);
-}
-
-TEST(ProjectFileTest, RejectsInvalidAndDuplicateAssetsBeforeWriting)
-{
-  const auto makeProject = [] {
-    return SILICON::project::ProjectFile{
-        .metadata  = SILICON::project::metadataForNewFile(),
-        .project   = {.name = "Assets",
-                      .mainCircuit =
-                          std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH),
-                      .description = ""},
-        .documents = {{std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), "{}"}}};
-  };
-
-  auto invalid = makeProject();
-  invalid.assets.push_back({"circuits/hidden.bin", ""});
-  EXPECT_THROW(
-      SILICON::project::writeProjectFile(tempProjectPath("invalid_asset"), invalid),
-      std::runtime_error);
-
-  auto duplicate = makeProject();
-  duplicate.assets = {{"assets/data.bin", "one"}, {"assets/data.bin", "two"}};
-  EXPECT_THROW(
-      SILICON::project::writeProjectFile(tempProjectPath("duplicate_asset"), duplicate),
-      std::runtime_error);
 }
 
 TEST(ProjectFileTest, RejectsDuplicateDocumentPathsBeforeCreatingArchive)
