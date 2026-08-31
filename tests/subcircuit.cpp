@@ -326,7 +326,9 @@ protected:
 
 SILICON::project::Document subcircuitDocument(std::string slug, std::string sceneJson)
 {
-  return {SILICON::project::subcircuitPathForSlug(slug), std::move(sceneJson)};
+  return {SILICON::project::documentPathForSlug(
+              SILICON::project::DocumentType::Subcircuit, slug),
+          std::move(sceneJson)};
 }
 
 struct ProjectFileCleanup {

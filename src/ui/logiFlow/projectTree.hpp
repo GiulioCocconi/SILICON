@@ -1,78 +1,60 @@
 /*
-Copyright (c) 2026. Giulio Cocconi
+ Copyright (c) 2026. Giulio Cocconi
 
- This program is free software: you can redistribute it and/or modify
- it under the terms of the GNU General Public License as published by
- the Free Software Foundation, either version 3 of the License, or
- (at your option) any later version.
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
 */
 
 #pragma once
 
+#include <optional>
+#include <span>
 #include <string>
-#include <vector>
+#include <string_view>
 
 #include <QTreeWidget>
 
 #include <core/serialization/projectFile.hpp>
 
-namespace SILICON {
-namespace ui {
+namespace SILICON::ui {
 
-/** @brief Semantic type of an item shown in the LogiFlow project tree. */
-enum class ProjectTreeItemKind {
-  Project,
-  CircuitSection,
-  Circuit,
-  SubcircuitSection,
-  Subcircuit,
-  CodeSection,
-  CodeLanguage,
-  CodeFile,
-  BinarySection,
-  BinaryFile
+/** @brief Semantic role of an item shown in the project tree. */
+enum class ProjectTreeItemKind { Project, Section, CodeLanguage, Document };
+
+struct ProjectTreeDocumentSelection {
+  project::DocumentType type;
+  std::string           path;
 };
 
-/**
- * @brief Project document navigator used by the LogiFlow editor.
- *
- * Owns tree-item roles, labels, section construction, and selection lookup. Project
- * mutations remain in LogiFlowWindow, which supplies the document snapshots to show.
- */
+/** @brief Project document navigator used by the LogiFlow editor. */
 class ProjectTree : public QTreeWidget {
   Q_OBJECT
 
 public:
   explicit ProjectTree(QWidget* parent = nullptr);
 
-  void rebuild(const SILICON::project::ProjectInfo&                       project,
-               const SILICON::project::DocumentStore::DocumentReferences& circuits,
-               const SILICON::project::DocumentStore::DocumentReferences& subcircuits,
-               const SILICON::project::DocumentStore::DocumentReferences& codeFiles,
-               const SILICON::project::DocumentStore::DocumentReferences& binaryFiles,
-               const std::string& activeDocumentPath);
-  void
-  updateLabels(const SILICON::project::ProjectInfo&                       project,
-               const SILICON::project::DocumentStore::DocumentReferences& circuits,
-               const SILICON::project::DocumentStore::DocumentReferences& subcircuits,
-               const SILICON::project::DocumentStore::DocumentReferences& codeFiles,
-               const SILICON::project::DocumentStore::DocumentReferences& binaryFiles);
+  void rebuild(const project::ProjectInfo& project, std::span<const project::Document> documents,
+               std::string_view activeDocumentPath = {});
 
-  void selectDocument(const std::string& path);
+  void selectDocument(std::string_view path);
   void clearDocumentSelection();
 
   [[nodiscard]] QTreeWidgetItem* selectedProjectItem() const;
-  [[nodiscard]] QTreeWidgetItem* sectionFor(SILICON::project::DocumentType type) const;
+  [[nodiscard]] std::optional<ProjectTreeDocumentSelection> selectedDocument() const;
+
   [[nodiscard]] static ProjectTreeItemKind itemKind(const QTreeWidgetItem* item);
-  [[nodiscard]] static std::string         documentPath(const QTreeWidgetItem* item);
+  [[nodiscard]] static std::optional<project::DocumentType>
+  itemDocumentType(const QTreeWidgetItem* item);
+  [[nodiscard]] static std::string documentPath(const QTreeWidgetItem* item);
 
 private:
-  void addSection(QTreeWidgetItem* projectItem, SILICON::project::DocumentType type,
-                  const SILICON::project::DocumentStore::DocumentReferences& documents);
-  void
-  addCodeSection(QTreeWidgetItem*                                           projectItem,
-                 const SILICON::project::DocumentStore::DocumentReferences& documents);
+  void addSection(QTreeWidgetItem* projectItem, project::DocumentType type,
+                  std::span<const project::Document> documents);
+  void addCodeDocuments(QTreeWidgetItem* section,
+                        std::span<const project::Document> documents);
+  void addDocument(QTreeWidgetItem* parent, const project::Document& document);
 };
 
-}  // namespace ui
-}  // namespace SILICON
+}  // namespace SILICON::ui

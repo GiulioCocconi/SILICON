@@ -1420,7 +1420,9 @@ TEST(YosysTest, ExportsSubcircuitsAsHierarchicalModules)
   SILICON::project::ProjectContext project;
   SILICON::project::ProjectCircuitResolver resolver{project};
   project.documents.upsertDocument(
-      {SILICON::project::subcircuitPathForSlug("and_child"), andSubcircuitDocument()});
+      {SILICON::project::documentPathForSlug(
+           SILICON::project::DocumentType::Subcircuit, "and_child"),
+       andSubcircuitDocument()});
 
   {
     auto instance = std::make_shared<SubcircuitComponent>(&resolver);

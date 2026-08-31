@@ -113,13 +113,14 @@ QPixmap componentPreviewPixmap(const ComponentCatalogOverlay::CatalogRow& rowDat
                            .initialProperties = {}});
   }
 
-  for (const auto documentReference :
-       documents.getDocuments(SILICON::project::DocumentType::Subcircuit)) {
-    const auto& document = documentReference.get();
+  for (const auto& document : documents.getDocuments()) {
+    if (document.getType() != SILICON::project::DocumentType::Subcircuit)
+      continue;
     if (!subcircuitHasGraphicalMetadata(document.getContents()))
       continue;
 
-    const auto slug = document.subcircuitSlug().value_or(std::string{});
+    const auto slug = SILICON::project::documentSlugForPath(document.getPath())
+                          .value_or(std::string{});
     PropertyMap initialProperties;
         initialProperties.emplace(std::string("slug"), PropertyValue(slug));
         catalogRows.push_back({.guiType  = std::string(SubcircuitComponent::Type),

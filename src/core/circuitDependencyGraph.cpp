@@ -38,8 +38,10 @@ namespace {
 
   [[nodiscard]] std::string slugForDocumentPath(const std::string_view documentPath)
   {
-    if (const auto slug = subcircuitSlugForPath(documentPath))
-      return *slug;
+    if (documentTypeForPath(documentPath) == DocumentType::Subcircuit) {
+      if (const auto slug = documentSlugForPath(documentPath))
+        return *slug;
+    }
     return std::string(documentPath);
   }
 
@@ -110,12 +112,12 @@ namespace {
             documentPath));
 
       const auto slug = slugIt->get<std::string>();
-      if (!isValidSubcircuitSlug(slug))
+      if (!isValidDocumentSlug(slug))
         throw std::runtime_error(
             std::format("{} contains a Subcircuit component with invalid slug '{}'",
                         documentPath, slug));
 
-      auto path = subcircuitPathForSlug(slug);
+      auto path = documentPathForSlug(DocumentType::Subcircuit, slug);
       if (seen.insert(path).second)
         dependencies.push_back(std::move(path));
     }

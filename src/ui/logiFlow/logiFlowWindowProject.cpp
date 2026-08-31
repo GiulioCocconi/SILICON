@@ -20,66 +20,24 @@ Copyright (c) 2026. Giulio Cocconi
 
 #include <algorithm>
 #include <cctype>
-#include <cstdint>
-#include <cstring>
-#include <functional>
-#include <initializer_list>
-#include <limits>
+#include <format>
+#include <optional>
 #include <ranges>
 #include <stdexcept>
-#include <tuple>
-#include <unordered_map>
-#include <variant>
-#include <vector>
+#include <utility>
 
-#include <QAbstractItemView>
-#include <QApplication>
 #include <QByteArray>
-#include <QCheckBox>
-#include <QClipboard>
 #include <QCloseEvent>
-#include <QComboBox>
 #include <QContextMenuEvent>
-#include <QCursor>
-#include <QDialog>
 #include <QDockWidget>
 #include <QEvent>
-#include <QFile>
-#include <QFileDialog>
 #include <QFileInfo>
-#include <QFocusEvent>
-#include <QFormLayout>
-#include <QGraphicsView>
-#include <QHBoxLayout>
-#include <QIcon>
-#include <QJsonArray>
-#include <QJsonDocument>
-#include <QKeySequence>
-#include <QLabel>
-#include <QLineEdit>
 #include <QMenu>
-#include <QMenuBar>
-#include <QMimeData>
-#include <QPlainTextEdit>
 #include <QResizeEvent>
-#include <QSignalBlocker>
-#include <QSpinBox>
 #include <QStackedWidget>
-#include <QStatusBar>
-#include <QString>
-#include <QStringList>
-#include <QTemporaryFile>
-#include <QTimer>
-#include <QToolBar>
 #include <QTreeWidget>
-#include <QTreeWidgetItem>
-#include <QUndoCommand>
-#include <QUndoStack>
-#include <QVBoxLayout>
 
-#ifdef __EMSCRIPTEN__
-#include <emscripten/emscripten.h>
-#endif
+#include <nlohmann/json.hpp>
 
 #include <core/serialization/component_registry.hpp>
 #include <core/serialization/projectFile.hpp>
@@ -92,21 +50,11 @@ Copyright (c) 2026. Giulio Cocconi
 #include <ui/common/codeEditor.hpp>
 #include <ui/common/diagramScene/diagramScene.hpp>
 #include <ui/common/diagramView.hpp>
-#include <ui/common/fileDialogUtils.hpp>
-#include <ui/common/graphicalLogStream.hpp>
 #include <ui/common/icons.hpp>
 #include <ui/common/inputDialogUtils.hpp>
-#include <ui/common/logSideView.hpp>
-#include <ui/common/settingsWindow.hpp>
-#include <ui/common/theme.hpp>
-#include <ui/common/undoCommands.hpp>
-#include <ui/common/waveformViewer.hpp>
 #include <ui/logiFlow/componentCatalogOverlay.hpp>
-#include <ui/logiFlow/components/graphicalLogicComponent.hpp>
-#include <ui/logiFlow/components/subcircuit/componentShapeEditor.hpp>
 #include <ui/logiFlow/components/subcircuit/metadata.hpp>
 #include <ui/logiFlow/components/subcircuit/utils.hpp>
-#include <ui/logiFlow/metadataDescriptionEdit.hpp>
 #include <ui/logiFlow/projectTree.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
 
@@ -116,8 +64,6 @@ using namespace SILICON::core;
 
 namespace {
 
-  const SILICON::logging::Logger uiLog("ui");
-
   QString defaultProjectName(const QString& currentFileName)
   {
     const QString baseName = QFileInfo(currentFileName).baseName();
@@ -125,6 +71,17 @@ namespace {
   }
 
 }  // namespace
+
+QString LogiFlowWindow::documentTypeName(const SILICON::project::DocumentType type)
+{
+  switch (type) {
+    case SILICON::project::DocumentType::Circuit: return tr("Circuit");
+    case SILICON::project::DocumentType::Subcircuit: return tr("Subcircuit");
+    case SILICON::project::DocumentType::Code: return tr("Code File");
+    case SILICON::project::DocumentType::Binary: return tr("Binary File");
+  }
+  return {};
+}
 
 std::string LogiFlowWindow::defaultMainCircuitPath()
 {
@@ -155,7 +112,7 @@ std::string LogiFlowWindow::projectMainCircuitPath() const
 void LogiFlowWindow::ensureProjectDocuments()
 {
   auto& store = projectContext.documents;
-  if (store.getDocuments(SILICON::project::DocumentType::Circuit).empty())
+  if (!store.contains(SILICON::project::DocumentType::Circuit))
     projectContext.upsertDocument(defaultCircuitDocument());
 }
 
@@ -170,32 +127,12 @@ void LogiFlowWindow::initializeProjectTree()
           &LogiFlowWindow::showProjectTreeContextMenu);
 }
 
-std::string LogiFlowWindow::activeProjectCircuitPath() const
-{
-  if (!activeDocumentPath.empty()
-      && SILICON::project::documentTypeForPath(activeDocumentPath)
-             == SILICON::project::DocumentType::Circuit)
-    return activeDocumentPath;
-
-  return projectMainCircuitPath();
-}
-
-bool LogiFlowWindow::activateProjectCircuit(const std::string& circuitPath)
-{
-  return activateProjectDocument(circuitPath);
-}
-
-std::string LogiFlowWindow::activeProjectSubcircuitSlug() const
-{
-  return SILICON::project::subcircuitSlugForPath(activeDocumentPath)
-      .value_or(std::string{});
-}
-
 bool LogiFlowWindow::activateProjectDocument(const std::string& documentPath)
 {
   if (!SILICON::project::documentTypeForPath(documentPath)
         || !projectContext.documents.contains(documentPath))
     return false;
+
   if (documentPath == activeDocumentPath) {
     selectProjectTreeDocument(documentPath);
     return true;
@@ -209,14 +146,12 @@ std::shared_ptr<Circuit> LogiFlowWindow::activeCircuit()
   return diagramScene->getCircuit();
 }
 
-bool LogiFlowWindow::hasDocument(const std::string& path) const
+std::string LogiFlowWindow::emptyGraphicalDocumentJson(
+    const SILICON::project::DocumentType type, const std::string& name) const
 {
-    return projectContext.documents.contains(path);
-}
+  const auto circuitName =
+      name.empty() ? documentTypeName(type).toStdString() : name;
 
-std::string LogiFlowWindow::emptyCircuitSceneJson(const std::string& name) const
-{
-  const auto             circuitName = name.empty() ? std::string("Circuit") : name;
   nlohmann::ordered_json scene;
   scene["circuit"] =
       nlohmann::ordered_json{{"version", SILICON_VERSION},
@@ -225,61 +160,60 @@ std::string LogiFlowWindow::emptyCircuitSceneJson(const std::string& name) const
                              {"components", nlohmann::ordered_json::array()}};
   scene["visual"]["components"] = nlohmann::ordered_json::array();
   scene["visual"]["wires"]      = nlohmann::ordered_json::array();
+
+  if (type == SILICON::project::DocumentType::Subcircuit) {
+    scene["graphicalComponent"] =
+        nlohmann::ordered_json{{"shape",
+                                {{"type", "rectangle"},
+                                 {"width", GraphicalSubcircuitDefaultSize},
+                                 {"height", GraphicalSubcircuitDefaultSize}}},
+                               {"inputs", nlohmann::ordered_json::array()},
+                               {"outputs", nlohmann::ordered_json::array()}};
+  }
+
   return scene.dump(2);
 }
 
-std::string LogiFlowWindow::emptySubcircuitSceneJson(const std::string& name) const
+std::string LogiFlowWindow::uniqueDocumentPath(
+    const SILICON::project::DocumentType type, const QString& requestedName) const
 {
-  auto scene = nlohmann::ordered_json::parse(emptyCircuitSceneJson(name));
-  scene["graphicalComponent"] =
-      nlohmann::ordered_json{{"shape",
-                              {{"type", "rectangle"},
-                               {"width", GraphicalSubcircuitDefaultSize},
-                               {"height", GraphicalSubcircuitDefaultSize}}},
-                             {"inputs", nlohmann::ordered_json::array()},
-                             {"outputs", nlohmann::ordered_json::array()}};
-  return scene.dump(2);
-}
+  if (SILICON::project::categoryOf(type)
+      != SILICON::project::DocumentCategory::Diagram)
+    throw std::invalid_argument("Only graphical documents use generated slugs");
 
-std::string LogiFlowWindow::uniqueDocumentPath(const SILICON::project::DocumentType type,
-                                               const QString& requestedName) const
-{
-  const auto trimmed = requestedName.trimmed();
-  const auto fallback =
-      type == SILICON::project::DocumentType::Circuit ? "circuit" : "subcircuit";
-  const auto directory =
-      type == SILICON::project::DocumentType::Circuit ? "circuits" : "subcircuits";
-  std::string slug = trimmed.isEmpty() ? fallback : trimmed.toStdString();
+  const bool subcircuit = type == SILICON::project::DocumentType::Subcircuit;
+  const auto fallback   = subcircuit ? std::string("subcircuit") : std::string("circuit");
+
+  auto slug = requestedName.trimmed().toStdString();
+  if (slug.empty())
+    slug = fallback;
 
   for (char& ch : slug) {
     const auto byte = static_cast<unsigned char>(ch);
-    if (std::isalnum(byte)) {
+    if (std::isalnum(byte))
       ch = static_cast<char>(std::tolower(byte));
-    } else if (ch != '-' && ch != '_') {
+    else if (ch != '-' && ch != '_')
       ch = '_';
-    }
   }
 
   if (const auto first = slug.find_first_not_of('_'); first == std::string::npos) {
     slug = fallback;
   } else {
-    const auto last = slug.find_last_not_of('_');
-    slug            = slug.substr(first, last - first + 1);
+    slug = slug.substr(first, slug.find_last_not_of('_') - first + 1);
   }
 
-  if (type == SILICON::project::DocumentType::Subcircuit) {
-    if (!slug.empty() && std::isdigit(static_cast<unsigned char>(slug.front())))
+  if (subcircuit) {
+    if (std::isdigit(static_cast<unsigned char>(slug.front())))
       slug.insert(slug.begin(), '_');
     std::ranges::replace(slug, '-', '_');
   }
 
-  auto candidate = std::format("{}/{}.json", directory, slug);
-  int  suffix    = 2;
-  while (hasDocument(candidate)) {
-    candidate = type == SILICON::project::DocumentType::Subcircuit
-                    ? std::format("{}/{}_{}.json", directory, slug, suffix)
-                    : std::format("{}/{}-{}.json", directory, slug, suffix);
-    ++suffix;
+  auto& store = projectContext.documents;
+  auto candidate = SILICON::project::documentPathForSlug(type, slug);
+  for (int suffix = 2; store.contains(candidate); ++suffix) {
+    const auto numberedSlug = subcircuit ? std::format("{}_{}", slug, suffix)
+                                           : std::format("{}-{}", slug, suffix);
+    candidate = SILICON::project::documentPathForSlug(type, numberedSlug);
   }
 
   return candidate;
@@ -290,34 +224,42 @@ void LogiFlowWindow::saveActiveDocumentPayload()
   if (activeDocumentPath.empty())
     activeDocumentPath = projectMainCircuitPath();
 
-  auto&      store = projectContext.documents;
-  const auto type  = SILICON::project::documentTypeForPath(activeDocumentPath);
-  if (!type)
-    throw std::runtime_error("Active project document path is invalid");
+  auto& store = projectContext.documents;
+  const auto* activeDocument = store.find(activeDocumentPath);
+  if (!activeDocument)
+    throw std::runtime_error("Active project document is missing");
 
-  if (*type == SILICON::project::DocumentType::Code) {
-    projectContext.upsertDocument(SILICON::project::Document(
-        activeDocumentPath, codeEditor->toPlainText().toStdString()));
-    codeEditor->document()->setModified(false);
-    return;
-  }
-  if (*type == SILICON::project::DocumentType::Binary) {
-    const auto& data = binaryEditor->data();
-    store.upsertDocument(SILICON::project::Document(
-        activeDocumentPath,
-        std::string(data.constData(), static_cast<std::size_t>(data.size()))));
-    binaryEditor->setModified(false);
-    return;
+  const auto type = activeDocument->getType();
+  switch (type) {
+    case SILICON::project::DocumentType::Code:
+      projectContext.upsertDocument(
+          {activeDocumentPath, codeEditor->toPlainText().toStdString()});
+      codeEditor->document()->setModified(false);
+      return;
+
+    case SILICON::project::DocumentType::Binary: {
+      const auto& data = binaryEditor->data();
+      projectContext.upsertDocument(
+          {activeDocumentPath,
+           std::string(data.constData(), static_cast<std::size_t>(data.size()))});
+      binaryEditor->setModified(false);
+      return;
+    }
+
+    case SILICON::project::DocumentType::Circuit:
+    case SILICON::project::DocumentType::Subcircuit:
+      break;
   }
 
   auto serializedScene = diagramScene->serialize();
 
-  if (*type == SILICON::project::DocumentType::Subcircuit) {
+  if (type == SILICON::project::DocumentType::Subcircuit) {
     if (const auto* existing = store.find(activeDocumentPath)) {
       try {
-        auto       newJson  = nlohmann::json::parse(serializedScene);
-        const auto fallback = parseGraphicalSubcircuitMetadata(existing->getContents())
-                                  .value_or(GraphicalSubcircuitMetadata{});
+        auto newJson = nlohmann::json::parse(serializedScene);
+        const auto fallback =
+            parseGraphicalSubcircuitMetadata(existing->getContents())
+                .value_or(GraphicalSubcircuitMetadata{});
         newJson["graphicalComponent"] = graphicalSubcircuitMetadataToJson(
             synchronizeGraphicalSubcircuitMetadata(serializedScene, fallback));
         serializedScene = newJson.dump(2);
@@ -330,19 +272,61 @@ void LogiFlowWindow::saveActiveDocumentPayload()
       SILICON::project::Document(activeDocumentPath, std::move(serializedScene)));
 }
 
+void LogiFlowWindow::loadDocumentPayload(const SILICON::project::Document& document)
+{
+  const auto type = document.getType();
+  const auto& payload = document.getContents();
+
+  switch (type) {
+    case SILICON::project::DocumentType::Code: {
+      const auto codeType = SILICON::project::codeFileTypeForPath(document.getPath());
+      if (!codeType)
+        throw std::runtime_error("Code file type is invalid");
+
+      codeEditor->setFileType(*codeType);
+      codeEditor->setPlainText(QString::fromStdString(payload));
+      codeEditor->document()->setModified(false);
+      editorStack->setCurrentWidget(codeEditor);
+      codeEditor->setFocus();
+      break;
+    }
+
+    case SILICON::project::DocumentType::Binary:
+      binaryEditor->setData(
+          QByteArray(payload.data(), static_cast<qsizetype>(payload.size())));
+      editorStack->setCurrentWidget(binaryEditor);
+      binaryEditor->setFocus();
+      break;
+
+    case SILICON::project::DocumentType::Circuit:
+    case SILICON::project::DocumentType::Subcircuit: {
+      diagramScene->clear(false, false);
+      diagramScene->setSubcircuitDocumentMode(
+          type == SILICON::project::DocumentType::Subcircuit);
+      auto& guiFactory   = GUIComponentFactory::instance();
+      auto& coreRegistry = ComponentRegistry::instance();
+      diagramScene->deserialize(payload, guiFactory, coreRegistry);
+      editorStack->setCurrentWidget(diagramView);
+      break;
+    }
+  }
+}
+
 void LogiFlowWindow::selectProjectTreeDocument(const std::string& path)
 {
   if (projectTree)
     projectTree->selectDocument(path);
 }
 
-bool LogiFlowWindow::switchToDocument(const std::string& path, const bool selectInTree)
+bool LogiFlowWindow::switchToDocument(const std::string& path,
+                                       const bool selectInTree)
 {
-    auto&      store = projectContext.documents;
-  const auto type  = SILICON::project::documentTypeForPath(path);
-  if (path.empty() || !type || !store.contains(path))
+  auto& store = projectContext.documents;
+  const auto* target = store.find(path);
+  if (!target)
     return false;
 
+  const auto type = target->getType();
   if (path == activeDocumentPath) {
     if (selectInTree)
       selectProjectTreeDocument(path);
@@ -360,54 +344,23 @@ bool LogiFlowWindow::switchToDocument(const std::string& path, const bool select
   try {
     saveActiveDocumentPayload();
   } catch (const std::exception& e) {
-    const auto noun = *type == SILICON::project::DocumentType::Circuit ? tr("Circuit")
-                      : *type == SILICON::project::DocumentType::Subcircuit
-                          ? tr("Subcircuit")
-                      : *type == SILICON::project::DocumentType::Code ? tr("Code File")
-                                                                      : tr("Binary File");
+    const auto noun = documentTypeName(type);
     SILICON::ui::inputDialog::warning(
         this, tr("%1 Switch Error").arg(noun),
         tr("Failed to save the current document before switching:\n%1").arg(e.what()));
     return false;
   }
 
-  const auto* target = store.find(path);
+  target = store.find(path);
   if (!target)
     return false;
-  const auto payload = target->getContents();
 
   try {
     activeDocumentPath = path;
-    if (*type == SILICON::project::DocumentType::Code) {
-      const auto codeType = SILICON::project::codeFileTypeForPath(path);
-      if (!codeType)
-        throw std::runtime_error("Code file type is invalid");
-      codeEditor->setFileType(*codeType);
-      codeEditor->setPlainText(QString::fromStdString(payload));
-      codeEditor->document()->setModified(false);
-      editorStack->setCurrentWidget(codeEditor);
-      codeEditor->setFocus();
-    } else if (*type == SILICON::project::DocumentType::Binary) {
-      binaryEditor->setData(
-          QByteArray(payload.data(), static_cast<qsizetype>(payload.size())));
-      editorStack->setCurrentWidget(binaryEditor);
-      binaryEditor->setFocus();
-    } else {
-      diagramScene->clear(false, false);
-      diagramScene->setSubcircuitDocumentMode(
-          *type == SILICON::project::DocumentType::Subcircuit);
-      auto& guiFactory   = GUIComponentFactory::instance();
-      auto& coreRegistry = ComponentRegistry::instance();
-      diagramScene->deserialize(payload, guiFactory, coreRegistry);
-      editorStack->setCurrentWidget(diagramView);
-    }
+    loadDocumentPayload(*target);
     updateSubcircuitShapeAction();
   } catch (const std::exception& e) {
-    const auto noun = *type == SILICON::project::DocumentType::Circuit ? tr("Circuit")
-                      : *type == SILICON::project::DocumentType::Subcircuit
-                          ? tr("Subcircuit")
-                      : *type == SILICON::project::DocumentType::Code ? tr("Code File")
-                                                                      : tr("Binary File");
+    const auto noun = documentTypeName(type);
     SILICON::ui::inputDialog::critical(
         this, tr("%1 Switch Error").arg(noun),
         tr("Failed to load the selected %1:\n%2").arg(noun.toLower(), e.what()));
@@ -417,7 +370,7 @@ bool LogiFlowWindow::switchToDocument(const std::string& path, const bool select
   if (selectInTree)
     selectProjectTreeDocument(path);
 
-  const bool code = *type == SILICON::project::DocumentType::Code;
+  const bool code = type == SILICON::project::DocumentType::Code;
   setActionsEnabled({cutAct, copyAct, pasteAct, deleteAct}, code);
   rotateAct->setEnabled(false);
   updatePropertyDock();
@@ -427,26 +380,23 @@ bool LogiFlowWindow::switchToDocument(const std::string& path, const bool select
 void LogiFlowWindow::removeDocument(const std::string& path)
 {
   auto& store = projectContext.documents;
-  if (!store.contains(path))
+  const auto* document = store.find(path);
+  if (!document)
     return;
 
-  const auto type      = SILICON::project::documentTypeForPath(path);
-  const bool graphical = type && SILICON::project::isGraphicalDocumentType(*type);
-  if (graphical)
-    projectContext.circuitDependencies.validateDocumentRemoval(path);
-
-  if (activeDocumentPath == path && !switchToDocument(projectMainCircuitPath(), true))
+  if (activeDocumentPath == path
+      && !switchToDocument(projectMainCircuitPath(), true))
     return;
 
   projectContext.removeDocument(path);
   rebuildProjectTree();
-  selectProjectTreeDocument(activeProjectCircuitPath());
+  selectProjectTreeDocument(activeDocumentPath);
   updatePropertyDock();
 }
 
 void LogiFlowWindow::insertDocument(SILICON::project::Document          document,
-                                    const std::optional<std::ptrdiff_t> insertAt,
-                                    const bool                          activate)
+                                     const std::optional<std::ptrdiff_t> insertAt,
+                                     const bool                          activate)
 {
   auto&      store = projectContext.documents;
   const auto path  = document.getPath();
@@ -472,37 +422,8 @@ void LogiFlowWindow::rebuildProjectTree()
 
   ensureProjectDocuments();
   const auto project = currentProjectInfo.value_or(defaultProjectInfo(currentFileName));
-    const auto& store  = projectContext.documents;
-  projectTree->rebuild(
-      project, store.getDocuments(SILICON::project::DocumentType::Circuit),
-      store.getDocuments(SILICON::project::DocumentType::Subcircuit),
-      store.getDocuments(SILICON::project::DocumentType::Code),
-      store.getDocuments(SILICON::project::DocumentType::Binary), activeDocumentPath);
-}
-
-void LogiFlowWindow::updateProjectTreeLabels()
-{
-  if (!projectTree)
-    return;
-  const auto project = currentProjectInfo.value_or(defaultProjectInfo(currentFileName));
-    const auto& store  = projectContext.documents;
-  projectTree->updateLabels(
-      project, store.getDocuments(SILICON::project::DocumentType::Circuit),
-      store.getDocuments(SILICON::project::DocumentType::Subcircuit),
-      store.getDocuments(SILICON::project::DocumentType::Code),
-      store.getDocuments(SILICON::project::DocumentType::Binary));
-}
-
-QTreeWidgetItem* LogiFlowWindow::projectDocumentSectionItem(
-    const SILICON::project::DocumentType type) const
-{
-  return projectTree ? projectTree->sectionFor(type) : nullptr;
-}
-
-void LogiFlowWindow::clearProjectTreeSelection()
-{
-  if (projectTree)
-    projectTree->clearDocumentSelection();
+  const auto& store = projectContext.documents;
+  projectTree->rebuild(project, store.getDocuments(), activeDocumentPath);
 }
 
 void LogiFlowWindow::setFileName(const QString& fn)
@@ -579,10 +500,17 @@ void LogiFlowWindow::resizeEvent(QResizeEvent* event)
   logDock->setMaximumHeight(std::max(160, currentHeight / 3));
 }
 
+bool LogiFlowWindow::hasUnsavedChanges() const
+{
+  return (undoStack && !undoStack->isClean()) || codeDocumentsDirty
+         || binaryDocumentsDirty
+         || (codeEditor && codeEditor->document()->isModified())
+         || (binaryEditor && binaryEditor->isModified());
+}
+
 void LogiFlowWindow::closeEvent(QCloseEvent* event)
 {
-  if (undoStack && (!undoStack->isClean() || codeDocumentsDirty || binaryDocumentsDirty)
-      && !closeAfterSaveConfirmation) {
+  if (hasUnsavedChanges() && !closeAfterSaveConfirmation) {
     event->ignore();
     confirmSaveIfDirty([this] {
       closeAfterSaveConfirmation = true;
@@ -592,7 +520,6 @@ void LogiFlowWindow::closeEvent(QCloseEvent* event)
   }
 
   closeAfterSaveConfirmation = false;
-
   QMainWindow::closeEvent(event);
 }
 
