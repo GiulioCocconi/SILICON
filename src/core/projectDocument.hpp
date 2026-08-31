@@ -20,7 +20,7 @@ namespace SILICON::project {
 
 class ProjectContext;
 
-enum class DocumentType { Circuit, Subcircuit, Code };
+enum class DocumentType { Circuit, Subcircuit, Code, Binary };
 
 enum class DocumentChangeKind { Added, Updated, Removed, Reset };
 
@@ -35,6 +35,10 @@ struct DocumentChange {
 [[nodiscard]] std::optional<std::string>  subcircuitSlugForPath(std::string_view path);
 [[nodiscard]] bool                        isValidSubcircuitSlug(std::string_view slug);
 [[nodiscard]] std::string                 subcircuitPathForSlug(std::string_view slug);
+[[nodiscard]] std::optional<std::string>  binarySlugForPath(std::string_view path);
+[[nodiscard]] bool                        isValidBinarySlug(std::string_view slug);
+[[nodiscard]] std::string                 binaryPathForSlug(std::string_view slug);
+[[nodiscard]] bool                        isGraphicalDocumentType(DocumentType type);
 /** Checks that an asset path is normalized, relative, and outside reserved namespaces. */
 [[nodiscard]] bool isValidProjectAssetPath(std::string_view path);
 

@@ -4,7 +4,6 @@
 #include <QMap>
 #include <QString>
 
-
 namespace SILICON {
 namespace ui {
 
@@ -24,7 +23,7 @@ inline ColorMap light()
           {"SILICON_INTERNAL", {"#ffe6d5"}},       {"SILICON_INK", {"#2a2730"}},
           {"SILICON_BACKGROUND", {"#fdfdfd"}},     {"SILICON_SURFACE", {"#ffffff"}},
           {"SILICON_SURFACE_RAISED", {"#ffffff"}}, {"SILICON_GRID", {"#d8d4dd"}},
-          {"SILICON_DISABLED", {"#a0a0a0"}}};
+          {"SILICON_GREY", {"#8a8490"}},           {"SILICON_DISABLED", {"#a0a0a0"}}};
 }
 
 /* ---------- DARK ---------- */
@@ -37,7 +36,7 @@ inline ColorMap dark()
           {"SILICON_INTERNAL", {"#3c3130"}},       {"SILICON_INK", {"#f3eef8"}},
           {"SILICON_BACKGROUND", {"#17161d"}},     {"SILICON_SURFACE", {"#24212b"}},
           {"SILICON_SURFACE_RAISED", {"#2e2a36"}}, {"SILICON_GRID", {"#383340"}},
-          {"SILICON_DISABLED", {"#857c8e"}}};
+          {"SILICON_GREY", {"#857c8e"}},           {"SILICON_DISABLED", {"#857c8e"}}};
 }
 
 }  // namespace theme
@@ -49,7 +48,8 @@ public:
 
 private:
   static QString loadQssTemplate();
-  static QString injectTokens(const QString& qss, const SILICON::ui::theme::ColorMap& tokens);
+  static QString                      injectTokens(const QString&                      qss,
+                                                   const SILICON::ui::theme::ColorMap& tokens);
   static SILICON::ui::theme::ColorMap currentMap;
 };
 

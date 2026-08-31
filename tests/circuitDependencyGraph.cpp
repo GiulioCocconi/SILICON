@@ -111,10 +111,9 @@ TEST(CircuitDependencyGraphTest, RejectsMissingSubcircuitTarget)
 {
   SILICON::project::CircuitDependencyGraph graph;
 
-  EXPECT_THROW(
-      graph.rebuildFromProject(
-          {circuit("circuits/main.json", sceneWithSubcircuits({"missing"}))}),
-      std::runtime_error);
+  EXPECT_THROW(graph.rebuildFromProject(
+                   {circuit("circuits/main.json", sceneWithSubcircuits({"missing"}))}),
+               std::runtime_error);
 }
 
 TEST(CircuitDependencyGraphTest, DetectsDirectSelfCycle)
@@ -200,9 +199,8 @@ TEST(CircuitDependencyGraphTest, ReplacementRequiresRegisteredDocument)
 {
   CircuitDependencyGraph graph;
 
-  EXPECT_THROW(
-      graph.replaceDocumentDependencies("circuits/missing.json", emptyScene()),
-      std::runtime_error);
+  EXPECT_THROW(graph.replaceDocumentDependencies("circuits/missing.json", emptyScene()),
+               std::runtime_error);
   EXPECT_FALSE(graph.containsDocument("circuits/missing.json"));
 }
 
@@ -218,8 +216,7 @@ TEST(CircuitDependencyGraphTest, ReferencedDocumentRemovalIsRejectedAtomically)
     graph.removeDocument("subcircuits/alu.json");
     FAIL() << "Expected referenced removal to fail";
   } catch (const std::runtime_error& error) {
-    EXPECT_NE(std::string(error.what()).find("circuits/debug.json"),
-              std::string::npos);
+    EXPECT_NE(std::string(error.what()).find("circuits/debug.json"), std::string::npos);
     EXPECT_NE(std::string(error.what()).find("circuits/main.json"), std::string::npos);
   }
 
@@ -281,9 +278,9 @@ TEST(CircuitDependencyGraphTest, CyclePredicatePropagatesNonCycleFailures)
   EXPECT_THROW(static_cast<void>(graph.wouldIntroduceCycle(
                    "circuits/main.json", sceneWithSubcircuits({"missing"}))),
                std::runtime_error);
-  EXPECT_THROW(static_cast<void>(
-                   graph.wouldIntroduceCycle("circuits/main.json", "not json")),
-               std::runtime_error);
+  EXPECT_THROW(
+      static_cast<void>(graph.wouldIntroduceCycle("circuits/main.json", "not json")),
+      std::runtime_error);
 }
 
 TEST(CircuitDependencyGraphTest, RecursiveErrorMessageIncludesTrace)
@@ -296,8 +293,7 @@ TEST(CircuitDependencyGraphTest, RecursiveErrorMessageIncludesTrace)
                                        sceneWithSubcircuits({"cpu"}));
     FAIL() << "Expected recursion";
   } catch (const std::runtime_error& error) {
-    EXPECT_NE(std::string(error.what()).find("[cpu, alu, cpu]"),
-              std::string::npos);
+    EXPECT_NE(std::string(error.what()).find("[cpu, alu, cpu]"), std::string::npos);
   }
 }
 
@@ -308,10 +304,9 @@ TEST(CircuitDependencyGraphTest, FailedFullRebuildPreservesPreviousGraph)
       {circuit("circuits/main.json", sceneWithSubcircuits({"alu"})),
        subcircuit("alu", emptyScene())});
 
-  EXPECT_THROW(
-      graph.rebuildFromProject(
-          {circuit("circuits/replacement.json", sceneWithSubcircuits({"missing"}))}),
-      std::runtime_error);
+  EXPECT_THROW(graph.rebuildFromProject({circuit("circuits/replacement.json",
+                                                 sceneWithSubcircuits({"missing"}))}),
+               std::runtime_error);
 
   EXPECT_TRUE(graph.containsDocument("circuits/main.json"));
   EXPECT_TRUE(graph.containsDocument("subcircuits/alu.json"));
@@ -328,6 +323,16 @@ TEST(CircuitDependencyGraphTest, CodeDocumentsAreExcludedFromRebuild)
   EXPECT_TRUE(graph.containsDocument("circuits/main.json"));
   EXPECT_FALSE(graph.containsDocument("code/adder.v"));
   EXPECT_THROW(graph.addDocument("code/adder.v"), std::invalid_argument);
+}
+
+TEST(CircuitDependencyGraphTest, BinaryDocumentsAreExcludedFromRebuild)
+{
+  CircuitDependencyGraph graph;
+  graph.rebuildFromProject({circuit("circuits/main.json", emptyScene()),
+                            Document("bin/firmware", std::string("\0\xff", 2))});
+  EXPECT_TRUE(graph.containsDocument("circuits/main.json"));
+  EXPECT_FALSE(graph.containsDocument("bin/firmware"));
+  EXPECT_THROW(graph.addDocument("bin/firmware"), std::invalid_argument);
 }
 
 TEST(CircuitDependencyGraphTest, RebuildRejectsDuplicateGraphicalDocuments)

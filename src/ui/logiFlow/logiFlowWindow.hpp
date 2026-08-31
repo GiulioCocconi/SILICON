@@ -74,6 +74,7 @@ using namespace SILICON::core;
 class AboutDialog;
 class ComponentCatalogOverlay;
 class CodeEditor;
+class BinaryEditor;
 class DiagramScene;
 class DiagramView;
 class GraphicalLogStream;
@@ -253,6 +254,7 @@ private slots:
   void deleteSelectedCircuit();
   void createSubcircuit();
   void createCodeFile();
+  void createBinaryFile();
   void deleteSelectedSubcircuit();
 
   /** @brief Rebuilds the property dock for the current selection or active circuit. */
@@ -282,13 +284,13 @@ private:
   void               convertActiveSubcircuitToVerilog();
   void               convertActiveVerilogToSubcircuit();
   void               commitConvertedDocument(SILICON::project::Document document,
-                                             const std::string&         sourcePath,
-                                             const QString&             commandText);
+                                             const std::string& sourcePath, const QString& commandText);
   void commitConvertedDocuments(std::vector<SILICON::project::Document> documents,
                                 const std::string& sourcePath,
                                 const std::string& activatePath,
                                 const QString&     commandText);
   [[nodiscard]] bool isCodeDocumentActive() const;
+  [[nodiscard]] bool isBinaryDocumentActive() const;
 
   /**
    * @brief Updates the current project filename and window title.
@@ -466,6 +468,8 @@ private:
   QStackedWidget* editorStack = nullptr;
   /** @brief Metadata-driven, line-numbered source editor. */
   CodeEditor* codeEditor = nullptr;
+  /** @brief Fixed-size, nibble-oriented binary editor. */
+  BinaryEditor* binaryEditor = nullptr;
 
   /** @brief Floating searchable component catalog, shown over the diagram viewport. */
   ComponentCatalogOverlay* componentCatalogOverlay = nullptr;
@@ -482,6 +486,7 @@ private:
   /** @brief Creates a new project. */
   QAction* newAct         = nullptr;
   QAction* newCodeFileAct = nullptr;
+  QAction* newBinaryFileAct = nullptr;
 
   /** @brief Opens an existing project. */
   QAction* openAct = nullptr;
@@ -573,6 +578,7 @@ private:
   std::string activeDocumentPath;
   /** @brief Tracks code edits already flushed to DocumentStore but not to disk. */
   bool                                     codeDocumentsDirty = false;
+  bool                                     binaryDocumentsDirty = false;
   SILICON::project::ProjectContext projectContext;
   SILICON::project::ProjectCircuitResolver circuitResolver{projectContext};
 

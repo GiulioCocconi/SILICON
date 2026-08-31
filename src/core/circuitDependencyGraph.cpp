@@ -65,8 +65,8 @@ namespace {
     try {
       parsed = nlohmann::json::parse(contents);
     } catch (const nlohmann::json::parse_error& error) {
-      throw std::runtime_error(std::format(
-          "{} contains invalid JSON: {}", documentPath, error.what()));
+      throw std::runtime_error(
+          std::format("{} contains invalid JSON: {}", documentPath, error.what()));
     }
     if (!parsed.is_object())
       throw std::runtime_error(
@@ -111,9 +111,9 @@ namespace {
 
       const auto slug = slugIt->get<std::string>();
       if (!isValidSubcircuitSlug(slug))
-        throw std::runtime_error(std::format(
-            "{} contains a Subcircuit component with invalid slug '{}'", documentPath,
-            slug));
+        throw std::runtime_error(
+            std::format("{} contains a Subcircuit component with invalid slug '{}'",
+                        documentPath, slug));
 
       auto path = subcircuitPathForSlug(slug);
       if (seen.insert(path).second)
