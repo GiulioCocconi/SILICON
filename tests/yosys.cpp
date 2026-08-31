@@ -2267,6 +2267,17 @@ TEST(YosysToolTest, TechnologyCellsExportAsBehavioralVerilog)
   EXPECT_NE(verilog.find("assign output_1"), std::string::npos);
   EXPECT_EQ(verilog.find("_auto_"), std::string::npos);
   EXPECT_EQ(verilog.find("$silicon"), std::string::npos);
+  EXPECT_EQ(verilog.find("$techmap"), std::string::npos);
+  EXPECT_EQ(verilog.find("silicon_cells.v"), std::string::npos);
+  EXPECT_EQ(verilog.find("wire _00_"), std::string::npos);
+  EXPECT_NE(verilog.find("module top(input input_0, input input_1, input input_2, "
+                         "output output_0, output output_1);"),
+            std::string::npos);
+  EXPECT_NE(verilog.find("assign output_0 = input_0 ^ input_1 ^ input_2;"),
+            std::string::npos);
+  EXPECT_NE(verilog.find("(input_0 & input_1)"), std::string::npos);
+  EXPECT_NE(verilog.find("(input_0 & input_2)"), std::string::npos);
+  EXPECT_NE(verilog.find("(input_1 & input_2)"), std::string::npos);
 
   const Circuit restored = importVerilog(verilog, "top");
   EXPECT_TRUE(componentTypes(restored).contains("FullAdder"));
