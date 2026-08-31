@@ -182,8 +182,8 @@ namespace {
         return;
       if (name.ends_with('/')) {
         const auto directory = name.substr(0, name.size() - 1);
-        if (directory == "circuits" || directory == "subcircuits"
-            || directory == "code" || isValidProjectAssetPath(directory))
+        if (directory == "circuits" || directory == "subcircuits" || directory == "code"
+            || directory == "bin" || isValidProjectAssetPath(directory))
           return;
         throw std::runtime_error(
             std::format("Project archive contains invalid directory entry {}", name));
@@ -304,9 +304,8 @@ namespace {
 
   [[nodiscard]] nlohmann::ordered_json projectInfoToJson(const ProjectInfo& p)
   {
-    return {{"name", p.name},
-            {"mainCircuit", p.mainCircuit},
-            {"description", p.description}};
+    return {
+        {"name", p.name}, {"mainCircuit", p.mainCircuit}, {"description", p.description}};
   }
 
 }  // namespace
@@ -352,8 +351,8 @@ ProjectFile readProjectFile(const std::filesystem::path& path)
 
   std::vector<ProjectAsset> assets;
   for (const auto& assetPath : assetEntries(archive.get()))
-    assets.push_back({.path = assetPath,
-                      .contents = readEntry(archive.get(), assetPath)});
+    assets.push_back(
+        {.path = assetPath, .contents = readEntry(archive.get(), assetPath)});
   validateAssets(assets);
 
   return ProjectFile{.metadata  = std::move(metadata),

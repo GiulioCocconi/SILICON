@@ -88,6 +88,7 @@ Copyright (c) 2026. Giulio Cocconi
 #include <core/circuitDocument.hpp>
 #include <logging/logger.hpp>
 #include <ui/common/aboutDialog.hpp>
+#include <ui/common/binaryEditor.hpp>
 #include <ui/common/codeEditor.hpp>
 #include <ui/common/diagramScene/diagramScene.hpp>
 #include <ui/common/diagramView.hpp>
@@ -240,9 +241,8 @@ std::string LogiFlowWindow::emptySubcircuitSceneJson(const std::string& name) co
   return scene.dump(2);
 }
 
-std::string
-LogiFlowWindow::uniqueDocumentPath(const SILICON::project::DocumentType type,
-                                   const QString& requestedName) const
+std::string LogiFlowWindow::uniqueDocumentPath(const SILICON::project::DocumentType type,
+                                               const QString& requestedName) const
 {
   const auto trimmed = requestedName.trimmed();
   const auto fallback =
@@ -301,6 +301,14 @@ void LogiFlowWindow::saveActiveDocumentPayload()
     codeEditor->document()->setModified(false);
     return;
   }
+  if (*type == SILICON::project::DocumentType::Binary) {
+    const auto& data = binaryEditor->data();
+    store.upsertDocument(SILICON::project::Document(
+        activeDocumentPath,
+        std::string(data.constData(), static_cast<std::size_t>(data.size()))));
+    binaryEditor->setModified(false);
+    return;
+  }
 
   auto serializedScene = diagramScene->serialize();
 
@@ -352,11 +360,11 @@ bool LogiFlowWindow::switchToDocument(const std::string& path, const bool select
   try {
     saveActiveDocumentPayload();
   } catch (const std::exception& e) {
-    const auto noun =
-        *type == SILICON::project::DocumentType::Circuit
-            ? tr("Circuit")
-            : (*type == SILICON::project::DocumentType::Subcircuit ? tr("Subcircuit")
-                                                                   : tr("Code File"));
+    const auto noun = *type == SILICON::project::DocumentType::Circuit ? tr("Circuit")
+                      : *type == SILICON::project::DocumentType::Subcircuit
+                          ? tr("Subcircuit")
+                      : *type == SILICON::project::DocumentType::Code ? tr("Code File")
+                                                                      : tr("Binary File");
     SILICON::ui::inputDialog::warning(
         this, tr("%1 Switch Error").arg(noun),
         tr("Failed to save the current document before switching:\n%1").arg(e.what()));
@@ -379,6 +387,11 @@ bool LogiFlowWindow::switchToDocument(const std::string& path, const bool select
       codeEditor->document()->setModified(false);
       editorStack->setCurrentWidget(codeEditor);
       codeEditor->setFocus();
+    } else if (*type == SILICON::project::DocumentType::Binary) {
+      binaryEditor->setData(
+          QByteArray(payload.data(), static_cast<qsizetype>(payload.size())));
+      editorStack->setCurrentWidget(binaryEditor);
+      binaryEditor->setFocus();
     } else {
       diagramScene->clear(false, false);
       diagramScene->setSubcircuitDocumentMode(
@@ -390,11 +403,11 @@ bool LogiFlowWindow::switchToDocument(const std::string& path, const bool select
     }
     updateSubcircuitShapeAction();
   } catch (const std::exception& e) {
-    const auto noun =
-        *type == SILICON::project::DocumentType::Circuit
-            ? tr("Circuit")
-            : (*type == SILICON::project::DocumentType::Subcircuit ? tr("Subcircuit")
-                                                                   : tr("Code File"));
+    const auto noun = *type == SILICON::project::DocumentType::Circuit ? tr("Circuit")
+                      : *type == SILICON::project::DocumentType::Subcircuit
+                          ? tr("Subcircuit")
+                      : *type == SILICON::project::DocumentType::Code ? tr("Code File")
+                                                                      : tr("Binary File");
     SILICON::ui::inputDialog::critical(
         this, tr("%1 Switch Error").arg(noun),
         tr("Failed to load the selected %1:\n%2").arg(noun.toLower(), e.what()));
@@ -417,13 +430,12 @@ void LogiFlowWindow::removeDocument(const std::string& path)
   if (!store.contains(path))
     return;
 
-  const bool graphical = SILICON::project::documentTypeForPath(path)
-                         != SILICON::project::DocumentType::Code;
+  const auto type      = SILICON::project::documentTypeForPath(path);
+  const bool graphical = type && SILICON::project::isGraphicalDocumentType(*type);
   if (graphical)
     projectContext.circuitDependencies.validateDocumentRemoval(path);
 
-  if (activeDocumentPath == path
-      && !switchToDocument(projectMainCircuitPath(), true))
+  if (activeDocumentPath == path && !switchToDocument(projectMainCircuitPath(), true))
     return;
 
   projectContext.removeDocument(path);
@@ -464,7 +476,8 @@ void LogiFlowWindow::rebuildProjectTree()
   projectTree->rebuild(
       project, store.getDocuments(SILICON::project::DocumentType::Circuit),
       store.getDocuments(SILICON::project::DocumentType::Subcircuit),
-      store.getDocuments(SILICON::project::DocumentType::Code), activeDocumentPath);
+      store.getDocuments(SILICON::project::DocumentType::Code),
+      store.getDocuments(SILICON::project::DocumentType::Binary), activeDocumentPath);
 }
 
 void LogiFlowWindow::updateProjectTreeLabels()
@@ -476,7 +489,8 @@ void LogiFlowWindow::updateProjectTreeLabels()
   projectTree->updateLabels(
       project, store.getDocuments(SILICON::project::DocumentType::Circuit),
       store.getDocuments(SILICON::project::DocumentType::Subcircuit),
-      store.getDocuments(SILICON::project::DocumentType::Code));
+      store.getDocuments(SILICON::project::DocumentType::Code),
+      store.getDocuments(SILICON::project::DocumentType::Binary));
 }
 
 QTreeWidgetItem* LogiFlowWindow::projectDocumentSectionItem(
@@ -567,7 +581,7 @@ void LogiFlowWindow::resizeEvent(QResizeEvent* event)
 
 void LogiFlowWindow::closeEvent(QCloseEvent* event)
 {
-  if (undoStack && (!undoStack->isClean() || codeDocumentsDirty)
+  if (undoStack && (!undoStack->isClean() || codeDocumentsDirty || binaryDocumentsDirty)
       && !closeAfterSaveConfirmation) {
     event->ignore();
     confirmSaveIfDirty([this] {

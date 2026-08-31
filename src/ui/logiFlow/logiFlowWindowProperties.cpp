@@ -141,8 +141,11 @@ void LogiFlowWindow::updatePropertyDock()
   const bool codeFileSelected =
       selectedProjectItem
       && ProjectTree::itemKind(selectedProjectItem) == ProjectTreeItemKind::CodeFile;
-  propertyDock->setVisible(!codeFileSelected);
-  if (codeFileSelected)
+  const bool binaryFileSelected =
+      selectedProjectItem
+      && ProjectTree::itemKind(selectedProjectItem) == ProjectTreeItemKind::BinaryFile;
+  propertyDock->setVisible(!codeFileSelected && !binaryFileSelected);
+  if (codeFileSelected || binaryFileSelected)
     return;
 
   // 1. Assign the container immediately.
@@ -163,8 +166,8 @@ void LogiFlowWindow::updatePropertyDock()
 
   if (selectedNodes.empty()) {
     if (!selectedProjectItem) {
-        layout->addRow(new QLabel(tr("Select a project, circuit, or one or more "
-                                     "components\nto view properties.")));
+      layout->addRow(new QLabel(tr("Select a project, circuit, or one or more "
+                                   "components\nto view properties.")));
       return;
     }
 
@@ -474,8 +477,8 @@ void LogiFlowWindow::updatePropertyDock()
   }
 }
 
-  // --- Property SpinBox
-  // ------------------------------------------------------------------
+// --- Property SpinBox
+// ------------------------------------------------------------------
 
 PropertySpinBox::PropertySpinBox(QWidget* parent) : QSpinBox(parent)
 {

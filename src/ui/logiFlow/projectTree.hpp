@@ -28,7 +28,9 @@ enum class ProjectTreeItemKind {
   Subcircuit,
   CodeSection,
   CodeLanguage,
-  CodeFile
+  CodeFile,
+  BinarySection,
+  BinaryFile
 };
 
 /**
@@ -43,15 +45,18 @@ class ProjectTree : public QTreeWidget {
 public:
   explicit ProjectTree(QWidget* parent = nullptr);
 
-  void rebuild(const SILICON::project::ProjectInfo&           project,
+  void rebuild(const SILICON::project::ProjectInfo&                       project,
                const SILICON::project::DocumentStore::DocumentReferences& circuits,
                const SILICON::project::DocumentStore::DocumentReferences& subcircuits,
                const SILICON::project::DocumentStore::DocumentReferences& codeFiles,
-               const std::string&                             activeDocumentPath);
-  void updateLabels(const SILICON::project::ProjectInfo&           project,
-                    const SILICON::project::DocumentStore::DocumentReferences& circuits,
-                    const SILICON::project::DocumentStore::DocumentReferences& subcircuits,
-                    const SILICON::project::DocumentStore::DocumentReferences& codeFiles);
+               const SILICON::project::DocumentStore::DocumentReferences& binaryFiles,
+               const std::string& activeDocumentPath);
+  void
+  updateLabels(const SILICON::project::ProjectInfo&                       project,
+               const SILICON::project::DocumentStore::DocumentReferences& circuits,
+               const SILICON::project::DocumentStore::DocumentReferences& subcircuits,
+               const SILICON::project::DocumentStore::DocumentReferences& codeFiles,
+               const SILICON::project::DocumentStore::DocumentReferences& binaryFiles);
 
   void selectDocument(const std::string& path);
   void clearDocumentSelection();
@@ -64,8 +69,9 @@ public:
 private:
   void addSection(QTreeWidgetItem* projectItem, SILICON::project::DocumentType type,
                   const SILICON::project::DocumentStore::DocumentReferences& documents);
-  void addCodeSection(QTreeWidgetItem*                               projectItem,
-                      const SILICON::project::DocumentStore::DocumentReferences& documents);
+  void
+  addCodeSection(QTreeWidgetItem*                                           projectItem,
+                 const SILICON::project::DocumentStore::DocumentReferences& documents);
 };
 
 }  // namespace ui

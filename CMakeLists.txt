@@ -137,6 +137,7 @@ set(UI_SOURCE_FILES
         ${src_dir}/ui/logiFlow/componentCatalogOverlay.cpp
         ${src_dir}/ui/common/codeEditor.cpp
         ${src_dir}/ui/common/codeFilePresentation.cpp
+        ${src_dir}/ui/common/binaryEditor.cpp
         ${src_dir}/ui/logiFlow/metadataDescriptionEdit.cpp
         ${src_dir}/ui/logiFlow/projectTree.cpp
         ${src_dir}/ui/logiFlow/logiFlowWindowActions.cpp
