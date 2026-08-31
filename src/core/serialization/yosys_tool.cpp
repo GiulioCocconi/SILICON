@@ -80,7 +80,15 @@ ScriptResult runScript(const std::string_view script, const ToolOptions& options
 
 std::string readVerilog(const std::string_view source, const ToolOptions& options)
 {
-  (void)source;
+  const std::array sources{VerilogSourceFile{.path = "source.v", .contents = source}};
+  return readVerilog(sources, "source.v", options);
+}
+
+std::string readVerilog(const std::span<const VerilogSourceFile> sources,
+                        const std::string_view entryPath, const ToolOptions& options)
+{
+  (void)sources;
+  (void)entryPath;
   (void)runScript({}, options);
   throw std::logic_error("Unreachable after unavailable Yosys execution");
 }
@@ -154,6 +162,24 @@ namespace {
     if (!output)
       throw std::runtime_error(
           std::format("Yosys {} failed: could not write '{}'", phase, path.string()));
+  }
+
+  [[nodiscard]] bool isSafeRelativeSourcePath(const std::string_view path)
+  {
+    if (path.empty() || path.front() == '/' || path.back() == '/'
+        || path.contains('\\') || path.contains("//"))
+      return false;
+
+    const std::filesystem::path filesystemPath(path);
+    if (filesystemPath.has_root_path())
+      return false;
+    for (const auto& component : filesystemPath)
+      if (component == "." || component == "..")
+        return false;
+
+    return std::ranges::none_of(path, [](const unsigned char character) {
+      return character < 0x20 || character == 0x7f;
+    });
   }
 
   [[nodiscard]] std::string readFile(const std::filesystem::path& path,
@@ -819,10 +845,43 @@ ScriptResult runScript(const std::string_view script, const ToolOptions& options
 
 std::string readVerilog(const std::string_view source, const ToolOptions& options)
 {
+  const std::array sources{VerilogSourceFile{.path = "source.v", .contents = source}};
+  return readVerilog(sources, "source.v", options);
+}
+
+std::string readVerilog(const std::span<const VerilogSourceFile> sources,
+                        const std::string_view entryPath, const ToolOptions& options)
+{
+  if (!isSafeRelativeSourcePath(entryPath))
+    throw std::invalid_argument("Verilog entry path must be a safe relative path");
+
+  std::unordered_set<std::string> paths;
+  for (const auto& source : sources) {
+    if (!isSafeRelativeSourcePath(source.path))
+      throw std::invalid_argument(std::format(
+          "Verilog source path '{}' must be a safe relative path", source.path));
+    if (!paths.emplace(source.path).second)
+      throw std::invalid_argument(
+          std::format("Duplicate Verilog source path: {}", source.path));
+  }
+  if (!paths.contains(std::string(entryPath)))
+    throw std::invalid_argument(
+        std::format("Verilog entry source is missing: {}", entryPath));
+
   TemporaryWorkspace workspace;
-  const auto         sourcePath = workspace.path() / "source.v";
+  for (const auto& source : sources) {
+    const auto sourcePath = workspace.path() / std::filesystem::path(source.path);
+    std::error_code error;
+    std::filesystem::create_directories(sourcePath.parent_path(), error);
+    if (error)
+      throw std::runtime_error(std::format(
+          "Yosys Verilog-read input-writing phase failed: could not create '{}': {}",
+          sourcePath.parent_path().string(), error.message()));
+    writeFile(sourcePath, source.contents, "Verilog-read input-writing phase");
+  }
+
+  const auto sourcePath = workspace.path() / std::filesystem::path(entryPath);
   const auto         jsonPath   = workspace.path() / "design.json";
-  writeFile(sourcePath, source, "Verilog-read input-writing phase");
 
   (void)runScript(std::format("read_verilog {}\n"
                               // `proc` converts processes ($dff/$mux cells) so the JSON

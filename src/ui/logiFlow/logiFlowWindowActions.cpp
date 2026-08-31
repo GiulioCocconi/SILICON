@@ -860,8 +860,17 @@ void LogiFlowWindow::convertActiveVerilogToSubcircuit()
              != SILICON::project::CodeFileType::Verilog)
     throw std::runtime_error("Only Verilog code files can be converted to subcircuits");
 
+  std::vector<SILICON::yosys::VerilogSourceFile> sources;
+  for (const auto& document : store.getDocuments()) {
+    if (SILICON::project::codeFileTypeForPath(document.getPath())
+        == SILICON::project::CodeFileType::Verilog) {
+      sources.push_back(
+          {.path = document.getPath(), .contents = document.getContents()});
+    }
+  }
+
   const auto designJson = SILICON::yosys::elaborateHierarchy(
-      SILICON::yosys::readVerilog(existing->getContents()));
+      SILICON::yosys::readVerilog(sources, existing->getPath()));
   const auto modules = SILICON::yosys::moduleDependencyGraph(designJson);
   if (modules.modules().empty())
     throw std::runtime_error("Verilog source must declare at least one module");

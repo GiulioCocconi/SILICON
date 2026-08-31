@@ -22,6 +22,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -175,6 +176,14 @@ struct ScriptResult {
   std::string standardError;
 };
 
+/** @brief One named Verilog source made available to the preprocessor. */
+struct VerilogSourceFile {
+  /** @brief Safe relative path used for include resolution and diagnostics. */
+  std::string_view path;
+  /** @brief Source contents written to the temporary Yosys workspace. */
+  std::string_view contents;
+};
+
 /**
  * @brief Execute an arbitrary Yosys script and capture its output streams separately.
  *
@@ -200,6 +209,20 @@ struct ScriptResult {
  */
 [[nodiscard]] std::string readVerilog(std::string_view   source,
                                       const ToolOptions& options = {});
+
+/**
+ * @brief Lower one entry file from a set of named Verilog sources into Yosys JSON.
+ *
+ * Every source is materialized in the same temporary workspace, preserving its
+ * relative path, so Yosys can resolve transitive `include` directives. Only @p entryPath
+ * is passed to `read_verilog`; files that are not included remain outside the design.
+ *
+ * @throws std::invalid_argument If paths are unsafe or duplicated, or if @p entryPath
+ * does not name one of @p sources.
+ */
+[[nodiscard]] std::string readVerilog(std::span<const VerilogSourceFile> sources,
+                                      std::string_view                   entryPath,
+                                      const ToolOptions&                 options = {});
 
 /**
  * @brief Elaborate a Yosys JSON design for import.

@@ -1567,6 +1567,83 @@ TEST(YosysToolTest, LogsCapturedDiagnosticsAndReferencesLogs)
   EXPECT_NE(logs.find("Command failed with exit status"), std::string::npos);
 }
 
+TEST(YosysToolTest, RejectsInvalidMultiSourceInputs)
+{
+  using SILICON::yosys::VerilogSourceFile;
+
+  const std::array unsafe{
+      VerilogSourceFile{.path = "../top.v", .contents = "module top; endmodule"}};
+  EXPECT_THROW((void)SILICON::yosys::readVerilog(unsafe, "../top.v"),
+               std::invalid_argument);
+
+  const std::array duplicate{
+      VerilogSourceFile{.path = "code/top.v", .contents = "module top; endmodule"},
+      VerilogSourceFile{.path = "code/top.v", .contents = "module other; endmodule"}};
+  EXPECT_THROW((void)SILICON::yosys::readVerilog(duplicate, "code/top.v"),
+               std::invalid_argument);
+
+  const std::array sources{
+      VerilogSourceFile{.path = "code/helper.v",
+                        .contents = "module helper; endmodule"}};
+  EXPECT_THROW((void)SILICON::yosys::readVerilog(sources, "code/top.v"),
+               std::invalid_argument);
+}
+
+TEST(YosysToolTest, ResolvesTransitiveProjectIncludesWithoutParsingUnrelatedFiles)
+{
+  using SILICON::yosys::VerilogSourceFile;
+
+  constexpr std::array sources{
+      VerilogSourceFile{
+          .path = "code/top.v",
+          .contents = R"(`include "helper.v"
+module top(input a, output y);
+  helper child(.a(a), .y(y));
+endmodule
+)"},
+      VerilogSourceFile{
+          .path = "code/helper.v",
+          .contents = R"(`include "defs.v"
+module helper(input a, output y);
+  assign y = `APPLY(a);
+endmodule
+)"},
+      VerilogSourceFile{.path     = "code/defs.v",
+                        .contents = "`define APPLY(signal) ~signal\n"},
+      VerilogSourceFile{.path     = "code/unrelated.v",
+                        .contents = "this is deliberately invalid Verilog\n"}};
+
+  const auto designJson = SILICON::yosys::readVerilog(sources, "code/top.v");
+  const auto design     = SILICON::yosys::Json::parse(designJson);
+  ASSERT_TRUE(design.at("modules").contains("top"));
+  ASSERT_TRUE(design.at("modules").contains("helper"));
+  EXPECT_FALSE(design.at("modules").contains("unrelated"));
+
+  const auto graph = SILICON::yosys::moduleDependencyGraph(designJson);
+  EXPECT_EQ(graph.modules(), (std::vector<std::string>{"helper", "top"}));
+  EXPECT_EQ(graph.dependenciesOf("top"), (std::vector<std::string>{"helper"}));
+
+  const auto& helperCells = design.at("modules").at("helper").at("cells");
+  ASSERT_EQ(helperCells.size(), 1);
+  EXPECT_EQ(helperCells.begin().value().at("type"), "$not");
+}
+
+TEST(YosysToolTest, ReportsMissingProjectIncludeThroughYosysDiagnostics)
+{
+  constexpr std::array sources{SILICON::yosys::VerilogSourceFile{
+      .path = "code/top.v", .contents = "`include \"missing.v\"\n"}};
+  YosysLogCapture logCapture;
+  std::string     message;
+  try {
+    (void)SILICON::yosys::readVerilog(sources, "code/top.v");
+  } catch (const std::runtime_error& error) {
+    message = error.what();
+  }
+
+  EXPECT_NE(message.find("script-execution phase"), std::string::npos);
+  EXPECT_NE(logCapture.text().find("missing.v"), std::string::npos);
+}
+
 TEST(YosysToolTest, BuildsDependencyGraphFromMultiModuleVerilog)
 {
   constexpr std::string_view source = R"(
