@@ -1,10 +1,23 @@
 /*
- Copyright (c) 2026. Giulio Cocconi
- ...
- */
+  Copyright (c) 2026. Giulio Cocconi
 
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+ */
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -22,6 +35,44 @@ class ProjectContext;
 
 enum class DocumentType { Circuit, Subcircuit, Code, Binary };
 
+enum class DocumentCategory { Diagram, Code, Binary };
+
+struct DocumentTypeInfo {
+  DocumentType     type;
+  DocumentCategory category;
+  std::string_view root;
+  std::string_view suffix;
+};
+
+inline constexpr std::array<DocumentTypeInfo, 4> DOCUMENT_TYPE_INFO{{
+    {.type = DocumentType::Circuit,
+     .category = DocumentCategory::Diagram,
+     .root = "circuits/",
+     .suffix = ".json"},
+    {.type = DocumentType::Subcircuit,
+     .category = DocumentCategory::Diagram,
+     .root = "subcircuits/",
+     .suffix = ".json"},
+    {.type = DocumentType::Code,
+     .category = DocumentCategory::Code,
+     .root = "code/",
+     .suffix = {}},
+    {.type = DocumentType::Binary,
+     .category = DocumentCategory::Binary,
+     .root = "bin/",
+     .suffix = {}},
+}};
+
+[[nodiscard]] constexpr const DocumentTypeInfo& documentTypeInfo(const DocumentType type)
+{
+  return DOCUMENT_TYPE_INFO[static_cast<std::size_t>(type)];
+}
+
+[[nodiscard]] constexpr DocumentCategory categoryOf(const DocumentType type)
+{
+  return documentTypeInfo(type).category;
+}
+
 enum class DocumentChangeKind { Added, Updated, Removed, Reset };
 
 struct DocumentChange {
@@ -32,15 +83,9 @@ struct DocumentChange {
 };
 
 [[nodiscard]] std::optional<DocumentType> documentTypeForPath(std::string_view path);
-[[nodiscard]] std::optional<std::string>  subcircuitSlugForPath(std::string_view path);
-[[nodiscard]] bool                        isValidSubcircuitSlug(std::string_view slug);
-[[nodiscard]] std::string                 subcircuitPathForSlug(std::string_view slug);
-[[nodiscard]] std::optional<std::string>  binarySlugForPath(std::string_view path);
-[[nodiscard]] bool                        isValidBinarySlug(std::string_view slug);
-[[nodiscard]] std::string                 binaryPathForSlug(std::string_view slug);
-[[nodiscard]] bool                        isGraphicalDocumentType(DocumentType type);
-/** Checks that an asset path is normalized, relative, and outside reserved namespaces. */
-[[nodiscard]] bool isValidProjectAssetPath(std::string_view path);
+[[nodiscard]] std::optional<std::string>  documentSlugForPath(std::string_view path);
+[[nodiscard]] bool                        isValidDocumentSlug(std::string_view slug);
+[[nodiscard]] std::string documentPathForSlug(DocumentType type, std::string_view slug);
 
 /**
  * A document always has a valid, immutable project-relative path. Its type is
@@ -53,7 +98,6 @@ public:
   [[nodiscard]] const std::string& getPath() const noexcept;
   [[nodiscard]] const std::string& getContents() const noexcept;
   [[nodiscard]] DocumentType       getType() const noexcept;
-  [[nodiscard]] std::optional<std::string> subcircuitSlug() const;
 
   void setContents(std::string contents);
 
@@ -64,8 +108,7 @@ private:
 
 class DocumentStore {
 public:
-  using DocumentReferences = std::vector<std::reference_wrapper<const Document>>;
-  using Listener           = std::function<void(const DocumentChange&)>;
+  using Listener = std::function<void(const DocumentChange&)>;
 
   void setDocuments(std::vector<Document> documents);
   void upsertDocument(Document document);
@@ -76,8 +119,8 @@ public:
   /** Returned pointers/references are invalidated by any store mutation. */
   [[nodiscard]] const Document* find(std::string_view documentPath) const noexcept;
   [[nodiscard]] bool contains(std::string_view documentPath) const noexcept;
+  [[nodiscard]] bool contains(DocumentType type) const noexcept;
   [[nodiscard]] const std::vector<Document>& getDocuments() const noexcept;
-  [[nodiscard]] DocumentReferences getDocuments(DocumentType type) const;
   [[nodiscard]] std::optional<std::size_t> indexOf(std::string_view documentPath) const;
 
   std::uint64_t addListener(Listener listener);

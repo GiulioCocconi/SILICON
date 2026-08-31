@@ -85,7 +85,6 @@ Copyright (c) 2026. Giulio Cocconi
 #endif
 
 #include <core/serialization/component_registry.hpp>
-#include <core/serialization/projectFile.hpp>
 #include <core/serialization/yosys.hpp>
 #include <core/simulator.hpp>
 #include <core/circuitDocument.hpp>
@@ -480,30 +479,41 @@ void LogiFlowWindow::createActions()
   connect(aboutAct, &QAction::triggered, this, &LogiFlowWindow::about);
   connect(settingsAct, &QAction::triggered, this, &LogiFlowWindow::openSettings);
   connect(undoAct, &QAction::triggered, this, [this] {
-    if (isBinaryDocumentActive() && binaryEditor->history()->canUndo())
+    const auto type = activeDocumentType();
+    if (type == SILICON::project::DocumentType::Binary
+        && binaryEditor->history()->canUndo())
       binaryEditor->history()->undo();
-    else if (isCodeDocumentActive() && codeEditor->document()->isUndoAvailable())
+    else if (type == SILICON::project::DocumentType::Code
+             && codeEditor->document()->isUndoAvailable())
       codeEditor->undo();
     else
       undoStack->undo();
   });
   connect(redoAct, &QAction::triggered, this, [this] {
-    if (isBinaryDocumentActive() && binaryEditor->history()->canRedo())
+    const auto type = activeDocumentType();
+    if (type == SILICON::project::DocumentType::Binary
+        && binaryEditor->history()->canRedo())
       binaryEditor->history()->redo();
-    else if (isCodeDocumentActive() && codeEditor->document()->isRedoAvailable())
+    else if (type == SILICON::project::DocumentType::Code
+             && codeEditor->document()->isRedoAvailable())
       codeEditor->redo();
     else
       undoStack->redo();
   });
   const auto updateHistoryActions = [this] {
+    const auto type = activeDocumentType();
     undoAct->setEnabled(
         undoStack->canUndo()
-        || (isCodeDocumentActive() && codeEditor->document()->isUndoAvailable())
-        || (isBinaryDocumentActive() && binaryEditor->history()->canUndo()));
+        || (type == SILICON::project::DocumentType::Code
+            && codeEditor->document()->isUndoAvailable())
+        || (type == SILICON::project::DocumentType::Binary
+            && binaryEditor->history()->canUndo()));
     redoAct->setEnabled(
         undoStack->canRedo()
-        || (isCodeDocumentActive() && codeEditor->document()->isRedoAvailable())
-        || (isBinaryDocumentActive() && binaryEditor->history()->canRedo()));
+        || (type == SILICON::project::DocumentType::Code
+            && codeEditor->document()->isRedoAvailable())
+        || (type == SILICON::project::DocumentType::Binary
+            && binaryEditor->history()->canRedo()));
   };
   connect(undoStack, &QUndoStack::canUndoChanged, this,
           [updateHistoryActions](bool) { updateHistoryActions(); });
@@ -709,23 +719,16 @@ void LogiFlowWindow::updateSubcircuitShapeAction()
 {
   if (!editSubcircuitShapeAct)
     return;
-  const bool active = SILICON::project::documentTypeForPath(activeDocumentPath)
-                      == SILICON::project::DocumentType::Subcircuit;
+  const bool active = activeDocumentType() == SILICON::project::DocumentType::Subcircuit;
   editSubcircuitShapeAct->setVisible(active);
   editSubcircuitShapeAct->setEnabled(active);
   updateCodeAction();
 }
 
-bool LogiFlowWindow::isCodeDocumentActive() const
+std::optional<SILICON::project::DocumentType>
+LogiFlowWindow::activeDocumentType() const noexcept
 {
-  return SILICON::project::documentTypeForPath(activeDocumentPath)
-         == SILICON::project::DocumentType::Code;
-}
-
-bool LogiFlowWindow::isBinaryDocumentActive() const
-{
-  return SILICON::project::documentTypeForPath(activeDocumentPath)
-         == SILICON::project::DocumentType::Binary;
+  return SILICON::project::documentTypeForPath(activeDocumentPath);
 }
 
 void LogiFlowWindow::updateCodeAction()
@@ -748,9 +751,10 @@ void LogiFlowWindow::updateCodeAction()
 #else
   codeConversionAct->setEnabled(subcircuit || verilog);
 #endif
-  const bool code = isCodeDocumentActive();
-  const bool binary       = isBinaryDocumentActive();
-  const bool nonGraphical = code || binary;
+  const auto type = activeDocumentType();
+  const bool nonGraphical =
+      type && SILICON::project::categoryOf(*type)
+                  != SILICON::project::DocumentCategory::Diagram;
   setActionsEnabled({setNormalModeAct, setPanModeAct, setWireCreationModeAct,
                      setSimulationModeAct, toggleFstTraceAct, openComponentCatalogAct,
                      setComponentPlacingModeAct, autoPlaceAct},
@@ -771,16 +775,6 @@ void LogiFlowWindow::updateCodeAction()
       widget->setVisible(codeConversionAct->isVisible()
                          && codeConversionAct->isEnabled());
   }
-}
-
-void LogiFlowWindow::commitConvertedDocument(SILICON::project::Document document,
-                                             const std::string&         sourcePath,
-                                             const QString&             commandText)
-{
-  const auto targetPath = document.getPath();
-  std::vector<SILICON::project::Document> documents;
-  documents.push_back(std::move(document));
-  commitConvertedDocuments(std::move(documents), sourcePath, targetPath, commandText);
 }
 
 void LogiFlowWindow::commitConvertedDocuments(
@@ -822,24 +816,27 @@ void LogiFlowWindow::commitConvertedDocuments(
 void LogiFlowWindow::convertActiveSubcircuitToVerilog()
 {
   saveActiveDocumentPayload();
-  const auto  sourcePath = activeDocumentPath;
-  const auto  slug       = activeProjectSubcircuitSlug();
-  const auto* existing = projectContext.documents.find(sourcePath);
-  if (!existing || slug.empty())
+  const auto sourcePath = activeDocumentPath;
+  auto&      store      = projectContext.documents;
+  const auto* existing  = store.find(sourcePath);
+  const auto slug       = SILICON::project::documentSlugForPath(sourcePath);
+  if (!existing || existing->getType() != SILICON::project::DocumentType::Subcircuit
+      || !slug)
     throw std::runtime_error("Only subcircuits can be converted to Verilog");
   auto circuit = SILICON::core::parseCircuitDocument(
                      existing->getContents(), ComponentRegistry::instance(),
                      &circuitResolver)
                      .circuit;
-  circuit.setName(slug);
+  circuit.setName(*slug);
   const auto source = SILICON::yosys::exportVerilog(circuit);
   const auto path =
-      SILICON::project::codeFilePath(slug, SILICON::project::CodeFileType::Verilog);
+      SILICON::project::codeFilePath(*slug, SILICON::project::CodeFileType::Verilog);
   const SILICON::project::Document result(path, source);
   auto commit = [this, result, sourcePath] {
-    commitConvertedDocument(result, sourcePath, tr("Convert to Verilog"));
+    commitConvertedDocuments({result}, sourcePath, result.getPath(),
+                             tr("Convert to Verilog"));
   };
-  if (hasDocument(path)) {
+  if (store.contains(path)) {
     SILICON::ui::inputDialog::question(
         this, tr("Replace Code File"),
         tr("'%1' already exists. Replace it?").arg(QString::fromStdString(path)),
@@ -852,8 +849,9 @@ void LogiFlowWindow::convertActiveSubcircuitToVerilog()
 void LogiFlowWindow::convertActiveVerilogToSubcircuit()
 {
   saveActiveDocumentPayload();
-  const auto  sourcePath = activeDocumentPath;
-  const auto* existing = projectContext.documents.find(sourcePath);
+  const auto sourcePath = activeDocumentPath;
+  auto&      store      = projectContext.documents;
+  const auto* existing  = store.find(sourcePath);
   if (!existing
       || SILICON::project::codeFileTypeForPath(existing->getPath())
              != SILICON::project::CodeFileType::Verilog)
@@ -874,7 +872,7 @@ void LogiFlowWindow::convertActiveVerilogToSubcircuit()
   const auto exportOrder = modules.dependencyOrder(*selectedRoots);
 
   for (const auto& module : exportOrder) {
-    if (!SILICON::project::isValidSubcircuitSlug(module))
+    if (!SILICON::project::isValidDocumentSlug(module))
       throw std::runtime_error(std::format(
           "Verilog module '{}' cannot be used as a project subcircuit name", module));
   }
@@ -894,12 +892,13 @@ void LogiFlowWindow::convertActiveVerilogToSubcircuit()
     completed["graphicalComponent"] = graphicalSubcircuitMetadataToJson(
         synchronizeGraphicalSubcircuitMetadata(sceneJson,
                                                GraphicalSubcircuitMetadata{}));
-    generated.emplace_back(SILICON::project::subcircuitPathForSlug(module),
+    generated.emplace_back(SILICON::project::documentPathForSlug(
+                               SILICON::project::DocumentType::Subcircuit, module),
                            completed.dump(2));
   }
 
-  const auto activatePath =
-      SILICON::project::subcircuitPathForSlug(selectedRoots->front());
+  const auto activatePath = SILICON::project::documentPathForSlug(
+      SILICON::project::DocumentType::Subcircuit, selectedRoots->front());
   auto commit = [this, generated, sourcePath, activatePath]() mutable {
     commitConvertedDocuments(std::move(generated), sourcePath, activatePath,
                              tr("Convert Verilog Modules to Subcircuits"));
@@ -907,7 +906,7 @@ void LogiFlowWindow::convertActiveVerilogToSubcircuit()
 
   QStringList conflicts;
   for (const auto& document : generated)
-    if (hasDocument(document.getPath()))
+    if (store.contains(document.getPath()))
       conflicts.push_back(QString::fromStdString(document.getPath()));
 
   if (!conflicts.empty()) {
@@ -925,7 +924,7 @@ void LogiFlowWindow::convertActiveDocument()
 {
 #ifndef __EMSCRIPTEN__
   try {
-    const auto type = SILICON::project::documentTypeForPath(activeDocumentPath);
+    const auto type = activeDocumentType();
     if (type == SILICON::project::DocumentType::Subcircuit)
       convertActiveSubcircuitToVerilog();
     else if (type == SILICON::project::DocumentType::Code)
@@ -940,12 +939,16 @@ void LogiFlowWindow::convertActiveDocument()
 
 void LogiFlowWindow::editActiveSubcircuitShape()
 {
-  const auto slug = activeProjectSubcircuitSlug();
-  if (slug.empty())
+  if (activeDocumentType() != SILICON::project::DocumentType::Subcircuit)
     return;
+
+  const auto slug = SILICON::project::documentSlugForPath(activeDocumentPath);
+  if (!slug)
+    return;
+
   try {
     saveActiveDocumentPayload();
-    editGraphicalSubcircuitShape(slug, projectContext, undoStack, this);
+    editGraphicalSubcircuitShape(*slug, projectContext, undoStack, this);
   } catch (const std::exception& e) {
     SILICON::ui::inputDialog::warning(
         this, tr("Edit shape"),

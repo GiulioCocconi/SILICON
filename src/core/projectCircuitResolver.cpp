@@ -25,7 +25,7 @@ ProjectCircuitResolver::resolve(const std::string_view slug) const
   SILICON::core::ActiveKeyGuard activeSlug(
       activeSlugs, std::string(slug), "Recursive subcircuit dependency detected: ");
 
-  const auto  path     = subcircuitPathForSlug(slug);
+  const auto path = documentPathForSlug(DocumentType::Subcircuit, slug);
   const auto* document = project.documents.find(path);
   if (!document)
     throw std::runtime_error(std::format("Unknown subcircuit slug '{}'", slug));
