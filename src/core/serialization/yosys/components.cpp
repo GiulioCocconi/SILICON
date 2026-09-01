@@ -18,11 +18,12 @@
 
 /* Per-component lowering from Silicon semantics to native Yosys cells. */
 
-#include "yosys_helpers.hpp"
-#include "yosys_cells.hpp"
+#include "cells.hpp"
+#include "helpers.hpp"
 
 #include <core/flipflops.hpp>
 #include <core/gates.hpp>
+#include <core/io.hpp>
 #include <core/register.hpp>
 #include <core/subcircuit.hpp>
 #include <extraComponents/arithmetic.hpp>
@@ -57,27 +58,67 @@ namespace yosys_component_detail {
                       requiresConnection ? "connected " : "", expectedWidth));
     }
     return bus;
-}
-
-[[nodiscard]] const Bus& requireScalarBus(const Component& component, const bool input,
-                                          const std::size_t index)
-{
-  return requireBusWidth(component, input, index, 1);
-}
-
-void requireBusCounts(const Component& component, const std::size_t expectedInputs,
-                      const std::size_t expectedOutputs)
-{
-  if (component.inputBuses().size() != expectedInputs
-      || component.outputBuses().size() != expectedOutputs) {
-    throw std::runtime_error(std::format(
-        "Cannot export malformed '{}': unexpected bus count", component.typeName()));
   }
-}
+
+  [[nodiscard]] const Bus& requireScalarBus(const Component& component, const bool input,
+                                            const std::size_t index)
+  {
+    return requireBusWidth(component, input, index, 1);
+  }
+
+  void requireBusCounts(const Component& component, const std::size_t expectedInputs,
+                        const std::size_t expectedOutputs)
+  {
+    if (component.inputBuses().size() != expectedInputs
+        || component.outputBuses().size() != expectedOutputs) {
+      throw std::runtime_error(std::format(
+          "Cannot export malformed '{}': unexpected bus count", component.typeName()));
+    }
+  }
 
 }  // namespace yosys_component_detail
 
 using namespace yosys_component_detail;
+
+void Component::serializeYosys(SerializationContext&) const
+{
+  throw std::runtime_error(std::format(
+      "Component type '{}' does not support Yosys serialization", typeName()));
+}
+
+void ConstantComponent::serializeYosys(SerializationContext& context) const
+{
+  if (outputBuses().empty())
+    throw std::runtime_error("Cannot export a malformed constant component");
+
+  const auto value = getPropertyValue<BusValue>("value").value_or(
+      BusValue(outputBuses()[0].size(), State::UNKNOWN));
+  Json bits = Json::array();
+  for (const State state : value) {
+    switch (state) {
+      case State::LOW: bits.push_back("0"); break;
+      case State::HIGH: bits.push_back("1"); break;
+      case State::UNKNOWN: bits.push_back("x"); break;
+      case State::ERROR:
+        throw std::runtime_error("Cannot export an ERROR constant to Yosys");
+    }
+  }
+  emitUnary(context, "constant", "$pos", std::move(bits), context.bits(outputBuses()[0]));
+}
+
+void BoundaryIoComponent::serializeYosys(SerializationContext& context) const
+{
+  const auto role = metadata().portRole;
+  if (role == PortRole::Input) {
+    context.addPort(getPropertyValue<std::string>("name").value_or("input"), "input",
+                    outputBuses().at(0));
+  } else if (role == PortRole::Output) {
+    context.addPort(getPropertyValue<std::string>("name").value_or("output"), "output",
+                    inputBuses().at(0));
+  } else {
+    throw std::runtime_error("Cannot export boundary I/O without a port role");
+  }
+}
 
 void AndGate::serializeYosys(SerializationContext& context) const
 {
@@ -342,49 +383,48 @@ namespace {
   [[nodiscard]] bool connected(const Json& bits)
   {
     return bits.size() == 1 && bits[0].is_number_integer();
-}
-
-[[nodiscard]] bool positiveClock(const Component& component)
-{
-  const auto edge = component.getPropertyValue<std::string>("triggerEdge");
-  if (!edge || (*edge != "PET" && *edge != "NET"))
-    throw std::runtime_error(std::format(
-        "Cannot export '{}': invalid triggerEdge property", component.typeName()));
-  return *edge == "PET";
-}
-
-void emitDff(SerializationContext& context, const Component& component, Json data,
-             std::optional<Json> enable, Json clock, Json clear, Json preset,
-             const Bus& q, const Bus& qn, const std::string_view baseCell,
-             const std::string_view controlledCell, const std::string_view instanceName)
-{
-  const bool hasControls = connected(clear) || connected(preset);
-  Json parameters{
-      {"CLK_POLARITY",
-       SerializationContext::parameter(positiveClock(component), 1)}};
-  Json portDirections = directions({{"D", "input"}, {"CLK", "input"}});
-  Json connections{{"D", std::move(data)}, {"CLK", std::move(clock)}};
-  if (enable) {
-    parameters["EN_POLARITY"] = SerializationContext::parameter(1, 1);
-    portDirections["EN"]      = "input";
-    connections["EN"]         = std::move(*enable);
   }
-  if (hasControls) {
-    parameters["SET_POLARITY"] = SerializationContext::parameter(1, 1);
-    parameters["CLR_POLARITY"] = SerializationContext::parameter(1, 1);
-    portDirections["SET"]      = "input";
-    portDirections["CLR"]      = "input";
-    connections["SET"]         = std::move(preset);
-    connections["CLR"]         = std::move(clear);
+
+  [[nodiscard]] bool positiveClock(const Component& component)
+  {
+    const auto edge = component.getPropertyValue<std::string>("triggerEdge");
+    if (!edge || (*edge != "PET" && *edge != "NET"))
+      throw std::runtime_error(std::format(
+          "Cannot export '{}': invalid triggerEdge property", component.typeName()));
+    return *edge == "PET";
   }
-  portDirections["Q"]  = "output";
-  portDirections["QN"] = "output";
-  connections["Q"]     = context.bits(q);
-  connections["QN"]    = context.bits(qn);
-  context.addCell(instanceName, hasControls ? controlledCell : baseCell,
-                  std::move(parameters), std::move(portDirections),
-                  std::move(connections));
-}
+
+  void emitDff(SerializationContext& context, const Component& component, Json data,
+               std::optional<Json> enable, Json clock, Json clear, Json preset,
+               const Bus& q, const Bus& qn, const std::string_view baseCell,
+               const std::string_view controlledCell, const std::string_view instanceName)
+  {
+    const bool hasControls = connected(clear) || connected(preset);
+    Json       parameters{
+              {"CLK_POLARITY", SerializationContext::parameter(positiveClock(component), 1)}};
+    Json portDirections = directions({{"D", "input"}, {"CLK", "input"}});
+    Json connections{{"D", std::move(data)}, {"CLK", std::move(clock)}};
+    if (enable) {
+      parameters["EN_POLARITY"] = SerializationContext::parameter(1, 1);
+      portDirections["EN"]      = "input";
+      connections["EN"]         = std::move(*enable);
+    }
+    if (hasControls) {
+      parameters["SET_POLARITY"] = SerializationContext::parameter(1, 1);
+      parameters["CLR_POLARITY"] = SerializationContext::parameter(1, 1);
+      portDirections["SET"]      = "input";
+      portDirections["CLR"]      = "input";
+      connections["SET"]         = std::move(preset);
+      connections["CLR"]         = std::move(clear);
+    }
+    portDirections["Q"]  = "output";
+    portDirections["QN"] = "output";
+    connections["Q"]     = context.bits(q);
+    connections["QN"]    = context.bits(qn);
+    context.addCell(instanceName, hasControls ? controlledCell : baseCell,
+                    std::move(parameters), std::move(portDirections),
+                    std::move(connections));
+  }
 
 }  // namespace
 
@@ -413,8 +453,8 @@ void EFlipFlop::serializeYosys(SerializationContext& context) const
 void DLatch::serializeYosys(SerializationContext& context) const
 {
   requireBusCounts(*this, 2, 2);
-  const auto& q      = requireScalarBus(*this, false, 0);
-  const auto& qn     = requireScalarBus(*this, false, 1);
+  const auto& q  = requireScalarBus(*this, false, 0);
+  const auto& qn = requireScalarBus(*this, false, 1);
   context.addCell(
       "dlatch", SILICON::yosys::cells::Dlatch,
       Json{{"EN_POLARITY", SerializationContext::parameter(1, 1)}},
@@ -428,8 +468,8 @@ void DLatch::serializeYosys(SerializationContext& context) const
 void JKFlipFlop::serializeYosys(SerializationContext& context) const
 {
   requireBusCounts(*this, 5, 2);
-  const auto& q      = requireScalarBus(*this, false, 0);
-  const auto& qn     = requireScalarBus(*this, false, 1);
+  const auto& q  = requireScalarBus(*this, false, 0);
+  const auto& qn = requireScalarBus(*this, false, 1);
   context.addCell(
       "jkff", SILICON::yosys::cells::Jkff,
       Json{{"CLK_POLARITY", SerializationContext::parameter(positiveClock(*this), 1)},
@@ -475,15 +515,15 @@ void Register::serializeYosys(SerializationContext& context) const
   const auto& enable              = requireScalarBus(*this, true, 2);
   const auto& clear               = requireScalarBus(*this, true, 3);
   const auto& output              = requireBusWidth(*this, false, 0, expectedOutputWidth);
-  Json parameters{{"WIDTH", SerializationContext::parameter(width)},
-                  {"CLK_POLARITY", SerializationContext::parameter(1, 1)},
-                  {"EN_POLARITY", SerializationContext::parameter(1, 1)},
-                  {"CLR_POLARITY", SerializationContext::parameter(1, 1)}};
-  Json connections{{"DATA", context.bits(data)},
-                   {"CLK", context.bits(clock)},
-                   {"EN", context.bits(enable)},
-                   {"CLR", context.bits(clear)},
-                   {"OUT", context.bits(output)}};
+  Json        parameters{{"WIDTH", SerializationContext::parameter(width)},
+                         {"CLK_POLARITY", SerializationContext::parameter(1, 1)},
+                         {"EN_POLARITY", SerializationContext::parameter(1, 1)},
+                         {"CLR_POLARITY", SerializationContext::parameter(1, 1)}};
+  Json        connections{{"DATA", context.bits(data)},
+                          {"CLK", context.bits(clock)},
+                          {"EN", context.bits(enable)},
+                          {"CLR", context.bits(clear)},
+                          {"OUT", context.bits(output)}};
 
   if (parallelIn && !parallelOut) {
     parameters["LOAD_POLARITY"] = SerializationContext::parameter(1, 1);

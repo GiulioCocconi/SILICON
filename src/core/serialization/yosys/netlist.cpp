@@ -16,7 +16,7 @@
 
  */
 
-#include "yosys.hpp"
+#include "netlist.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -303,8 +303,7 @@ Json SerializationContext::inputBits(const Component& component, const std::size
   }
 
   const bool binaryDefault =
-      defaultState
-      && (*defaultState == State::LOW || *defaultState == State::HIGH);
+      defaultState && (*defaultState == State::LOW || *defaultState == State::HIGH);
   const std::string defaultBit =
       binaryDefault ? formatValue(BusValue{*defaultState}, BusValueFormat::Raw) : "x";
   return bits(buses[index], defaultBit);

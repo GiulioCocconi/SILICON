@@ -10,6 +10,7 @@
 #include "codeEditor.hpp"
 
 #include <algorithm>
+#include <stdexcept>
 
 #include <QAbstractItemView>
 #include <QCompleter>
@@ -80,11 +81,18 @@ CodeEditor::CodeEditor(QWidget* parent)
   updateLineNumberAreaWidth();
 }
 
-void CodeEditor::setFileType(const SILICON::project::CodeFileType type)
+void CodeEditor::setFileType(const SILICON::project::DocumentType type)
 {
+  if (SILICON::project::categoryOf(type) != SILICON::project::DocumentCategory::Code)
+    throw std::invalid_argument("Code editor requires a code document type");
+
+  const auto syntaxDefinition = SILICON::project::kdeSyntaxDefinition(type);
+  if (!syntaxDefinition)
+    throw std::invalid_argument("Code document type has no KDE syntax definition");
+
   fileTypeValue = type;
   definition = repository.definitionForName(QString::fromUtf8(
-      SILICON::project::codeFileTypeInfo(type).kdeSyntaxDefinition));
+      syntaxDefinition->data(), static_cast<qsizetype>(syntaxDefinition->size())));
   syntaxHighlighter->setDefinition(definition);
   refreshTheme();
   rebuildCompletionCandidates();
@@ -100,7 +108,7 @@ void CodeEditor::clearFileType()
   clear();
 }
 
-const std::optional<SILICON::project::CodeFileType>& CodeEditor::fileType() const
+const std::optional<SILICON::project::DocumentType>& CodeEditor::fileType() const
 {
   return fileTypeValue;
 }

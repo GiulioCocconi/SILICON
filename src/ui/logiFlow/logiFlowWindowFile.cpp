@@ -70,6 +70,7 @@ Copyright (c) 2026. Giulio Cocconi
 #include <ui/common/undoCommands.hpp>
 #include <ui/logiFlow/componentCatalogOverlay.hpp>
 #include <ui/logiFlow/components/graphicalLogicComponent.hpp>
+#include <ui/logiFlow/components/subcircuit/metadata.hpp>
 #include <ui/logiFlow/components/subcircuit/utils.hpp>
 #include <ui/logiFlow/projectTree.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
@@ -136,6 +137,22 @@ namespace {
     return hasComponents || hasWires;
   }
 
+  [[nodiscard]] SILICON::project::Document
+  preparedCircuitDocument(std::string path, std::string sceneJson)
+  {
+    try {
+      auto json = nlohmann::ordered_json::parse(sceneJson);
+      if (!subcircuitHasGraphicalMetadata(sceneJson)) {
+        json["graphicalComponent"] = graphicalSubcircuitMetadataToJson(
+            synchronizeGraphicalSubcircuitMetadata(
+                sceneJson, GraphicalSubcircuitMetadata{}));
+        sceneJson = json.dump(2);
+      }
+    } catch (const nlohmann::json::exception&) {
+    }
+    return preparedSubcircuitDocument(std::move(path), std::move(sceneJson));
+  }
+
 }  // namespace
 
 void LogiFlowWindow::newFile()
@@ -160,9 +177,9 @@ void LogiFlowWindow::resetProjectState()
   editorStack->setCurrentWidget(diagramView);
   diagramScene->clear();
   diagramScene->setCircuit(std::make_shared<Circuit>());
-  diagramScene->setSubcircuitDocumentMode(false);
+  diagramScene->setSubcircuitDocumentMode(true);
   auto document = defaultCircuitDocument();
-  document.setContents(diagramScene->serialize());
+  document = preparedCircuitDocument(document.getPath(), diagramScene->serialize());
   SILICON::project::DocumentStore::active().setDocuments({std::move(document)});
   dependencyGraph.rebuildFromProject(
       SILICON::project::DocumentStore::active().getDocuments());
@@ -193,11 +210,13 @@ bool LogiFlowWindow::copySelectionToClipboard()
 void LogiFlowWindow::copy()
 {
   const auto type = activeDocumentType();
-  if (type == SILICON::project::DocumentType::Code) {
+  if (type && SILICON::project::categoryOf(*type)
+                  == SILICON::project::DocumentCategory::Code) {
     codeEditor->copy();
     return;
   }
-  if (!type || !SILICON::project::documentTypeInfo(*type).isGraphical)
+  if (!type || SILICON::project::categoryOf(*type)
+                   != SILICON::project::DocumentCategory::Diagram)
     return;
 
   copySelectionToClipboard();
@@ -206,11 +225,13 @@ void LogiFlowWindow::copy()
 void LogiFlowWindow::cut()
 {
   const auto type = activeDocumentType();
-  if (type == SILICON::project::DocumentType::Code) {
+  if (type && SILICON::project::categoryOf(*type)
+                  == SILICON::project::DocumentCategory::Code) {
     codeEditor->cut();
     return;
   }
-  if (!type || !SILICON::project::documentTypeInfo(*type).isGraphical)
+  if (!type || SILICON::project::categoryOf(*type)
+                   != SILICON::project::DocumentCategory::Diagram)
     return;
 
   if (copySelectionToClipboard())
@@ -220,11 +241,13 @@ void LogiFlowWindow::cut()
 void LogiFlowWindow::paste()
 {
   const auto type = activeDocumentType();
-  if (type == SILICON::project::DocumentType::Code) {
+  if (type && SILICON::project::categoryOf(*type)
+                  == SILICON::project::DocumentCategory::Code) {
     codeEditor->paste();
     return;
   }
-  if (!type || !SILICON::project::documentTypeInfo(*type).isGraphical)
+  if (!type || SILICON::project::categoryOf(*type)
+                   != SILICON::project::DocumentCategory::Diagram)
     return;
 
   const QMimeData* mimeData = QApplication::clipboard()->mimeData();
@@ -299,7 +322,8 @@ void LogiFlowWindow::autoPlace()
 void LogiFlowWindow::del()
 {
   const auto type = activeDocumentType();
-  if (type == SILICON::project::DocumentType::Code) {
+  if (type && SILICON::project::categoryOf(*type)
+                  == SILICON::project::DocumentCategory::Code) {
     auto cursor = codeEditor->textCursor();
     if (cursor.hasSelection())
       cursor.removeSelectedText();
@@ -308,7 +332,8 @@ void LogiFlowWindow::del()
     codeEditor->setTextCursor(cursor);
     return;
   }
-  if (!type || !SILICON::project::documentTypeInfo(*type).isGraphical)
+  if (!type || SILICON::project::categoryOf(*type)
+                   != SILICON::project::DocumentCategory::Diagram)
     return;
 
   auto itemsToDelete = diagramScene->selectedItems() | std::views::filter([](auto* item) {
@@ -344,9 +369,9 @@ void LogiFlowWindow::loadCircuitContent(const QString& fileName,
     std::vector<SILICON::project::Document> documents;
     documents.reserve(projectFile.documents.size());
     for (auto& document : projectFile.documents) {
-      if (document.getType() == SILICON::project::DocumentType::Subcircuit)
+      if (document.getType() == SILICON::project::DocumentType::Circuit)
         documents.push_back(
-            preparedSubcircuitDocument(document.getPath(), document.getContents()));
+            preparedCircuitDocument(document.getPath(), document.getContents()));
       else
         documents.push_back(std::move(document));
     }
@@ -532,7 +557,8 @@ void LogiFlowWindow::setWireCreationMode()
 void LogiFlowWindow::setSimulationMode()
 {
   const auto type = activeDocumentType();
-  if (!type || !SILICON::project::documentTypeInfo(*type).isGraphical)
+  if (!type || SILICON::project::categoryOf(*type)
+                   != SILICON::project::DocumentCategory::Diagram)
     return;
 
   diagramScene->setInteractionMode(InteractionMode::SIMULATION_MODE);
@@ -563,7 +589,9 @@ void LogiFlowWindow::toggleFstTracing(const bool enabled)
     return;
 
   const auto type = activeDocumentType();
-  if (enabled && (!type || !SILICON::project::documentTypeInfo(*type).isGraphical)) {
+  if (enabled
+      && (!type || SILICON::project::categoryOf(*type)
+                       != SILICON::project::DocumentCategory::Diagram)) {
     const QSignalBlocker blocker(toggleFstTraceAct);
     toggleFstTraceAct->setChecked(false);
     return;
@@ -588,9 +616,11 @@ void LogiFlowWindow::updateStatus() const
 void LogiFlowWindow::selectionChanged()
 {
   const auto type = activeDocumentType();
-  if (!type || !SILICON::project::documentTypeInfo(*type).isGraphical) {
+  if (!type || SILICON::project::categoryOf(*type)
+                   != SILICON::project::DocumentCategory::Diagram) {
     rotateAct->setEnabled(false);
-    const bool editableText = type == SILICON::project::DocumentType::Code;
+    const bool editableText = type && SILICON::project::categoryOf(*type)
+        == SILICON::project::DocumentCategory::Code;
     setActionsEnabled({cutAct, copyAct, pasteAct, deleteAct}, editableText);
     updatePropertyDock();
     return;
@@ -649,8 +679,6 @@ void LogiFlowWindow::showProjectTreeContextMenu(const QPoint& position)
 
   menu->addAction(Icon("plus"), tr("New Circuit"), this,
                   &LogiFlowWindow::createCircuit);
-  menu->addAction(Icon("plus"), tr("New Subcircuit"), this,
-                  &LogiFlowWindow::createSubcircuit);
   menu->addAction(Icon("code"), tr("New Code File"), this,
                   &LogiFlowWindow::createCodeFile);
   menu->addAction(Icon("file"), tr("New Binary File"), this,
@@ -693,11 +721,6 @@ void LogiFlowWindow::createCircuit()
   createDocument(SILICON::project::DocumentType::Circuit);
 }
 
-void LogiFlowWindow::createSubcircuit()
-{
-  createDocument(SILICON::project::DocumentType::Subcircuit);
-}
-
 void LogiFlowWindow::createCodeFile()
 {
   auto* dialog = new QDialog(this);
@@ -709,8 +732,14 @@ void LogiFlowWindow::createCodeFile()
   auto* nameEdit = new QLineEdit(tr("untitled"), dialog);
   auto* typeBox  = new QComboBox(dialog);
 
-  for (const auto& info : SILICON::project::codeFileTypeRegistry())
-    typeBox->addItem(QString::fromUtf8(info.displayName));
+  std::vector<SILICON::project::DocumentType> codeTypes;
+  for (const auto& info : SILICON::project::DOCUMENT_TYPE_INFO) {
+    if (SILICON::project::categoryOf(info.type)
+        == SILICON::project::DocumentCategory::Code) {
+      codeTypes.push_back(info.type);
+      typeBox->addItem(QString::fromUtf8(info.displayName));
+    }
+  }
 
   form->addRow(tr("Name"), nameEdit);
   form->addRow(tr("File type"), typeBox);
@@ -720,17 +749,22 @@ void LogiFlowWindow::createCodeFile()
   form->addRow(buttons);
   connect(buttons, &QDialogButtonBox::rejected, dialog, &QDialog::reject);
   connect(buttons, &QDialogButtonBox::accepted, dialog,
-          [this, dialog, nameEdit, typeBox] {
-            const auto& registry = SILICON::project::codeFileTypeRegistry();
+          [this, dialog, nameEdit, typeBox, codeTypes = std::move(codeTypes)] {
             const auto index = typeBox->currentIndex();
-            if (index < 0 || index >= static_cast<int>(registry.size()))
+            if (index < 0 || index >= static_cast<int>(codeTypes.size()))
               return;
 
-            const auto type = registry[static_cast<std::size_t>(index)].type;
-            const auto path = SILICON::project::codeFilePath(
-                nameEdit->text().trimmed().toStdString(), type);
+            const auto type = codeTypes[static_cast<std::size_t>(index)];
+            const auto name = nameEdit->text().trimmed().toStdString();
+            if (!SILICON::project::isValidDocumentSlug(name)) {
+              SILICON::ui::inputDialog::warning(
+                  this, tr("New Code File"),
+                  tr("The name must be non-empty and cannot contain path separators."));
+              return;
+            }
+            const auto path = SILICON::project::documentPathForSlug(type, name);
 
-            if (!SILICON::project::isValidCodeFilePath(path, type)) {
+            if (SILICON::project::documentTypeForPath(path) != type) {
               SILICON::ui::inputDialog::warning(
                   this, tr("New Code File"),
                   tr("The name must be non-empty and cannot contain path separators."));
@@ -788,7 +822,7 @@ void LogiFlowWindow::createBinaryFile()
             }
 
             const auto path = SILICON::project::documentPathForSlug(
-                SILICON::project::DocumentType::Binary, slug);
+                SILICON::project::DocumentType::RawBinary, slug);
             if (SILICON::project::DocumentStore::active().contains(path)) {
               SILICON::ui::inputDialog::warning(
                   this, tr("New Binary File"),
@@ -810,7 +844,8 @@ void LogiFlowWindow::createBinaryFile()
 
 void LogiFlowWindow::createDocument(const SILICON::project::DocumentType type)
 {
-  if (!SILICON::project::documentTypeInfo(type).isGraphical)
+  if (SILICON::project::categoryOf(type)
+      != SILICON::project::DocumentCategory::Diagram)
     throw std::invalid_argument("createDocument requires a graphical document type");
 
   const auto noun = documentTypeName(type);
@@ -824,9 +859,7 @@ void LogiFlowWindow::createDocument(const SILICON::project::DocumentType type)
         const auto sceneJson =
             emptyGraphicalDocumentJson(type, displayName.toStdString());
 
-        auto document = type == SILICON::project::DocumentType::Subcircuit
-                            ? preparedSubcircuitDocument(path, sceneJson)
-                            : SILICON::project::Document(path, sceneJson);
+        auto document = preparedSubcircuitDocument(path, sceneJson);
 
         pushCreateDocumentCommand(std::move(document),
                                   tr("Create %1").arg(noun));
@@ -853,7 +886,8 @@ void LogiFlowWindow::deleteSelectedDocument()
     return;
   }
 
-  if (selection->type == SILICON::project::DocumentType::Subcircuit) {
+  if (SILICON::project::categoryOf(selection->type)
+      == SILICON::project::DocumentCategory::Diagram) {
     const auto dependents = dependencyGraph.dependentsOf(selection->path);
     if (!dependents.empty()) {
       QStringList names;
@@ -862,7 +896,7 @@ void LogiFlowWindow::deleteSelectedDocument()
 
       SILICON::ui::inputDialog::warning(
           this, title,
-          tr("This subcircuit is still used by:\n%1").arg(names.join('\n')));
+          tr("This circuit is still used by:\n%1").arg(names.join('\n')));
       return;
     }
   }
@@ -892,4 +926,3 @@ void LogiFlowWindow::deleteSelectedDocument()
 
 }  // namespace ui
 }  // namespace SILICON
-

@@ -44,14 +44,9 @@ namespace {
   [[nodiscard]] QString sectionTitle(const project::DocumentType type)
   {
     switch (type) {
-      case project::DocumentType::Circuit:
-        return ProjectTree::tr("Circuits");
-      case project::DocumentType::Subcircuit:
-        return ProjectTree::tr("Subcircuits");
-      case project::DocumentType::Code:
-        return ProjectTree::tr("Code");
-      case project::DocumentType::Binary:
-        return ProjectTree::tr("Binaries");
+      case project::DocumentType::Circuit: return ProjectTree::tr("Circuits");
+      case project::DocumentType::Verilog: return ProjectTree::tr("Verilog");
+      case project::DocumentType::RawBinary: return ProjectTree::tr("Binaries");
     }
     return {};
   }
@@ -59,25 +54,14 @@ namespace {
   [[nodiscard]] QString documentLabel(const project::Document& document)
   {
     switch (document.getType()) {
-      case project::DocumentType::Circuit:
-        return circuitDisplayName(document);
-      case project::DocumentType::Code:
+      case project::DocumentType::Circuit: return circuitDisplayName(document);
+      case project::DocumentType::Verilog:
         return QFileInfo(QString::fromStdString(document.getPath())).fileName();
-      case project::DocumentType::Subcircuit:
-      case project::DocumentType::Binary:
-        return QString::fromStdString(
-            project::documentSlugForPath(document.getPath()).value_or(document.getPath()));
+      case project::DocumentType::RawBinary:
+        return QString::fromStdString(project::documentSlugForPath(document.getPath())
+                                          .value_or(document.getPath()));
     }
     return {};
-  }
-
-  [[nodiscard]] const char* documentIcon(const project::DocumentType type)
-  {
-    if (type == project::DocumentType::Code)
-      return "code";
-    if (type == project::DocumentType::Binary)
-      return "file";
-    return "circuit-board";
   }
 
   void setKind(QTreeWidgetItem* item, const ProjectTreeItemKind kind)
@@ -184,7 +168,8 @@ std::string ProjectTree::documentPath(const QTreeWidgetItem* item)
   return item->data(0, PathRole).toString().toStdString();
 }
 
-void ProjectTree::addSection(QTreeWidgetItem* projectItem, const project::DocumentType type,
+void ProjectTree::addSection(QTreeWidgetItem* projectItem,
+                             const project::DocumentType type,
                              const std::span<const project::Document> documents)
 {
   auto* section = new QTreeWidgetItem(projectItem);
@@ -193,40 +178,9 @@ void ProjectTree::addSection(QTreeWidgetItem* projectItem, const project::Docume
   setDocumentType(section, type);
   section->setExpanded(true);
 
-  if (type == project::DocumentType::Code) {
-    addCodeDocuments(section, documents);
-    return;
-  }
-
   for (const auto& document : documents) {
     if (document.getType() == type)
       addDocument(section, document);
-  }
-}
-
-void ProjectTree::addCodeDocuments(QTreeWidgetItem* section,
-                                   const std::span<const project::Document> documents)
-{
-  for (const auto& typeInfo : project::codeFileTypeRegistry()) {
-    QTreeWidgetItem* language = nullptr;
-
-    for (const auto& document : documents) {
-      if (document.getType() != project::DocumentType::Code
-          || project::codeFileTypeForPath(document.getPath()) != typeInfo.type)
-        continue;
-
-      if (!language) {
-        language = new QTreeWidgetItem(section);
-        language->setText(0, QString::fromUtf8(typeInfo.displayName));
-        auto font = language->font(0);
-        font.setBold(true);
-        language->setFont(0, font);
-        setKind(language, ProjectTreeItemKind::CodeLanguage);
-        language->setExpanded(true);
-      }
-
-      addDocument(language, document);
-    }
   }
 }
 
@@ -234,7 +188,11 @@ void ProjectTree::addDocument(QTreeWidgetItem* parent, const project::Document& 
 {
   auto* item = new QTreeWidgetItem(parent);
   item->setText(0, documentLabel(document));
-  item->setIcon(0, Icon(documentIcon(document.getType())));
+  const auto iconName =
+      project::documentCategoryIconName(project::categoryOf(document.getType()));
+  item->setIcon(
+      0, Icon(QString::fromUtf8(iconName.data(),
+                               static_cast<qsizetype>(iconName.size()))));
   setKind(item, ProjectTreeItemKind::Document);
   setDocumentType(item, document.getType());
   item->setData(0, PathRole, QString::fromStdString(document.getPath()));

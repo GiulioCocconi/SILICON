@@ -33,9 +33,9 @@ namespace SILICON::project {
 /**
  * @brief Runtime-only graph of project document containment dependencies.
  *
- * Vertices are project-relative document paths such as `circuits/main.json` and
- * `subcircuits/adder.json`. Edges point from a document to the subcircuit
- * document it instantiates. The graph is derived from scene JSON and is never
+ * Vertices are project-relative circuit document paths such as
+ * `circuits/main.json` and `circuits/adder.json`. Edges point from a document to
+ * the reusable circuit it instantiates. The graph is derived from scene JSON and is never
  * serialized into project archives.
  *
  * The graph uses `boost::vecS` for its vertex container, which means vertex
@@ -133,7 +133,7 @@ public:
   /**
    * @brief Returns the sorted list of documents that depend on a subcircuit.
    *
-   * @param subcircuitPath Project-relative path of the subcircuit document.
+   * @param subcircuitPath Project-relative path of the reusable circuit document.
    * @return The dependents, sorted lexicographically; empty if the subcircuit
    *         is unknown or has no dependents.
    */

@@ -63,9 +63,9 @@ SILICON::project::Document circuit(std::string path, std::string sceneJson)
   return {std::move(path), std::move(sceneJson)};
 }
 
-SILICON::project::Document subcircuit(std::string slug, std::string sceneJson)
+SILICON::project::Document reusableCircuit(std::string slug, std::string sceneJson)
 {
-  return {std::format("subcircuits/{}.json", slug), std::move(sceneJson)};
+  return {std::format("circuits/{}.json", slug), std::move(sceneJson)};
 }
 
 void expectRuntimeErrorContaining(auto callback, const std::string& expected)
@@ -81,18 +81,18 @@ void expectRuntimeErrorContaining(auto callback, const std::string& expected)
 
 }  // namespace
 
-TEST(ProjectDependencyGraphTest, ExtractsEdgesFromCircuitsAndSubcircuits)
+TEST(ProjectDependencyGraphTest, ExtractsEdgesBetweenCircuits)
 {
   SILICON::project::ProjectDependencyGraph graph;
   graph.rebuildFromProject(
       {circuit("circuits/main.json", sceneWithSubcircuits({"adder"})),
-       subcircuit("adder", sceneWithSubcircuits({"half_adder"})),
-       subcircuit("half_adder", emptyScene())});
+       reusableCircuit("adder", sceneWithSubcircuits({"half_adder"})),
+       reusableCircuit("half_adder", emptyScene())});
 
-  EXPECT_EQ(graph.dependentsOf("subcircuits/adder.json"),
+  EXPECT_EQ(graph.dependentsOf("circuits/adder.json"),
             std::vector<std::string>({"circuits/main.json"}));
-  EXPECT_EQ(graph.dependentsOf("subcircuits/half_adder.json"),
-            std::vector<std::string>({"subcircuits/adder.json"}));
+  EXPECT_EQ(graph.dependentsOf("circuits/half_adder.json"),
+            std::vector<std::string>({"circuits/adder.json"}));
 }
 
 TEST(ProjectDependencyGraphTest, DuplicatePlacementsProduceOneDependency)
@@ -100,9 +100,9 @@ TEST(ProjectDependencyGraphTest, DuplicatePlacementsProduceOneDependency)
   SILICON::project::ProjectDependencyGraph graph;
   graph.rebuildFromProject(
       {circuit("circuits/main.json", sceneWithSubcircuits({"adder", "adder"})),
-       subcircuit("adder", emptyScene())});
+       reusableCircuit("adder", emptyScene())});
 
-  EXPECT_EQ(graph.dependentsOf("subcircuits/adder.json"),
+  EXPECT_EQ(graph.dependentsOf("circuits/adder.json"),
             std::vector<std::string>({"circuits/main.json"}));
 }
 
@@ -118,53 +118,53 @@ TEST(ProjectDependencyGraphTest, RejectsMissingSubcircuitTarget)
 TEST(ProjectDependencyGraphTest, DetectsDirectSelfCycle)
 {
   SILICON::project::ProjectDependencyGraph graph;
-  graph.addDocument("subcircuits/adder.json");
+  graph.addDocument("circuits/adder.json");
 
-  EXPECT_TRUE(graph.wouldIntroduceCycle("subcircuits/adder.json",
+  EXPECT_TRUE(graph.wouldIntroduceCycle("circuits/adder.json",
                                         sceneWithSubcircuits({"adder"})));
 }
 
 TEST(ProjectDependencyGraphTest, RejectsDirectSelfCycleWithSlugTrace)
 {
   SILICON::project::ProjectDependencyGraph graph;
-  graph.addDocument("subcircuits/adder.json");
+  graph.addDocument("circuits/adder.json");
 
   expectRuntimeErrorContaining(
       [&] {
-        graph.replaceDocumentDependencies("subcircuits/adder.json",
+        graph.replaceDocumentDependencies("circuits/adder.json",
                                           sceneWithSubcircuits({"adder"}));
       },
       "recursion trace: [adder, adder]");
 
-  EXPECT_TRUE(graph.dependentsOf("subcircuits/adder.json").empty());
+  EXPECT_TRUE(graph.dependentsOf("circuits/adder.json").empty());
 }
 
 TEST(ProjectDependencyGraphTest, DetectsIndirectCycle)
 {
   SILICON::project::ProjectDependencyGraph graph;
   graph.rebuildFromProject({circuit("circuits/main.json", sceneWithSubcircuits({"cpu"})),
-                            subcircuit("cpu", sceneWithSubcircuits({"alu"})),
-                            subcircuit("alu", emptyScene())});
+                            reusableCircuit("cpu", sceneWithSubcircuits({"alu"})),
+                            reusableCircuit("alu", emptyScene())});
 
   EXPECT_TRUE(
-      graph.wouldIntroduceCycle("subcircuits/alu.json", sceneWithSubcircuits({"cpu"})));
+      graph.wouldIntroduceCycle("circuits/alu.json", sceneWithSubcircuits({"cpu"})));
 }
 
 TEST(ProjectDependencyGraphTest, RejectsIndirectCycleWithSlugTrace)
 {
   SILICON::project::ProjectDependencyGraph graph;
   graph.rebuildFromProject({circuit("circuits/main.json", sceneWithSubcircuits({"cpu"})),
-                            subcircuit("cpu", sceneWithSubcircuits({"alu"})),
-                            subcircuit("alu", emptyScene())});
+                            reusableCircuit("cpu", sceneWithSubcircuits({"alu"})),
+                            reusableCircuit("alu", emptyScene())});
 
   expectRuntimeErrorContaining(
       [&] {
-        graph.replaceDocumentDependencies("subcircuits/alu.json",
+        graph.replaceDocumentDependencies("circuits/alu.json",
                                           sceneWithSubcircuits({"cpu"}));
       },
       "recursion trace: [cpu, alu, cpu]");
 
-  EXPECT_EQ(graph.dependentsOf("subcircuits/cpu.json"),
+  EXPECT_EQ(graph.dependentsOf("circuits/cpu.json"),
             std::vector<std::string>({"circuits/main.json"}));
 }
 
@@ -174,8 +174,8 @@ TEST(ProjectDependencyGraphTest, RebuildRejectsCyclicProject)
 
   EXPECT_THROW(graph.rebuildFromProject(
                    {circuit("circuits/main.json", sceneWithSubcircuits({"cpu"})),
-                    subcircuit("cpu", sceneWithSubcircuits({"alu"})),
-                    subcircuit("alu", sceneWithSubcircuits({"cpu"}))}),
+                    reusableCircuit("cpu", sceneWithSubcircuits({"alu"})),
+                    reusableCircuit("alu", sceneWithSubcircuits({"cpu"}))}),
                std::runtime_error);
 }
 
@@ -184,13 +184,13 @@ TEST(ProjectDependencyGraphTest, LooksUpDependentsForDeletionBlocking)
   SILICON::project::ProjectDependencyGraph graph;
   graph.rebuildFromProject({circuit("circuits/main.json", sceneWithSubcircuits({"alu"})),
                             circuit("circuits/debug.json", sceneWithSubcircuits({"alu"})),
-                            subcircuit("alu", sceneWithSubcircuits({"adder"})),
-                            subcircuit("adder", emptyScene())});
+                            reusableCircuit("alu", sceneWithSubcircuits({"adder"})),
+                            reusableCircuit("adder", emptyScene())});
 
-  EXPECT_EQ(graph.dependentsOf("subcircuits/alu.json"),
+  EXPECT_EQ(graph.dependentsOf("circuits/alu.json"),
             (std::vector<std::string>{"circuits/debug.json", "circuits/main.json"}));
-  EXPECT_EQ(graph.dependentsOf("subcircuits/adder.json"),
-            std::vector<std::string>({"subcircuits/alu.json"}));
+  EXPECT_EQ(graph.dependentsOf("circuits/adder.json"),
+            std::vector<std::string>({"circuits/alu.json"}));
 }
 
 TEST(ProjectDependencyGraphTest, ReplacementRequiresRegisteredDocument)
@@ -207,23 +207,23 @@ TEST(ProjectDependencyGraphTest, ReferencedDocumentRemovalIsRejectedAtomically)
   ProjectDependencyGraph graph;
   graph.rebuildFromProject({circuit("circuits/main.json", sceneWithSubcircuits({"alu"})),
                             circuit("circuits/debug.json", sceneWithSubcircuits({"alu"})),
-                            subcircuit("alu", emptyScene())});
+                            reusableCircuit("alu", emptyScene())});
 
   try {
-    graph.removeDocument("subcircuits/alu.json");
+    graph.removeDocument("circuits/alu.json");
     FAIL() << "Expected referenced removal to fail";
   } catch (const std::runtime_error& error) {
     EXPECT_NE(std::string(error.what()).find("circuits/debug.json"), std::string::npos);
     EXPECT_NE(std::string(error.what()).find("circuits/main.json"), std::string::npos);
   }
 
-  EXPECT_TRUE(graph.containsDocument("subcircuits/alu.json"));
-  EXPECT_EQ(graph.dependentsOf("subcircuits/alu.json"),
+  EXPECT_TRUE(graph.containsDocument("circuits/alu.json"));
+  EXPECT_EQ(graph.dependentsOf("circuits/alu.json"),
             (std::vector<std::string>{"circuits/debug.json", "circuits/main.json"}));
 
   graph.removeDocument("circuits/main.json");
   EXPECT_FALSE(graph.containsDocument("circuits/main.json"));
-  EXPECT_EQ(graph.dependentsOf("subcircuits/alu.json"),
+  EXPECT_EQ(graph.dependentsOf("circuits/alu.json"),
             std::vector<std::string>{"circuits/debug.json"});
 }
 
@@ -261,8 +261,8 @@ TEST(ProjectDependencyGraphTest, SupportsBothEstablishedJsonRootForms)
   graph.rebuildFromProject(
       {circuit("circuits/main.json",
                R"({"components":[{"type":"Subcircuit","properties":{"slug":"alu"}}]})"),
-       subcircuit("alu", emptyScene())});
-  EXPECT_EQ(graph.dependentsOf("subcircuits/alu.json"),
+       reusableCircuit("alu", emptyScene())});
+  EXPECT_EQ(graph.dependentsOf("circuits/alu.json"),
             std::vector<std::string>{"circuits/main.json"});
 }
 
@@ -283,10 +283,10 @@ TEST(ProjectDependencyGraphTest, CyclePredicatePropagatesNonCycleFailures)
 TEST(ProjectDependencyGraphTest, RecursiveErrorMessageIncludesTrace)
 {
   ProjectDependencyGraph graph;
-  graph.rebuildFromProject({subcircuit("cpu", sceneWithSubcircuits({"alu"})),
-                            subcircuit("alu", emptyScene())});
+  graph.rebuildFromProject({reusableCircuit("cpu", sceneWithSubcircuits({"alu"})),
+                            reusableCircuit("alu", emptyScene())});
   try {
-    graph.validateDocumentDependencies("subcircuits/alu.json",
+    graph.validateDocumentDependencies("circuits/alu.json",
                                        sceneWithSubcircuits({"cpu"}));
     FAIL() << "Expected recursion";
   } catch (const std::runtime_error& error) {
@@ -298,16 +298,16 @@ TEST(ProjectDependencyGraphTest, FailedFullRebuildPreservesPreviousGraph)
 {
   ProjectDependencyGraph graph;
   graph.rebuildFromProject({circuit("circuits/main.json", sceneWithSubcircuits({"alu"})),
-                            subcircuit("alu", emptyScene())});
+                            reusableCircuit("alu", emptyScene())});
 
   EXPECT_THROW(graph.rebuildFromProject({circuit("circuits/replacement.json",
                                                  sceneWithSubcircuits({"missing"}))}),
                std::runtime_error);
 
   EXPECT_TRUE(graph.containsDocument("circuits/main.json"));
-  EXPECT_TRUE(graph.containsDocument("subcircuits/alu.json"));
+  EXPECT_TRUE(graph.containsDocument("circuits/alu.json"));
   EXPECT_FALSE(graph.containsDocument("circuits/replacement.json"));
-  EXPECT_EQ(graph.dependentsOf("subcircuits/alu.json"),
+  EXPECT_EQ(graph.dependentsOf("circuits/alu.json"),
             std::vector<std::string>{"circuits/main.json"});
 }
 

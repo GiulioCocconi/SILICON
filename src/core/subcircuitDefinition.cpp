@@ -94,7 +94,7 @@ std::string extractCoreCircuitJson(std::string_view sceneJson)
   if (json.contains("circuit"))
     json = json["circuit"];
   if (!json.is_object())
-    throw std::runtime_error("Subcircuit document must contain a circuit object");
+    throw std::runtime_error("Circuit document must contain a circuit object");
   return json.dump();
 }
 
@@ -106,7 +106,7 @@ SubcircuitDefinition loadSubcircuitDefinition(const std::string_view   slug,
                             "Recursive subcircuit dependency detected: ");
 
   const auto  path     = SILICON::project::documentPathForSlug(
-      SILICON::project::DocumentType::Subcircuit, slug);
+      SILICON::project::DocumentType::Circuit, slug);
   const auto* document = SILICON::project::DocumentStore::active().find(path);
   if (!document)
     throw std::runtime_error(std::format("Unknown subcircuit slug '{}'", slug));

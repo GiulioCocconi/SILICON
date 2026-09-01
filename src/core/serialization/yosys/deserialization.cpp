@@ -18,8 +18,8 @@
 
 /* Strict lowering from a supported Yosys write_json module to Silicon components. */
 
-#include "yosys.hpp"
-#include "yosys_cells.hpp"
+#include "cells.hpp"
+#include "netlist.hpp"
 
 #include <algorithm>
 #include <array>
@@ -657,7 +657,8 @@ namespace {
           const bool isUnsignedExtension =
               inputWidth > 0 && inputWidth < bitsJson.size()
               && std::ranges::all_of(
-                  bitsJson.begin(), bitsJson.begin() + inputWidth, [](const Json& bit) {
+                  bitsJson.begin(), bitsJson.begin() + inputWidth,
+                  [](const Json& bit) {
                     return bit.is_number_integer() || bit.is_number_unsigned();
                   });
           if (isUnsignedExtension) {
@@ -1299,9 +1300,9 @@ namespace {
         const bool blackbox =
             attributes != dependency->end() && attributes->is_object()
             && attributes->contains("blackbox")
-            && parseUnsigned(attributes->at("blackbox"),
-                             std::format("design.modules.{}.attributes.blackbox",
-                                         view.cellType()))
+            && parseUnsigned(
+                   attributes->at("blackbox"),
+                   std::format("design.modules.{}.attributes.blackbox", view.cellType()))
                    != 0;
         if (!blackbox)
           return importSubcircuit(view, *dependency);
@@ -1329,13 +1330,13 @@ namespace {
         portNames.push_back(portName);
       cell.requireConnectionNames(portNames);
 
-      std::vector<Bus> inputs;
-      std::vector<Bus> outputs;
+      std::vector<Bus>         inputs;
+      std::vector<Bus>         outputs;
       std::vector<std::string> inputNames;
       std::vector<std::string> outputNames;
       for (const auto& [portName, port] : ports.items()) {
-        const auto context = std::format("design.modules.{}.ports.{}", cell.cellType(),
-                                         portName);
+        const auto context =
+            std::format("design.modules.{}.ports.{}", cell.cellType(), portName);
         if (!port.is_object())
           fail(context, "expected an object");
         const auto& directionJson = requireObjectMember(port, "direction", context);
@@ -1389,8 +1390,8 @@ ModuleDependencyGraph::dependencyOrder(const ModuleNameList& roots) const
     if (states[vertex] == VisitState::Visited)
       return;
     if (states[vertex] == VisitState::Visiting) {
-      const auto repeated = graph[vertex].name;
-      const auto begin    = std::ranges::find(stack, repeated);
+      const auto     repeated = graph[vertex].name;
+      const auto     begin    = std::ranges::find(stack, repeated);
       ModuleNameList cycle(begin, stack.end());
       cycle.push_back(repeated);
       std::string trace;
@@ -1399,8 +1400,8 @@ ModuleDependencyGraph::dependencyOrder(const ModuleNameList& roots) const
           trace += " -> ";
         trace += module;
       }
-      throw std::runtime_error(std::format(
-          "Recursive Verilog module dependency detected: {}", trace));
+      throw std::runtime_error(
+          std::format("Recursive Verilog module dependency detected: {}", trace));
     }
 
     states[vertex] = VisitState::Visiting;
@@ -1501,9 +1502,9 @@ ModuleDependencyGraph moduleDependencyGraph(const std::string_view json)
             moduleName));
       const auto blackbox = attributes->find("blackbox");
       return blackbox != attributes->end()
-             && parseUnsigned(*blackbox,
-                              std::format("design.modules.{}.attributes.blackbox",
-                                          moduleName))
+             && parseUnsigned(
+                    *blackbox,
+                    std::format("design.modules.{}.attributes.blackbox", moduleName))
                     != 0;
     };
 

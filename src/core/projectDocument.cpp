@@ -35,8 +35,8 @@ namespace {
     });
   }
 
-  [[nodiscard]] bool isValidSlugPath(const std::string_view     path,
-                                     const DocumentTypeInfo& info)
+  [[nodiscard]] bool isValidDocumentPath(const std::string_view     path,
+                                         const DocumentTypeInfo& info)
   {
     if (!path.starts_with(info.root) || !path.ends_with(info.suffix))
       return false;
@@ -51,7 +51,7 @@ namespace {
   void validateDocumentState(const DocumentType                type,
                              const std::optional<std::string>& coreCircuitJson)
   {
-    if (!documentTypeInfo(type).isGraphical && coreCircuitJson)
+    if (categoryOf(type) != DocumentCategory::Diagram && coreCircuitJson)
       throw std::invalid_argument(
           "Non-graphical documents cannot contain core circuit JSON");
   }
@@ -60,15 +60,12 @@ namespace {
 
 std::optional<DocumentType> documentTypeForPath(const std::string_view path)
 {
-  for (const auto& info : DOCUMENT_TYPE_INFO) {
-    if (!path.starts_with(info.root))
-      continue;
-
-    if (info.usesSlug ? isValidSlugPath(path, info) : codeFileTypeForPath(path).has_value())
-      return info.type;
-  }
-
-  return std::nullopt;
+  const auto it = std::ranges::find_if(
+      DOCUMENT_TYPE_INFO, [path](const DocumentTypeInfo& info) {
+        return isValidDocumentPath(path, info);
+      });
+  return it == DOCUMENT_TYPE_INFO.end() ? std::nullopt
+                                        : std::optional(it->type);
 }
 
 std::optional<std::string> documentSlugForPath(const std::string_view path)
@@ -78,9 +75,6 @@ std::optional<std::string> documentSlugForPath(const std::string_view path)
     return std::nullopt;
 
   const auto& info = documentTypeInfo(*type);
-  if (!info.usesSlug)
-    return std::nullopt;
-
   return std::string(path.substr(info.root.size(),
                                  path.size() - info.root.size() - info.suffix.size()));
 }
@@ -94,8 +88,6 @@ bool isValidDocumentSlug(const std::string_view slug)
 std::string documentPathForSlug(const DocumentType type, const std::string_view slug)
 {
   const auto& info = documentTypeInfo(type);
-  if (!info.usesSlug)
-    throw std::invalid_argument("Document type does not use slugs");
   if (!isValidDocumentSlug(slug))
     throw std::invalid_argument("Invalid document slug");
 

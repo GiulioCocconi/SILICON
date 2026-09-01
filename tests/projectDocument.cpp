@@ -24,22 +24,35 @@ TEST(ProjectDocumentTest, ClassifiesCanonicalFlatPaths)
 {
   EXPECT_EQ(SILICON::project::documentTypeForPath("circuits/main.json"),
             DocumentType::Circuit);
-  EXPECT_EQ(SILICON::project::documentTypeForPath("subcircuits/adder.json"),
-            DocumentType::Subcircuit);
-  EXPECT_EQ(SILICON::project::documentTypeForPath("code/adder.v"), DocumentType::Code);
-  EXPECT_EQ(SILICON::project::documentTypeForPath("bin/firmware"), DocumentType::Binary);
+  EXPECT_EQ(SILICON::project::documentTypeForPath("code/adder.v"),
+            DocumentType::Verilog);
+  EXPECT_EQ(SILICON::project::documentTypeForPath("bin/firmware"),
+            DocumentType::RawBinary);
   EXPECT_FALSE(SILICON::project::documentTypeForPath(""));
   EXPECT_FALSE(SILICON::project::documentTypeForPath("circuits/nested/main.json"));
   EXPECT_FALSE(SILICON::project::documentTypeForPath("circuits/main.txt"));
   EXPECT_EQ(SILICON::project::documentTypeForPath("circuits/foo..bar.json"),
             DocumentType::Circuit);
   EXPECT_FALSE(SILICON::project::documentTypeForPath("circuits/../main.json"));
-  EXPECT_FALSE(SILICON::project::documentTypeForPath("subcircuits/...json"));
-  EXPECT_EQ(SILICON::project::documentSlugForPath("subcircuits/adder.json"), "adder");
+  EXPECT_FALSE(SILICON::project::documentTypeForPath("subcircuits/adder.json"));
   EXPECT_EQ(SILICON::project::documentSlugForPath("circuits/adder.json"), "adder");
   EXPECT_EQ(SILICON::project::documentSlugForPath("bin/firmware"), "firmware");
   EXPECT_FALSE(SILICON::project::documentSlugForPath("bin/nested/firmware"));
-  EXPECT_FALSE(SILICON::project::documentSlugForPath("code/adder.v"));
+  EXPECT_EQ(SILICON::project::documentSlugForPath("code/adder.v"), "adder");
+}
+
+TEST(ProjectDocumentTest, ClassifiesConcreteTypesByCategory)
+{
+  static_assert(categoryOf(DocumentType::Circuit) == DocumentCategory::Diagram);
+  static_assert(categoryOf(DocumentType::Verilog) == DocumentCategory::Code);
+  static_assert(categoryOf(DocumentType::RawBinary) == DocumentCategory::Binary);
+  static_assert(kdeSyntaxDefinition(DocumentType::Verilog) == "Verilog");
+  static_assert(!kdeSyntaxDefinition(DocumentType::Circuit));
+  static_assert(!kdeSyntaxDefinition(DocumentType::RawBinary));
+  static_assert(documentCategoryIconName(DocumentCategory::Diagram)
+                == "circuit-board");
+  static_assert(documentCategoryIconName(DocumentCategory::Code) == "code");
+  static_assert(documentCategoryIconName(DocumentCategory::Binary) == "file");
 }
 
 TEST(ProjectDocumentTest, ValidatesBinarySlugsAndRoundTripsExactNames)
@@ -47,32 +60,36 @@ TEST(ProjectDocumentTest, ValidatesBinarySlugsAndRoundTripsExactNames)
   for (const std::string_view invalid : {"", ".", "..", "a/b", "a\\b", "line\nbreak"}) {
     EXPECT_FALSE(isValidDocumentSlug(invalid));
     EXPECT_THROW(static_cast<void>(
-                     documentPathForSlug(DocumentType::Binary, invalid)),
+                     documentPathForSlug(DocumentType::RawBinary, invalid)),
                  std::invalid_argument);
   }
   for (const std::string_view valid : {"firmware", "rom.bin", "name with spaces"}) {
-    const auto path = documentPathForSlug(DocumentType::Binary, valid);
+    const auto path = documentPathForSlug(DocumentType::RawBinary, valid);
     ASSERT_TRUE(documentSlugForPath(path));
     EXPECT_EQ(*documentSlugForPath(path), valid);
   }
 }
 
-TEST(ProjectDocumentTest, ValidatesSubcircuitSlugsAndRoundTripsValidOnes)
+TEST(ProjectDocumentTest, ValidatesDocumentNamesAndRoundTripsEveryType)
 {
   for (const std::string_view invalid :
        {"", ".", "..", "a/b", "a\\b", "../foo", "foo/bar", "line\nbreak"}) {
     EXPECT_FALSE(isValidDocumentSlug(invalid));
     EXPECT_THROW(static_cast<void>(
-                     documentPathForSlug(DocumentType::Subcircuit, invalid)),
+                     documentPathForSlug(DocumentType::Circuit, invalid)),
                  std::invalid_argument);
   }
 
   for (const std::string_view valid : {"adder", "foo..bar", "name with spaces"}) {
     ASSERT_TRUE(isValidDocumentSlug(valid));
-    const auto path = documentPathForSlug(DocumentType::Subcircuit, valid);
+    const auto path = documentPathForSlug(DocumentType::Circuit, valid);
     ASSERT_TRUE(documentSlugForPath(path));
     EXPECT_EQ(*documentSlugForPath(path), valid);
   }
+
+  const auto verilogPath = documentPathForSlug(DocumentType::Verilog, "adder");
+  EXPECT_EQ(verilogPath, "code/adder.v");
+  EXPECT_EQ(documentSlugForPath(verilogPath), "adder");
 }
 
 TEST(ProjectDocumentTest, RejectsCircuitOnlyStateForCodeDocuments)
@@ -88,7 +105,7 @@ TEST(ProjectDocumentTest, RejectsCircuitOnlyStateForCodeDocuments)
 
 TEST(ProjectDocumentTest, ContentReplacementClearsOrReplacesPreparedCoreJson)
 {
-  Document document("subcircuits/adder.json", "old", "prepared");
+  Document document("circuits/adder.json", "old", "prepared");
   document.setContents("new");
   EXPECT_EQ(document.getContents(), "new");
   EXPECT_FALSE(document.getCoreCircuitJson());
@@ -98,63 +115,55 @@ TEST(ProjectDocumentTest, ContentReplacementClearsOrReplacesPreparedCoreJson)
   EXPECT_EQ(*document.getCoreCircuitJson(), "new prepared");
 }
 
-TEST(ProjectDocumentTest, DescribesRegisteredCodeTypes)
+TEST(ProjectDocumentTest, DescribesRegisteredDocumentTypes)
 {
-  const auto registry = codeFileTypeRegistry();
-  ASSERT_EQ(registry.size(), 1);
-  EXPECT_EQ(registry.front().type, CodeFileType::Verilog);
-  EXPECT_EQ(registry.front().displayName, "Verilog");
-  EXPECT_EQ(registry.front().extension, ".v");
-  EXPECT_EQ(registry.front().kdeSyntaxDefinition, "Verilog");
-  EXPECT_EQ(codeFileTypeForPath("code/adder.v"), CodeFileType::Verilog);
-  EXPECT_FALSE(codeFileTypeForPath("code/adder.sv"));
-}
-
-TEST(ProjectDocumentTest, ValidatesCodePaths)
-{
-  EXPECT_TRUE(isValidCodeFilePath("code/adder.v", CodeFileType::Verilog));
-  EXPECT_FALSE(isValidCodeFilePath("code/adder.sv", CodeFileType::Verilog));
-  EXPECT_FALSE(isValidCodeFilePath("code/nested/adder.v", CodeFileType::Verilog));
-  EXPECT_FALSE(isValidCodeFilePath("code/../adder.v", CodeFileType::Verilog));
-  EXPECT_EQ(codeFilePath("adder", CodeFileType::Verilog), "code/adder.v");
+  ASSERT_EQ(DOCUMENT_TYPE_INFO.size(), 3);
+  const auto& verilog = documentTypeInfo(DocumentType::Verilog);
+  EXPECT_EQ(verilog.displayName, "Verilog");
+  EXPECT_EQ(verilog.root, "code/");
+  EXPECT_EQ(verilog.suffix, ".v");
+  EXPECT_EQ(documentTypeForPath("code/adder.v"), DocumentType::Verilog);
+  EXPECT_FALSE(documentTypeForPath("code/adder.sv"));
+  EXPECT_FALSE(documentTypeForPath("code/nested/adder.v"));
+  EXPECT_FALSE(documentTypeForPath("code/../adder.v"));
 }
 
 TEST(ProjectDocumentStoreTest, PreservesOrderAcrossMixedKindsAndUpserts)
 {
   DocumentStore store;
   store.setDocuments({{"circuits/main.json", "main"},
-                      {"subcircuits/adder.json", "adder"},
+                      {"circuits/adder.json", "adder"},
                       {"code/adder.v", "module adder; endmodule"},
                       {"bin/firmware", std::string("\0\xff", 2)},
                       {"circuits/control.json", "control"}});
 
-  store.upsertDocument({"subcircuits/adder.json", "updated"});
+  store.upsertDocument({"circuits/adder.json", "updated"});
   ASSERT_EQ(store.getDocuments().size(), 5);
-  EXPECT_EQ(store.getDocuments()[1].getPath(), "subcircuits/adder.json");
+  EXPECT_EQ(store.getDocuments()[1].getPath(), "circuits/adder.json");
   EXPECT_EQ(store.getDocuments()[1].getContents(), "updated");
 
   const auto& allDocuments = store.getDocuments();
   const auto  circuitCount = std::ranges::count_if(
       allDocuments,
       [](const auto& d) { return d.getType() == DocumentType::Circuit; });
-  ASSERT_EQ(circuitCount, 2);
+  ASSERT_EQ(circuitCount, 3);
   EXPECT_TRUE(store.contains(DocumentType::Circuit));
 
   const auto codeIt = std::ranges::find_if(
       allDocuments,
-      [](const auto& d) { return d.getType() == DocumentType::Code; });
+      [](const auto& d) { return d.getType() == DocumentType::Verilog; });
   ASSERT_NE(codeIt, allDocuments.end());
   EXPECT_EQ(codeIt->getContents(), "module adder; endmodule");
-  EXPECT_EQ(codeFileTypeForPath(codeIt->getPath()), CodeFileType::Verilog);
+  EXPECT_EQ(documentTypeForPath(codeIt->getPath()), DocumentType::Verilog);
 
   const auto binaryIt = std::ranges::find_if(
       allDocuments,
-      [](const auto& d) { return d.getType() == DocumentType::Binary; });
+      [](const auto& d) { return d.getType() == DocumentType::RawBinary; });
   ASSERT_NE(binaryIt, allDocuments.end());
   EXPECT_EQ(binaryIt->getContents(), std::string("\0\xff", 2));
 
-  store.removeDocument("subcircuits/adder.json");
-  EXPECT_FALSE(store.contains("subcircuits/adder.json"));
+  store.removeDocument("circuits/adder.json");
+  EXPECT_FALSE(store.contains("circuits/adder.json"));
   EXPECT_EQ(store.indexOf("circuits/control.json"), 3);
 }
 

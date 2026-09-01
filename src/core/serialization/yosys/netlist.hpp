@@ -20,9 +20,7 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <filesystem>
 #include <optional>
-#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -162,104 +160,6 @@ private:
  */
 [[nodiscard]] ModuleDependencyGraph moduleDependencyGraph(std::string_view json);
 
-/** @brief Options controlling invocation of the external Yosys executable. */
-struct ToolOptions {
-  /** @brief Executable to invoke directly; when absent, `yosys` is found on PATH. */
-  std::optional<std::filesystem::path> executable;
-  /** @brief Override the directory containing the packaged SILICON Yosys library. */
-  std::optional<std::filesystem::path> technologyLibraryDirectory;
-};
-
-/** @brief Output captured from one external Yosys invocation. */
-struct ScriptResult {
-  std::string standardOutput;
-  std::string standardError;
-};
-
-/** @brief One named Verilog source made available to the preprocessor. */
-struct VerilogSourceFile {
-  /** @brief Safe relative path used for include resolution and diagnostics. */
-  std::string_view path;
-  /** @brief Source contents written to the temporary Yosys workspace. */
-  std::string_view contents;
-};
-
-/**
- * @brief Execute an arbitrary Yosys script and capture its output streams separately.
- *
- * The executable is invoked directly, without an intermediary command shell. This
- * operation is unavailable in Emscripten builds and throws on discovery, launch, or
- * script-execution failure.
- */
-[[nodiscard]] ScriptResult runScript(std::string_view   script,
-                                     const ToolOptions& options = {});
-
-/**
- * @brief Lower one Verilog-2005 source string into raw Yosys write_json.
- *
- * This is the only operation that consumes Verilog, and it performs no design
- * elaboration: `read_verilog` is parsed and `proc` converts processes to
- * `$dff`/`$mux` cells so the JSON backend can emit them, then the result is
- * written to JSON. The result retains the declared module hierarchy and unlowered
- * cells. Every downstream transformation (`elaborateHierarchy`,
- * `deserialize`, `exportVerilog`) takes Yosys JSON and re-enters Yosys through
- * `read_json` rather than reading Verilog again. Captured Yosys output is written
- * through the `yosys` logger; failures refer callers to those logs instead of
- * embedding an arbitrarily large tool transcript.
- */
-[[nodiscard]] std::string readVerilog(std::string_view   source,
-                                      const ToolOptions& options = {});
-
-/**
- * @brief Lower one entry file from a set of named Verilog sources into Yosys JSON.
- *
- * Every source is materialized in the same temporary workspace, preserving its
- * relative path, so Yosys can resolve transitive `include` directives. Only @p entryPath
- * is passed to `read_verilog`; files that are not included remain outside the design.
- *
- * @throws std::invalid_argument If paths are unsafe or duplicated, or if @p entryPath
- * does not name one of @p sources.
- */
-[[nodiscard]] std::string readVerilog(std::span<const VerilogSourceFile> sources,
-                                      std::string_view                   entryPath,
-                                      const ToolOptions&                 options = {});
-
-/**
- * @brief Elaborate a Yosys JSON design for import.
- *
- * Starts with `read_json` and lowers the design while preserving its module
- * hierarchy: procedural blocks are converted, the SILICON technology library is
- * mapped, and full/half adders are extracted, but module instances are kept
- * hierarchical so each module becomes a subcircuit. Use this to prepare a
- * multi-module design for dependency discovery or hierarchical import.
- */
-[[nodiscard]] std::string elaborateHierarchy(std::string_view   json,
-                                             const ToolOptions& options = {});
-
-/**
- * @brief Convert Yosys write_json into readable structural Verilog using Yosys.
- *
- * This is the inverse of `readVerilog` and operates entirely on the Yosys JSON
- * transport format. The Yosys result is normalized to ANSI-style module port
- * declarations. Redundant `wire` declarations for those ports are removed, while
- * genuine internal and shared nets remain explicit. SILICON technology cells are
- * lowered to standard behavioral Verilog, so the result has no dependency on
- * SILICON's Yosys cell library. Two-input NAND and NOR gates use fused Yosys cells so
- * their generated expressions do not expose a meaningless operation-to-inverter net.
- * When the SILICON Yosys plugin is available, wide muxes are raised to combinational
- * processes so the backend emits readable case statements.
- */
-[[nodiscard]] std::string exportVerilog(std::string_view     json,
-                                        const ToolOptions& options = {});
-
-/**
- * @brief Convert a Silicon circuit to readable Verilog using external Yosys.
- *
- * Serializes the circuit to Yosys JSON and then lowers it with `exportVerilog(json)`.
- */
-[[nodiscard]] std::string exportVerilog(const core::Circuit& circuit,
-                                         const ToolOptions&   options = {});
-
 /**
  * @brief Mutable module-building interface passed to component serializers.
  *
@@ -322,7 +222,8 @@ private:
  * `top` attribute is selected. Input must already use the canonical cells supported
  * by the direct importer. Cells naming another non-blackbox module in the same design
  * become project subcircuit placeholders. Synthesis patterns such as equality banks are
- * normalized by `readVerilog` when the SILICON Yosys plugin is available. Unsupported
+ * normalized by the selected HDL frontend when the SILICON Yosys plugin is available.
+ * Unsupported
  * or ambiguous designs fail atomically.
  */
 [[nodiscard]] core::Circuit

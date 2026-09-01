@@ -278,7 +278,7 @@ TEST(ProjectFileTest, RejectsEntriesCollidingWithCircuitNamespace)
   EXPECT_THROW(readProjectFileIgnoringResult(path), std::runtime_error);
 }
 
-TEST(ProjectFileTest, WritesAndReadsMixedCircuitAndSubcircuitDocuments)
+TEST(ProjectFileTest, WritesAndReadsMultipleCircuitDocuments)
 {
   const auto        path = tempProjectPath("mixed_documents");
   FileCleanup       cleanup{path};
@@ -294,16 +294,19 @@ TEST(ProjectFileTest, WritesAndReadsMixedCircuitAndSubcircuitDocuments)
                     .mainCircuit = std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH),
                     .description = ""},
       .documents = {{std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), mainJson},
-                    {"subcircuits/adder.json", subJson}}};
+                    {"circuits/adder.json", subJson}}};
 
   SILICON::project::writeProjectFile(path, projectFile);
-  EXPECT_EQ(readZipEntry(path, "subcircuits/adder.json"), subJson);
+  EXPECT_EQ(readZipEntry(path, "circuits/adder.json"), subJson);
 
   const auto loaded = SILICON::project::readProjectFile(path);
   ASSERT_EQ(loaded.documents.size(), 2);
-  EXPECT_EQ(loaded.documents[0].getType(), SILICON::project::DocumentType::Circuit);
-  EXPECT_EQ(loaded.documents[1].getType(), SILICON::project::DocumentType::Subcircuit);
-  EXPECT_FALSE(loaded.documents[1].getCoreCircuitJson());
+  EXPECT_TRUE(std::ranges::all_of(loaded.documents, [](const auto& document) {
+    return document.getType() == SILICON::project::DocumentType::Circuit;
+  }));
+  EXPECT_TRUE(std::ranges::none_of(loaded.documents, [](const auto& document) {
+    return document.getCoreCircuitJson().has_value();
+  }));
 }
 
 TEST(ProjectFileTest, RoundTripsCodeDocuments)
@@ -329,7 +332,7 @@ TEST(ProjectFileTest, RoundTripsCodeDocuments)
 
   const auto loaded = SILICON::project::readProjectFile(path);
   ASSERT_EQ(loaded.documents.size(), 3);
-  EXPECT_EQ(loaded.documents[1].getType(), SILICON::project::DocumentType::Code);
+  EXPECT_EQ(loaded.documents[1].getType(), SILICON::project::DocumentType::Verilog);
   EXPECT_EQ(loaded.documents[1].getContents(), source);
 }
 
@@ -350,7 +353,7 @@ TEST(ProjectFileTest, RoundTripsRawBinaryDocumentsByteForByte)
   EXPECT_EQ(readZipEntry(path, "bin/firmware"), raw);
   const auto loaded = SILICON::project::readProjectFile(path);
   ASSERT_EQ(loaded.documents.size(), 2);
-  EXPECT_EQ(loaded.documents[1].getType(), SILICON::project::DocumentType::Binary);
+  EXPECT_EQ(loaded.documents[1].getType(), SILICON::project::DocumentType::RawBinary);
   EXPECT_EQ(loaded.documents[1].getContents(), raw);
 }
 
@@ -391,7 +394,7 @@ TEST(ProjectFileTest, RejectsInvalidEntriesInsideCodeNamespace)
   }
 }
 
-TEST(ProjectFileTest, RejectsNestedSubcircuitPathBeforeCreatingArchive)
+TEST(ProjectFileTest, RejectsLegacySubcircuitPathBeforeCreatingArchive)
 {
   const auto                    path = tempProjectPath("nested_subcircuit");
   FileCleanup                   cleanup{path};
@@ -402,11 +405,11 @@ TEST(ProjectFileTest, RejectsNestedSubcircuitPathBeforeCreatingArchive)
                           .description = ""},
       .documents       = {{std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), "{}"}}};
 
-  EXPECT_THROW(projectFile.documents.emplace_back("subcircuits/nested/adder.json", "{}"),
+  EXPECT_THROW(projectFile.documents.emplace_back("subcircuits/adder.json", "{}"),
                std::invalid_argument);
 }
 
-TEST(ProjectFileTest, RejectsEntriesCollidingWithSubcircuitNamespace)
+TEST(ProjectFileTest, RejectsLegacySubcircuitArchiveEntries)
 {
   const auto  path = tempProjectPath("nested_subcircuit_entry");
   FileCleanup cleanup{path};
@@ -415,7 +418,7 @@ TEST(ProjectFileTest, RejectsEntriesCollidingWithSubcircuitNamespace)
                   {"metadata.json", validMetadata().dump(2)},
                   {"project.json", validProject().dump(2)},
                   {std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), "{}"},
-                  {"subcircuits/nested/adder.json", "{}"}});
+                  {"subcircuits/adder.json", "{}"}});
 
   EXPECT_THROW(readProjectFileIgnoringResult(path), std::runtime_error);
 }
@@ -436,7 +439,7 @@ TEST(ProjectFileTest, RejectsDuplicateDocumentPathsBeforeCreatingArchive)
   EXPECT_FALSE(std::filesystem::exists(path));
 }
 
-TEST(ProjectFileTest, RejectsDuplicateSubcircuitSlugsBeforeCreatingArchive)
+TEST(ProjectFileTest, RejectsDuplicateCircuitNamesBeforeCreatingArchive)
 {
   const auto                    path = tempProjectPath("duplicate_subcircuit_slugs");
   FileCleanup                   cleanup{path};
@@ -446,8 +449,8 @@ TEST(ProjectFileTest, RejectsDuplicateSubcircuitSlugsBeforeCreatingArchive)
                           .mainCircuit = std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH),
                           .description = ""},
       .documents       = {{std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), "{}"},
-                          {"subcircuits/adder.json", "{}"},
-                          {"subcircuits/adder.json", "{}"}}};
+                          {"circuits/adder.json", "{}"},
+                          {"circuits/adder.json", "{}"}}};
 
   EXPECT_THROW(SILICON::project::writeProjectFile(path, projectFile), std::runtime_error);
   EXPECT_FALSE(std::filesystem::exists(path));

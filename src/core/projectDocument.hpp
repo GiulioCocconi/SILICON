@@ -27,46 +27,74 @@
 #include <vector>
 
 #include <core/callbackRegistry.hpp>
-#include <core/codeFile.hpp>
 
 namespace SILICON::project {
 
-enum class DocumentType { Circuit, Subcircuit, Code, Binary };
+enum class DocumentType { Circuit, Verilog, RawBinary };
+
+enum class DocumentCategory { Diagram, Code, Binary };
 
 struct DocumentTypeInfo {
   DocumentType     type;
+  std::string_view displayName;
   std::string_view root;
   std::string_view suffix;
-  bool             isGraphical;
-  bool             usesSlug;
 };
 
-inline constexpr std::array<DocumentTypeInfo, 4> DOCUMENT_TYPE_INFO{{
+inline constexpr std::array<DocumentTypeInfo, 3> DOCUMENT_TYPE_INFO{{
     {.type        = DocumentType::Circuit,
+     .displayName = "Circuit",
      .root        = "circuits/",
-     .suffix      = ".json",
-     .isGraphical = true,
-     .usesSlug    = true},
-    {.type        = DocumentType::Subcircuit,
-     .root        = "subcircuits/",
-     .suffix      = ".json",
-     .isGraphical = true,
-     .usesSlug    = true},
-    {.type        = DocumentType::Code,
+     .suffix      = ".json"},
+    {.type        = DocumentType::Verilog,
+     .displayName = "Verilog",
      .root        = "code/",
-     .suffix      = {},
-     .isGraphical = false,
-     .usesSlug    = false},
-    {.type        = DocumentType::Binary,
+     .suffix      = ".v"},
+    {.type        = DocumentType::RawBinary,
+     .displayName = "Binary",
      .root        = "bin/",
-     .suffix      = {},
-     .isGraphical = false,
-     .usesSlug    = true},
+     .suffix      = {}},
 }};
 
 [[nodiscard]] constexpr const DocumentTypeInfo& documentTypeInfo(const DocumentType type)
 {
-  return DOCUMENT_TYPE_INFO[static_cast<std::size_t>(type)];
+  for (const auto& info : DOCUMENT_TYPE_INFO) {
+    if (info.type == type)
+      return info;
+  }
+  throw "Unknown document type";
+}
+
+[[nodiscard]] constexpr DocumentCategory categoryOf(const DocumentType type)
+{
+  switch (type) {
+    case DocumentType::Circuit: return DocumentCategory::Diagram;
+    case DocumentType::Verilog: return DocumentCategory::Code;
+    case DocumentType::RawBinary: return DocumentCategory::Binary;
+  }
+  throw "Unknown document type";
+}
+
+[[nodiscard]] constexpr std::string_view
+documentCategoryIconName(const DocumentCategory category)
+{
+  switch (category) {
+    case DocumentCategory::Diagram: return "circuit-board";
+    case DocumentCategory::Code: return "code";
+    case DocumentCategory::Binary: return "file";
+  }
+  throw "Unknown document category";
+}
+
+[[nodiscard]] constexpr std::optional<std::string_view>
+kdeSyntaxDefinition(const DocumentType type)
+{
+  switch (type) {
+    case DocumentType::Verilog: return "Verilog";
+    case DocumentType::Circuit:
+    case DocumentType::RawBinary: return std::nullopt;
+  }
+  throw "Unknown document type";
 }
 
 enum class DocumentChangeKind { Added, Updated, Removed, Reset };

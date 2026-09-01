@@ -33,7 +33,7 @@ namespace {
 
   [[nodiscard]] std::string slugForDocumentPath(const std::string_view documentPath)
   {
-    if (documentTypeForPath(documentPath) == DocumentType::Subcircuit) {
+    if (documentTypeForPath(documentPath) == DocumentType::Circuit) {
       if (const auto slug = documentSlugForPath(documentPath))
         return *slug;
     }
@@ -112,7 +112,7 @@ namespace {
             std::format("{} contains a Subcircuit component with invalid slug '{}'",
                         documentPath, slug));
 
-      auto path = documentPathForSlug(DocumentType::Subcircuit, slug);
+      auto path = documentPathForSlug(DocumentType::Circuit, slug);
       if (seen.insert(path).second)
         dependencies.push_back(std::move(path));
     }
@@ -143,9 +143,9 @@ void ProjectDependencyGraph::clear()
 void ProjectDependencyGraph::addDocument(const std::string_view documentPath)
 {
   const auto type = documentTypeForPath(documentPath);
-  if (!type || !documentTypeInfo(*type).isGraphical)
+  if (!type || categoryOf(*type) != DocumentCategory::Diagram)
     throw std::invalid_argument(
-        "Dependency graph documents must be circuits or subcircuits");
+        "Dependency graph documents must be diagrams");
   if (containsDocument(documentPath))
     return;
 
@@ -188,7 +188,7 @@ void ProjectDependencyGraph::rebuildFromProject(const std::vector<Document>& doc
   std::unordered_set<std::string_view> registeredPaths;
 
   for (const auto& document : documents) {
-    if (!documentTypeInfo(document.getType()).isGraphical)
+    if (categoryOf(document.getType()) != DocumentCategory::Diagram)
       continue;
     if (!registeredPaths.insert(document.getPath()).second)
       throw std::runtime_error(
@@ -197,7 +197,7 @@ void ProjectDependencyGraph::rebuildFromProject(const std::vector<Document>& doc
   }
 
   for (const auto& document : documents) {
-    if (documentTypeInfo(document.getType()).isGraphical)
+    if (categoryOf(document.getType()) == DocumentCategory::Diagram)
       rebuilt.replaceDependencyEdges(document.getPath(), document.getContents());
   }
 

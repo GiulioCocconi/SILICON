@@ -68,13 +68,7 @@ namespace {
 
 QString LogiFlowWindow::documentTypeName(const SILICON::project::DocumentType type)
 {
-  switch (type) {
-    case SILICON::project::DocumentType::Circuit: return tr("Circuit");
-    case SILICON::project::DocumentType::Subcircuit: return tr("Subcircuit");
-    case SILICON::project::DocumentType::Code: return tr("Code File");
-    case SILICON::project::DocumentType::Binary: return tr("Binary File");
-  }
-  return {};
+  return QString::fromUtf8(SILICON::project::documentTypeInfo(type).displayName);
 }
 
 std::string LogiFlowWindow::defaultMainCircuitPath()
@@ -154,15 +148,13 @@ std::string LogiFlowWindow::emptyGraphicalDocumentJson(
   scene["visual"]["components"] = nlohmann::ordered_json::array();
   scene["visual"]["wires"]      = nlohmann::ordered_json::array();
 
-  if (type == SILICON::project::DocumentType::Subcircuit) {
-    scene["graphicalComponent"] =
-        nlohmann::ordered_json{{"shape",
-                                {{"type", "rectangle"},
-                                 {"width", GraphicalSubcircuitDefaultSize},
-                                 {"height", GraphicalSubcircuitDefaultSize}}},
-                               {"inputs", nlohmann::ordered_json::array()},
-                               {"outputs", nlohmann::ordered_json::array()}};
-  }
+  scene["graphicalComponent"] =
+      nlohmann::ordered_json{{"shape",
+                              {{"type", "rectangle"},
+                               {"width", GraphicalSubcircuitDefaultSize},
+                               {"height", GraphicalSubcircuitDefaultSize}}},
+                             {"inputs", nlohmann::ordered_json::array()},
+                             {"outputs", nlohmann::ordered_json::array()}};
 
   return scene.dump(2);
 }
@@ -170,11 +162,11 @@ std::string LogiFlowWindow::emptyGraphicalDocumentJson(
 std::string LogiFlowWindow::uniqueDocumentPath(
     const SILICON::project::DocumentType type, const QString& requestedName) const
 {
-  if (!SILICON::project::documentTypeInfo(type).isGraphical)
+  if (SILICON::project::categoryOf(type)
+      != SILICON::project::DocumentCategory::Diagram)
     throw std::invalid_argument("Only graphical documents use generated slugs");
 
-  const bool subcircuit = type == SILICON::project::DocumentType::Subcircuit;
-  const auto fallback   = subcircuit ? std::string("subcircuit") : std::string("circuit");
+  const auto fallback = std::string("circuit");
 
   auto slug = requestedName.trimmed().toStdString();
   if (slug.empty())
@@ -194,17 +186,14 @@ std::string LogiFlowWindow::uniqueDocumentPath(
     slug = slug.substr(first, slug.find_last_not_of('_') - first + 1);
   }
 
-  if (subcircuit) {
-    if (std::isdigit(static_cast<unsigned char>(slug.front())))
-      slug.insert(slug.begin(), '_');
-    std::ranges::replace(slug, '-', '_');
-  }
+  if (std::isdigit(static_cast<unsigned char>(slug.front())))
+    slug.insert(slug.begin(), '_');
+  std::ranges::replace(slug, '-', '_');
 
   auto& store = SILICON::project::DocumentStore::active();
   auto candidate = SILICON::project::documentPathForSlug(type, slug);
   for (int suffix = 2; store.contains(candidate); ++suffix) {
-    const auto numberedSlug = subcircuit ? std::format("{}_{}", slug, suffix)
-                                           : std::format("{}-{}", slug, suffix);
+    const auto numberedSlug = std::format("{}_{}", slug, suffix);
     candidate = SILICON::project::documentPathForSlug(type, numberedSlug);
   }
 
@@ -222,14 +211,14 @@ void LogiFlowWindow::saveActiveDocumentPayload()
     throw std::runtime_error("Active project document is missing");
 
   const auto type = activeDocument->getType();
-  switch (type) {
-    case SILICON::project::DocumentType::Code:
+  switch (SILICON::project::categoryOf(type)) {
+    case SILICON::project::DocumentCategory::Code:
       store.upsertDocument(
           {activeDocumentPath, codeEditor->toPlainText().toStdString()});
       codeEditor->document()->setModified(false);
       return;
 
-    case SILICON::project::DocumentType::Binary: {
+    case SILICON::project::DocumentCategory::Binary: {
       const auto& data = binaryEditor->data();
       store.upsertDocument(
           {activeDocumentPath,
@@ -238,35 +227,28 @@ void LogiFlowWindow::saveActiveDocumentPayload()
       return;
     }
 
-    case SILICON::project::DocumentType::Circuit:
-    case SILICON::project::DocumentType::Subcircuit:
+    case SILICON::project::DocumentCategory::Diagram:
       break;
   }
 
   auto serializedScene = diagramScene->serialize();
 
-  if (type == SILICON::project::DocumentType::Subcircuit) {
-    if (const auto* existing = store.find(activeDocumentPath)) {
-      try {
-        auto newJson = nlohmann::json::parse(serializedScene);
-        const auto fallback =
-            parseGraphicalSubcircuitMetadata(existing->getContents())
-                .value_or(GraphicalSubcircuitMetadata{});
-        newJson["graphicalComponent"] = graphicalSubcircuitMetadataToJson(
-            synchronizeGraphicalSubcircuitMetadata(serializedScene, fallback));
-        serializedScene = newJson.dump(2);
-      } catch (const nlohmann::json::exception&) {
-      }
+  if (const auto* existing = store.find(activeDocumentPath)) {
+    try {
+      auto newJson = nlohmann::json::parse(serializedScene);
+      const auto fallback = parseGraphicalSubcircuitMetadata(existing->getContents())
+                                .value_or(GraphicalSubcircuitMetadata{});
+      newJson["graphicalComponent"] = graphicalSubcircuitMetadataToJson(
+          synchronizeGraphicalSubcircuitMetadata(serializedScene, fallback));
+      serializedScene = newJson.dump(2);
+    } catch (const nlohmann::json::exception&) {
     }
   }
 
   dependencyGraph.replaceDocumentDependencies(activeDocumentPath, serializedScene);
 
-  if (type == SILICON::project::DocumentType::Subcircuit)
-    store.upsertDocument(
-        preparedSubcircuitDocument(activeDocumentPath, std::move(serializedScene)));
-  else
-    store.upsertDocument({activeDocumentPath, std::move(serializedScene)});
+  store.upsertDocument(
+      preparedSubcircuitDocument(activeDocumentPath, std::move(serializedScene)));
 }
 
 void LogiFlowWindow::loadDocumentPayload(const SILICON::project::Document& document)
@@ -274,13 +256,9 @@ void LogiFlowWindow::loadDocumentPayload(const SILICON::project::Document& docum
   const auto type = document.getType();
   const auto& payload = document.getContents();
 
-  switch (type) {
-    case SILICON::project::DocumentType::Code: {
-      const auto codeType = SILICON::project::codeFileTypeForPath(document.getPath());
-      if (!codeType)
-        throw std::runtime_error("Code file type is invalid");
-
-      codeEditor->setFileType(*codeType);
+  switch (SILICON::project::categoryOf(type)) {
+    case SILICON::project::DocumentCategory::Code: {
+      codeEditor->setFileType(type);
       codeEditor->setPlainText(QString::fromStdString(payload));
       codeEditor->document()->setModified(false);
       editorStack->setCurrentWidget(codeEditor);
@@ -288,18 +266,16 @@ void LogiFlowWindow::loadDocumentPayload(const SILICON::project::Document& docum
       break;
     }
 
-    case SILICON::project::DocumentType::Binary:
+    case SILICON::project::DocumentCategory::Binary:
       binaryEditor->setData(
           QByteArray(payload.data(), static_cast<qsizetype>(payload.size())));
       editorStack->setCurrentWidget(binaryEditor);
       binaryEditor->setFocus();
       break;
 
-    case SILICON::project::DocumentType::Circuit:
-    case SILICON::project::DocumentType::Subcircuit: {
+    case SILICON::project::DocumentCategory::Diagram: {
       diagramScene->clear(false, false);
-      diagramScene->setSubcircuitDocumentMode(
-          type == SILICON::project::DocumentType::Subcircuit);
+      diagramScene->setSubcircuitDocumentMode(true);
       auto& guiFactory   = GUIComponentFactory::instance();
       auto& coreRegistry = ComponentRegistry::instance();
       diagramScene->deserialize(payload, guiFactory, coreRegistry);
@@ -367,7 +343,8 @@ bool LogiFlowWindow::switchToDocument(const std::string& path,
   if (selectInTree)
     selectProjectTreeDocument(path);
 
-  const bool code = type == SILICON::project::DocumentType::Code;
+  const bool code = SILICON::project::categoryOf(type)
+      == SILICON::project::DocumentCategory::Code;
   setActionsEnabled({cutAct, copyAct, pasteAct, deleteAct}, code);
   rotateAct->setEnabled(false);
   updatePropertyDock();
@@ -381,8 +358,8 @@ void LogiFlowWindow::removeDocument(const std::string& path)
   if (!document)
     return;
 
-  const bool graphical =
-      SILICON::project::documentTypeInfo(document->getType()).isGraphical;
+  const bool graphical = SILICON::project::categoryOf(document->getType())
+      == SILICON::project::DocumentCategory::Diagram;
   if (graphical)
     dependencyGraph.validateDocumentRemoval(path);
 
@@ -408,8 +385,8 @@ void LogiFlowWindow::insertDocument(SILICON::project::Document          document
   if (store.contains(path))
     return;
 
-  const bool graphical =
-      SILICON::project::documentTypeInfo(document.getType()).isGraphical;
+  const bool graphical = SILICON::project::categoryOf(document.getType())
+      == SILICON::project::DocumentCategory::Diagram;
 
   if (graphical) {
     dependencyGraph.addDocument(path);

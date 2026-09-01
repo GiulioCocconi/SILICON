@@ -109,7 +109,7 @@ std::vector<ComponentCatalogOverlay::CatalogRow> componentCatalogRows(
 
   for (const auto& document :
        SILICON::project::DocumentStore::active().getDocuments()) {
-    if (document.getType() != SILICON::project::DocumentType::Subcircuit)
+    if (document.getType() != SILICON::project::DocumentType::Circuit)
       continue;
     if (!subcircuitHasGraphicalMetadata(document.getContents()))
       continue;

@@ -84,10 +84,7 @@ Copyright (c) 2026. Giulio Cocconi
 #include <emscripten/emscripten.h>
 #endif
 
-#include <core/serialization/component_registry.hpp>
-#include <core/serialization/yosys.hpp>
 #include <core/simulator.hpp>
-#include <core/subcircuitDefinition.hpp>
 #include <logging/logger.hpp>
 #include <ui/common/aboutDialog.hpp>
 #include <ui/common/binaryEditor.hpp>
@@ -111,6 +108,7 @@ Copyright (c) 2026. Giulio Cocconi
 #include <ui/logiFlow/metadataDescriptionEdit.hpp>
 #include <ui/logiFlow/projectTree.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
+#include <ui/serialization/document_conversion.hpp>
 
 namespace SILICON {
 namespace ui {
@@ -137,57 +135,71 @@ namespace {
     Fn redoFn;
   };
 
-  [[nodiscard]] std::optional<std::vector<std::string>>
-  selectVerilogModules(QWidget* parent, const SILICON::yosys::ModuleDependencyGraph& graph)
+  [[nodiscard]] std::optional<std::vector<std::string>> selectConversionChoices(
+      QWidget* parent, std::vector<ConversionChoice> choices)
   {
-    auto modules = graph.modules();
-    if (modules.size() <= 1)
-      return modules;
+    if (choices.size() <= 1) {
+      std::vector<std::string> selected;
+      for (const auto& choice : choices)
+        selected.push_back(choice.id);
+      return selected;
+    }
 
-    std::ranges::sort(modules, [&graph](const auto& lhs, const auto& rhs) {
-      const auto lhsDependencies = graph.dependenciesOf(lhs).size();
-      const auto rhsDependencies = graph.dependenciesOf(rhs).size();
-      if (lhsDependencies != rhsDependencies)
-        return lhsDependencies > rhsDependencies;
-      return lhs < rhs;
+    std::ranges::sort(choices, [](const auto& lhs, const auto& rhs) {
+      if (lhs.dependencies.size() != rhs.dependencies.size())
+        return lhs.dependencies.size() > rhs.dependencies.size();
+      return lhs.label < rhs.label;
     });
 
+    std::unordered_map<std::string, const ConversionChoice*> choicesById;
+    for (const auto& choice : choices)
+      choicesById.emplace(choice.id, &choice);
+
     QDialog dialog(parent);
-    dialog.setWindowTitle(QObject::tr("Import Verilog Modules"));
+    dialog.setWindowTitle(QObject::tr("Select Conversion Items"));
     dialog.setModal(true);
     dialog.resize(560, 420);
 
     auto* layout = new QVBoxLayout(&dialog);
     layout->addWidget(new QLabel(
-        QObject::tr("Select one or more modules. Their dependencies are imported "
+        QObject::tr("Select one or more items. Their dependencies are converted "
                     "automatically."),
         &dialog));
 
     auto* tree = new QTreeWidget(&dialog);
     tree->setColumnCount(1);
-    tree->setHeaderLabels({QObject::tr("Module")});
+    tree->setHeaderLabels({QObject::tr("Item")});
     tree->setRootIsDecorated(true);
     tree->setSelectionMode(QAbstractItemView::NoSelection);
     constexpr int explicitlySelectedRole = Qt::UserRole;
+    constexpr int choiceIdRole           = Qt::UserRole + 1;
 
-    const auto addDependencies = [&graph](this auto&& addDependencies,
-                                          QTreeWidgetItem* parentItem,
-                                          const std::string& module) -> void {
-      for (const auto& dependency : graph.dependenciesOf(module)) {
+    const auto addDependencies = [&choicesById](this auto&& addDependencies,
+                                                QTreeWidgetItem* parentItem,
+                                                const std::string& choiceId) -> void {
+      const auto choice = choicesById.find(choiceId);
+      if (choice == choicesById.end())
+        return;
+      for (const auto& dependency : choice->second->dependencies) {
         auto* dependencyItem = new QTreeWidgetItem(parentItem);
-        dependencyItem->setText(0, QString::fromStdString(dependency));
+        const auto dependencyChoice = choicesById.find(dependency);
+        dependencyItem->setText(
+            0, QString::fromStdString(dependencyChoice == choicesById.end()
+                                         ? dependency
+                                         : dependencyChoice->second->label));
         dependencyItem->setFlags(dependencyItem->flags() & ~Qt::ItemIsUserCheckable);
         addDependencies(dependencyItem, dependency);
       }
     };
 
-    for (const auto& module : modules) {
+    for (const auto& choice : choices) {
       auto* item = new QTreeWidgetItem(tree);
-      item->setText(0, QString::fromStdString(module));
+      item->setText(0, QString::fromStdString(choice.label));
       item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
       item->setCheckState(0, Qt::Unchecked);
       item->setData(0, explicitlySelectedRole, false);
-      addDependencies(item, module);
+      item->setData(0, choiceIdRole, QString::fromStdString(choice.id));
+      addDependencies(item, choice.id);
     }
     tree->collapseAll();
     tree->header()->setSectionResizeMode(0, QHeaderView::Stretch);
@@ -204,8 +216,7 @@ namespace {
 
     QObject::connect(
         tree, &QTreeWidget::itemChanged, &dialog,
-        [tree, importButton, &graph, explicitlySelectedRole](QTreeWidgetItem* changedItem,
-                                                             int) {
+        [tree, importButton, &choicesById](QTreeWidgetItem* changedItem, int) {
           const QSignalBlocker blocker(tree);
           if (!changedItem->parent()
               && changedItem->flags().testFlag(Qt::ItemIsEnabled)) {
@@ -217,23 +228,30 @@ namespace {
           for (int index = 0; index < tree->topLevelItemCount(); ++index) {
             const auto* item = tree->topLevelItem(index);
             if (item->data(0, explicitlySelectedRole).toBool())
-              roots.push_back(item->text(0).toStdString());
+              roots.push_back(item->data(0, choiceIdRole).toString().toStdString());
           }
 
           importButton->setEnabled(!roots.empty());
           std::vector<std::string> dependencies;
-          for (const auto& root : roots) {
-            for (const auto& included :
-                 graph.dependencyOrder(std::vector<std::string>{root})) {
-              if (included != root && !std::ranges::contains(dependencies, included)) {
-                dependencies.push_back(included);
-              }
+          const auto collectDependencies =
+              [&choicesById, &dependencies](this auto&& collectDependencies,
+                                             const std::string& id) -> void {
+            const auto choice = choicesById.find(id);
+            if (choice == choicesById.end())
+              return;
+            for (const auto& dependency : choice->second->dependencies) {
+              if (std::ranges::contains(dependencies, dependency))
+                continue;
+              dependencies.push_back(dependency);
+              collectDependencies(dependency);
             }
-          }
+          };
+          for (const auto& root : roots)
+            collectDependencies(root);
 
           for (int index = 0; index < tree->topLevelItemCount(); ++index) {
             auto*      item       = tree->topLevelItem(index);
-            const auto name       = item->text(0).toStdString();
+            const auto name = item->data(0, choiceIdRole).toString().toStdString();
             const bool selected   = item->data(0, explicitlySelectedRole).toBool();
             const bool dependency = std::ranges::contains(dependencies, name);
 
@@ -256,7 +274,7 @@ namespace {
     for (int index = 0; index < tree->topLevelItemCount(); ++index) {
       const auto* item = tree->topLevelItem(index);
       if (item->data(0, explicitlySelectedRole).toBool())
-        roots.push_back(item->text(0).toStdString());
+        roots.push_back(item->data(0, choiceIdRole).toString().toStdString());
     }
     return roots;
   }
@@ -454,7 +472,7 @@ void LogiFlowWindow::createActions()
   openComponentCatalogAct =
       makeAction(this, Icon("plus"), "", tr("Open the component catalog"));
   editSubcircuitShapeAct = makeAction(this, Icon("circuit-board"), tr("Edit Shape"),
-                                      tr("Edit the active subcircuit shape"));
+                                      tr("Edit the active circuit shape"));
   editSubcircuitShapeAct->setVisible(false);
   editSubcircuitShapeAct->setEnabled(false);
   codeConversionAct = makeAction(this, Icon("code"), tr("Code"));
@@ -480,10 +498,12 @@ void LogiFlowWindow::createActions()
   connect(settingsAct, &QAction::triggered, this, &LogiFlowWindow::openSettings);
   connect(undoAct, &QAction::triggered, this, [this] {
     const auto type = activeDocumentType();
-    if (type == SILICON::project::DocumentType::Binary
+    if (type && SILICON::project::categoryOf(*type)
+                    == SILICON::project::DocumentCategory::Binary
         && binaryEditor->history()->canUndo())
       binaryEditor->history()->undo();
-    else if (type == SILICON::project::DocumentType::Code
+    else if (type && SILICON::project::categoryOf(*type)
+                         == SILICON::project::DocumentCategory::Code
              && codeEditor->document()->isUndoAvailable())
       codeEditor->undo();
     else
@@ -491,10 +511,12 @@ void LogiFlowWindow::createActions()
   });
   connect(redoAct, &QAction::triggered, this, [this] {
     const auto type = activeDocumentType();
-    if (type == SILICON::project::DocumentType::Binary
+    if (type && SILICON::project::categoryOf(*type)
+                    == SILICON::project::DocumentCategory::Binary
         && binaryEditor->history()->canRedo())
       binaryEditor->history()->redo();
-    else if (type == SILICON::project::DocumentType::Code
+    else if (type && SILICON::project::categoryOf(*type)
+                         == SILICON::project::DocumentCategory::Code
              && codeEditor->document()->isRedoAvailable())
       codeEditor->redo();
     else
@@ -504,15 +526,19 @@ void LogiFlowWindow::createActions()
     const auto type = activeDocumentType();
     undoAct->setEnabled(
         undoStack->canUndo()
-        || (type == SILICON::project::DocumentType::Code
+        || (type && SILICON::project::categoryOf(*type)
+                        == SILICON::project::DocumentCategory::Code
             && codeEditor->document()->isUndoAvailable())
-        || (type == SILICON::project::DocumentType::Binary
+        || (type && SILICON::project::categoryOf(*type)
+                        == SILICON::project::DocumentCategory::Binary
             && binaryEditor->history()->canUndo()));
     redoAct->setEnabled(
         undoStack->canRedo()
-        || (type == SILICON::project::DocumentType::Code
+        || (type && SILICON::project::categoryOf(*type)
+                        == SILICON::project::DocumentCategory::Code
             && codeEditor->document()->isRedoAvailable())
-        || (type == SILICON::project::DocumentType::Binary
+        || (type && SILICON::project::categoryOf(*type)
+                        == SILICON::project::DocumentCategory::Binary
             && binaryEditor->history()->canRedo()));
   };
   connect(undoStack, &QUndoStack::canUndoChanged, this,
@@ -719,7 +745,7 @@ void LogiFlowWindow::updateSubcircuitShapeAction()
 {
   if (!editSubcircuitShapeAct)
     return;
-  const bool active = activeDocumentType() == SILICON::project::DocumentType::Subcircuit;
+  const bool active = activeDocumentType() == SILICON::project::DocumentType::Circuit;
   editSubcircuitShapeAct->setVisible(active);
   editSubcircuitShapeAct->setEnabled(active);
   updateCodeAction();
@@ -737,24 +763,31 @@ void LogiFlowWindow::updateCodeAction()
     return;
   const auto* document =
       SILICON::project::DocumentStore::active().find(activeDocumentPath);
-  const bool subcircuit =
-      document && document->getType() == SILICON::project::DocumentType::Subcircuit;
-  const bool verilog = document
-                       && SILICON::project::codeFileTypeForPath(document->getPath())
-                              == SILICON::project::CodeFileType::Verilog;
-  codeConversionAct->setVisible(subcircuit || verilog);
-  codeConversionAct->setText(subcircuit ? tr("Convert to Verilog")
-                                        : tr("Convert to Subcircuit"));
-#ifdef __EMSCRIPTEN__
-  codeConversionAct->setEnabled(false);
+  const auto converters = document ? documentConvertersFor(document->getType())
+                                   : std::vector<const DocumentConverter*>{};
+  const auto available = std::ranges::count_if(
+      converters, [](const DocumentConverter* converter) { return converter->available; });
+  codeConversionAct->setVisible(!converters.empty());
+  codeConversionAct->setEnabled(available != 0);
   codeConversionAct->setToolTip(
-      tr("Conversion requires Yosys and is unavailable in the web build"));
-#else
-  codeConversionAct->setEnabled(subcircuit || verilog);
-#endif
+      !converters.empty() && available == 0
+          ? QString::fromUtf8(converters.front()->unavailableReason.data(),
+                              static_cast<qsizetype>(
+                                  converters.front()->unavailableReason.size()))
+          : QString());
+  if (converters.size() == 1) {
+    codeConversionAct->setText(
+        tr("Convert to %1")
+            .arg(QString::fromUtf8(
+                SILICON::project::documentTypeInfo(converters.front()->target)
+                    .displayName)));
+  } else if (!converters.empty()) {
+    codeConversionAct->setText(tr("Convert..."));
+  }
   const auto type = activeDocumentType();
   const bool nonGraphical =
-      type && !SILICON::project::documentTypeInfo(*type).isGraphical;
+      type && SILICON::project::categoryOf(*type)
+          != SILICON::project::DocumentCategory::Diagram;
   setActionsEnabled({setNormalModeAct, setPanModeAct, setWireCreationModeAct,
                      setSimulationModeAct, toggleFstTraceAct, openComponentCatalogAct,
                      setComponentPlacingModeAct, autoPlaceAct},
@@ -817,141 +850,93 @@ void LogiFlowWindow::commitConvertedDocuments(
       new ConversionCommand(commandText, std::move(restore), std::move(apply)));
 }
 
-void LogiFlowWindow::convertActiveSubcircuitToVerilog()
-{
-  saveActiveDocumentPayload();
-  const auto sourcePath = activeDocumentPath;
-  auto&      store      = SILICON::project::DocumentStore::active();
-  const auto* existing  = store.find(sourcePath);
-  const auto slug       = SILICON::project::documentSlugForPath(sourcePath);
-  if (!existing || existing->getType() != SILICON::project::DocumentType::Subcircuit
-      || !slug)
-    throw std::runtime_error("Only subcircuits can be converted to Verilog");
-  auto circuit =
-      Circuit::deserialize(SILICON::core::extractCoreCircuitJson(existing->getContents()),
-                           ComponentRegistry::instance());
-  circuit.setName(*slug);
-  const auto source = SILICON::yosys::exportVerilog(circuit);
-  const auto path =
-      SILICON::project::codeFilePath(*slug, SILICON::project::CodeFileType::Verilog);
-  const SILICON::project::Document result(path, source);
-  auto commit = [this, result, sourcePath] {
-    commitConvertedDocuments({result}, sourcePath, result.getPath(),
-                             tr("Convert to Verilog"));
-  };
-  if (store.contains(path)) {
-    SILICON::ui::inputDialog::question(
-        this, tr("Replace Code File"),
-        tr("'%1' already exists. Replace it?").arg(QString::fromStdString(path)),
-        std::move(commit));
-  } else {
-    commit();
-  }
-}
-
-void LogiFlowWindow::convertActiveVerilogToSubcircuit()
-{
-  saveActiveDocumentPayload();
-  const auto sourcePath = activeDocumentPath;
-  auto&      store      = SILICON::project::DocumentStore::active();
-  const auto* existing  = store.find(sourcePath);
-  if (!existing
-      || SILICON::project::codeFileTypeForPath(existing->getPath())
-             != SILICON::project::CodeFileType::Verilog)
-    throw std::runtime_error("Only Verilog code files can be converted to subcircuits");
-
-  std::vector<SILICON::yosys::VerilogSourceFile> sources;
-  for (const auto& document : store.getDocuments()) {
-    if (SILICON::project::codeFileTypeForPath(document.getPath())
-        == SILICON::project::CodeFileType::Verilog) {
-      sources.push_back(
-          {.path = document.getPath(), .contents = document.getContents()});
-    }
-  }
-
-  const auto designJson = SILICON::yosys::elaborateHierarchy(
-      SILICON::yosys::readVerilog(sources, existing->getPath()));
-  const auto modules = SILICON::yosys::moduleDependencyGraph(designJson);
-  if (modules.modules().empty())
-    throw std::runtime_error("Verilog source must declare at least one module");
-  // Validate the complete design before opening the selector so recursive source
-  // hierarchies fail with a normal conversion error instead of from a UI callback.
-  static_cast<void>(modules.dependencyOrder(modules.modules()));
-
-  const auto selectedRoots = selectVerilogModules(this, modules);
-  if (!selectedRoots || selectedRoots->empty())
-    return;
-  const auto exportOrder = modules.dependencyOrder(*selectedRoots);
-
-  for (const auto& module : exportOrder) {
-    if (!SILICON::project::isValidDocumentSlug(module))
-      throw std::runtime_error(std::format(
-          "Verilog module '{}' cannot be used as a project subcircuit name", module));
-  }
-
-  std::vector<SILICON::project::Document> generated;
-  generated.reserve(exportOrder.size());
-  for (const auto& module : exportOrder) {
-    auto circuit =
-        std::make_shared<Circuit>(SILICON::yosys::deserialize(designJson, module));
-    DiagramScene generatedScene;
-    generatedScene.setSubcircuitDocumentMode(true);
-    generatedScene.loadCircuit(std::move(circuit), GUIComponentFactory::instance(),
-                               false);
-
-    auto sceneJson = generatedScene.serialize();
-    auto completed = nlohmann::ordered_json::parse(sceneJson);
-    completed["graphicalComponent"] = graphicalSubcircuitMetadataToJson(
-        synchronizeGraphicalSubcircuitMetadata(sceneJson, GraphicalSubcircuitMetadata{}));
-    generated.push_back(preparedSubcircuitDocument(
-        SILICON::project::documentPathForSlug(SILICON::project::DocumentType::Subcircuit,
-                                              module),
-        completed.dump(2)));
-  }
-
-  const auto activatePath = SILICON::project::documentPathForSlug(
-      SILICON::project::DocumentType::Subcircuit, selectedRoots->front());
-  auto commit = [this, generated, sourcePath, activatePath]() mutable {
-    commitConvertedDocuments(std::move(generated), sourcePath, activatePath,
-                             tr("Convert Verilog Modules to Subcircuits"));
-  };
-
-  QStringList conflicts;
-  for (const auto& document : generated)
-    if (store.contains(document.getPath()))
-      conflicts.push_back(QString::fromStdString(document.getPath()));
-
-  if (!conflicts.empty()) {
-    SILICON::ui::inputDialog::question(
-        this, tr("Replace Subcircuits"),
-        tr("The following subcircuits already exist and will be replaced:\n\n%1")
-            .arg(conflicts.join('\n')),
-        std::move(commit));
-  } else {
-    commit();
-  }
-}
-
 void LogiFlowWindow::convertActiveDocument()
 {
-#ifndef __EMSCRIPTEN__
+  const auto* source =
+      SILICON::project::DocumentStore::active().find(activeDocumentPath);
+  if (!source)
+    return;
+
+  const auto converters = documentConvertersFor(source->getType());
+  std::vector<SILICON::project::DocumentType> targets;
+  QStringList                                  labels;
+  for (const auto* converter : converters) {
+    if (!converter->available)
+      continue;
+    targets.push_back(converter->target);
+    labels.push_back(QString::fromUtf8(
+        SILICON::project::documentTypeInfo(converter->target).displayName));
+  }
+
+  if (targets.empty())
+    return;
+  if (targets.size() == 1) {
+    convertActiveDocumentTo(targets.front());
+    return;
+  }
+
+  SILICON::ui::inputDialog::getItem(
+      this, tr("Convert Document"), tr("Target format"), labels, 0, false,
+      [this, labels = std::move(labels), targets = std::move(targets)](
+          const QString& selected) {
+        const auto index = labels.indexOf(selected);
+        if (index >= 0 && index < static_cast<qsizetype>(targets.size()))
+          convertActiveDocumentTo(targets[static_cast<std::size_t>(index)]);
+      });
+}
+
+void LogiFlowWindow::convertActiveDocumentTo(
+    const SILICON::project::DocumentType target)
+{
   try {
-    const auto type = activeDocumentType();
-    if (type == SILICON::project::DocumentType::Subcircuit)
-      convertActiveSubcircuitToVerilog();
-    else if (type == SILICON::project::DocumentType::Code)
-      convertActiveVerilogToSubcircuit();
+    saveActiveDocumentPayload();
+    const auto sourcePath = activeDocumentPath;
+    auto&      store      = SILICON::project::DocumentStore::active();
+    const auto* source    = store.find(sourcePath);
+    if (!source)
+      throw std::runtime_error("The active document no longer exists");
+
+    auto prepared = prepareDocumentConversion(*source, target, store.getDocuments());
+    auto selected = selectConversionChoices(this, prepared.choices);
+    if (!selected)
+      return;
+
+    auto result = prepared.execute(*selected);
+    const auto commandText =
+        tr("Convert to %1")
+            .arg(QString::fromUtf8(
+                SILICON::project::documentTypeInfo(target).displayName));
+
+    QStringList conflicts;
+    for (const auto& document : result.documents)
+      if (store.contains(document.getPath()))
+        conflicts.push_back(QString::fromStdString(document.getPath()));
+
+    auto commit = [this, result = std::move(result), sourcePath,
+                   commandText]() mutable {
+      commitConvertedDocuments(std::move(result.documents), sourcePath,
+                               result.activatePath, commandText);
+    };
+
+    if (!conflicts.empty()) {
+      SILICON::ui::inputDialog::question(
+          this, tr("Replace Converted Documents"),
+          tr("The following documents already exist and will be replaced:\n\n%1")
+              .arg(conflicts.join('\n')),
+          std::move(commit));
+    } else {
+      commit();
+    }
   } catch (const std::exception& error) {
     SILICON::ui::inputDialog::critical(
         this, tr("Code Conversion Error"),
         tr("Failed to convert the active document:\n%1").arg(error.what()));
   }
-#endif
 }
 
 void LogiFlowWindow::editActiveSubcircuitShape()
 {
-  if (activeDocumentType() != SILICON::project::DocumentType::Subcircuit)
+  if (activeDocumentType() != SILICON::project::DocumentType::Circuit)
     return;
 
   const auto slug = SILICON::project::documentSlugForPath(activeDocumentPath);
@@ -964,11 +949,10 @@ void LogiFlowWindow::editActiveSubcircuitShape()
   } catch (const std::exception& e) {
     SILICON::ui::inputDialog::warning(
         this, tr("Edit shape"),
-        tr("Failed to save the active subcircuit before editing its shape:\n%1")
+        tr("Failed to save the active circuit before editing its shape:\n%1")
             .arg(e.what()));
   }
 }
 
 }  // namespace ui
 }  // namespace SILICON
-

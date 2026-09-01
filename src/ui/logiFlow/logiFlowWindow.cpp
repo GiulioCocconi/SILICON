@@ -150,8 +150,10 @@ LogiFlowWindow::LogiFlowWindow()
   binaryEditor = new BinaryEditor(this);
   connect(binaryEditor->history(), &QUndoStack::cleanChanged, this,
           [this](const bool clean) {
-            if (!clean
-                && activeDocumentType() == SILICON::project::DocumentType::Binary)
+            const auto type = activeDocumentType();
+            if (!clean && type
+                && SILICON::project::categoryOf(*type)
+                    == SILICON::project::DocumentCategory::Binary)
               binaryDocumentsDirty = true;
           });
   editorStack = new QStackedWidget(this);
@@ -213,4 +215,3 @@ LogiFlowWindow::LogiFlowWindow()
 
 }  // namespace ui
 }  // namespace SILICON
-

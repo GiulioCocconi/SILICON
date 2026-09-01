@@ -19,7 +19,6 @@
 #include "component.hpp"
 
 #include <algorithm>
-#include <format>
 #include <ranges>
 #include <stdexcept>
 
@@ -36,15 +35,6 @@ ComponentMetadata Component::metadata() const
 {
   const std::string type = std::string(typeName());
   return {type, type, ComponentCategory::Utils};
-}
-
-void Component::serializeYosys(SILICON::yosys::SerializationContext&) const
-{
-  // Export is opt-in: a component must override this method with an exact lowering.
-  // Failing here prevents an unsupported component from silently disappearing from
-  // the generated netlist and changing the circuit's behavior.
-  throw std::runtime_error(std::format(
-      "Component type '{}' does not support Yosys serialization", typeName()));
 }
 
 uint64_t Component::addIOListener(IOObserver cb)
