@@ -77,7 +77,7 @@ void GraphicalSubcircuitComponent::subscribeToDocuments()
             SILICON::project::isValidDocumentSlug(slug) && change.path
             && *change.path
                    == SILICON::project::documentPathForSlug(
-                       SILICON::project::DocumentType::Subcircuit, slug);
+                       SILICON::project::DocumentType::Circuit, slug);
         if (change.kind == SILICON::project::DocumentChangeKind::Reset
             || affectsConfiguredDocument) {
           if (const auto subcircuit =
@@ -206,7 +206,7 @@ void GraphicalSubcircuitComponent::refreshFromMetadata()
   }
 
   const auto* document = documents->find(SILICON::project::documentPathForSlug(
-      SILICON::project::DocumentType::Subcircuit, slug));
+      SILICON::project::DocumentType::Circuit, slug));
   if (!document) {
     useAttachedInterfaceMetadata();
     return;

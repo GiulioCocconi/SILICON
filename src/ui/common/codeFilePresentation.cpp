@@ -17,7 +17,7 @@ namespace SILICON::ui {
 namespace {
 
 constexpr std::array Presentations{
-    CodeFilePresentation{.type                = project::CodeFileType::Verilog,
+    CodeFilePresentation{.type                = project::DocumentType::Verilog,
                          .displayName         = "Verilog",
                          .kdeSyntaxDefinition = "Verilog"}};
 
@@ -28,7 +28,7 @@ std::span<const CodeFilePresentation> codeFilePresentations()
   return Presentations;
 }
 
-const CodeFilePresentation& codeFilePresentation(const project::CodeFileType type)
+const CodeFilePresentation& codeFilePresentation(const project::DocumentType type)
 {
   const auto it = std::ranges::find(Presentations, type, &CodeFilePresentation::type);
   if (it == Presentations.end())

@@ -81,7 +81,7 @@ CodeEditor::CodeEditor(QWidget* parent)
   updateLineNumberAreaWidth();
 }
 
-void CodeEditor::setFileType(const SILICON::project::CodeFileType type)
+void CodeEditor::setFileType(const SILICON::project::DocumentType type)
 {
   fileTypeValue = type;
   definition    = repository.definitionForName(
@@ -101,7 +101,7 @@ void CodeEditor::clearFileType()
   clear();
 }
 
-const std::optional<SILICON::project::CodeFileType>& CodeEditor::fileType() const
+const std::optional<SILICON::project::DocumentType>& CodeEditor::fileType() const
 {
   return fileTypeValue;
 }

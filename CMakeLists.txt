@@ -62,7 +62,6 @@ include(cmake/resources.cmake)
 
 set(COMMON_SOURCE_FILES
         ${src_dir}/utils/num_formatting.cpp
-        ${src_dir}/core/codeFile.cpp
         ${src_dir}/core/wire.cpp
         ${src_dir}/core/io.cpp
         ${src_dir}/core/gates.cpp
@@ -80,10 +79,12 @@ set(COMMON_SOURCE_FILES
         ${src_dir}/core/simulator.cpp
         ${src_dir}/core/serialization/component_registry.cpp
         ${src_dir}/core/serialization/component_registration.cpp
-        ${src_dir}/core/serialization/yosys.cpp
-        ${src_dir}/core/serialization/yosys_deserialization.cpp
-        ${src_dir}/core/serialization/yosys_components.cpp
-        ${src_dir}/core/serialization/yosys_tool.cpp
+        ${src_dir}/core/serialization/yosys/netlist.cpp
+        ${src_dir}/core/serialization/yosys/deserialization.cpp
+        ${src_dir}/core/serialization/yosys/components.cpp
+        ${src_dir}/core/serialization/yosys/yosys_tool.cpp
+        ${src_dir}/core/serialization/verilog.cpp
+        ${src_dir}/core/serialization/document_conversion.cpp
         ${src_dir}/core/circuitDependencyGraph.cpp
         ${src_dir}/core/fstTraceWriter.cpp
         ${src_dir}/core/siliconWaveform.cpp
@@ -146,7 +147,8 @@ set(UI_SOURCE_FILES
         ${src_dir}/ui/logiFlow/logiFlowWindowProperties.cpp
         ${src_dir}/ui/logiFlow/logiFlowWindow.cpp
         ${src_dir}/ui/serialization/gui_component_factory.cpp
-        ${src_dir}/ui/serialization/gui_component_registration.cpp)
+        ${src_dir}/ui/serialization/gui_component_registration.cpp
+        ${src_dir}/ui/serialization/document_conversion.cpp)
 
 set(CMAKE_COLOR_DIAGNOSTICS ON)
 

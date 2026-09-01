@@ -12,6 +12,7 @@
 #include <string_view>
 
 #include <core/circuit.hpp>
+#include <core/serialization/yosys/netlist.hpp>
 
 using namespace SILICON::core;
 
@@ -119,8 +120,9 @@ int main(const int argc, char** argv)
                          yosysQuote(inputPath), moduleName, yosysQuote(sourceJsonPath)),
              "Yosys failed to lower the input Verilog to JSON");
 
-    const auto circuit = Circuit::deserializeYosys(readFile(sourceJsonPath), moduleName);
-    writeFile(siliconJsonPath, circuit.getYosysJson());
+    const auto circuit =
+        SILICON::yosys::deserialize(readFile(sourceJsonPath), moduleName);
+    writeFile(siliconJsonPath, SILICON::yosys::serialize(circuit));
 
     runYosys(exportScriptPath,
              std::format("read_json {}\n"

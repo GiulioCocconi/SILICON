@@ -85,9 +85,8 @@ void LogiFlowWindow::updatePropertyDock()
                             : std::nullopt;
 
   const bool hasProperties =
-      itemKind != ProjectTreeItemKind::CodeLanguage
-      && (!itemType || SILICON::project::categoryOf(*itemType)
-                           == SILICON::project::DocumentCategory::Diagram);
+      !itemType || SILICON::project::categoryOf(*itemType)
+                       == SILICON::project::DocumentCategory::Diagram;
   propertyDock->setVisible(hasProperties);
   if (!hasProperties)
     return;

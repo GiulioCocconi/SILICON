@@ -21,7 +21,7 @@
 namespace SILICON::ui {
 
 /** @brief Semantic role of an item shown in the project tree. */
-enum class ProjectTreeItemKind { Project, Section, CodeLanguage, Document };
+enum class ProjectTreeItemKind { Project, Section, Document };
 
 struct ProjectTreeDocumentSelection {
   project::DocumentType type;
@@ -52,8 +52,6 @@ public:
 private:
   void addSection(QTreeWidgetItem* projectItem, project::DocumentType type,
                   std::span<const project::Document> documents);
-  void addCodeDocuments(QTreeWidgetItem* section,
-                        std::span<const project::Document> documents);
   void addDocument(QTreeWidgetItem* parent, const project::Document& document);
 };
 

@@ -58,7 +58,8 @@ inline constexpr int FORMAT_VERSION = 1;
  * `project.json.mainCircuit` must point to one of the document entries whose
  * type is @ref DocumentType::Circuit.
  */
-inline constexpr std::string_view DEFAULT_MAIN_CIRCUIT_PATH = "circuits/main.json";
+inline const std::string DEFAULT_MAIN_CIRCUIT_PATH =
+    documentPathForSlug(DocumentType::Circuit, "main");
 
 /**
  * @brief Metadata stored in `metadata.json`.

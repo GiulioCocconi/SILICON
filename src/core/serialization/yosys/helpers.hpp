@@ -27,7 +27,7 @@
 #include <utility>
 
 #include <core/component.hpp>
-#include <core/serialization/yosys.hpp>
+#include <core/serialization/yosys/netlist.hpp>
 
 namespace SILICON::yosys::detail {
 
@@ -85,21 +85,19 @@ inline void emitBinary(SerializationContext& context, const std::string_view suf
                   Json{{"A", lhs}, {"B", rhs}, {"Y", output}});
 }
 
-inline void emitFineBinary(SerializationContext& context,
-                           const std::string_view suffix,
-                           const std::string_view type, const Json& lhs,
-                           const Json& rhs, const Json& output)
+inline void emitFineBinary(SerializationContext& context, const std::string_view suffix,
+                           const std::string_view type, const Json& lhs, const Json& rhs,
+                           const Json& output)
 {
   if (lhs.size() != rhs.size() || lhs.size() != output.size())
     throw std::runtime_error("Cannot export fine binary cell with mismatched widths");
 
   for (std::size_t bit = 0; bit < output.size(); ++bit) {
-    context.addCell(
-        std::format("{}_{}", suffix, bit), type, Json::object(),
-        directions({{"A", "input"}, {"B", "input"}, {"Y", "output"}}),
-        Json{{"A", Json::array({lhs.at(bit)})},
-             {"B", Json::array({rhs.at(bit)})},
-             {"Y", Json::array({output.at(bit)})}});
+    context.addCell(std::format("{}_{}", suffix, bit), type, Json::object(),
+                    directions({{"A", "input"}, {"B", "input"}, {"Y", "output"}}),
+                    Json{{"A", Json::array({lhs.at(bit)})},
+                         {"B", Json::array({rhs.at(bit)})},
+                         {"Y", Json::array({output.at(bit)})}});
   }
 }
 

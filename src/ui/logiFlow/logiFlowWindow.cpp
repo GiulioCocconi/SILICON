@@ -39,7 +39,6 @@ Copyright (c) 2026. Giulio Cocconi
 
 #include <core/serialization/component_registry.hpp>
 #include <core/serialization/projectFile.hpp>
-#include <core/serialization/yosys.hpp>
 #include <core/simulator.hpp>
 #include <core/circuitDocument.hpp>
 #include <logging/logger.hpp>
@@ -157,8 +156,10 @@ LogiFlowWindow::LogiFlowWindow()
   binaryEditor = new BinaryEditor(this);
   connect(binaryEditor->history(), &QUndoStack::cleanChanged, this,
           [this](const bool clean) {
-            if (!clean
-                && activeDocumentType() == SILICON::project::DocumentType::Binary)
+            const auto type = activeDocumentType();
+            if (!clean && type
+                && SILICON::project::categoryOf(*type)
+                    == SILICON::project::DocumentCategory::Binary)
               binaryDocumentsDirty = true;
           });
   editorStack = new QStackedWidget(this);

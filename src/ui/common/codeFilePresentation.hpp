@@ -12,19 +12,19 @@
 #include <span>
 #include <string_view>
 
-#include <core/codeFile.hpp>
+#include <core/projectDocument.hpp>
 
 namespace SILICON::ui {
 
 /** Editor-only metadata for a project source-file type. */
 struct CodeFilePresentation {
-  SILICON::project::CodeFileType type;
+  SILICON::project::DocumentType type;
   std::string_view               displayName;
   std::string_view               kdeSyntaxDefinition;
 };
 
 [[nodiscard]] std::span<const CodeFilePresentation> codeFilePresentations();
 [[nodiscard]] const CodeFilePresentation&
-codeFilePresentation(SILICON::project::CodeFileType type);
+codeFilePresentation(SILICON::project::DocumentType type);
 
 }  // namespace SILICON::ui

@@ -58,7 +58,6 @@ Copyright (c) 2026. Giulio Cocconi
 #include <core/circuit.hpp>
 #include <core/serialization/component_registry.hpp>
 #include <core/serialization/projectFile.hpp>
-#include <core/serialization/yosys.hpp>
 #include <core/simulator.hpp>
 #include <core/circuitDocument.hpp>
 #include <logging/logger.hpp>
@@ -196,7 +195,7 @@ bool LogiFlowWindow::copySelectionToClipboard()
 void LogiFlowWindow::copy()
 {
   const auto type = activeDocumentType();
-  if (type == SILICON::project::DocumentType::Code) {
+  if (type == SILICON::project::DocumentType::Verilog) {
     codeEditor->copy();
     return;
   }
@@ -210,7 +209,7 @@ void LogiFlowWindow::copy()
 void LogiFlowWindow::cut()
 {
   const auto type = activeDocumentType();
-  if (type == SILICON::project::DocumentType::Code) {
+  if (type == SILICON::project::DocumentType::Verilog) {
     codeEditor->cut();
     return;
   }
@@ -225,7 +224,7 @@ void LogiFlowWindow::cut()
 void LogiFlowWindow::paste()
 {
   const auto type = activeDocumentType();
-  if (type == SILICON::project::DocumentType::Code) {
+  if (type == SILICON::project::DocumentType::Verilog) {
     codeEditor->paste();
     return;
   }
@@ -305,7 +304,7 @@ void LogiFlowWindow::autoPlace()
 void LogiFlowWindow::del()
 {
   const auto type = activeDocumentType();
-  if (type == SILICON::project::DocumentType::Code) {
+  if (type == SILICON::project::DocumentType::Verilog) {
     auto cursor = codeEditor->textCursor();
     if (cursor.hasSelection())
       cursor.removeSelectedText();
@@ -588,7 +587,7 @@ void LogiFlowWindow::selectionChanged()
   if (!type || SILICON::project::categoryOf(*type)
                    != SILICON::project::DocumentCategory::Diagram) {
     rotateAct->setEnabled(false);
-    const bool editableText = type == SILICON::project::DocumentType::Code;
+    const bool editableText = type == SILICON::project::DocumentType::Verilog;
     setActionsEnabled({cutAct, copyAct, pasteAct, deleteAct}, editableText);
     updatePropertyDock();
     return;
@@ -647,8 +646,6 @@ void LogiFlowWindow::showProjectTreeContextMenu(const QPoint& position)
 
   menu->addAction(Icon("plus"), tr("New Circuit"), this,
                   &LogiFlowWindow::createCircuit);
-  menu->addAction(Icon("plus"), tr("New Subcircuit"), this,
-                  &LogiFlowWindow::createSubcircuit);
   menu->addAction(Icon("code"), tr("New Code File"), this,
                   &LogiFlowWindow::createCodeFile);
   menu->addAction(Icon("file"), tr("New Binary File"), this,
@@ -691,11 +688,6 @@ void LogiFlowWindow::createCircuit()
   createDocument(SILICON::project::DocumentType::Circuit);
 }
 
-void LogiFlowWindow::createSubcircuit()
-{
-  createDocument(SILICON::project::DocumentType::Subcircuit);
-}
-
 void LogiFlowWindow::createCodeFile()
 {
   auto* dialog = new QDialog(this);
@@ -724,15 +716,15 @@ void LogiFlowWindow::createCodeFile()
               return;
 
             const auto type = registry[static_cast<std::size_t>(index)].type;
-            const auto path = SILICON::project::codeFilePath(
-                nameEdit->text().trimmed().toStdString(), type);
+            const auto slug = nameEdit->text().trimmed().toStdString();
 
-            if (!SILICON::project::isValidCodeFilePath(path, type)) {
+            if (!SILICON::project::isValidDocumentSlug(slug)) {
               SILICON::ui::inputDialog::warning(
                   this, tr("New Code File"),
                   tr("The name must be non-empty and cannot contain path separators."));
               return;
             }
+            const auto path = SILICON::project::documentPathForSlug(type, slug);
             if (projectContext.documents.contains(path)) {
               SILICON::ui::inputDialog::warning(
                   this, tr("New Code File"),
@@ -784,7 +776,7 @@ void LogiFlowWindow::createBinaryFile()
             }
 
             const auto path = SILICON::project::documentPathForSlug(
-                SILICON::project::DocumentType::Binary, slug);
+                SILICON::project::DocumentType::RawBinary, slug);
             if (projectContext.documents.contains(path)) {
               SILICON::ui::inputDialog::warning(
                   this, tr("New Binary File"),
@@ -848,7 +840,7 @@ void LogiFlowWindow::deleteSelectedDocument()
     return;
   }
 
-  if (selection->type == SILICON::project::DocumentType::Subcircuit) {
+  if (selection->type == SILICON::project::DocumentType::Circuit) {
     const auto dependents =
         projectContext.circuitDependencies.dependentsOf(selection->path);
     if (!dependents.empty()) {

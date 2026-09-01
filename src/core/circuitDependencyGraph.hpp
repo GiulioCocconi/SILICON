@@ -33,12 +33,11 @@ namespace SILICON::project {
 /**
  * @brief Runtime-only graph of Circuit-to-Circuit instantiation dependencies.
  *
- * Vertices are project-relative document paths such as `circuits/main.json` and
- * `subcircuits/adder.json`. Edges point from a document to the subcircuit
- * document it instantiates. Only Circuit documents participate; code and archive
- * assets are outside this deliberately narrow model. The graph is derived from
- * persisted Circuit JSON and is never
- * serialized into project archives.
+ * Vertices are project-relative Circuit document paths such as
+ * `circuits/main.json` and `circuits/adder.json`. Edges point from a document to
+ * the reusable Circuit document it instantiates. Non-diagram documents are outside
+ * this deliberately narrow model. The graph is derived from persisted Circuit JSON
+ * and is never serialized into project archives.
  *
  * The graph uses `boost::vecS` for its vertex container, which means vertex
  * descriptors are integer indices. As a consequence, removing a vertex
