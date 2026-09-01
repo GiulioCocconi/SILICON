@@ -16,7 +16,7 @@
 
  */
 
-#include "yosys.hpp"
+#include "netlist.hpp"
 
 #include <algorithm>
 #include <cctype>

@@ -17,7 +17,6 @@
 
 #include <nlohmann/json.hpp>
 
-#include <ui/common/codeFilePresentation.hpp>
 #include <ui/common/icons.hpp>
 
 namespace SILICON::ui {
@@ -47,11 +46,9 @@ namespace {
     switch (type) {
       case project::DocumentType::Circuit:
         return ProjectTree::tr("Circuits");
-      case project::DocumentType::Subcircuit:
-        return ProjectTree::tr("Subcircuits");
-      case project::DocumentType::Code:
+      case project::DocumentType::Verilog:
         return ProjectTree::tr("Code");
-      case project::DocumentType::Binary:
+      case project::DocumentType::RawBinary:
         return ProjectTree::tr("Binaries");
     }
     return {};
@@ -62,10 +59,9 @@ namespace {
     switch (document.getType()) {
       case project::DocumentType::Circuit:
         return circuitDisplayName(document);
-      case project::DocumentType::Code:
+      case project::DocumentType::Verilog:
         return QFileInfo(QString::fromStdString(document.getPath())).fileName();
-      case project::DocumentType::Subcircuit:
-      case project::DocumentType::Binary:
+      case project::DocumentType::RawBinary:
         return QString::fromStdString(
             project::documentSlugForPath(document.getPath()).value_or(document.getPath()));
     }
@@ -74,9 +70,9 @@ namespace {
 
   [[nodiscard]] const char* documentIcon(const project::DocumentType type)
   {
-    if (type == project::DocumentType::Code)
+    if (type == project::DocumentType::Verilog)
       return "code";
-    if (type == project::DocumentType::Binary)
+    if (type == project::DocumentType::RawBinary)
       return "file";
     return "circuit-board";
   }
@@ -194,40 +190,9 @@ void ProjectTree::addSection(QTreeWidgetItem* projectItem, const project::Docume
   setDocumentType(section, type);
   section->setExpanded(true);
 
-  if (type == project::DocumentType::Code) {
-    addCodeDocuments(section, documents);
-    return;
-  }
-
   for (const auto& document : documents) {
     if (document.getType() == type)
       addDocument(section, document);
-  }
-}
-
-void ProjectTree::addCodeDocuments(QTreeWidgetItem* section,
-                                   const std::span<const project::Document> documents)
-{
-  for (const auto& typeInfo : codeFilePresentations()) {
-    QTreeWidgetItem* language = nullptr;
-
-    for (const auto& document : documents) {
-      if (document.getType() != project::DocumentType::Code
-          || project::codeFileTypeForPath(document.getPath()) != typeInfo.type)
-        continue;
-
-      if (!language) {
-        language = new QTreeWidgetItem(section);
-        language->setText(0, QString::fromUtf8(typeInfo.displayName));
-        auto font = language->font(0);
-        font.setBold(true);
-        language->setFont(0, font);
-        setKind(language, ProjectTreeItemKind::CodeLanguage);
-        language->setExpanded(true);
-      }
-
-      addDocument(language, document);
-    }
   }
 }
 

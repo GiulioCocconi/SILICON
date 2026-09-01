@@ -16,7 +16,7 @@
 #include <KSyntaxHighlighting/Definition>
 #include <KSyntaxHighlighting/Repository>
 
-#include <core/codeFile.hpp>
+#include <core/projectDocument.hpp>
 
 class QCompleter;
 class QEvent;
@@ -39,10 +39,10 @@ class CodeEditor : public QPlainTextEdit {
 public:
   explicit CodeEditor(QWidget* parent = nullptr);
 
-  void setFileType(SILICON::project::CodeFileType type);
+  void setFileType(SILICON::project::DocumentType type);
   void clearFileType();
 
-  [[nodiscard]] const std::optional<SILICON::project::CodeFileType>& fileType() const;
+  [[nodiscard]] const std::optional<SILICON::project::DocumentType>& fileType() const;
   [[nodiscard]] QStringList completionCandidates() const;
   [[nodiscard]] QString     completionPrefix() const;
   [[nodiscard]] QString     highlightingThemeName() const;
@@ -71,7 +71,7 @@ private:
   KSyntaxHighlighting::Definition                   definition;
   QCompleter*                                       completer;
   QStringListModel*                                 completionModel;
-  std::optional<SILICON::project::CodeFileType> fileTypeValue;
+  std::optional<SILICON::project::DocumentType> fileTypeValue;
 };
 
 }  // namespace SILICON::ui

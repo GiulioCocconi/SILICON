@@ -26,7 +26,6 @@
 
 #include <core/component.hpp>
 #include <core/serialization/component_registry.hpp>
-#include <core/serialization/yosys.hpp>
 #include <core/subcircuit.hpp>
 #include <utils/num_formatting.hpp>
 
@@ -805,17 +804,6 @@ std::string Circuit::serialize() const
   }
 
   return j.dump(2);
-}
-
-std::string Circuit::getYosysJson() const
-{
-  return SILICON::yosys::serialize(*this);
-}
-
-Circuit Circuit::deserializeYosys(const std::string_view                json,
-                                  const std::optional<std::string_view> moduleName)
-{
-  return SILICON::yosys::deserialize(json, moduleName);
 }
 
 Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry& reg,

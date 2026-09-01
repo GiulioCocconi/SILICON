@@ -41,7 +41,6 @@ Copyright (c) 2026. Giulio Cocconi
 
 #include <core/serialization/component_registry.hpp>
 #include <core/serialization/projectFile.hpp>
-#include <core/serialization/yosys.hpp>
 #include <core/simulator.hpp>
 #include <core/circuitDocument.hpp>
 #include <logging/logger.hpp>
@@ -76,9 +75,8 @@ QString LogiFlowWindow::documentTypeName(const SILICON::project::DocumentType ty
 {
   switch (type) {
     case SILICON::project::DocumentType::Circuit: return tr("Circuit");
-    case SILICON::project::DocumentType::Subcircuit: return tr("Subcircuit");
-    case SILICON::project::DocumentType::Code: return tr("Code File");
-    case SILICON::project::DocumentType::Binary: return tr("Binary File");
+    case SILICON::project::DocumentType::Verilog: return tr("Verilog File");
+    case SILICON::project::DocumentType::RawBinary: return tr("Binary File");
   }
   return {};
 }
@@ -161,7 +159,7 @@ std::string LogiFlowWindow::emptyGraphicalDocumentJson(
   scene["visual"]["components"] = nlohmann::ordered_json::array();
   scene["visual"]["wires"]      = nlohmann::ordered_json::array();
 
-  if (type == SILICON::project::DocumentType::Subcircuit) {
+  if (type == SILICON::project::DocumentType::Circuit) {
     scene["graphicalComponent"] =
         nlohmann::ordered_json{{"shape",
                                 {{"type", "rectangle"},
@@ -181,8 +179,7 @@ std::string LogiFlowWindow::uniqueDocumentPath(
       != SILICON::project::DocumentCategory::Diagram)
     throw std::invalid_argument("Only graphical documents use generated slugs");
 
-  const bool subcircuit = type == SILICON::project::DocumentType::Subcircuit;
-  const auto fallback   = subcircuit ? std::string("subcircuit") : std::string("circuit");
+  const auto fallback = std::string("circuit");
 
   auto slug = requestedName.trimmed().toStdString();
   if (slug.empty())
@@ -202,17 +199,10 @@ std::string LogiFlowWindow::uniqueDocumentPath(
     slug = slug.substr(first, slug.find_last_not_of('_') - first + 1);
   }
 
-  if (subcircuit) {
-    if (std::isdigit(static_cast<unsigned char>(slug.front())))
-      slug.insert(slug.begin(), '_');
-    std::ranges::replace(slug, '-', '_');
-  }
-
   auto& store = projectContext.documents;
   auto candidate = SILICON::project::documentPathForSlug(type, slug);
   for (int suffix = 2; store.contains(candidate); ++suffix) {
-    const auto numberedSlug = subcircuit ? std::format("{}_{}", slug, suffix)
-                                           : std::format("{}-{}", slug, suffix);
+    const auto numberedSlug = std::format("{}-{}", slug, suffix);
     candidate = SILICON::project::documentPathForSlug(type, numberedSlug);
   }
 
@@ -231,13 +221,13 @@ void LogiFlowWindow::saveActiveDocumentPayload()
 
   const auto type = activeDocument->getType();
   switch (type) {
-    case SILICON::project::DocumentType::Code:
+    case SILICON::project::DocumentType::Verilog:
       projectContext.upsertDocument(
           {activeDocumentPath, codeEditor->toPlainText().toStdString()});
       codeEditor->document()->setModified(false);
       return;
 
-    case SILICON::project::DocumentType::Binary: {
+    case SILICON::project::DocumentType::RawBinary: {
       const auto& data = binaryEditor->data();
       projectContext.upsertDocument(
           {activeDocumentPath,
@@ -247,13 +237,12 @@ void LogiFlowWindow::saveActiveDocumentPayload()
     }
 
     case SILICON::project::DocumentType::Circuit:
-    case SILICON::project::DocumentType::Subcircuit:
       break;
   }
 
   auto serializedScene = diagramScene->serialize();
 
-  if (type == SILICON::project::DocumentType::Subcircuit) {
+  if (type == SILICON::project::DocumentType::Circuit) {
     if (const auto* existing = store.find(activeDocumentPath)) {
       try {
         auto newJson = nlohmann::json::parse(serializedScene);
@@ -278,12 +267,8 @@ void LogiFlowWindow::loadDocumentPayload(const SILICON::project::Document& docum
   const auto& payload = document.getContents();
 
   switch (type) {
-    case SILICON::project::DocumentType::Code: {
-      const auto codeType = SILICON::project::codeFileTypeForPath(document.getPath());
-      if (!codeType)
-        throw std::runtime_error("Code file type is invalid");
-
-      codeEditor->setFileType(*codeType);
+    case SILICON::project::DocumentType::Verilog: {
+      codeEditor->setFileType(type);
       codeEditor->setPlainText(QString::fromStdString(payload));
       codeEditor->document()->setModified(false);
       editorStack->setCurrentWidget(codeEditor);
@@ -291,18 +276,16 @@ void LogiFlowWindow::loadDocumentPayload(const SILICON::project::Document& docum
       break;
     }
 
-    case SILICON::project::DocumentType::Binary:
+    case SILICON::project::DocumentType::RawBinary:
       binaryEditor->setData(
           QByteArray(payload.data(), static_cast<qsizetype>(payload.size())));
       editorStack->setCurrentWidget(binaryEditor);
       binaryEditor->setFocus();
       break;
 
-    case SILICON::project::DocumentType::Circuit:
-    case SILICON::project::DocumentType::Subcircuit: {
+    case SILICON::project::DocumentType::Circuit: {
       diagramScene->clear(false, false);
-      diagramScene->setSubcircuitDocumentMode(
-          type == SILICON::project::DocumentType::Subcircuit);
+      diagramScene->setSubcircuitDocumentMode(true);
       auto& guiFactory   = GUIComponentFactory::instance();
       auto& coreRegistry = ComponentRegistry::instance();
       diagramScene->deserialize(payload, guiFactory, coreRegistry);
@@ -370,7 +353,8 @@ bool LogiFlowWindow::switchToDocument(const std::string& path,
   if (selectInTree)
     selectProjectTreeDocument(path);
 
-  const bool code = type == SILICON::project::DocumentType::Code;
+  const bool code =
+      SILICON::project::categoryOf(type) == SILICON::project::DocumentCategory::Code;
   setActionsEnabled({cutAct, copyAct, pasteAct, deleteAct}, code);
   rotateAct->setEnabled(false);
   updatePropertyDock();

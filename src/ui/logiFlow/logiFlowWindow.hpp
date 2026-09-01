@@ -200,7 +200,7 @@ private slots:
   /** @brief Opens the component catalog overlay above the diagram view. */
   void showComponentCatalog();
   void editActiveSubcircuitShape();
-  /** @brief Converts the active subcircuit/code document into the other form. */
+  /** @brief Converts the active circuit/code document into another registered form. */
   void convertActiveDocument();
 
   /** @brief Cancels any active scene interaction and returns to normal editing. */
@@ -230,7 +230,6 @@ private slots:
   /** @brief Prompts for and inserts a new circuit into the current project. */
   void createCircuit();
 
-  void createSubcircuit();
   void createCodeFile();
   void createBinaryFile();
 
@@ -258,8 +257,7 @@ private:
   void updateSubcircuitShapeAction();
   /** @brief Updates the contextual conversion action for the active document. */
   void               updateCodeAction();
-  void               convertActiveSubcircuitToVerilog();
-  void               convertActiveVerilogToSubcircuit();
+  void convertActiveDocumentTo(SILICON::project::DocumentType target);
   void commitConvertedDocuments(std::vector<SILICON::project::Document> documents,
                                 const std::string& sourcePath,
                                 const std::string& activatePath,
@@ -560,4 +558,3 @@ private:
 
 }  // namespace ui
 }  // namespace SILICON
-

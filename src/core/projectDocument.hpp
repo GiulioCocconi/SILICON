@@ -15,6 +15,7 @@
    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
  */
+
 #pragma once
 
 #include <array>
@@ -22,18 +23,18 @@
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
 
 #include <core/callbackRegistry.hpp>
-#include <core/codeFile.hpp>
 
 namespace SILICON::project {
 
 class ProjectContext;
 
-enum class DocumentType { Circuit, Subcircuit, Code, Binary };
+enum class DocumentType { Circuit, Verilog, RawBinary };
 
 enum class DocumentCategory { Diagram, Code, Binary };
 
@@ -44,20 +45,16 @@ struct DocumentTypeInfo {
   std::string_view suffix;
 };
 
-inline constexpr std::array<DocumentTypeInfo, 4> DOCUMENT_TYPE_INFO{{
+inline constexpr std::array<DocumentTypeInfo, 3> DOCUMENT_TYPE_INFO{{
     {.type = DocumentType::Circuit,
      .category = DocumentCategory::Diagram,
      .root = "circuits/",
      .suffix = ".json"},
-    {.type = DocumentType::Subcircuit,
-     .category = DocumentCategory::Diagram,
-     .root = "subcircuits/",
-     .suffix = ".json"},
-    {.type = DocumentType::Code,
+    {.type = DocumentType::Verilog,
      .category = DocumentCategory::Code,
      .root = "code/",
-     .suffix = {}},
-    {.type = DocumentType::Binary,
+     .suffix = ".v"},
+    {.type = DocumentType::RawBinary,
      .category = DocumentCategory::Binary,
      .root = "bin/",
      .suffix = {}},
@@ -65,7 +62,11 @@ inline constexpr std::array<DocumentTypeInfo, 4> DOCUMENT_TYPE_INFO{{
 
 [[nodiscard]] constexpr const DocumentTypeInfo& documentTypeInfo(const DocumentType type)
 {
-  return DOCUMENT_TYPE_INFO[static_cast<std::size_t>(type)];
+  for (const auto& info : DOCUMENT_TYPE_INFO) {
+    if (info.type == type)
+      return info;
+  }
+  throw std::invalid_argument("Unknown document type");
 }
 
 [[nodiscard]] constexpr DocumentCategory categoryOf(const DocumentType type)

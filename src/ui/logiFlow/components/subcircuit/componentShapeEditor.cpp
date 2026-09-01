@@ -467,7 +467,7 @@ void editGraphicalSubcircuitShape(const std::string&                slug,
     return;
 
   const auto path = SILICON::project::documentPathForSlug(
-      SILICON::project::DocumentType::Subcircuit, slug);
+      SILICON::project::DocumentType::Circuit, slug);
   const auto* document = project.documents.find(path);
   if (!document)
     return;

@@ -327,7 +327,7 @@ protected:
 SILICON::project::Document subcircuitDocument(std::string slug, std::string sceneJson)
 {
   return {SILICON::project::documentPathForSlug(
-              SILICON::project::DocumentType::Subcircuit, slug),
+              SILICON::project::DocumentType::Circuit, slug),
           std::move(sceneJson)};
 }
 
@@ -1055,16 +1055,16 @@ TEST_F(SubcircuitTest, DocumentStoreNotifiesSpecificAndGlobalChanges)
       });
 
   registry.upsertDocument(subcircuitDocument("adder", andSubcircuitDocument()));
-  registry.removeDocument("subcircuits/adder.json");
+  registry.removeDocument("circuits/adder.json");
   registry.setDocuments({});
   registry.removeListener(listenerId);
   registry.clear();
 
   ASSERT_EQ(notifications.size(), 3);
   EXPECT_EQ(notifications[0].kind, SILICON::project::DocumentChangeKind::Added);
-  EXPECT_EQ(notifications[0].path, "subcircuits/adder.json");
+  EXPECT_EQ(notifications[0].path, "circuits/adder.json");
   EXPECT_EQ(notifications[1].kind, SILICON::project::DocumentChangeKind::Removed);
-  EXPECT_EQ(notifications[1].path, "subcircuits/adder.json");
+  EXPECT_EQ(notifications[1].path, "circuits/adder.json");
   EXPECT_EQ(notifications[2].kind, SILICON::project::DocumentChangeKind::Reset);
   EXPECT_FALSE(notifications[2].path);
 }

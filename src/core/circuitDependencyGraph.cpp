@@ -33,12 +33,12 @@ namespace {
 
   [[nodiscard]] bool isCircuitDocument(const DocumentType type)
   {
-    return type == DocumentType::Circuit || type == DocumentType::Subcircuit;
+    return categoryOf(type) == DocumentCategory::Diagram;
   }
 
   [[nodiscard]] std::string slugForDocumentPath(const std::string_view documentPath)
   {
-    if (documentTypeForPath(documentPath) == DocumentType::Subcircuit) {
+    if (documentTypeForPath(documentPath) == DocumentType::Circuit) {
       if (const auto slug = documentSlugForPath(documentPath))
         return *slug;
     }
@@ -117,7 +117,7 @@ namespace {
             std::format("{} contains a Subcircuit component with invalid slug '{}'",
                         documentPath, slug));
 
-      auto path = documentPathForSlug(DocumentType::Subcircuit, slug);
+      auto path = documentPathForSlug(DocumentType::Circuit, slug);
       if (seen.insert(path).second)
         dependencies.push_back(std::move(path));
     }

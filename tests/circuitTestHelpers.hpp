@@ -27,6 +27,7 @@
 #include <boost/graph/graph_traits.hpp>
 
 #include <core/circuit.hpp>
+#include <core/component.hpp>
 
 using namespace SILICON::core;
 
