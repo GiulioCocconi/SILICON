@@ -135,11 +135,11 @@ void Component::setProperty(std::string_view key, const PropertyValue& value)
   // Call callback if it's registered. Update the value accordingly
   auto cbIt = propertyCallbacks.find(key);
 
-  const PropertyValue finalValue =
+  PropertyValue finalValue =
       (cbIt == propertyCallbacks.end()) ? value : cbIt->second(value);
 
   validatePropertyValue(key, it->second, finalValue);
-  it->second = finalValue;
+  it->second = std::move(finalValue);
 }
 
 std::optional<PropertyValue> Component::getProperty(std::string_view key) const
@@ -169,9 +169,9 @@ void Component::setPropertyCallback(std::string_view key, PropertyCallback callb
   }
 
   propertyCallbacks.insert_or_assign(std::string(key), std::move(callback));
-  const PropertyValue finalValue = propertyCallbacks.find(key)->second(property->second);
+  PropertyValue finalValue = propertyCallbacks.find(key)->second(property->second);
   validatePropertyValue(key, property->second, finalValue);
-  property->second = finalValue;
+  property->second = std::move(finalValue);
 }
 
 void Component::setInput(const unsigned int index, const Bus& bus, const bool checkSize)
