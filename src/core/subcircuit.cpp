@@ -49,10 +49,16 @@ SubcircuitComponent::SubcircuitComponent()
   });
 
   registryListenerId = SILICON::project::DocumentStore::active().addListener(
-      [this](std::string_view path) {
-        const auto configuredPath = SILICON::project::subcircuitPathForSlug(
-            getPropertyValue<std::string>("slug").value_or(std::string()));
-        if (path.empty() || path == configuredPath)
+      [this](const SILICON::project::DocumentChange& change) {
+        const auto slug =
+            getPropertyValue<std::string>("slug").value_or(std::string());
+        const bool affectsConfiguredDocument =
+            SILICON::project::isValidDocumentSlug(slug) && change.path
+            && *change.path
+                   == SILICON::project::documentPathForSlug(
+                       SILICON::project::DocumentType::Circuit, slug);
+        if (change.kind == SILICON::project::DocumentChangeKind::Reset
+            || affectsConfiguredDocument)
           reloadFromRegistry();
       });
 }
@@ -61,6 +67,21 @@ SubcircuitComponent::~SubcircuitComponent()
 {
   if (registryListenerId != 0)
     SILICON::project::DocumentStore::active().removeListener(registryListenerId);
+}
+
+std::shared_ptr<SubcircuitComponent>
+SubcircuitComponent::imported(std::string slug, std::vector<std::string> inputNames,
+                              std::vector<Bus> inputs,
+                              std::vector<std::string> outputNames,
+                              std::vector<Bus> outputs)
+{
+  auto component = std::make_shared<SubcircuitComponent>();
+  component->properties["slug"] = std::move(slug);
+  component->transientInputNames  = std::move(inputNames);
+  component->transientOutputNames = std::move(outputNames);
+  component->setInputs(inputs);
+  component->setOutputs(outputs);
+  return component;
 }
 
 void SubcircuitComponent::clearResolvedCircuit()

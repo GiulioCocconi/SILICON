@@ -18,6 +18,7 @@
 
 #pragma once
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -26,6 +27,10 @@
 #include <nlohmann/json.hpp>
 
 #include <core/serialization/component_registry.hpp>
+
+namespace SILICON::core {
+class Circuit;
+}
 
 
 namespace SILICON {
@@ -81,6 +86,10 @@ public:
    */
   void deserialize(const std::string& jsonStr, GUIComponentFactory& guiFactory,
                    const ComponentRegistry& coreRegistry);
+
+  /** Builds an autoplaced graphical scene around an already-created core circuit. */
+  void loadCircuit(std::shared_ptr<Circuit> circuit, GUIComponentFactory& guiFactory,
+                   bool resolveSubcircuitMetadata = true);
 
   /**
    * @brief Inserts a serialized selection payload into the current scene.

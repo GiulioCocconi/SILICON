@@ -19,7 +19,6 @@
 #include "component.hpp"
 
 #include <algorithm>
-#include <format>
 #include <ranges>
 #include <stdexcept>
 
@@ -36,15 +35,6 @@ ComponentMetadata Component::metadata() const
 {
   const std::string type = std::string(typeName());
   return {type, type, ComponentCategory::Utils};
-}
-
-void Component::serializeYosys(SILICON::yosys::SerializationContext&) const
-{
-  // Export is opt-in: a component must override this method with an exact lowering.
-  // Failing here prevents an unsupported component from silently disappearing from
-  // the generated netlist and changing the circuit's behavior.
-  throw std::runtime_error(std::format(
-      "Component type '{}' does not support Yosys serialization", typeName()));
 }
 
 uint64_t Component::addIOListener(IOObserver cb)
@@ -145,11 +135,11 @@ void Component::setProperty(std::string_view key, const PropertyValue& value)
   // Call callback if it's registered. Update the value accordingly
   auto cbIt = propertyCallbacks.find(key);
 
-  const PropertyValue finalValue =
+  PropertyValue finalValue =
       (cbIt == propertyCallbacks.end()) ? value : cbIt->second(value);
 
   validatePropertyValue(key, it->second, finalValue);
-  it->second = finalValue;
+  it->second = std::move(finalValue);
 }
 
 std::optional<PropertyValue> Component::getProperty(std::string_view key) const
@@ -179,9 +169,9 @@ void Component::setPropertyCallback(std::string_view key, PropertyCallback callb
   }
 
   propertyCallbacks.insert_or_assign(std::string(key), std::move(callback));
-  const PropertyValue finalValue = propertyCallbacks.find(key)->second(property->second);
+  PropertyValue finalValue = propertyCallbacks.find(key)->second(property->second);
   validatePropertyValue(key, property->second, finalValue);
-  property->second = finalValue;
+  property->second = std::move(finalValue);
 }
 
 void Component::setInput(const unsigned int index, const Bus& bus, const bool checkSize)

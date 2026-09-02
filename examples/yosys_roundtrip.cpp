@@ -28,7 +28,9 @@
 #include <core/circuit.hpp>
 #include <core/io.hpp>
 #include <core/register.hpp>
-#include <core/serialization/yosys.hpp>
+#include <core/serialization/verilog.hpp>
+#include <core/serialization/yosys/netlist.hpp>
+#include <core/serialization/yosys/yosys_tool.hpp>
 #include <core/wire.hpp>
 #include <extraComponents/arithmetic.hpp>
 
@@ -114,7 +116,7 @@ int main()
     };
 
     const Circuit     counter = makeCounterCircuit();
-    const std::string verilog = SILICON::yosys::exportVerilog(counter, options);
+    const std::string verilog = SILICON::verilog::write(counter, options);
 
     const auto verilogPath =
         std::filesystem::current_path() / "yosys_roundtrip_counter.v";
@@ -123,8 +125,9 @@ int main()
     writeFile(verilogPath, verilog);
 
     const std::string importedSource = readFile(verilogPath);
-    const Circuit     restored =
-        SILICON::yosys::importVerilog(importedSource, TopModule, options);
+    const auto        importedJson   = SILICON::verilog::read(importedSource, options);
+    const auto        restored       = SILICON::yosys::deserialize(
+        SILICON::yosys::elaborateHierarchy(importedJson, options), TopModule);
     writeFile(circuitJsonPath, restored.serialize());
 
     std::cout << "Exported SILICON counter to " << verilogPath << '\n';

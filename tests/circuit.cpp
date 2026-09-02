@@ -78,6 +78,17 @@ TEST(CircuitTest, SingleGateInputsOutputs)
   EXPECT_EQ(outputs[0], Bus({o}));
 }
 
+TEST(CircuitTest, ResolvesGraphBackedComponentByVertexId)
+{
+  auto component = std::make_shared<AndGate>();
+  Circuit circuit(component, false);
+
+  const auto vertex = circuit.getVertexId(component.get());
+  ASSERT_TRUE(vertex);
+  EXPECT_EQ(circuit.getComponentByVertexId(*vertex), component);
+  EXPECT_EQ(circuit.getComponentByVertexId(*vertex + 1), nullptr);
+}
+
 TEST(CircuitTest, BoundaryComponentsDefineNamedInterface)
 {
   auto a = std::make_shared<Wire>();

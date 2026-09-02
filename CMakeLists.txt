@@ -62,6 +62,8 @@ include(cmake/resources.cmake)
 
 set(COMMON_SOURCE_FILES
         ${src_dir}/utils/num_formatting.cpp
+        ${src_dir}/ui/logiFlow/code/indentationUtils.cpp
+        ${src_dir}/ui/logiFlow/code/syntax/verilog.cpp
         ${src_dir}/core/wire.cpp
         ${src_dir}/core/io.cpp
         ${src_dir}/core/gates.cpp
@@ -77,10 +79,11 @@ set(COMMON_SOURCE_FILES
         ${src_dir}/core/simulator.cpp
         ${src_dir}/core/serialization/component_registry.cpp
         ${src_dir}/core/serialization/component_registration.cpp
-        ${src_dir}/core/serialization/yosys.cpp
-        ${src_dir}/core/serialization/yosys_deserialization.cpp
-        ${src_dir}/core/serialization/yosys_components.cpp
-        ${src_dir}/core/serialization/yosys_tool.cpp
+        ${src_dir}/core/serialization/yosys/netlist.cpp
+        ${src_dir}/core/serialization/yosys/deserialization.cpp
+        ${src_dir}/core/serialization/yosys/components.cpp
+        ${src_dir}/core/serialization/yosys/yosys_tool.cpp
+        ${src_dir}/core/serialization/verilog.cpp
         ${src_dir}/core/projectDependencyGraph.cpp
         ${src_dir}/core/fstTraceWriter.cpp
         ${src_dir}/core/siliconWaveform.cpp
@@ -132,7 +135,9 @@ set(UI_SOURCE_FILES
         ${src_dir}/ui/logiFlow/components/graphicalMultiplexer.cpp
         ${src_dir}/ui/logiFlow/components/graphicalUtils.cpp
         ${src_dir}/ui/logiFlow/componentCatalogOverlay.cpp
-        ${src_dir}/ui/logiFlow/hdlCodeEditor.cpp
+        ${src_dir}/ui/logiFlow/code/codeEditor.cpp
+        ${src_dir}/ui/logiFlow/code/codeSyntaxHighlighter.cpp
+        ${src_dir}/ui/common/binaryEditor.cpp
         ${src_dir}/ui/logiFlow/metadataDescriptionEdit.cpp
         ${src_dir}/ui/logiFlow/projectTree.cpp
         ${src_dir}/ui/logiFlow/logiFlowWindowActions.cpp
@@ -141,7 +146,8 @@ set(UI_SOURCE_FILES
         ${src_dir}/ui/logiFlow/logiFlowWindowProperties.cpp
         ${src_dir}/ui/logiFlow/logiFlowWindow.cpp
         ${src_dir}/ui/serialization/gui_component_factory.cpp
-        ${src_dir}/ui/serialization/gui_component_registration.cpp)
+        ${src_dir}/ui/serialization/gui_component_registration.cpp
+        ${src_dir}/ui/serialization/document_conversion.cpp)
 
 set(CMAKE_COLOR_DIAGNOSTICS ON)
 
@@ -189,6 +195,16 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU"
     AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 16
     AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 16.2)
     add_compile_options(-Wno-error=array-bounds)
+endif ()
+
+# GCC can report false -Wmaybe-uninitialized diagnostics from libstdc++'s
+# std::regex implementation when AddressSanitizer is enabled (GCC PR 105616).
+# Keep -Werror enabled for the rest of silicon_core and relax only this warning
+# for the regex-heavy translation unit.
+if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND SILICON_ENABLE_SANITIZERS)
+    set_source_files_properties(
+            ${src_dir}/ui/logiFlow/code/syntax/verilog.cpp
+            PROPERTIES COMPILE_OPTIONS -Wno-error=maybe-uninitialized)
 endif ()
 
 if (UNIX AND NOT APPLE AND NOT EMSCRIPTEN AND SILICON_ENABLE_SANITIZERS)

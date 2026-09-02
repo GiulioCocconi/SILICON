@@ -1,8 +1,20 @@
 /*
- Copyright (c) 2026. Giulio Cocconi
- ...
- */
+  Copyright (c) 2026. Giulio Cocconi
 
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+ */
 #pragma once
 
 #include <filesystem>
@@ -43,10 +55,11 @@ inline constexpr int FORMAT_VERSION = 1;
  * circuits/main.json  serialized LogiFlow circuit JSON
  * @endcode
  *
- * `project.json.mainCircuit` must point to one of the JSON entries under
- * `circuits/`.
+ * `project.json.mainCircuit` must point to one of the document entries whose
+ * type is @ref DocumentType::Circuit.
  */
-inline constexpr std::string_view DEFAULT_MAIN_CIRCUIT_PATH = "circuits/main.json";
+inline const std::string DEFAULT_MAIN_CIRCUIT_PATH =
+    documentPathForSlug(DocumentType::Circuit, "main");
 
 /**
  * @brief Metadata stored in `metadata.json`.
@@ -56,9 +69,9 @@ struct ProjectMetadata {
   int formatVersion = FORMAT_VERSION;
   /// Silicon application version that wrote the file.
   std::string siliconVersion;
-  /// UTC timestamp for the first save, formatted as `YYYY-MM-DDTHH:MM:SSZ`.
+  /// UTC timestamp for the first save, formatted as `YYYY-MM-DDTHH\:MM\:SSZ`.
   std::string creationDate;
-  /// UTC timestamp for the latest save, formatted as `YYYY-MM-DDTHH:MM:SSZ`.
+  /// UTC timestamp for the latest save, formatted as `YYYY-MM-DDTHH\:MM\:SSZ`.
   std::string lastModify;
 };
 
@@ -74,52 +87,34 @@ struct ProjectInfo {
   std::string description;
 };
 
-struct ProjectAsset {
-  /// Normalized path of the non-document ZIP entry, relative to the archive root.
-  std::string path;
-  /// Exact bytes stored in the project archive (currently represented as a string).
-  std::string contents;
-
-  bool operator==(const ProjectAsset&) const = default;
-};
-
 /**
  * @brief In-memory representation of a `.sil` project archive.
  *
- * The circuit payload is kept as serialized JSON so UI and core circuit
- * serializers can evolve independently from the archive container code.
+ * Document contents remain serialized so their editors and serializers can evolve
+ * independently from the archive container code.
  */
 struct ProjectFile {
-  ProjectMetadata metadata;
-  ProjectInfo     project;
+  ProjectMetadata       metadata;
+  ProjectInfo           project;
   /// Authoritative ordered collection of project documents.
   std::vector<Document> documents;
-  /**
-   * Non-document files stored at project-relative archive paths.
-   *
-   * HDL-backed subcircuits reference one of these assets from their scene-level
-   * HdlDescriptor. Archive validation requires every such reference to exist and
-   * prevents two subcircuits from owning the same HDL source asset.
-   */
-  std::vector<ProjectAsset> assets;
-  /// Compatibility mirror of the document referenced by project.mainCircuit.
-  /// This is derived data and is never an independent document store.
-  std::string mainCircuitJson;
 };
 
 /**
  * @brief Reads and validates a Silicon `.sil` project archive.
  *
+ * Only the reserved archive entries and recognized project documents are accepted.
+ *
  * @throws std::runtime_error if the archive cannot be opened, does not contain
  * the expected ZIP structure, has invalid JSON, references an unsupported
- * format version, or violates the circuit archive layout.
+ * format version, contains an unknown entry, or violates the document layout.
  */
 [[nodiscard]] ProjectFile readProjectFile(const std::filesystem::path& path);
 
 /**
  * @brief Writes a Silicon `.sil` project archive.
  *
- * The writer emits all circuit payloads listed in ProjectFile::documents.
+ * The writer emits every document listed by @p projectFile.
  *
  * @throws std::runtime_error if the project references an invalid/missing circuit
  * path or the archive cannot be created/finalized.
@@ -127,7 +122,7 @@ struct ProjectFile {
 void writeProjectFile(const std::filesystem::path& path, const ProjectFile& projectFile);
 
 /**
- * @brief Returns the current UTC timestamp formatted as `YYYY-MM-DDTHH:MM:SSZ`.
+ * @brief Returns the current UTC timestamp formatted as `YYYY-MM-DDTHH\:MM\:SSZ`.
  */
 [[nodiscard]] std::string currentUtcTimestamp();
 

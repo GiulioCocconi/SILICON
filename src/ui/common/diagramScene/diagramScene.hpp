@@ -222,7 +222,7 @@ public:
    */
   [[nodiscard]] bool areIoInteractionsEnabled() const { return ioInteractionsEnabled; }
 
-  /** @brief Marks whether the scene is currently editing a subcircuit document. */
+  /** @brief Enables reusable-circuit boundary I/O editing for the scene. */
   void setSubcircuitDocumentMode(bool enabled) { subcircuitDocumentMode = enabled; }
 
   /** @brief Returns true when subcircuit-only graphical tools may be placed. */
@@ -303,6 +303,10 @@ public:
    */
   void deserialize(const std::string& jsonStr, GUIComponentFactory& guiFactory,
                    const ComponentRegistry& coreRegistry);
+
+  /** Replaces the scene with an autoplaced view of an existing core circuit. */
+  void loadCircuit(std::shared_ptr<Circuit> circuit, GUIComponentFactory& guiFactory,
+                   bool resolveSubcircuitMetadata = true);
 
   /**
    * @brief Inserts a clipboard selection payload into the current scene.
@@ -483,7 +487,7 @@ private:
   /** @brief Whether simulation-mode IO clicks may mutate input state. */
   bool ioInteractionsEnabled = true;
 
-  /** @brief Whether this scene currently represents a subcircuit document. */
+  /** @brief Whether reusable-circuit boundary I/O editing is enabled. */
   bool subcircuitDocumentMode = false;
 
   /** @brief Component being placed (shadow) */

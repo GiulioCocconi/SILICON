@@ -5,6 +5,7 @@
 
 #include <core/projectDocument.hpp>
 
+#include <algorithm>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -16,82 +17,154 @@ using namespace SILICON::core;
 using namespace SILICON::project;
 
 using SILICON::project::Document;
-using SILICON::project::DocumentKind;
 using SILICON::project::DocumentStore;
+using SILICON::project::DocumentType;
 
 TEST(ProjectDocumentTest, ClassifiesCanonicalFlatPaths)
 {
-  EXPECT_EQ(SILICON::project::classifyDocumentPath("circuits/main.json"),
-            DocumentKind::Circuit);
-  EXPECT_EQ(SILICON::project::classifyDocumentPath("subcircuits/adder.json"),
-            DocumentKind::Subcircuit);
-  EXPECT_FALSE(SILICON::project::classifyDocumentPath(""));
-  EXPECT_FALSE(SILICON::project::classifyDocumentPath("circuits/nested/main.json"));
-  EXPECT_FALSE(SILICON::project::classifyDocumentPath("circuits/main.txt"));
-  EXPECT_EQ(SILICON::project::subcircuitSlugForPath("subcircuits/adder.json"), "adder");
-  EXPECT_FALSE(SILICON::project::subcircuitSlugForPath("circuits/adder.json"));
+  EXPECT_EQ(SILICON::project::documentTypeForPath("circuits/main.json"),
+            DocumentType::Circuit);
+  EXPECT_EQ(SILICON::project::documentTypeForPath("code/adder.v"),
+            DocumentType::Verilog);
+  EXPECT_EQ(SILICON::project::documentTypeForPath("bin/firmware"),
+            DocumentType::RawBinary);
+  EXPECT_FALSE(SILICON::project::documentTypeForPath(""));
+  EXPECT_FALSE(SILICON::project::documentTypeForPath("circuits/nested/main.json"));
+  EXPECT_FALSE(SILICON::project::documentTypeForPath("circuits/main.txt"));
+  EXPECT_EQ(SILICON::project::documentTypeForPath("circuits/foo..bar.json"),
+            DocumentType::Circuit);
+  EXPECT_FALSE(SILICON::project::documentTypeForPath("circuits/../main.json"));
+  EXPECT_FALSE(SILICON::project::documentTypeForPath("subcircuits/adder.json"));
+  EXPECT_EQ(SILICON::project::documentSlugForPath("circuits/adder.json"), "adder");
+  EXPECT_EQ(SILICON::project::documentSlugForPath("bin/firmware"), "firmware");
+  EXPECT_FALSE(SILICON::project::documentSlugForPath("bin/nested/firmware"));
+  EXPECT_EQ(SILICON::project::documentSlugForPath("code/adder.v"), "adder");
 }
 
-TEST(ProjectDocumentTest, SceneReplacementClearsOrReplacesPreparedCoreJson)
+TEST(ProjectDocumentTest, ClassifiesConcreteTypesByCategory)
 {
-  Document document("subcircuits/adder.json", "old", "prepared");
-  document.setSceneJson("new");
-  EXPECT_EQ(document.getSceneJson(), "new");
+  static_assert(categoryOf(DocumentType::Circuit) == DocumentCategory::Diagram);
+  static_assert(categoryOf(DocumentType::Verilog) == DocumentCategory::Code);
+  static_assert(categoryOf(DocumentType::RawBinary) == DocumentCategory::Binary);
+  static_assert(syntaxDefinition(DocumentType::Verilog).has_value());
+  static_assert(!syntaxDefinition(DocumentType::Circuit));
+  static_assert(!syntaxDefinition(DocumentType::RawBinary));
+  static_assert(documentCategoryIconName(DocumentCategory::Diagram)
+                == "circuit-board");
+  static_assert(documentCategoryIconName(DocumentCategory::Code) == "code");
+  static_assert(documentCategoryIconName(DocumentCategory::Binary) == "file");
+}
+
+TEST(ProjectDocumentTest, ValidatesBinarySlugsAndRoundTripsExactNames)
+{
+  for (const std::string_view invalid : {"", ".", "..", "a/b", "a\\b", "line\nbreak"}) {
+    EXPECT_FALSE(isValidDocumentSlug(invalid));
+    EXPECT_THROW(static_cast<void>(
+                     documentPathForSlug(DocumentType::RawBinary, invalid)),
+                 std::invalid_argument);
+  }
+  for (const std::string_view valid : {"firmware", "rom.bin", "name with spaces"}) {
+    const auto path = documentPathForSlug(DocumentType::RawBinary, valid);
+    ASSERT_TRUE(documentSlugForPath(path));
+    EXPECT_EQ(*documentSlugForPath(path), valid);
+  }
+}
+
+TEST(ProjectDocumentTest, ValidatesDocumentNamesAndRoundTripsEveryType)
+{
+  for (const std::string_view invalid :
+       {"", ".", "..", "a/b", "a\\b", "../foo", "foo/bar", "line\nbreak"}) {
+    EXPECT_FALSE(isValidDocumentSlug(invalid));
+    EXPECT_THROW(static_cast<void>(
+                     documentPathForSlug(DocumentType::Circuit, invalid)),
+                 std::invalid_argument);
+  }
+
+  for (const std::string_view valid : {"adder", "foo..bar", "name with spaces"}) {
+    ASSERT_TRUE(isValidDocumentSlug(valid));
+    const auto path = documentPathForSlug(DocumentType::Circuit, valid);
+    ASSERT_TRUE(documentSlugForPath(path));
+    EXPECT_EQ(*documentSlugForPath(path), valid);
+  }
+
+  const auto verilogPath = documentPathForSlug(DocumentType::Verilog, "adder");
+  EXPECT_EQ(verilogPath, "code/adder.v");
+  EXPECT_EQ(documentSlugForPath(verilogPath), "adder");
+}
+
+TEST(ProjectDocumentTest, RejectsCircuitOnlyStateForCodeDocuments)
+{
+  EXPECT_THROW(Document("code/adder.v", "module adder; endmodule", "{}"),
+               std::invalid_argument);
+
+  Document code("code/adder.v", "old");
+  EXPECT_THROW(code.setContents("new", "{}"), std::invalid_argument);
+  EXPECT_EQ(code.getContents(), "old");
+  EXPECT_FALSE(code.getCoreCircuitJson());
+}
+
+TEST(ProjectDocumentTest, ContentReplacementClearsOrReplacesPreparedCoreJson)
+{
+  Document document("circuits/adder.json", "old", "prepared");
+  document.setContents("new");
+  EXPECT_EQ(document.getContents(), "new");
   EXPECT_FALSE(document.getCoreCircuitJson());
 
-  document.setSceneJson("newer", "new prepared");
+  document.setContents("newer", "new prepared");
   ASSERT_TRUE(document.getCoreCircuitJson());
   EXPECT_EQ(*document.getCoreCircuitJson(), "new prepared");
 }
 
-TEST(ProjectDocumentTest, ParsesOptionalVerilogHdlDescriptor)
+TEST(ProjectDocumentTest, DescribesRegisteredDocumentTypes)
 {
-  EXPECT_FALSE(SILICON::project::parseHdlDescriptor(R"({"circuit":{}})"));
-  EXPECT_EQ(SILICON::project::parseHdlDescriptor(
-                R"({"hdl":{"type":"verilog","path":"hdl/adder.v"}})"),
-            (SILICON::project::HdlDescriptor{.type = "verilog", .path = "hdl/adder.v"}));
-}
-
-TEST(ProjectDocumentTest, RejectsInvalidHdlDescriptorsAndAssetPaths)
-{
-  EXPECT_TRUE(SILICON::project::isValidProjectAssetPath("hdl/adder.v"));
-  EXPECT_FALSE(SILICON::project::isValidProjectAssetPath("../adder.v"));
-  EXPECT_FALSE(SILICON::project::isValidProjectAssetPath("/hdl/adder.v"));
-  EXPECT_FALSE(SILICON::project::isValidProjectAssetPath("circuits/adder.json"));
-  EXPECT_FALSE(SILICON::project::isValidProjectAssetPath(
-      std::string_view("hdl/a\0b.v", 9)));
-
-  EXPECT_THROW((void)SILICON::project::parseHdlDescriptor(
-                   R"({"hdl":{"type":"vhdl","path":"hdl/adder.vhd"}})"),
-               std::runtime_error);
-  EXPECT_THROW((void)SILICON::project::parseHdlDescriptor(
-                   R"({"hdl":{"type":"verilog","path":"../adder.v"}})"),
-               std::runtime_error);
-  EXPECT_THROW((void)SILICON::project::parseHdlDescriptor(
-                   R"({"hdl":{"type":"verilog","path":"hdl/adder.v","module":"adder"}})"),
-               std::runtime_error);
+  ASSERT_EQ(DOCUMENT_TYPE_INFO.size(), 3);
+  const auto& verilog = documentTypeInfo(DocumentType::Verilog);
+  EXPECT_EQ(verilog.displayName, "Verilog");
+  EXPECT_EQ(verilog.root, "code/");
+  EXPECT_EQ(verilog.suffix, ".v");
+  EXPECT_EQ(documentTypeForPath("code/adder.v"), DocumentType::Verilog);
+  EXPECT_FALSE(documentTypeForPath("code/adder.sv"));
+  EXPECT_FALSE(documentTypeForPath("code/nested/adder.v"));
+  EXPECT_FALSE(documentTypeForPath("code/../adder.v"));
 }
 
 TEST(ProjectDocumentStoreTest, PreservesOrderAcrossMixedKindsAndUpserts)
 {
   DocumentStore store;
   store.setDocuments({{"circuits/main.json", "main"},
-                      {"subcircuits/adder.json", "adder"},
+                      {"circuits/adder.json", "adder"},
+                      {"code/adder.v", "module adder; endmodule"},
+                      {"bin/firmware", std::string("\0\xff", 2)},
                       {"circuits/control.json", "control"}});
 
-  store.upsertDocument({"subcircuits/adder.json", "updated"});
-  ASSERT_EQ(store.getDocuments().size(), 3);
-  EXPECT_EQ(store.getDocuments()[1].getPath(), "subcircuits/adder.json");
-  EXPECT_EQ(store.getDocuments()[1].getSceneJson(), "updated");
+  store.upsertDocument({"circuits/adder.json", "updated"});
+  ASSERT_EQ(store.getDocuments().size(), 5);
+  EXPECT_EQ(store.getDocuments()[1].getPath(), "circuits/adder.json");
+  EXPECT_EQ(store.getDocuments()[1].getContents(), "updated");
 
-  const auto circuits = store.getDocuments(DocumentKind::Circuit);
-  ASSERT_EQ(circuits.size(), 2);
-  EXPECT_EQ(circuits[0].getPath(), "circuits/main.json");
-  EXPECT_EQ(circuits[1].getPath(), "circuits/control.json");
+  const auto& allDocuments = store.getDocuments();
+  const auto  circuitCount = std::ranges::count_if(
+      allDocuments,
+      [](const auto& d) { return d.getType() == DocumentType::Circuit; });
+  ASSERT_EQ(circuitCount, 3);
+  EXPECT_TRUE(store.contains(DocumentType::Circuit));
 
-  store.removeDocument("subcircuits/adder.json");
-  EXPECT_FALSE(store.contains("subcircuits/adder.json"));
-  EXPECT_EQ(store.indexOf("circuits/control.json"), 1);
+  const auto codeIt = std::ranges::find_if(
+      allDocuments,
+      [](const auto& d) { return d.getType() == DocumentType::Verilog; });
+  ASSERT_NE(codeIt, allDocuments.end());
+  EXPECT_EQ(codeIt->getContents(), "module adder; endmodule");
+  EXPECT_EQ(documentTypeForPath(codeIt->getPath()), DocumentType::Verilog);
+
+  const auto binaryIt = std::ranges::find_if(
+      allDocuments,
+      [](const auto& d) { return d.getType() == DocumentType::RawBinary; });
+  ASSERT_NE(binaryIt, allDocuments.end());
+  EXPECT_EQ(binaryIt->getContents(), std::string("\0\xff", 2));
+
+  store.removeDocument("circuits/adder.json");
+  EXPECT_FALSE(store.contains("circuits/adder.json"));
+  EXPECT_EQ(store.indexOf("circuits/control.json"), 3);
 }
 
 TEST(ProjectDocumentStoreTest, RejectsDuplicatePaths)
@@ -105,24 +178,35 @@ TEST(ProjectDocumentStoreTest, RejectsDuplicatePaths)
 TEST(ProjectDocumentStoreTest, NotificationsUseSnapshotAndCanonicalPaths)
 {
   DocumentStore            store;
-  std::vector<std::string> notifications;
+  std::vector<std::pair<DocumentChangeKind, std::optional<std::string>>> notifications;
   std::uint64_t            selfRemovingId = 0;
   std::uint64_t            addedId        = 0;
 
-  selfRemovingId = store.addListener([&](const std::string_view path) {
-    notifications.emplace_back(path);
+  selfRemovingId = store.addListener([&](const DocumentChange& change) {
+    notifications.emplace_back(change.kind, change.path);
     store.removeListener(selfRemovingId);
     if (addedId == 0) {
-      addedId = store.addListener([&](const std::string_view nextPath) {
-        notifications.emplace_back("late:" + std::string(nextPath));
+      addedId = store.addListener([&](const DocumentChange& nextChange) {
+        notifications.emplace_back(nextChange.kind, nextChange.path);
       });
     }
   });
 
   store.upsertDocument({"circuits/main.json", "{}"});
-  EXPECT_EQ(notifications, (std::vector<std::string>{"circuits/main.json"}));
+  EXPECT_EQ(notifications,
+            (decltype(notifications){
+                {DocumentChangeKind::Added, std::string("circuits/main.json")}}));
+
+  store.upsertDocument({"circuits/main.json", "updated"});
+  store.removeDocument("missing.json");
+  store.removeDocument("circuits/main.json");
 
   store.clear();
-  EXPECT_EQ(notifications, (std::vector<std::string>{"circuits/main.json", "late:"}));
+  EXPECT_EQ(notifications,
+            (decltype(notifications){
+                {DocumentChangeKind::Added, std::string("circuits/main.json")},
+                {DocumentChangeKind::Updated, std::string("circuits/main.json")},
+                {DocumentChangeKind::Removed, std::string("circuits/main.json")},
+                {DocumentChangeKind::Reset, std::nullopt}}));
   store.removeListener(addedId);
 }

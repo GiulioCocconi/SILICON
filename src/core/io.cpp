@@ -24,7 +24,6 @@
 #include <stdexcept>
 #include <utility>
 
-#include <core/serialization/yosys_helpers.hpp>
 #include <core/simulator.hpp>
 #include <core/wireUtils.hpp>
 #include <utils/num_formatting.hpp>
@@ -126,28 +125,6 @@ void ConstantComponent::simulate(SILICON::simulation::Simulator& sim)
                 0, weak_from_this());
 }
 
-void ConstantComponent::serializeYosys(
-    SILICON::yosys::SerializationContext& context) const
-{
-  if (outputs.empty())
-    throw std::runtime_error("Cannot export a malformed constant component");
-
-  const auto value = getPropertyValue<BusValue>("value").value_or(
-      BusValue(outputs[0].size(), State::UNKNOWN));
-  SILICON::yosys::Json bits = SILICON::yosys::Json::array();
-  for (const State state : value) {
-    switch (state) {
-      case State::LOW: bits.push_back("0"); break;
-      case State::HIGH: bits.push_back("1"); break;
-      case State::UNKNOWN: bits.push_back("x"); break;
-      case State::ERROR:
-        throw std::runtime_error("Cannot export an ERROR constant to Yosys");
-    }
-  }
-  SILICON::yosys::detail::emitUnary(context, "constant", "$pos", std::move(bits),
-                                    context.bits(outputs[0]));
-}
-
 BoundaryIoComponent::BoundaryIoComponent(std::vector<Bus> inputs,
                                          std::vector<Bus> outputs, std::string name)
   : Component(std::move(inputs), std::move(outputs))
@@ -155,21 +132,6 @@ BoundaryIoComponent::BoundaryIoComponent(std::vector<Bus> inputs,
   defineProperty("name", std::move(name));
   defineStringListProperty(std::string(PortOrientationProperty), "DOWN",
                            orientationOptions());
-}
-
-void BoundaryIoComponent::serializeYosys(
-    SILICON::yosys::SerializationContext& context) const
-{
-  const auto role = metadata().portRole;
-  if (role == PortRole::Input) {
-    context.addPort(getPropertyValue<std::string>("name").value_or("input"), "input",
-                    outputBuses().at(0));
-  } else if (role == PortRole::Output) {
-    context.addPort(getPropertyValue<std::string>("name").value_or("output"), "output",
-                    inputBuses().at(0));
-  } else {
-    throw std::runtime_error("Cannot export boundary I/O without a port role");
-  }
 }
 
 DummyInputComponent::DummyInputComponent(Bus bus, std::string name)

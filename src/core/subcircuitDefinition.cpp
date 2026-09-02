@@ -94,7 +94,7 @@ std::string extractCoreCircuitJson(std::string_view sceneJson)
   if (json.contains("circuit"))
     json = json["circuit"];
   if (!json.is_object())
-    throw std::runtime_error("Subcircuit document must contain a circuit object");
+    throw std::runtime_error("Circuit document must contain a circuit object");
   return json.dump();
 }
 
@@ -105,16 +105,17 @@ SubcircuitDefinition loadSubcircuitDefinition(const std::string_view   slug,
   ActiveKeyGuard activeSlug(activeResolutionSlugs, std::string(slug),
                             "Recursive subcircuit dependency detected: ");
 
-  const auto  path     = SILICON::project::subcircuitPathForSlug(slug);
+  const auto  path     = SILICON::project::documentPathForSlug(
+      SILICON::project::DocumentType::Circuit, slug);
   const auto* document = SILICON::project::DocumentStore::active().find(path);
   if (!document)
     throw std::runtime_error(std::format("Unknown subcircuit slug '{}'", slug));
 
   const auto coreJson =
-      document->getCoreCircuitJson().value_or(extractCoreCircuitJson(document->getSceneJson()));
+      document->getCoreCircuitJson().value_or(extractCoreCircuitJson(document->getContents()));
   auto       circuit = Circuit::deserialize(coreJson, registry);
   const auto portCircuit =
-      Circuit::deserialize(extractCoreCircuitJson(document->getSceneJson()), registry);
+      Circuit::deserialize(extractCoreCircuitJson(document->getContents()), registry);
   auto inputs  = resolvePorts(circuit, portCircuit.getInputPorts());
   auto outputs = resolvePorts(circuit, portCircuit.getOutputPorts());
 

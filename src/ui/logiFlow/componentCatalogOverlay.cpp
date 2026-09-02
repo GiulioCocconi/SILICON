@@ -108,12 +108,14 @@ std::vector<ComponentCatalogOverlay::CatalogRow> componentCatalogRows(
   }
 
   for (const auto& document :
-       SILICON::project::DocumentStore::active().getDocuments(
-           SILICON::project::DocumentKind::Subcircuit)) {
-    if (!subcircuitHasGraphicalMetadata(document.getSceneJson()))
+       SILICON::project::DocumentStore::active().getDocuments()) {
+    if (document.getType() != SILICON::project::DocumentType::Circuit)
+      continue;
+    if (!subcircuitHasGraphicalMetadata(document.getContents()))
       continue;
 
-    const auto slug = document.subcircuitSlug().value_or(std::string{});
+    const auto slug = SILICON::project::documentSlugForPath(document.getPath())
+                          .value_or(std::string{});
     PropertyMap initialProperties;
     initialProperties.emplace(std::string("slug"),
                               PropertyValue(slug));

@@ -16,8 +16,9 @@
 
  */
 
-#include "yosys.hpp"
+#include "yosys_tool.hpp"
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -32,11 +33,9 @@
 #include <stdexcept>
 #include <string>
 #include <system_error>
-#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
-#include <core/circuit.hpp>
 #include <logging/logger.hpp>
 
 #ifndef __EMSCRIPTEN__
@@ -56,11 +55,9 @@
 
 namespace SILICON::yosys {
 
-using namespace SILICON::core;
-
 namespace {
 
-const SILICON::logging::Logger yosysLog("yosys");
+  const SILICON::logging::Logger yosysLog("yosys");
 
 }  // namespace
 
@@ -76,18 +73,31 @@ ScriptResult runScript(const std::string_view script, const ToolOptions& options
       "when compiled for Emscripten. See the 'yosys' logs for details.");
 }
 
-Circuit importVerilog(const std::string_view source, const std::string_view topModule,
-                      const ToolOptions& options)
+std::string readVerilog(const std::string_view source, const ToolOptions& options)
 {
-  (void)source;
-  (void)topModule;
+  const std::array sources{InputFile{.path = "source.v", .contents = source}};
+  return readVerilog(sources, "source.v", options);
+}
+
+std::string readVerilog(const std::span<const InputFile> sources,
+                        const std::string_view entryPath, const ToolOptions& options)
+{
+  (void)sources;
+  (void)entryPath;
   (void)runScript({}, options);
   throw std::logic_error("Unreachable after unavailable Yosys execution");
 }
 
-std::string exportVerilog(const Circuit& circuit, const ToolOptions& options)
+std::string elaborateHierarchy(const std::string_view json, const ToolOptions& options)
 {
-  (void)circuit;
+  (void)json;
+  (void)runScript({}, options);
+  throw std::logic_error("Unreachable after unavailable Yosys execution");
+}
+
+std::string writeVerilog(std::string_view json, const ToolOptions& options)
+{
+  (void)json;
   (void)runScript({}, options);
   throw std::logic_error("Unreachable after unavailable Yosys execution");
 }
@@ -147,6 +157,24 @@ namespace {
     if (!output)
       throw std::runtime_error(
           std::format("Yosys {} failed: could not write '{}'", phase, path.string()));
+  }
+
+  [[nodiscard]] bool isSafeRelativeSourcePath(const std::string_view path)
+  {
+    if (path.empty() || path.front() == '/' || path.back() == '/' || path.contains('\\')
+        || path.contains("//"))
+      return false;
+
+    const std::filesystem::path filesystemPath(path);
+    if (filesystemPath.has_root_path())
+      return false;
+    for (const auto& component : filesystemPath)
+      if (component == "." || component == "..")
+        return false;
+
+    return std::ranges::none_of(path, [](const unsigned char character) {
+      return character < 0x20 || character == 0x7f;
+    });
   }
 
   [[nodiscard]] std::string readFile(const std::filesystem::path& path,
@@ -276,229 +304,6 @@ namespace {
     return std::nullopt;
   }
 
-  [[nodiscard]] bool isVerilogIdentifier(const std::string_view identifier)
-  {
-    if (identifier.empty())
-      return false;
-    const auto isLetter = [](const char character) {
-      return (character >= 'a' && character <= 'z')
-             || (character >= 'A' && character <= 'Z') || character == '_';
-    };
-    const auto isDigit = [](const char character) {
-      return character >= '0' && character <= '9';
-    };
-    if (!isLetter(identifier.front()))
-      return false;
-    for (const char character : identifier.substr(1))
-      if (!isLetter(character) && !isDigit(character) && character != '$')
-        return false;
-    return true;
-  }
-
-  [[nodiscard]] std::string_view trim(const std::string_view value)
-  {
-    const auto first = value.find_first_not_of(" \t\r");
-    if (first == std::string_view::npos)
-      return {};
-    const auto last = value.find_last_not_of(" \t\r");
-    return value.substr(first, last - first + 1);
-  }
-
-  struct PortDeclaration {
-    std::string name;
-    std::string ansi;
-  };
-
-  [[nodiscard]] std::optional<PortDeclaration>
-  parsePortDeclaration(const std::string_view line)
-  {
-    const auto value = trim(line);
-    for (const std::string_view direction : {"input", "output", "inout"}) {
-      const auto prefix = std::format("{} ", direction);
-      if (!value.starts_with(prefix) || !value.ends_with(';'))
-        continue;
-
-      const auto body =
-          trim(value.substr(prefix.size(), value.size() - prefix.size() - 1));
-      const auto separator = body.find_last_of(" \t");
-      const auto name =
-          separator == std::string_view::npos ? body : trim(body.substr(separator + 1));
-      if (!isVerilogIdentifier(name))
-        return std::nullopt;
-      return PortDeclaration{std::string(name), std::format("{} {}", direction, body)};
-    }
-    return std::nullopt;
-  }
-
-  [[nodiscard]] std::optional<std::string>
-  parseNetDeclarationName(const std::string_view line, const std::string_view kind)
-  {
-    const auto prefix = std::format("{} ", kind);
-    const auto value  = trim(line);
-    if (!value.starts_with(prefix) || !value.ends_with(';'))
-      return std::nullopt;
-
-    const auto body = trim(value.substr(prefix.size(), value.size() - prefix.size() - 1));
-    const auto separator = body.find_last_of(" \t");
-    const auto name =
-        separator == std::string_view::npos ? body : trim(body.substr(separator + 1));
-    if (!isVerilogIdentifier(name))
-      return std::nullopt;
-    return std::string(name);
-  }
-
-  [[nodiscard]] std::vector<std::string> splitLines(const std::string_view source)
-  {
-    std::vector<std::string> lines;
-    for (std::size_t begin = 0; begin < source.size();) {
-      const auto end = source.find('\n', begin);
-      if (end == std::string_view::npos) {
-        lines.emplace_back(source.substr(begin));
-        break;
-      }
-      lines.emplace_back(source.substr(begin, end - begin));
-      begin = end + 1;
-    }
-    return lines;
-  }
-
-  [[nodiscard]] std::string cleanProcessVerilog(const std::string_view source)
-  {
-    auto                            lines = splitLines(source);
-    std::unordered_set<std::string> backendGuards;
-    std::vector<bool>               removed(lines.size(), false);
-
-    for (std::size_t line = 0; line < lines.size(); ++line) {
-      const auto value = trim(lines[line]);
-      if (!value.starts_with("reg \\$auto$verilog_backend.cc:")
-          || value.find(":dump_module$") == std::string_view::npos)
-        continue;
-
-      const auto begin = value.find('\\');
-      const auto end   = value.find_first_of(" \t", begin);
-      if (begin != std::string_view::npos && end != std::string_view::npos) {
-        backendGuards.emplace(value.substr(begin, end - begin));
-        removed[line] = true;
-      }
-    }
-
-    for (std::size_t line = 0; line < lines.size(); ++line) {
-      for (const auto& guard : backendGuards) {
-        if (lines[line].find("if (" + guard + " ) begin end") != std::string::npos) {
-          removed[line] = true;
-          break;
-        }
-      }
-
-      const auto casePosition = lines[line].find("casez (");
-      if (casePosition != std::string::npos)
-        lines[line].replace(casePosition, std::string_view("casez").size(), "case");
-    }
-
-    std::string result;
-    for (std::size_t line = 0; line < lines.size(); ++line) {
-      if (removed[line])
-        continue;
-      result += lines[line];
-      result += '\n';
-    }
-    return result;
-  }
-
-  /**
-   * Convert the predictable non-ANSI declarations emitted by write_verilog into one
-   * ANSI module header. A module is left untouched unless every listed port has one
-   * unambiguous direction declaration, preventing a partial rewrite of unfamiliar
-   * Yosys output. Only matching port wires are removed; internal nets are preserved.
-   */
-  [[nodiscard]] std::string useAnsiPortDeclarations(const std::string_view source)
-  {
-    auto              lines = splitLines(source);
-    std::vector<bool> removed(lines.size(), false);
-    for (std::size_t moduleLine = 0; moduleLine < lines.size(); ++moduleLine) {
-      const auto header = trim(lines[moduleLine]);
-      if (!header.starts_with("module ") || !header.ends_with(");"))
-        continue;
-
-      const auto open = header.find('(');
-      if (open == std::string_view::npos)
-        continue;
-      const auto portList = header.substr(open + 1, header.size() - open - 3);
-
-      std::vector<std::string> ports;
-      for (std::size_t begin = 0; begin <= portList.size();) {
-        const auto end  = portList.find(',', begin);
-        const auto port = trim(portList.substr(begin, end == std::string_view::npos
-                                                          ? portList.size() - begin
-                                                          : end - begin));
-        if (!isVerilogIdentifier(port)) {
-          ports.clear();
-          break;
-        }
-        ports.emplace_back(port);
-        if (end == std::string_view::npos)
-          break;
-        begin = end + 1;
-      }
-      if (ports.empty())
-        continue;
-
-      std::size_t endModule = moduleLine + 1;
-      while (endModule < lines.size() && trim(lines[endModule]) != "endmodule")
-        ++endModule;
-      if (endModule == lines.size())
-        continue;
-
-      std::unordered_map<std::string, std::string> declarations;
-      std::unordered_set<std::size_t>              removableLines;
-      for (std::size_t line = moduleLine + 1; line < endModule; ++line) {
-        if (const auto declaration = parsePortDeclaration(lines[line])) {
-          declarations[declaration->name] = declaration->ansi;
-          removableLines.insert(line);
-        }
-      }
-      if (declarations.size() != ports.size())
-        continue;
-      if (std::ranges::any_of(ports, [&declarations](const auto& port) {
-            return !declarations.contains(port);
-          }))
-        continue;
-
-      for (std::size_t line = moduleLine + 1; line < endModule; ++line) {
-        if (const auto wire = parseNetDeclarationName(lines[line], "wire");
-            wire && declarations.contains(*wire))
-          removableLines.insert(line);
-        if (const auto reg = parseNetDeclarationName(lines[line], "reg");
-            reg && declarations.contains(*reg)
-            && declarations.at(*reg).starts_with("output ")) {
-          declarations.at(*reg).insert(std::string_view("output ").size(), "reg ");
-          removableLines.insert(line);
-        }
-      }
-
-      std::string ansiHeader =
-          lines[moduleLine].substr(0, lines[moduleLine].find('(') + 1);
-      for (std::size_t port = 0; port < ports.size(); ++port) {
-        if (port != 0)
-          ansiHeader += ", ";
-        ansiHeader += declarations.at(ports[port]);
-      }
-      lines[moduleLine] = ansiHeader + ");";
-      for (const auto line : removableLines)
-        removed[line] = true;
-      moduleLine = endModule;
-    }
-
-    std::string result;
-    for (std::size_t line = 0; line < lines.size(); ++line) {
-      if (removed[line])
-        continue;
-      result += lines[line];
-      result += '\n';
-    }
-    return result;
-  }
-
   void logCapturedOutput(const ScriptResult& result, const bool failed)
   {
     if (!result.standardOutput.empty())
@@ -521,10 +326,10 @@ ScriptResult runScript(const std::string_view script, const ToolOptions& options
   std::filesystem::path executable;
   if (options.executable) {
     std::error_code error;
-    const auto status = std::filesystem::status(*options.executable, error);
+    const auto      status = std::filesystem::status(*options.executable, error);
 
     if (error || !std::filesystem::exists(status)
-	      || !std::filesystem::is_regular_file(status)) {
+        || !std::filesystem::is_regular_file(status)) {
       throw std::runtime_error(std::format(
           "Yosys executable-validation phase failed: configured executable '{}' is "
           "missing or invalid. See the 'yosys' logs for details.",
@@ -593,37 +398,79 @@ ScriptResult runScript(const std::string_view script, const ToolOptions& options
   return result;
 }
 
-Circuit importVerilog(const std::string_view source, const std::string_view topModule,
-                      const ToolOptions& options)
+std::string readVerilog(const std::string_view source, const ToolOptions& options)
 {
-  if (!isVerilogIdentifier(topModule)) {
-    throw std::invalid_argument(std::format(
-        "Invalid Verilog top-module identifier '{}': expected a simple Verilog-2005 "
-        "identifier",
-        topModule));
+  const std::array sources{InputFile{.path = "source.v", .contents = source}};
+  return readVerilog(sources, "source.v", options);
+}
+
+std::string readVerilog(const std::span<const InputFile> sources,
+                        const std::string_view entryPath, const ToolOptions& options)
+{
+  if (!isSafeRelativeSourcePath(entryPath))
+    throw std::invalid_argument("Verilog entry path must be a safe relative path");
+
+  std::unordered_set<std::string> paths;
+  for (const auto& source : sources) {
+    if (!isSafeRelativeSourcePath(source.path))
+      throw std::invalid_argument(std::format(
+          "Verilog source path '{}' must be a safe relative path", source.path));
+    if (!paths.emplace(source.path).second)
+      throw std::invalid_argument(
+          std::format("Duplicate Verilog source path: {}", source.path));
   }
+  if (!paths.contains(std::string(entryPath)))
+    throw std::invalid_argument(
+        std::format("Verilog entry source is missing: {}", entryPath));
 
   TemporaryWorkspace workspace;
-  const auto         library    = technologyLibrary(options);
-  const auto         sourcePath = workspace.path() / "source.v";
-  const auto         jsonPath   = workspace.path() / "design.json";
-  writeFile(sourcePath, source, "Verilog-import input-writing phase");
+  for (const auto& source : sources) {
+    const auto      sourcePath = workspace.path() / std::filesystem::path(source.path);
+    std::error_code error;
+    std::filesystem::create_directories(sourcePath.parent_path(), error);
+    if (error)
+      throw std::runtime_error(std::format(
+          "Yosys Verilog-read input-writing phase failed: could not create '{}': {}",
+          sourcePath.parent_path().string(), error.message()));
+    writeFile(sourcePath, source.contents, "Verilog-read input-writing phase");
+  }
 
-  const auto plugin = verilogPlugin();
+  const auto sourcePath = workspace.path() / std::filesystem::path(entryPath);
+  const auto jsonPath   = workspace.path() / "design.json";
+
+  (void)runScript(std::format("read_verilog {}\n"
+                              // `proc` converts processes ($dff/$mux cells) so the JSON
+                              // backend can emit them; it is required before write_json
+                              // even though readVerilog performs no further elaboration.
+                              "proc\n"
+                              "write_json {}\n",
+                              quotePath(sourcePath), quotePath(jsonPath)),
+                  options);
+  return readFile(jsonPath, "Verilog-read output-reading phase");
+}
+
+std::string elaborateHierarchy(const std::string_view json, const ToolOptions& options)
+{
+  TemporaryWorkspace workspace;
+  const auto         inputPath  = workspace.path() / "design.json";
+  const auto         outputPath = workspace.path() / "elaborated.json";
+  writeFile(inputPath, json, "Yosys-elaboration input-writing phase");
+
+  const auto library = technologyLibrary(options);
+  const auto plugin  = verilogPlugin();
   const auto pluginLoad =
       plugin ? std::format("plugin -i {}\n", quotePath(*plugin)) : std::string();
   const auto muxImport =
       plugin ? std::string("silicon_pmux_bmux\nsilicon_eq_decoder\n") : std::string();
 
-  (void)runScript(std::format("{}"
-                              "read_verilog -lib -D SILICON_BLACKBOX {}\n"
-                              "read_verilog {}\n"
-                              "hierarchy -check -top {}\n"
+  (void)runScript(std::format("read_verilog -lib -D SILICON_BLACKBOX {}\n"
+                              "read_json {}\n"
+                              "{}"
+                              "hierarchy -check\n"
                               "proc\n"
                               "muxpack\n"
                               "{}"
                               "pmuxtree\n"
-                              "flatten\n"
                               "delete t:$scopeinfo\n"
                               "opt\n"
                               // Preserve vector bitwise operations as one native Silicon
@@ -635,26 +482,26 @@ Circuit importVerilog(const std::string_view source, const std::string_view topM
                               "t:$or r:Y_WIDTH=1 %i "
                               "t:$xor r:Y_WIDTH=1 %i "
                               "t:$not r:Y_WIDTH=1 %i "
-                              "t:$logic_not t:$reduce_and t:$reduce_or t:$reduce_xor\n"
+                              "t:$logic_not t:$logic_and t:$logic_or "
+                              "t:$reduce_and t:$reduce_or t:$reduce_xor\n"
                               "extract_fa\n"
                               "techmap -map {}\n"
                               "opt_clean\n"
                               "write_json {}\n",
-                              pluginLoad, quotePath(library.cells), quotePath(sourcePath),
-                              topModule, muxImport, quotePath(library.technologyMap),
-                              quotePath(jsonPath)),
+                              quotePath(library.cells), quotePath(inputPath), pluginLoad,
+                              muxImport, quotePath(library.technologyMap),
+                              quotePath(outputPath)),
                   options);
-  return deserialize(readFile(jsonPath, "Verilog-import output-reading phase"),
-                     topModule);
+  return readFile(outputPath, "Yosys-elaboration output-reading phase");
 }
 
-std::string exportVerilog(const Circuit& circuit, const ToolOptions& options)
+std::string writeVerilog(std::string_view json, const ToolOptions& options)
 {
   TemporaryWorkspace workspace;
   const auto         library     = technologyLibrary(options);
   const auto         jsonPath    = workspace.path() / "design.json";
   const auto         verilogPath = workspace.path() / "design.v";
-  writeFile(jsonPath, serialize(circuit), "Verilog-export input-writing phase");
+  writeFile(jsonPath, json, "Verilog-export input-writing phase");
 
   const auto plugin = verilogPlugin();
   const auto muxExport =
@@ -670,13 +517,13 @@ std::string exportVerilog(const Circuit& circuit, const ToolOptions& options)
                               "rename -unescape\n"
                               "opt\n"
                               "{}"
+                              "rename -enumerate\n"
                               "write_verilog -noattr -norename -decimal {}\n",
                               quotePath(library.cells), quotePath(jsonPath),
                               quotePath(library.cells), muxExport,
                               quotePath(verilogPath)),
                   options);
-  return useAnsiPortDeclarations(
-      cleanProcessVerilog(readFile(verilogPath, "Verilog-export output-reading phase")));
+  return readFile(verilogPath, "Verilog-export output-reading phase");
 }
 
 #endif

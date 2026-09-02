@@ -93,35 +93,43 @@ example.sil
 ├── project.json
 ├── circuits/
 │   ├── main.json
-│   └── controller.json
-├── subcircuits/
+│   ├── controller.json
 │   └── adder.json
-└── hdl/
-    └── adder.v
+├── code/
+│   └── adder.v
+└── bin/
+    └── program
 ```
 
 `metadata.json` contains the archive `formatVersion`, the Silicon version that wrote the
 file, and UTC creation/modification timestamps. `project.json` contains the project name,
 description, and `mainCircuit`, which must name an existing flat JSON entry below
-`circuits/`. There must be at least one circuit. Additional circuit files are discovered
-under `circuits/`; optional project-local subcircuits are flat entries under
-`subcircuits/`, with the filename stem serving as the subcircuit slug. Nested paths,
-duplicate paths, duplicate slugs, or a main-circuit reference outside `circuits/` are
-rejected.
+`circuits/`. There must be at least one circuit. Additional reusable circuits are flat
+entries under `circuits/`, source documents use registered extensions under `code/`, and
+raw binaries live under `bin/`. Absolute paths, traversal segments, reserved entries,
+unknown document formats, duplicate paths, or a main-circuit reference outside
+`circuits/` are rejected.
 
-Inside a running editor, both kinds are represented by the same
+Inside a running editor, every concrete format is represented by the same
 `silicon::project::Document`. Its validated project-relative path is its only identity
-and also determines its kind. A subcircuit slug is derived when needed:
-`subcircuits/adder.json` becomes `adder`; it is not stored as independent state.
-`ProjectFile::documents` is likewise the authoritative archive collection.
-`mainCircuitJson` is only a compatibility mirror of the document selected by
-`project.json.mainCircuit`.
+and determines whether it is a Circuit, Verilog, or RawBinary document. The broad
+Diagram, Code, or Binary behavior is derived from that concrete type. A document name is
+derived when needed: `circuits/adder.json` becomes `adder` and `code/adder.v` also becomes
+`adder`; it is not stored as independent state.
+`ProjectFile::documents` is the authoritative archive collection.
 
-Every open document lives in the ordered `DocumentStore`. Circuit and subcircuit
+Every open document lives in the ordered `DocumentStore`. Circuit, code, and binary
 creation, deletion, activation, tree selection, undo restoration, and saving all use
 the same canonical path and lifecycle. The store preserves insertion order, including
 when an undo restores a document at its former index, and emits path-based change
-notifications so components can refresh a referenced subcircuit safely.
+events (`Added`, `Updated`, `Removed`, or `Reset`) so components can refresh a referenced
+subcircuit without relying on an empty-path sentinel.
+
+`ProjectDependencyGraph` is a runtime-only index rebuilt from circuit contents; it is
+never serialized. An edge points from a containing document to the flat circuit document
+named by a reusable-component slug. Dependency extraction validates malformed
+subcircuit components, missing targets, and recursion before committing an update. Code
+documents do not participate in this containment graph.
 
 Each circuit or subcircuit entry is a serialized editor scene. Its two main sections have
 different responsibilities:
@@ -137,50 +145,36 @@ The `circuit` object is the canonical logical graph: component type identifiers,
 declared properties, input/output buses, and shared wire IDs. The `visual` object stores
 graphical component positions, rotations, visual type names, and routed wire-segment
 geometry. A visual component's `vertexId` associates it with the corresponding core
-component. Subcircuit documents may also carry graphical boundary/shape metadata. This
+component. Every circuit may also carry reusable graphical boundary/shape metadata. This
 separation lets simulation and native circuit deserialization remain independent of Qt
 scene data.
 
-An HDL-backed subcircuit additionally carries exactly one optional descriptor:
+Code documents store their source directly in entries such as `code/adder.v`. Verilog is
+the currently registered language. Document conversion is selected through a format
+registry whose inputs and outputs are `Document` values; converters prepare any selectable
+units and return generated documents without showing dialogs or mutating the project.
+Consequently, the same workflow can later host other HDL frontends and binary/memory-file
+converters. The editor owns selection, overwrite confirmation, undo, and activation.
 
-```json
-{
-  "hdl": {
-    "type": "verilog",
-    "path": "hdl/adder.v"
-  }
-}
-```
+Converting a circuit to Verilog creates or replaces the corresponding code document.
+Converting a single-module Verilog file back creates or replaces that circuit directly.
+For a multi-module file, the editor presents the prepared dependency choices and accepts
+one or more roots; each selected root and its recursive dependencies are created together
+as one undoable batch. Editing a code document hides circuit-only tools and disables
+simulation.
 
-The type is currently restricted to `verilog`; SystemVerilog mode is not enabled. The
-path is normalized and relative to the archive root, and the referenced source is stored
-as a `ProjectAsset` rather than embedded in the scene. Every descriptor must reference an
-existing asset, and one asset cannot be shared by multiple subcircuits. The HDL source's
-top module name is the subcircuit slug derived from its document path.
-
-Converting a graphical subcircuit to HDL writes its generated source under `hdl/`, clears
-the graphical implementation, and cannot currently be reversed. Editable code mode and
-compiled mode are still distinct: editing hides the circuit and disables simulation;
-leaving it runs Yosys, replaces the scene's cached core topology, makes the source
-read-only, and re-enables simulation. A compile failure leaves code mode active. Saving
-or switching documents also compiles pending HDL first, so invalid source blocks the
-operation instead of committing a stale core circuit.
-
-A `Document` can additionally hold prepared core-circuit JSON for a subcircuit. For a
-graphical document the UI derives it from the scene; for an HDL-backed document Yosys
-lowers the source into the same core `Circuit` representation before it is stored. That
-payload is the implementation used by definition loading and elaboration and is never
-written as another archive entry. Replacing a scene clears any older prepared payload
+A circuit `Document` can additionally hold prepared core-circuit JSON derived from its
+scene. That payload is used by definition loading and elaboration and is never written as
+another archive entry. Replacing document contents clears any older prepared payload
 unless a replacement is supplied at the same time, preventing stale logical data from
 surviving an edit.
 
 Subcircuit placeholders resolve their slug to a canonical path and query the active
 project `DocumentStore`. Definition loading returns a core `SubcircuitDefinition`
-containing the implementation circuit and its interface. Subcircuit interfaces use
+containing the implementation circuit and its interface. Reusable-circuit interfaces use
 named `CircuitPort` values, keeping each port name attached to its bus for elaboration
 and hierarchical Yosys export rather than maintaining parallel name arrays.
-Elaboration never reads the HDL descriptor or invokes Yosys, so graphical and HDL-backed
-subcircuits are indistinguishable once their core implementations have been prepared.
+Elaboration operates on circuit documents and never invokes Yosys.
 
 Compatibility is deliberately strict. The archive reader currently accepts only the
 current `metadata.json.formatVersion`, and native core circuit JSON must report the
@@ -234,13 +228,22 @@ and [FST adapter](https://github.com/GiulioCocconi/SILICON/blob/main/src/core/si
 
 ## Yosys interoperability and the SILICON technology library
 
-Yosys JSON remains the netlist transport format. `Circuit::getYosysJson()` and
-`Circuit::deserializeYosys()` run in process and produce or consume the shape written by
-Yosys' `write_json` command. Native builds can additionally launch an external Yosys
-process: `importVerilog()` runs a controlled Verilog-to-JSON script and `exportVerilog()`
-runs a JSON-to-structural-Verilog script. Yosys is invoked directly, without a shell, and
-is not embedded in SILICON. By default the `yosys` executable is resolved from `PATH` on
-every native platform; `ToolOptions::executable` is an explicit override.
+Yosys JSON remains the netlist transport format. `yosys::serialize()` and
+`yosys::deserialize()` run in process and produce or consume the shape written by Yosys'
+`write_json` command. Native builds can additionally launch an external Yosys process.
+The implementation is isolated under `core/serialization/yosys`: the netlist layer owns
+JSON translation, while the tool layer owns process execution, temporary workspaces,
+resource discovery, and Yosys command pipelines.
+
+Verilog-facing entry points live in the separate `verilog` adapter. `verilog::read()`
+runs the controlled Verilog frontend and returns Yosys JSON; `verilog::write()` serializes
+a circuit or JSON design through the Yosys backend and then applies Verilog-only cleanup.
+Identifier parsing, generated-net inlining, process cleanup, and ANSI port normalization
+therefore do not leak into the Yosys tool implementation. A future SystemVerilog, VHDL,
+or other HDL adapter can reuse the netlist and elaboration layers without inheriting
+Verilog postprocessing. Yosys is invoked directly, without a shell, and is not embedded
+in SILICON. By default the executable is resolved from `PATH`; `ToolOptions::executable`
+is an explicit override.
 
 Three layers have deliberately different jobs:
 
@@ -398,24 +401,25 @@ resource lookup is independent of Yosys executable lookup, does not depend on th
 working directory, and supports relocated Windows, Linux, and macOS installations.
 
 Emscripten builds cannot launch an external Yosys process, so `runScript()`,
-`importVerilog()`, and `exportVerilog()` report a platform-availability error. In-process
+`verilog::read()`, and `verilog::write()` report a platform-availability error. In-process
 JSON import/export, including exact `SILICON_*` round trips, remains available.
 
-Project subcircuits are hierarchical on export: each definition is emitted once as a
-module and instances become module-typed cells; recursive definitions and duplicate
-module names fail. Import is intentionally narrower. It reconstructs one selected module
-and does not turn arbitrary module-instance cells back into project subcircuits. Flatten
-or otherwise lower a hierarchical design in an external Yosys run before importing it
-when the selected module contains such instances.
+Project subcircuits are hierarchical in both directions. On export, each definition is
+emitted once as a module and instances become module-typed cells. On multi-module import,
+SILICON lowers the complete design without flattening, derives module dependencies from
+module-typed cells, and reconstructs those cells as project subcircuit instances. The UI
+creates selected roots and their dependency closure in dependency-first order, preserving
+shared definitions as one project document. Recursive definitions and duplicate module
+names fail.
 
 Unknown cells are never silently converted to black boxes. An unsupported cell, memory,
 inout port, high-impedance literal, malformed connection set, ambiguous module choice, or
 unsupported cell variant aborts the whole import with a contextual error. Adding a type
 to `ComponentRegistry` alone therefore cannot make it Yosys-importable.
 
-Relevant source: [serialization context and module builder](https://github.com/GiulioCocconi/SILICON/blob/main/src/core/serialization/yosys.cpp),
-[native component lowering](https://github.com/GiulioCocconi/SILICON/blob/main/src/core/serialization/yosys_components.cpp),
-and the [strict cell-pattern importer](https://github.com/GiulioCocconi/SILICON/blob/main/src/core/serialization/yosys_deserialization.cpp).
+Relevant source: [serialization context and module builder](https://github.com/GiulioCocconi/SILICON/blob/main/src/core/serialization/yosys/netlist.cpp),
+[native component lowering](https://github.com/GiulioCocconi/SILICON/blob/main/src/core/serialization/yosys/components.cpp),
+and the [strict cell-pattern importer](https://github.com/GiulioCocconi/SILICON/blob/main/src/core/serialization/yosys/deserialization.cpp).
 
 ## How to add a native component
 
@@ -563,8 +567,8 @@ The two directions use different extension points:
 Declare `serializeYosys()` in the component header. The base implementation throws, so a
 component without an override fails export instead of silently disappearing from the
 netlist. Per-component implementations normally live in
-`src/core/serialization/yosys_components.cpp`, alongside the shared helpers from
-`yosys_helpers.hpp`.
+`src/core/serialization/yosys/components.cpp`, alongside the shared helpers from
+`yosys/helpers.hpp`.
 
 ##### 2. Choose the Yosys representation
 

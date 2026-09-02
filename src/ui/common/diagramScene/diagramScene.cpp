@@ -135,8 +135,13 @@ void applyAutoplacement(DiagramScene& scene, const Circuit& activeCircuit,
   // Recalculating component buses from geometry here is both redundant and unsafe:
   // coincident route portions near a port can make a later graphical wire overwrite
   // that port's original assignment. Keep the logical topology authoritative and only
-  // refresh the cached circuit after applying the new geometry.
-  scene.setCircuit(std::make_shared<Circuit>(coreComponentsFor(components), false));
+  // refresh the cached circuit after applying the new geometry. Rebuilding from the
+  // components resets circuit-level metadata, so carry it across explicitly.
+  auto refreshedCircuit =
+      std::make_shared<Circuit>(coreComponentsFor(components), false);
+  refreshedCircuit->setName(activeCircuit.getName());
+  refreshedCircuit->setDescription(activeCircuit.getDescription());
+  scene.setCircuit(std::move(refreshedCircuit));
   scene.update();
 }
 
@@ -187,12 +192,12 @@ bool DiagramScene::cancelCurrentInteraction()
 
 void DiagramScene::setInteractionMode(const InteractionMode newMode, const bool force)
 {
-  if (!force && views().size() != 1)
-    throw std::logic_error("setInteractionMode: scene must have exactly one view");
-
   const auto currentMode = getInteractionMode();
   if (currentMode == newMode && !force)
     return;
+
+  if (!force && views().size() != 1)
+    throw std::logic_error("setInteractionMode: scene must have exactly one view");
 
   clearSelection();
 
@@ -766,6 +771,13 @@ void DiagramScene::deserialize(const std::string&       jsonStr,
                                const ComponentRegistry& coreRegistry)
 {
   serializer->deserialize(jsonStr, guiFactory, coreRegistry);
+}
+
+void DiagramScene::loadCircuit(std::shared_ptr<Circuit> circuit,
+                               GUIComponentFactory&     guiFactory,
+                               const bool resolveSubcircuitMetadata)
+{
+  serializer->loadCircuit(std::move(circuit), guiFactory, resolveSubcircuitMetadata);
 }
 
 bool DiagramScene::insertSelection(const nlohmann::json&    payload,

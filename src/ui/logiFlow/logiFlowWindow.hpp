@@ -1,18 +1,18 @@
 /*
-  Copyright (c) 2026. Giulio Cocconi
+Copyright (c) 2026. Giulio Cocconi
 
-   This program is free software: you can redistribute it and/or modify
-   it under the terms of the GNU General Public License as published by
-   the Free Software Foundation, either version 3 of the License, or
-   (at your option) any later version.
+ This program is free software: you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
 
-   This program is distributed in the hope that it will be useful,
-   but WITHOUT ANY WARRANTY; without even the implied warranty of
-   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-   GNU General Public License for more details.
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
 
-   You should have received a copy of the GNU General Public License
-   along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ You should have received a copy of the GNU General Public License
+ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
  */
 
@@ -22,7 +22,6 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include <QMainWindow>
@@ -30,14 +29,7 @@
 #include <QString>
 #include <QVector>
 
-#include <core/circuit.hpp>
-
-class AboutDialog;
 class QAction;
-class ComponentCatalogOverlay;
-class DiagramScene;
-class DiagramView;
-class GraphicalLogStream;
 class QByteArray;
 class QDialog;
 class QDockWidget;
@@ -46,41 +38,39 @@ class QCloseEvent;
 class QMenu;
 class QObject;
 class QPoint;
-class QPlainTextEdit;
 class QResizeEvent;
 class QStackedWidget;
 class QToolBar;
-class QTreeWidgetItem;
 class QUndoStack;
-class LogSideView;
-struct ShortcutSetting;
-class ProjectTree;
 
 #include <core/projectDependencyGraph.hpp>
 #include <core/serialization/projectFile.hpp>
 
 #ifdef __EMSCRIPTEN__
-  #include <emscripten/html5.h>
+#include <emscripten/html5.h>
 #endif
 
 #ifndef QT_NO_CONTEXTMENU
 class QContextMenuEvent;
 #endif
 
+namespace SILICON::core {
+class Circuit;
+}
 
 namespace SILICON {
 namespace ui {
-using namespace SILICON::core;
-
 class AboutDialog;
 class ComponentCatalogOverlay;
+class CodeEditor;
+class BinaryEditor;
 class DiagramScene;
 class DiagramView;
 class GraphicalLogStream;
 class LogSideView;
 class ProjectTree;
 namespace waveform {
-class Viewer;
+  class Viewer;
 }
 struct ShortcutSetting;
 
@@ -110,22 +100,12 @@ public:
   /** @brief Returns the dock widget view that displays application log output. */
   [[nodiscard]] LogSideView* getLogSideView() const { return this->logSideView; }
 
-  /**
-   * @brief Returns the project path of the currently active circuit.
-   *
-   * Falls back to the project's configured main circuit path when no explicit
-   * active circuit has been recorded yet.
-   */
-  [[nodiscard]] std::string activeProjectCircuitPath() const;
-  [[nodiscard]] std::string activeProjectSubcircuitSlug() const;
-  bool                      activateProjectDocument(const std::string& documentPath);
+  [[nodiscard]] const std::string& activeProjectDocumentPath() const noexcept
+  {
+    return activeDocumentPath;
+  }
+  bool activateProjectDocument(const std::string& documentPath);
 
-  /**
-   * @brief Switches the editor to a circuit in the active project.
-   * @param circuitPath Project-relative path of the circuit JSON entry
-   * @return True when the circuit exists and is active after the call
-   */
-  bool activateProjectCircuit(const std::string& circuitPath);
 
 protected:
 #ifndef QT_NO_CONTEXTMENU
@@ -170,11 +150,7 @@ private slots:
    * Deletion only happens after the selection is successfully serialized into the
    * application clipboard MIME format.
    */
-  void cut()
-  {
-    if (copySelectionToClipboard())
-      del();
-  }
+  void cut();
 
   /**
    * @brief Copies the current diagram selection to the clipboard.
@@ -223,14 +199,8 @@ private slots:
   /** @brief Opens the component catalog overlay above the diagram view. */
   void showComponentCatalog();
   void editActiveSubcircuitShape();
-  /**
-   * @brief Toggles an active subcircuit between graphical and editable HDL modes.
-   *
-   * Enabling this action exports the graphical circuit to HDL and disables simulation.
-   * Disabling it imports the edited HDL and uses the autoplacer to reconstruct an
-   * editable visual circuit before simulation is re-enabled.
-   */
-  void toggleHdlCodeMode(bool enabled);
+  /** @brief Converts the active circuit/code document into another registered form. */
+  void convertActiveDocument();
 
   /** @brief Cancels any active scene interaction and returns to normal editing. */
   void cancelCurrentInteraction();
@@ -259,10 +229,8 @@ private slots:
   /** @brief Prompts for and inserts a new circuit into the current project. */
   void createCircuit();
 
-  /** @brief Deletes the selected circuit from the current project when allowed. */
-  void deleteSelectedCircuit();
-  void createSubcircuit();
-  void deleteSelectedSubcircuit();
+  void createCodeFile();
+  void createBinaryFile();
 
   /** @brief Rebuilds the property dock for the current selection or active circuit. */
   void updatePropertyDock();
@@ -286,27 +254,15 @@ private:
   /** @brief Repositions and resizes the component catalog overlay. */
   void updateComponentCatalogGeometry();
   void updateSubcircuitShapeAction();
-  /** @brief Synchronizes toolbar and simulation actions with the active HDL state. */
-  void updateHdlActions();
-  /** @brief Loads the active subcircuit's project asset into the HDL editor. */
-  void showActiveHdlDocument();
-  /**
-   * @brief Compiles edited Verilog and restores an autoplaced graphical subcircuit.
-   *
-   * The editor remains writable and the HDL asset is retained when compilation or
-   * graphical reconstruction fails.
-   */
-  void compileActiveHdl();
-  /**
-   * @brief Replaces graphical implementation data with an HDL descriptor and a
-   * generated `hdl/<slug>.v` project asset until code mode is disabled.
-   */
-  void convertActiveSubcircuitToHdl();
-  /** @brief Returns whether the active subcircuit scene contains an HDL descriptor. */
-  [[nodiscard]] bool                            activeDocumentHasHdl() const;
-  [[nodiscard]] SILICON::project::ProjectAsset* projectAsset(std::string_view path);
-  [[nodiscard]] const SILICON::project::ProjectAsset*
-  projectAsset(std::string_view path) const;
+  /** @brief Updates the contextual conversion action for the active document. */
+  void               updateCodeAction();
+  void convertActiveDocumentTo(SILICON::project::DocumentType target);
+  void commitConvertedDocuments(std::vector<SILICON::project::Document> documents,
+                                const std::string& sourcePath,
+                                const std::string& activatePath,
+                                const QString&     commandText);
+  [[nodiscard]] std::optional<SILICON::project::DocumentType>
+  activeDocumentType() const noexcept;
 
   /**
    * @brief Updates the current project filename and window title.
@@ -324,89 +280,50 @@ private:
   /** @brief Creates and wires the project tree widget shown in the project dock. */
   void initializeProjectTree();
 
-  /** @brief Rebuilds the project tree from the in-memory project circuit list. */
+  /** @brief Rebuilds the project tree from the active project documents. */
   void rebuildProjectTree();
 
-  /** @brief Refreshes displayed project and circuit names in the project tree. */
-  void updateProjectTreeLabels();
-
-  /** @brief Clears project-tree selection without switching circuits. */
-  void clearProjectTreeSelection();
-
-  /** @brief Serializes the active scene into the shared project document store. */
+  /** @brief Serializes the active editor into the shared project document store. */
   void saveActiveDocumentPayload();
+  void loadDocumentPayload(const SILICON::project::Document& document);
 
   /**
    * @brief Prompts to save when the project undo stack contains unsaved edits.
    * @param continuation Operation to run after saving or discarding changes
    */
   void confirmSaveIfDirty(std::function<void()> continuation);
+  [[nodiscard]] bool hasUnsavedChanges() const;
 
-  /**
-   * @brief Switches the diagram scene to a project circuit.
-   * @param circuitPath Project-relative path of the target circuit
-   * @param selectInTree Whether to select the circuit in the project tree
-   * @return True when the target circuit was loaded or already active
-   */
+  /** Switches to a project document, optionally selecting it in the tree. */
   bool switchToDocument(const std::string& path, bool selectInTree);
 
-  /**
-   * @brief Selects a circuit item in the project tree without emitting selection changes.
-   * @param circuitPath Project-relative path to select
-   */
+  /** Selects a project document in the tree without switching editors. */
   void selectProjectTreeDocument(const std::string& path);
 
   /** @brief Resets the window to a fresh, single-circuit project state. */
   void resetProjectState();
 
-  /**
-   * @brief Removes a circuit from every in-memory project container.
-   * @param path Project-relative path of the circuit to remove
-   */
+  /** Removes a document from the store and derived dependency graph. */
   void removeDocument(const std::string& path);
 
-  /**
-   * @brief Inserts or appends a circuit entry and optionally switches to it.
-   * @param file Project file entry to insert
-   * @param sceneJson Serialized scene JSON for the circuit
-   * @param name Display name to cache for the circuit
-   * @param description Description to cache for the circuit
-   * @param insertAt Optional insertion index in the circuit list
-   * @param switchToPath Circuit path to activate after insertion, or empty to keep
-   *                     the current one
-   */
+  /** Inserts a document and optionally activates it. */
   void insertDocument(SILICON::project::Document    document,
                       std::optional<std::ptrdiff_t> insertAt, bool activate);
 
-  /**
-   * @brief Generates a unique project-relative circuit path from a requested name.
-   * @param requestedName Human-readable circuit name entered by the user
-   * @return A non-conflicting path under the project circuits directory
-   */
-  [[nodiscard]] std::string uniqueDocumentPath(SILICON::project::DocumentKind kind,
+  /** Generates a unique project path for a graphical document. */
+  [[nodiscard]] std::string uniqueDocumentPath(SILICON::project::DocumentType type,
                                                const QString& requestedName) const;
 
-  /**
-   * @brief Creates an empty serialized scene for a new circuit.
-   * @param name Circuit name to store in the payload
-   * @return Pretty-printed JSON scene document
-   */
-  [[nodiscard]] std::string emptyCircuitSceneJson(const std::string& name) const;
-  [[nodiscard]] std::string emptySubcircuitSceneJson(const std::string& name) const;
-  void                      createDocument(SILICON::project::DocumentKind kind);
-  void                      deleteSelectedDocument();
-  [[nodiscard]] QTreeWidgetItem*
-  projectDocumentSectionItem(SILICON::project::DocumentKind kind) const;
-
-  /**
-   * @brief Checks whether the current project contains a circuit path.
-   * @param circuitPath Project-relative circuit path
-   * @return True when the path exists in the project circuit list
-   */
-  [[nodiscard]] bool hasDocument(const std::string& path) const;
-
+  /** Creates an empty serialized graphical document. */
+  [[nodiscard]] std::string
+  emptyGraphicalDocumentJson(SILICON::project::DocumentType type,
+                             const std::string& name) const;
+  void createDocument(SILICON::project::DocumentType type);
+  void pushCreateDocumentCommand(SILICON::project::Document document,
+                                 const QString& commandText);
+  void deleteSelectedDocument();
   /** @brief Returns the logical circuit currently owned by the diagram scene. */
-  [[nodiscard]] std::shared_ptr<Circuit> activeCircuit();
+  [[nodiscard]] std::shared_ptr<SILICON::core::Circuit> activeCircuit();
 
 #ifdef __EMSCRIPTEN__
   /**
@@ -436,10 +353,11 @@ private:
   /** @brief Builds the editable shortcut table shown in the settings dialog. */
   QVector<ShortcutSetting> shortcutSettings() const;
 
+  [[nodiscard]] static QString documentTypeName(SILICON::project::DocumentType type);
   [[nodiscard]] static std::string defaultMainCircuitPath();
   [[nodiscard]] static SILICON::project::Document defaultCircuitDocument();
   [[nodiscard]] static SILICON::project::ProjectInfo
-  defaultProjectInfo(const QString& currentFileName);
+                            defaultProjectInfo(const QString& currentFileName);
   [[nodiscard]] std::string projectMainCircuitPath() const;
   static void               ensureProjectDocuments();
   static void setActionsEnabled(std::initializer_list<QAction*> actions, bool enabled);
@@ -447,6 +365,8 @@ private:
 
   /** @brief Main toolbar containing edit, mode, and simulation actions. */
   QToolBar* toolBar = nullptr;
+  QAction*  diagramToolsSeparator  = nullptr;
+  QAction*  documentToolsSeparator = nullptr;
 
   /** @brief Dock containing the project circuit tree. */
   QDockWidget* componentsDock = nullptr;
@@ -477,10 +397,12 @@ private:
 
   /** @brief Graphics view used to render and navigate the diagram scene. */
   DiagramView* diagramView = nullptr;
-  /** @brief Selects between the graphical circuit view and the HDL source editor. */
+  /** @brief Selects between the graphical circuit view and the source editor. */
   QStackedWidget* editorStack = nullptr;
-  /** @brief Line-numbered source editor; writable only while HDL code mode is active. */
-  QPlainTextEdit* hdlEditor = nullptr;
+  /** @brief Metadata-driven, line-numbered source editor. */
+  CodeEditor* codeEditor = nullptr;
+  /** @brief Fixed-size, nibble-oriented binary editor. */
+  BinaryEditor* binaryEditor = nullptr;
 
   /** @brief Floating searchable component catalog, shown over the diagram viewport. */
   ComponentCatalogOverlay* componentCatalogOverlay = nullptr;
@@ -495,7 +417,10 @@ private:
   QMenu* helpMenu = nullptr;
 
   /** @brief Creates a new project. */
-  QAction* newAct = nullptr;
+  QAction* newAct           = nullptr;
+  QAction* newCircuitAct    = nullptr;
+  QAction* newCodeFileAct   = nullptr;
+  QAction* newBinaryFileAct = nullptr;
 
   /** @brief Opens an existing project. */
   QAction* openAct = nullptr;
@@ -554,7 +479,7 @@ private:
   /** @brief Opens the component catalog overlay. */
   QAction* openComponentCatalogAct = nullptr;
   QAction* editSubcircuitShapeAct  = nullptr;
-  QAction* toggleHdlCodeModeAct    = nullptr;
+  QAction* codeConversionAct       = nullptr;
 
   /** @brief Activates component placing mode. */
   QAction* setComponentPlacingModeAct = nullptr;
@@ -581,10 +506,10 @@ private:
   std::optional<SILICON::project::ProjectInfo> currentProjectInfo;
 
   /** @brief Project-relative path of the circuit loaded in the diagram scene. */
-  std::string                                 activeDocumentPath;
-  std::vector<SILICON::project::ProjectAsset> projectAssets;
-  /** @brief True only while an HDL-backed subcircuit source is editable. */
-  bool                                     hdlCodeMode = false;
+  std::string activeDocumentPath;
+  /** @brief Tracks code edits already flushed to DocumentStore but not to disk. */
+  bool                                     codeDocumentsDirty = false;
+  bool                                     binaryDocumentsDirty = false;
   SILICON::project::ProjectDependencyGraph dependencyGraph;
 
   /** @brief Lazily shown application about dialog. */

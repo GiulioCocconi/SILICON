@@ -26,7 +26,6 @@
 
 #include <core/component.hpp>
 #include <core/serialization/component_registry.hpp>
-#include <core/serialization/yosys.hpp>
 #include <utils/num_formatting.hpp>
 
 #include <logging/logger.hpp>
@@ -139,12 +138,9 @@ void Circuit::makeInteractive()
 
 Component_ptr Circuit::getComponentByVertexId(VertexDescriptor vertexId) const
 {
-  auto it = std::ranges::find_if(ownedComponents, [&](const auto& comp) {
-    auto id = getVertexId(comp.get());
-    return id && *id == vertexId;
-  });
-
-  return it != ownedComponents.end() ? *it : nullptr;
+  if (vertexId >= boost::num_vertices(graph))
+    return nullptr;
+  return graph[vertexId].component;
 }
 
 void Circuit::updateComponentIO(const Component_ptr& component)
@@ -807,17 +803,6 @@ std::string Circuit::serialize() const
   }
 
   return j.dump(2);
-}
-
-std::string Circuit::getYosysJson() const
-{
-  return SILICON::yosys::serialize(*this);
-}
-
-Circuit Circuit::deserializeYosys(const std::string_view                json,
-                                  const std::optional<std::string_view> moduleName)
-{
-  return SILICON::yosys::deserialize(json, moduleName);
 }
 
 Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry& reg)

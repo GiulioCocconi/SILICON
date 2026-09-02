@@ -20,6 +20,7 @@
 
 #include <core/projectDocument.hpp>
 
+#include <algorithm>
 #include <memory>
 #include <utility>
 
@@ -61,10 +62,15 @@ GraphicalSubcircuitComponent::GraphicalSubcircuitComponent(QGraphicsItem* parent
 
   registryListenerId =
       SILICON::project::DocumentStore::active().addListener(
-          [this](std::string_view path) {
-        if (path.empty()
-            || path
-                   == SILICON::project::subcircuitPathForSlug(currentSlug()))
+          [this](const SILICON::project::DocumentChange& change) {
+        const auto slug = currentSlug();
+        const bool affectsConfiguredDocument =
+            SILICON::project::isValidDocumentSlug(slug) && change.path
+            && *change.path
+                   == SILICON::project::documentPathForSlug(
+                       SILICON::project::DocumentType::Circuit, slug);
+        if (change.kind == SILICON::project::DocumentChangeKind::Reset
+            || affectsConfiguredDocument)
           refreshFromMetadata();
       });
   refreshFromMetadata();
@@ -151,15 +157,16 @@ void GraphicalSubcircuitComponent::refreshFromMetadata()
   }
 
   const auto* document = SILICON::project::DocumentStore::active().find(
-      SILICON::project::subcircuitPathForSlug(slug));
+      SILICON::project::documentPathForSlug(SILICON::project::DocumentType::Circuit,
+                                            slug));
   if (!document) {
-    applyEmptyMetadata();
+    useAttachedInterfaceMetadata();
     return;
   }
 
   auto metadata = synchronizeGraphicalSubcircuitMetadata(
-      document->getSceneJson(),
-      parseGraphicalSubcircuitMetadata(document->getSceneJson())
+      document->getContents(),
+      parseGraphicalSubcircuitMetadata(document->getContents())
           .value_or(GraphicalSubcircuitMetadata{}));
 
   if (associatedComponent) {
@@ -178,6 +185,29 @@ void GraphicalSubcircuitComponent::refreshFromMetadata()
     applyMetadata(metadata);
   } catch (const std::exception&) {
   }
+}
+
+void GraphicalSubcircuitComponent::useAttachedInterfaceMetadata()
+{
+  GraphicalSubcircuitMetadata metadata;
+  if (associatedComponent) {
+    metadata.inputs = synchronizePortsWithBuses(
+        {}, associatedComponent->getInputs(), metadata, true);
+    metadata.outputs = synchronizePortsWithBuses(
+        {}, associatedComponent->getOutputs(), metadata, false);
+
+    if (const auto imported =
+            std::dynamic_pointer_cast<SubcircuitComponent>(associatedComponent)) {
+      const auto& inputNames = imported->importedInputNames();
+      for (std::size_t i = 0; i < std::min(metadata.inputs.size(), inputNames.size()); ++i)
+        metadata.inputs[i].name = inputNames[i];
+      const auto& outputNames = imported->importedOutputNames();
+      for (std::size_t i = 0;
+           i < std::min(metadata.outputs.size(), outputNames.size()); ++i)
+        metadata.outputs[i].name = outputNames[i];
+    }
+  }
+  applyMetadata(metadata);
 }
 
 }  // namespace ui
