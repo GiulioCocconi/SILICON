@@ -10,8 +10,10 @@
 #pragma once
 
 #include <optional>
+#include <vector>
 
 #include <QPlainTextEdit>
+#include <QRegularExpression>
 
 #include <core/projectDocument.hpp>
 
@@ -54,14 +56,18 @@ private:
   void               updateLineNumberAreaWidth();
   void               refreshTheme();
   void               rebuildCompletionCandidates();
+  void               rebuildIndentationTriggers();
   void               showCompletion(bool explicitRequest);
   void               insertCompletion(const QString& completion);
+  void               indentCurrentLine();
+  [[nodiscard]] bool currentLineMatchesIndentationTrigger() const;
   [[nodiscard]] bool isWordDelimiter(QChar character) const;
 
   CodeLineNumberArea*                           lineNumberArea;
   CodeSyntaxHighlighter*                        syntaxHighlighter;
   QCompleter*                                   completer;
   QStringListModel*                             completionModel;
+  std::vector<QRegularExpression>               indentationTriggers;
   std::optional<SILICON::project::DocumentType> fileTypeValue;
 };
 
