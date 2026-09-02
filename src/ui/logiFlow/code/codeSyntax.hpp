@@ -10,6 +10,7 @@
 #pragma once
 
 #include <span>
+#include <string>
 #include <string_view>
 
 namespace SILICON::project {
@@ -55,12 +56,25 @@ struct CodeSyntaxRegionRule {
   bool                                     multiline;
 };
 
-/** Qt-independent description consumed by a code editor highlighter. */
+struct CodeIndentationContext {
+  std::string_view                  currentLine;
+  std::span<const std::string_view> previousNonBlankLines;
+};
+
+using CodeIndentationFunction = std::string (*)(const CodeIndentationContext&);
+
+struct CodeIndentation {
+  CodeIndentationFunction           indentationFor;
+  std::span<const std::string_view> triggerPatterns;
+};
+
+/** Qt-independent description consumed by code-editor features. */
 struct CodeSyntax {
   std::span<const CodeSyntaxKeywordGroup> keywordGroups;
   std::span<const CodeSyntaxMatchRule>    matchRules;
   std::span<const CodeSyntaxRegionRule>   regionRules;
   std::string_view                        extraWordCharacters;
+  const CodeIndentation*                  indentation;
 };
 
 extern const CodeSyntax VERILOG_CODE_SYNTAX;

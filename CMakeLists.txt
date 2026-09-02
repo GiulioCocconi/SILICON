@@ -62,6 +62,7 @@ include(cmake/resources.cmake)
 
 set(COMMON_SOURCE_FILES
         ${src_dir}/utils/num_formatting.cpp
+        ${src_dir}/ui/logiFlow/code/indentationUtils.cpp
         ${src_dir}/ui/logiFlow/code/syntax/verilog.cpp
         ${src_dir}/core/wire.cpp
         ${src_dir}/core/io.cpp

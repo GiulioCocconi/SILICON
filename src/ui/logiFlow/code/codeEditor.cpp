@@ -12,9 +12,13 @@
 #include "codeSyntaxHighlighter.hpp"
 
 #include <algorithm>
+#include <array>
 #include <stdexcept>
+#include <string_view>
+#include <utility>
 
 #include <QAbstractItemView>
+#include <QByteArray>
 #include <QCompleter>
 #include <QEvent>
 #include <QKeyEvent>
@@ -53,6 +57,7 @@ CodeEditor::CodeEditor(QWidget* parent)
 {
   setLineWrapMode(QPlainTextEdit::NoWrap);
   setProperty("class", "mono");
+  setTabStopDistance(fontMetrics().horizontalAdvance(QChar::VisualTabCharacter));
   completer->setWidget(this);
   completer->setModel(completionModel);
   completer->setCaseSensitivity(Qt::CaseSensitive);
@@ -92,6 +97,7 @@ void CodeEditor::setFileType(const SILICON::project::DocumentType type)
   syntaxHighlighter->setSyntax(&syntax->get());
   refreshTheme();
   rebuildCompletionCandidates();
+  rebuildIndentationTriggers();
 }
 
 void CodeEditor::clearFileType()
@@ -99,6 +105,7 @@ void CodeEditor::clearFileType()
   fileTypeValue.reset();
   syntaxHighlighter->setSyntax(nullptr);
   completionModel->setStringList({});
+  indentationTriggers.clear();
   completer->popup()->hide();
   clear();
 }
@@ -138,6 +145,99 @@ void CodeEditor::rebuildCompletionCandidates()
   candidates.removeDuplicates();
   candidates.sort(Qt::CaseSensitive);
   completionModel->setStringList(candidates);
+}
+
+void CodeEditor::rebuildIndentationTriggers()
+{
+  indentationTriggers.clear();
+  if (!fileTypeValue)
+    return;
+
+  const auto& indentation =
+      SILICON::project::syntaxDefinition(*fileTypeValue)->get().indentation;
+  if (!indentation)
+    return;
+
+  indentationTriggers.reserve(indentation->triggerPatterns.size());
+  for (const auto pattern : indentation->triggerPatterns) {
+    QRegularExpression expression(
+        QString::fromUtf8(pattern.data(), static_cast<qsizetype>(pattern.size())));
+    if (!expression.isValid())
+      throw std::invalid_argument(QString("Invalid indentation trigger '%1': %2")
+                                      .arg(expression.pattern(), expression.errorString())
+                                      .toStdString());
+    indentationTriggers.push_back(std::move(expression));
+  }
+}
+
+bool CodeEditor::currentLineMatchesIndentationTrigger() const
+{
+  const auto line = textCursor().block().text();
+  return std::ranges::any_of(indentationTriggers, [&line](const auto& expression) {
+    return expression.match(line).hasMatch();
+  });
+}
+
+void CodeEditor::indentCurrentLine()
+{
+  if (!fileTypeValue)
+    return;
+
+  const auto& indentation =
+      SILICON::project::syntaxDefinition(*fileTypeValue)->get().indentation;
+  if (!indentation)
+    return;
+
+  QTextCursor cursor       = textCursor();
+  const auto  currentBlock = cursor.block();
+  const auto  currentText  = currentBlock.text();
+  const auto  currentUtf8  = currentText.toUtf8();
+
+  std::array<QByteArray, 2>       previousUtf8;
+  std::array<std::string_view, 2> previousLines;
+  std::size_t                     previousCount = 0;
+  for (auto block = currentBlock.previous(); block.isValid() && previousCount < 2;
+       block      = block.previous()) {
+    if (block.text().trimmed().isEmpty())
+      continue;
+    previousUtf8[previousCount] = block.text().toUtf8();
+    previousLines[previousCount] =
+        std::string_view(previousUtf8[previousCount].constData(),
+                         static_cast<std::size_t>(previousUtf8[previousCount].size()));
+    ++previousCount;
+  }
+
+  const SILICON::project::CodeIndentationContext context{
+      .currentLine = std::string_view(currentUtf8.constData(),
+                                      static_cast<std::size_t>(currentUtf8.size())),
+      .previousNonBlankLines =
+          std::span<const std::string_view>(previousLines).first(previousCount),
+  };
+  const auto desiredIndentUtf8 = indentation->indentationFor(context);
+  const auto desiredIndent     = QString::fromUtf8(
+      desiredIndentUtf8.data(), static_cast<qsizetype>(desiredIndentUtf8.size()));
+
+  qsizetype existingIndentLength = 0;
+  while (existingIndentLength < currentText.size()
+         && (currentText[existingIndentLength] == QLatin1Char(' ')
+             || currentText[existingIndentLength] == QLatin1Char('\t'))) {
+    ++existingIndentLength;
+  }
+  if (currentText.first(existingIndentLength) == desiredIndent)
+    return;
+
+  const int contentOffset =
+      std::max(0, cursor.positionInBlock() - static_cast<int>(existingIndentLength));
+  cursor.beginEditBlock();
+  QTextCursor indentationCursor(document());
+  indentationCursor.setPosition(currentBlock.position());
+  indentationCursor.setPosition(currentBlock.position()
+                                    + static_cast<int>(existingIndentLength),
+                                QTextCursor::KeepAnchor);
+  indentationCursor.insertText(desiredIndent);
+  cursor.setPosition(currentBlock.position() + desiredIndent.size() + contentOffset);
+  setTextCursor(cursor);
+  cursor.endEditBlock();
 }
 
 bool CodeEditor::isWordDelimiter(const QChar character) const
@@ -188,10 +288,14 @@ void CodeEditor::showCompletion(const bool explicitRequest)
 void CodeEditor::insertCompletion(const QString& completion)
 {
   QTextCursor cursor = textCursor();
-  const auto  prefix = completionPrefix();
+  cursor.beginEditBlock();
+  const auto prefix = completionPrefix();
   cursor.movePosition(QTextCursor::Left, QTextCursor::KeepAnchor, prefix.size());
   cursor.insertText(completion);
   setTextCursor(cursor);
+  if (currentLineMatchesIndentationTrigger())
+    indentCurrentLine();
+  cursor.endEditBlock();
 }
 
 void CodeEditor::keyPressEvent(QKeyEvent* event)
@@ -216,7 +320,11 @@ void CodeEditor::keyPressEvent(QKeyEvent* event)
   }
 
   if (event->matches(QKeySequence::InsertParagraphSeparator)) {
+    QTextCursor cursor = textCursor();
+    cursor.beginEditBlock();
     QPlainTextEdit::keyPressEvent(event);
+    indentCurrentLine();
+    cursor.endEditBlock();
     completer->popup()->hide();
     return;
   }
@@ -228,6 +336,8 @@ void CodeEditor::keyPressEvent(QKeyEvent* event)
            & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier));
   if (!explicitRequest)
     QPlainTextEdit::keyPressEvent(event);
+  if (typedText && currentLineMatchesIndentationTrigger())
+    indentCurrentLine();
   if (explicitRequest || typedText)
     showCompletion(explicitRequest);
   else
