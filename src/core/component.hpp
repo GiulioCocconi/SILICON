@@ -240,8 +240,8 @@ protected:
     } else {
       defaultVal = PropertyValue(std::forward<T>(defaultValue));
     }
-    const PropertyValue finalValue = cb ? cb(defaultVal) : defaultVal;
-    properties[key]                = finalValue;
+    PropertyValue finalValue = cb ? cb(defaultVal) : std::move(defaultVal);
+    properties.insert_or_assign(std::move(key), std::move(finalValue));
   }
 
   /**
