@@ -36,4 +36,4 @@ rm -rf /tmp/adaptagrams_orig
 
 We also use the [`git-clang-format`](ci/git-clang-format) script from the [LLVM project](https://github.com/llvm/llvm-project) (Apache License with LLVM Exceptions) and the [`pmgen`](vendor/yosys/pmgen.py) script from [YOSYS](https://github.com/yosyshq/yosys) (ISC license), their (eventual) modifications are documented within this repository. 
 
-The Verilog syntax definition is adapted from VIM's [Verilog highlighter](https://github.com/vim/vim/blob/master/runtime/syntax/verilog.vim).
+The Verilog syntax definition is adapted from VIM's [Verilog highlighter](https://github.com/vim/vim/blob/master/runtime/syntax/verilog.vim) and [Verilog indenter](https://github.com/vim/vim/blob/master/runtime/indent/verilog.vim).

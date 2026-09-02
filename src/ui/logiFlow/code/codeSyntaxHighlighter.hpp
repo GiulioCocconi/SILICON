@@ -23,7 +23,7 @@ class QTextDocument;
 
 namespace SILICON::ui {
 
-/** Applies a project CodeSyntax description to a QTextDocument. */
+/** Applies a UI syntax description to a QTextDocument. */
 class CodeSyntaxHighlighter final : public QSyntaxHighlighter {
 public:
   explicit CodeSyntaxHighlighter(QTextDocument* document);
