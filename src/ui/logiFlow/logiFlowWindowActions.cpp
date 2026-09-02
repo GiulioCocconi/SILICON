@@ -88,7 +88,7 @@ Copyright (c) 2026. Giulio Cocconi
 #include <logging/logger.hpp>
 #include <ui/common/aboutDialog.hpp>
 #include <ui/common/binaryEditor.hpp>
-#include <ui/common/codeEditor.hpp>
+#include <ui/logiFlow/code/codeEditor.hpp>
 #include <ui/common/diagramScene/diagramScene.hpp>
 #include <ui/common/diagramView.hpp>
 #include <ui/common/fileDialogUtils.hpp>
@@ -117,6 +117,14 @@ using namespace SILICON::core;
 namespace {
 
   const SILICON::logging::Logger uiLog("ui");
+
+  [[nodiscard]] QIcon categoryIcon(const SILICON::project::DocumentType type)
+  {
+    const auto iconName = SILICON::project::documentCategoryIconName(
+        SILICON::project::categoryOf(type));
+    return Icon(QString::fromUtf8(iconName.data(),
+                                  static_cast<qsizetype>(iconName.size())));
+  }
 
   class ConversionCommand : public QUndoCommand {
   public:
@@ -423,11 +431,16 @@ EM_ASM(
 
 void LogiFlowWindow::createActions()
 {
-  newAct         = makeAction(this, Icon("file"), tr("&New"), tr("Create a new file"));
-  newCodeFileAct = makeAction(this, Icon("code"), tr("New Code File..."),
-                              tr("Create an empty source-code document"));
-  newBinaryFileAct = makeAction(this, Icon("file"), tr("New Binary File..."),
-                                tr("Create a fixed-size raw binary document"));
+  newAct = makeAction(this, Icon("file"), tr("&New"), tr("Create a new project"));
+  newCircuitAct =
+      makeAction(this, categoryIcon(SILICON::project::DocumentType::Circuit),
+                 tr("Circuit"), tr("Create a new circuit"));
+  newCodeFileAct = makeAction(
+      this, categoryIcon(SILICON::project::DocumentType::Verilog), tr("Code File..."),
+      tr("Create an empty source-code document"));
+  newBinaryFileAct =
+      makeAction(this, categoryIcon(SILICON::project::DocumentType::RawBinary),
+                 tr("Binary File..."), tr("Create a fixed-size raw binary document"));
   openAct        = makeAction(this, Icon("open"), tr("&Open..."),
                               tr("Open an existing logiFlow file"));
   saveAct = makeAction(this, Icon("save"), tr("&Save"), tr("Save the circuit to disk"));
@@ -482,6 +495,7 @@ void LogiFlowWindow::createActions()
       makeAction(this, Icon("plus"), "", tr("Open quick component search"));
 
   connect(newAct, &QAction::triggered, this, &LogiFlowWindow::newFile);
+  connect(newCircuitAct, &QAction::triggered, this, &LogiFlowWindow::createCircuit);
   connect(newCodeFileAct, &QAction::triggered, this, &LogiFlowWindow::createCodeFile);
   connect(newBinaryFileAct, &QAction::triggered, this, &LogiFlowWindow::createBinaryFile);
   connect(openAct, &QAction::triggered, this, &LogiFlowWindow::open);
@@ -659,9 +673,10 @@ void LogiFlowWindow::applyStoredSettings()
 void LogiFlowWindow::createMenus()
 {
   fileMenu = menuBar()->addMenu(tr("&File"));
-  fileMenu->addAction(newAct);
-  fileMenu->addAction(newCodeFileAct);
-  fileMenu->addAction(newBinaryFileAct);
+  auto* newMenu = fileMenu->addMenu(Icon("file"), tr("&New"));
+  newMenu->addAction(newCircuitAct);
+  newMenu->addAction(newCodeFileAct);
+  newMenu->addAction(newBinaryFileAct);
   fileMenu->addAction(openAct);
   fileMenu->addAction(saveAct);
   fileMenu->addAction(exportImageAct);

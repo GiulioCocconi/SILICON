@@ -27,6 +27,7 @@
 #include <vector>
 
 #include <core/callbackRegistry.hpp>
+#include <ui/logiFlow/code/codeSyntax.hpp>
 
 namespace SILICON::project {
 
@@ -86,11 +87,11 @@ documentCategoryIconName(const DocumentCategory category)
   throw "Unknown document category";
 }
 
-[[nodiscard]] constexpr std::optional<std::string_view>
-kdeSyntaxDefinition(const DocumentType type)
+[[nodiscard]] constexpr std::optional<std::reference_wrapper<const CodeSyntax>>
+syntaxDefinition(const DocumentType type)
 {
   switch (type) {
-    case DocumentType::Verilog: return "Verilog";
+    case DocumentType::Verilog: return std::cref(VERILOG_CODE_SYNTAX);
     case DocumentType::Circuit:
     case DocumentType::RawBinary: return std::nullopt;
   }

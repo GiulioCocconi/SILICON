@@ -60,7 +60,7 @@ Copyright (c) 2026. Giulio Cocconi
 #include <logging/logger.hpp>
 #include <ui/common/aboutDialog.hpp>
 #include <ui/common/binaryEditor.hpp>
-#include <ui/common/codeEditor.hpp>
+#include <ui/logiFlow/code/codeEditor.hpp>
 #include <ui/common/diagramScene/diagramScene.hpp>
 #include <ui/common/diagramView.hpp>
 #include <ui/common/fileDialogUtils.hpp>

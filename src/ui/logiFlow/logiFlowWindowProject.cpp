@@ -41,7 +41,7 @@ Copyright (c) 2026. Giulio Cocconi
 
 #include <core/serialization/component_registry.hpp>
 #include <ui/common/binaryEditor.hpp>
-#include <ui/common/codeEditor.hpp>
+#include <ui/logiFlow/code/codeEditor.hpp>
 #include <ui/common/diagramScene/diagramScene.hpp>
 #include <ui/common/diagramView.hpp>
 #include <ui/common/icons.hpp>

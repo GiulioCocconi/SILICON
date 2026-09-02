@@ -46,9 +46,9 @@ TEST(ProjectDocumentTest, ClassifiesConcreteTypesByCategory)
   static_assert(categoryOf(DocumentType::Circuit) == DocumentCategory::Diagram);
   static_assert(categoryOf(DocumentType::Verilog) == DocumentCategory::Code);
   static_assert(categoryOf(DocumentType::RawBinary) == DocumentCategory::Binary);
-  static_assert(kdeSyntaxDefinition(DocumentType::Verilog) == "Verilog");
-  static_assert(!kdeSyntaxDefinition(DocumentType::Circuit));
-  static_assert(!kdeSyntaxDefinition(DocumentType::RawBinary));
+  static_assert(syntaxDefinition(DocumentType::Verilog).has_value());
+  static_assert(!syntaxDefinition(DocumentType::Circuit));
+  static_assert(!syntaxDefinition(DocumentType::RawBinary));
   static_assert(documentCategoryIconName(DocumentCategory::Diagram)
                 == "circuit-board");
   static_assert(documentCategoryIconName(DocumentCategory::Code) == "code");

@@ -172,6 +172,17 @@ void ProjectTree::addSection(QTreeWidgetItem* projectItem,
                              const project::DocumentType type,
                              const std::span<const project::Document> documents)
 {
+  bool hasDocuments = false;
+  for (const auto& document : documents) {
+    if (document.getType() == type) {
+      hasDocuments = true;
+      break;
+    }
+  }
+
+  if (!hasDocuments)
+    return;
+
   auto* section = new QTreeWidgetItem(projectItem);
   section->setText(0, sectionTitle(type));
   setKind(section, ProjectTreeItemKind::Section);

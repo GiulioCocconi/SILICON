@@ -417,8 +417,9 @@ private:
   QMenu* helpMenu = nullptr;
 
   /** @brief Creates a new project. */
-  QAction* newAct         = nullptr;
-  QAction* newCodeFileAct = nullptr;
+  QAction* newAct           = nullptr;
+  QAction* newCircuitAct    = nullptr;
+  QAction* newCodeFileAct   = nullptr;
   QAction* newBinaryFileAct = nullptr;
 
   /** @brief Opens an existing project. */
