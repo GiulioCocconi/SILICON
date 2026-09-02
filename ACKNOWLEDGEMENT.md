@@ -23,7 +23,8 @@ Each font is licensed under `OFL`
 - OGDF, under GPL, _Copyright (C) 1999–2025_
 - Json for Modern C++, under MIT, _Copyright (c) 2013-2026 Niels Lohmann_
 - TOML++, under MIT, _Copyright (c) Mark Gillard <mark.gillard@outlook.com.au>_
-- KSyntaxHighlighting, under MIT, Multiple copyright holders
+
+### Syntax Specifications
 
 ### Notes
 We made some modification to libavoid. To display them run:
@@ -34,3 +35,5 @@ rm -rf /tmp/adaptagrams_orig
 ```
 
 We also use the [`git-clang-format`](ci/git-clang-format) script from the [LLVM project](https://github.com/llvm/llvm-project) (Apache License with LLVM Exceptions) and the [`pmgen`](vendor/yosys/pmgen.py) script from [YOSYS](https://github.com/yosyshq/yosys) (ISC license), their (eventual) modifications are documented within this repository. 
+
+The Verilog syntax definition is adapted from VIM's [Verilog highlighter](https://github.com/vim/vim/blob/master/runtime/syntax/verilog.vim).

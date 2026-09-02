@@ -13,6 +13,7 @@
 #include <string_view>
 
 #include <core/projectDocument.hpp>
+#include <ui/logiFlow/code/codeSyntax.hpp>
 
 namespace SILICON::ui {
 
@@ -20,7 +21,7 @@ namespace SILICON::ui {
 struct CodeFilePresentation {
   SILICON::project::DocumentType type;
   std::string_view               displayName;
-  std::string_view               kdeSyntaxDefinition;
+  const CodeSyntax*              syntax;
 };
 
 [[nodiscard]] std::span<const CodeFilePresentation> codeFilePresentations();

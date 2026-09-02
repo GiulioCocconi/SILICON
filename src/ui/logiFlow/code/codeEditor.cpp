@@ -7,9 +7,12 @@
   (at your option) any later version.
 */
 
-#include "codeEditor.hpp"
+#include <ui/logiFlow/code/codeEditor.hpp>
+
+#include "codeSyntaxHighlighter.hpp"
 
 #include <algorithm>
+#include <stdexcept>
 
 #include <QAbstractItemView>
 #include <QCompleter>
@@ -22,9 +25,6 @@
 #include <QStringListModel>
 #include <QTextBlock>
 #include <QWidget>
-
-#include <KSyntaxHighlighting/SyntaxHighlighter>
-#include <KSyntaxHighlighting/Theme>
 
 #include <ui/common/codeFilePresentation.hpp>
 
@@ -49,7 +49,7 @@ private:
 CodeEditor::CodeEditor(QWidget* parent)
   : QPlainTextEdit(parent),
     lineNumberArea(new CodeLineNumberArea(this)),
-    syntaxHighlighter(new KSyntaxHighlighting::SyntaxHighlighter(document())),
+    syntaxHighlighter(new CodeSyntaxHighlighter(document())),
     completer(new QCompleter(this)),
     completionModel(new QStringListModel(this))
 {
@@ -75,18 +75,23 @@ CodeEditor::CodeEditor(QWidget* parent)
               updateLineNumberAreaWidth();
           });
   connect(this, &QPlainTextEdit::cursorPositionChanged, lineNumberArea, [this] {
-            lineNumberArea->update();
-            completer->popup()->hide();
-          });
+    lineNumberArea->update();
+    completer->popup()->hide();
+  });
   updateLineNumberAreaWidth();
 }
 
 void CodeEditor::setFileType(const SILICON::project::DocumentType type)
 {
+  if (SILICON::project::categoryOf(type) != SILICON::project::DocumentCategory::Code)
+    throw std::invalid_argument("Code editor requires a code document type");
+
+  const auto* syntax = codeFilePresentation(type).syntax;
+  if (!syntax)
+    throw std::invalid_argument("Code document type has no syntax definition");
+
   fileTypeValue = type;
-  definition    = repository.definitionForName(
-      QString::fromUtf8(codeFilePresentation(type).kdeSyntaxDefinition));
-  syntaxHighlighter->setDefinition(definition);
+  syntaxHighlighter->setSyntax(syntax);
   refreshTheme();
   rebuildCompletionCandidates();
 }
@@ -94,8 +99,7 @@ void CodeEditor::setFileType(const SILICON::project::DocumentType type)
 void CodeEditor::clearFileType()
 {
   fileTypeValue.reset();
-  definition = {};
-  syntaxHighlighter->setDefinition(definition);
+  syntaxHighlighter->setSyntax(nullptr);
   completionModel->setStringList({});
   completer->popup()->hide();
   clear();
@@ -111,11 +115,6 @@ QStringList CodeEditor::completionCandidates() const
   return completionModel->stringList();
 }
 
-QString CodeEditor::highlightingThemeName() const
-{
-  return syntaxHighlighter->theme().name();
-}
-
 bool CodeEditor::isCompletionPopupVisible() const
 {
   return completer->popup()->isVisible();
@@ -123,20 +122,20 @@ bool CodeEditor::isCompletionPopupVisible() const
 
 void CodeEditor::refreshTheme()
 {
-  const bool dark = palette().color(QPalette::Base).lightness()
-                    < palette().color(QPalette::Text).lightness();
-  syntaxHighlighter->setTheme(
-      repository.defaultTheme(dark ? KSyntaxHighlighting::Repository::DarkTheme
-                                   : KSyntaxHighlighting::Repository::LightTheme));
-  syntaxHighlighter->rehighlight();
+  syntaxHighlighter->setPalette(palette());
 }
 
 void CodeEditor::rebuildCompletionCandidates()
 {
   QStringList candidates;
-  if (definition.isValid()) {
-    for (const auto& listName : definition.keywordLists())
-      candidates.append(definition.keywordList(listName));
+  if (fileTypeValue) {
+    const auto& syntax = *codeFilePresentation(*fileTypeValue).syntax;
+    for (const auto& group : syntax.keywordGroups) {
+      for (const auto word : group.words) {
+        candidates.append(
+            QString::fromUtf8(word.data(), static_cast<qsizetype>(word.size())));
+      }
+    }
   }
   candidates.removeDuplicates();
   candidates.sort(Qt::CaseSensitive);
@@ -145,8 +144,14 @@ void CodeEditor::rebuildCompletionCandidates()
 
 bool CodeEditor::isWordDelimiter(const QChar character) const
 {
-  return character.isSpace() || !definition.isValid()
-         || definition.isWordDelimiter(character);
+  if (!fileTypeValue)
+    return true;
+  const auto& syntax = *codeFilePresentation(*fileTypeValue).syntax;
+  const auto  extra =
+      QString::fromUtf8(syntax.extraWordCharacters.data(),
+                        static_cast<qsizetype>(syntax.extraWordCharacters.size()));
+  return !character.isLetterOrNumber() && character != QLatin1Char('_')
+         && !extra.contains(character);
 }
 
 QString CodeEditor::completionPrefix() const
@@ -161,7 +166,7 @@ QString CodeEditor::completionPrefix() const
 
 void CodeEditor::showCompletion(const bool explicitRequest)
 {
-  if (!definition.isValid() || completionModel->rowCount() == 0)
+  if (!fileTypeValue || completionModel->rowCount() == 0)
     return;
   const QString prefix = completionPrefix();
   if (!explicitRequest && prefix.size() < 2) {
@@ -221,7 +226,7 @@ void CodeEditor::keyPressEvent(QKeyEvent* event)
       event->modifiers() == Qt::ControlModifier && event->key() == Qt::Key_Space;
   const bool typedText =
       !event->text().isEmpty()
-                         && !(event->modifiers()
+      && !(event->modifiers()
            & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier));
   if (!explicitRequest)
     QPlainTextEdit::keyPressEvent(event);

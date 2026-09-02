@@ -31,9 +31,6 @@
       "name": "libzip"
     },
     {
-      "name": "syntax-highlighting"
-    },
-    {
       "name": "boost-graph"
     },
     {

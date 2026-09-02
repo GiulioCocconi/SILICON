@@ -13,9 +13,6 @@
 
 #include <QPlainTextEdit>
 
-#include <KSyntaxHighlighting/Definition>
-#include <KSyntaxHighlighting/Repository>
-
 #include <core/projectDocument.hpp>
 
 class QCompleter;
@@ -26,15 +23,12 @@ class QResizeEvent;
 class QStringListModel;
 class QWidget;
 
-namespace KSyntaxHighlighting {
-class SyntaxHighlighter;
-}
-
 namespace SILICON::ui {
 
 class CodeLineNumberArea;
+class CodeSyntaxHighlighter;
 
-/** Reusable, metadata-driven source editor with KDE highlighting and completion. */
+/** Metadata-driven source editor with highlighting and completion. */
 class CodeEditor : public QPlainTextEdit {
 public:
   explicit CodeEditor(QWidget* parent = nullptr);
@@ -45,7 +39,6 @@ public:
   [[nodiscard]] const std::optional<SILICON::project::DocumentType>& fileType() const;
   [[nodiscard]] QStringList completionCandidates() const;
   [[nodiscard]] QString     completionPrefix() const;
-  [[nodiscard]] QString     highlightingThemeName() const;
   [[nodiscard]] bool        isCompletionPopupVisible() const;
 
 protected:
@@ -65,12 +58,10 @@ private:
   void               insertCompletion(const QString& completion);
   [[nodiscard]] bool isWordDelimiter(QChar character) const;
 
-  CodeLineNumberArea*                               lineNumberArea;
-  KSyntaxHighlighting::Repository                   repository;
-  KSyntaxHighlighting::SyntaxHighlighter*           syntaxHighlighter;
-  KSyntaxHighlighting::Definition                   definition;
-  QCompleter*                                       completer;
-  QStringListModel*                                 completionModel;
+  CodeLineNumberArea*                           lineNumberArea;
+  CodeSyntaxHighlighter*                        syntaxHighlighter;
+  QCompleter*                                   completer;
+  QStringListModel*                             completionModel;
   std::optional<SILICON::project::DocumentType> fileTypeValue;
 };
 
