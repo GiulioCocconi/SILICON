@@ -197,6 +197,16 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU"
     add_compile_options(-Wno-error=array-bounds)
 endif ()
 
+# GCC can report false -Wmaybe-uninitialized diagnostics from libstdc++'s
+# std::regex implementation when AddressSanitizer is enabled (GCC PR 105616).
+# Keep -Werror enabled for the rest of silicon_core and relax only this warning
+# for the regex-heavy translation unit.
+if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND SILICON_ENABLE_SANITIZERS)
+    set_source_files_properties(
+            ${src_dir}/ui/logiFlow/code/syntax/verilog.cpp
+            PROPERTIES COMPILE_OPTIONS -Wno-error=maybe-uninitialized)
+endif ()
+
 if (UNIX AND NOT APPLE AND NOT EMSCRIPTEN AND SILICON_ENABLE_SANITIZERS)
     add_compile_options(-fsanitize=address -fsanitize=undefined)
     add_link_options(-fsanitize=address -fsanitize=undefined)
