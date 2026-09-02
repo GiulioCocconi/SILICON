@@ -53,10 +53,18 @@ outputs = { self, nixpkgs, flake-utils }:
 	  ogdf
         ];
 
+	# TODO: Remove when NixPkgs PR 559059 gets to unstable
+        # The pinned Yosys package installs yosys-config with an
+        # /usr/bin/env shebang, which is unavailable in pure Nix builds.
+        yosysConfig = pkgs.writeShellScriptBin "yosys-config" ''
+          exec ${pkgs.bash}/bin/bash ${pkgs.yosys}/bin/yosys-config "$@"
+        '';
+
         nativeInputs = with pkgs; [
           cmake
           ninja
           python3
+          yosysConfig
           # Required by the Yosys JSON import validation test.
           yosys
         ];
@@ -76,6 +84,7 @@ outputs = { self, nixpkgs, flake-utils }:
             cmakeFlags = [
               "-DSILICON_USE_VCPKG=OFF"
               "-DUSING_NIX=ON"
+              "-DSILICON_YOSYS_CONFIG_EXECUTABLE=${yosysConfig}/bin/yosys-config"
             ] ++ pkgs.lib.optionals release [
               "-DCMAKE_BUILD_TYPE=Release"
               "-DSILICON_ENABLE_SANITIZERS=OFF"
