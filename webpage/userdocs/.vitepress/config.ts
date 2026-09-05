@@ -29,26 +29,40 @@ export default defineConfig({
     logo: "/silicon-icon.svg",
     siteTitle: "SILICON Docs",
     nav: [
-      { text: "home", link: "/../", target: "_self"  },
+      { text: "home", link: "/../", target: "_self" },
       { text: "getting started", link: "/" },
       { text: "logiflow", link: "/guide/logiflow" },
       { text: "showcase", link: "/guide/lorem-ipsum" },
     ],
-    sidebar: [
-      {
-        text: "User Documentation",
-        items: [
-          { text: "Getting Started", link: "/" },
-          { text: "LogiFlow Basics", link: "/guide/logiflow" },
-          { text: "Silicon Internals", link: "/guide/internals" },
-          { text: "Troubleshooting", link: "/guide/troubleshooting" },
-          { text: "Formatting Showcase", link: "/guide/lorem-ipsum" },
-        ],
-      },
-    ],
-    socialLinks: [
-      { icon: "github", link: "https://github.com/GiulioCocconi/SILICON" },
-    ],
+    sidebar: {
+      "/guide/contributing/": [
+        {
+          text: "Contributing to SILICON",
+          items: [
+            { text: "Overview", link: "/guide/contributing/" },
+            { text: "Build and Test Locally", link: "/guide/contributing/build" },
+            {
+              text: "Contribution Workflow and Git",
+              link: "/guide/contributing/workflow",
+            },
+            { text: "Continuous Integration", link: "/guide/contributing/ci" },
+          ],
+        },
+      ],
+      "/": [
+        {
+          text: "User Documentation",
+          items: [
+            { text: "Getting Started", link: "/" },
+            { text: "LogiFlow Basics", link: "/guide/logiflow" },
+            { text: "Silicon Internals", link: "/guide/internals" },
+            { text: "Troubleshooting", link: "/guide/troubleshooting" },
+            { text: "Formatting Showcase", link: "/guide/lorem-ipsum" },
+          ],
+        },
+      ],
+    },
+    socialLinks: [{ icon: "github", link: "https://github.com/GiulioCocconi/SILICON" }],
     search: {
       provider: "local",
     },

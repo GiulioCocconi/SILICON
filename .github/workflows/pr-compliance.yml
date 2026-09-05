@@ -28,110 +28,13 @@ jobs:
           echo "BASE_REF=$BASE_REF" >> $GITHUB_ENV
           echo "base_ref=$BASE_REF" >> $GITHUB_OUTPUT
 
-      - name: Check and fix whitespace issues
-        id: whitespace
+      - name: Check PR compliance
+        id: compliance
+        env:
+          PR_COMPLIANCE_BASE_REF: ${{ steps.base.outputs.base_ref }}
+          PR_COMPLIANCE_GITHUB_USER: ${{ github.actor }}
         run: |
-          set +e
-          
-          echo "Checking for whitespace issues..."
-          
-          git diff --check "$BASE_REF...HEAD" > whitespace_errors.txt 2>&1
-
-          if [ $? -ne 0 ]; then
-            echo "has_whitespace_issues=true" >> $GITHUB_OUTPUT
-            echo "Whitespace issues found"
-          else
-            echo "has_whitespace_issues=false" >> $GITHUB_OUTPUT
-            echo "No whitespace issues found ✓"
-          fi
-
-      - name: Check commit compliance
-        id: check
-        run: |
-          set +e
-
-          COMMITS=$(git log --no-merges --format="%H" "$BASE_REF..HEAD")
-          
-          # Allowed types from CONTRIBUTING.md
-          TYPES="feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert|contributors|misc"
-          
-          UNSIGNED=""
-          INVALID=""
-          
-          while IFS= read -r commit; do
-            [[ -z "$commit" ]] && continue
-
-            msg=$(git log --format=%B -n 1 "$commit")
-            subject=$(git log --format=%s -n 1 "$commit")
-            author=$(git log --format=%an -n 1 "$commit")
-            short="${commit:0:7}"
-            
-            # Check sign-off
-            if ! echo "$msg" | grep -q "^Signed-off-by:"; then
-              UNSIGNED+="* $short - \"$subject\" by $author"$'\n'
-            fi
-
-            # Check commit format
-            if ! echo "$subject" | grep -qE "^($TYPES)(\(.+\))?: .+"; then
-              INVALID+="* $short - \"$subject\" by $author"$'\n'
-            fi
-          done <<< "$COMMITS"
-
-          # Set outputs
-          if [[ -n "$UNSIGNED" ]]; then
-            echo "has_unsigned=true" >> $GITHUB_OUTPUT
-            echo "$UNSIGNED" > unsigned_commits.txt
-          else
-            echo "has_unsigned=false" >> $GITHUB_OUTPUT
-          fi
-          
-          if [[ -n "$INVALID" ]]; then
-            echo "has_invalid=true" >> $GITHUB_OUTPUT
-            echo "$INVALID" > invalid_commits.txt
-          else
-            echo "has_invalid=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Check AUTHORS.md file
-        id: authors
-        run: |
-          set +e
-          PR_USER="${{ github.actor }}"
-
-          # Check if user is a bot (e.g., dependabot[bot])
-          if [[ "$PR_USER" == *"[bot]"* ]]; then
-            echo "User is a bot ($PR_USER). Skipping AUTHORS.md check."
-            echo "is_missing=false" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          if git show "$BASE_REF:AUTHORS.md" 2>/dev/null | grep -q "@$PR_USER"; then
-            echo "User already found in AUTHORS.md. Skipping check."
-            echo "is_missing=false" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          echo "User not found in base AUTHORS.md. Verifying addition..."
-
-          # 1. Check if AUTHORS.md file is modified in this PR
-          if ! git diff --name-only "$BASE_REF...HEAD" | grep -q "^AUTHORS\.md$"; then
-            echo "Error: AUTHORS.md file not modified."
-            echo "is_missing=true" >> $GITHUB_OUTPUT
-            echo "error_type=no_file_change" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          # 2. Check if the specific commit message exists
-          REQUIRED_MSG="contributors: add @$PR_USER to AUTHORS.md"
-          if ! git log "$BASE_REF..HEAD" --format=%s | grep -Fq "$REQUIRED_MSG"; then
-            echo "Error: specific commit message missing."
-            echo "is_missing=true" >> $GITHUB_OUTPUT
-            echo "error_type=bad_message" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          echo "New contributor checks passed."
-          echo "is_missing=false" >> $GITHUB_OUTPUT
+          python3 ci/check-pr-compliance.py --github-output "$GITHUB_OUTPUT"
 
       - name: Update PR comment
         if: always()
@@ -143,11 +46,11 @@ jobs:
             const baseRef = '${{ steps.base.outputs.base_ref }}';
 
             // Collect status
-            const hasUnsigned = '${{ steps.check.outputs.has_unsigned }}' === 'true';
-            const hasInvalid = '${{ steps.check.outputs.has_invalid }}' === 'true';
-            const hasWhitespace = '${{ steps.whitespace.outputs.has_whitespace_issues }}' === 'true';
-            const authorsMissing = '${{ steps.authors.outputs.is_missing }}' === 'true';
-            const authorsErrorType = '${{ steps.authors.outputs.error_type }}';
+            const hasUnsigned = '${{ steps.compliance.outputs.has_unsigned }}' === 'true';
+            const hasInvalid = '${{ steps.compliance.outputs.has_invalid }}' === 'true';
+            const hasWhitespace = '${{ steps.compliance.outputs.has_whitespace_issues }}' === 'true';
+            const authorsMissing = '${{ steps.compliance.outputs.is_missing }}' === 'true';
+            const authorsErrorType = '${{ steps.compliance.outputs.error_type }}';
             const prUser = '${{ github.actor }}';
 
             let comment = '';
@@ -257,10 +160,10 @@ jobs:
 
       - name: Fail workflow if issues found
         if: |
-          steps.whitespace.outputs.has_whitespace_issues == 'true' ||
-          steps.check.outputs.has_unsigned == 'true' ||
-          steps.check.outputs.has_invalid == 'true' ||
-          steps.authors.outputs.is_missing == 'true'
+          steps.compliance.outputs.has_whitespace_issues == 'true' ||
+          steps.compliance.outputs.has_unsigned == 'true' ||
+          steps.compliance.outputs.has_invalid == 'true' ||
+          steps.compliance.outputs.is_missing == 'true'
         run: |
           echo "Compliance checks failed. See the PR comment for details."
           exit 1
