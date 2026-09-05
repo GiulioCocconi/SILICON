@@ -19,12 +19,38 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    git-hooks = {
+      url = "github:cachix/git-hooks.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-outputs = { self, nixpkgs, flake-utils }:
+outputs = { self, nixpkgs, flake-utils, git-hooks }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
+
+        preCommitCheck = git-hooks.lib.${system}.run {
+          src = ./.;
+          hooks = {
+            format-code = {
+              enable = true;
+              name = "Check staged C++ formatting";
+              entry = "${pkgs.python3}/bin/python ${./ci/git-clang-format} --diff --staged --extensions cpp,hpp --binary ${pkgs.clang-tools}/bin/clang-format --";
+              files = "\\.(cpp|hpp)$";
+              stages = [ "pre-commit" ];
+            };
+
+            pr-compliance = {
+              enable = true;
+              name = "Check PR compliance";
+              entry = "${pkgs.python3}/bin/python ${./ci/check-pr-compliance.py}";
+              pass_filenames = false;
+              stages = [ "manual" ];
+              always_run = true;
+            };
+          };
+        };
 
         devPackages = with pkgs; [
           (python3.withPackages (pp: with pp; [ pygithub rich ]))
@@ -104,22 +130,27 @@ outputs = { self, nixpkgs, flake-utils }:
           devShells = {
             default = pkgs.mkShell {
               name = "SILICON-dev";
-              packages = devPackages ++ libraries ++ nativeInputs;
+              packages = devPackages ++ libraries ++ nativeInputs ++ preCommitCheck.enabledPackages;
+              inherit (preCommitCheck) shellHook;
               hardeningDisable = [ "all" ];
               NIX_LANG_CPP = "TRUE";
             };
 
             clang = (pkgs.mkShell.override { stdenv = pkgs.llvmPackages_20.libcxxStdenv; }) {
               name = "SILICON-dev-clang";
-              packages = devPackages ++ libraries ++ nativeInputs ++ [pkgs.range-v3];
+              packages = devPackages ++ libraries ++ nativeInputs ++ [pkgs.range-v3] ++ preCommitCheck.enabledPackages;
+              inherit (preCommitCheck) shellHook;
               hardeningDisable = [ "all" ];
             };
 
             webpage = pkgs.mkShell {
               name = "SILICON-webpage-dev";
-              packages = [ bun pkgs.doxygen pkgs.graphviz pkgs.python3 pkgs.opencode ];
+              packages = [ bun pkgs.doxygen pkgs.graphviz pkgs.python3 pkgs.opencode ] ++ preCommitCheck.enabledPackages;
+              inherit (preCommitCheck) shellHook;
             };
           };
+
+          checks.pre-commit-check = preCommitCheck;
 
           packages.default = mkSilicon { };
           packages.release = mkSilicon { release = true; };
