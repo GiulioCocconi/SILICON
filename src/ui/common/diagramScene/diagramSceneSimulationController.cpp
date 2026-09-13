@@ -159,8 +159,8 @@ bool DiagramSceneSimulationController::enterSimulationMode()
       return isJobCancellationRequested();
     };
 
-    simulator = std::make_unique<SILICON::simulation::Session>(circuit, isCancelled,
-                                                               scene.circuitResolver());
+    simulator = std::make_unique<SILICON::simulation::Session>(
+        circuit, isCancelled, scene.circuitResolver());
     configureSimulatorTrace(trace, traceFile);
     return settleInteractiveSimulation(*simulator, isCancelled);
   });
@@ -350,8 +350,8 @@ void DiagramSceneSimulationController::simulateEditedWaveform(
       return isJobCancellationRequested();
     };
 
-    simulator = std::make_unique<SILICON::simulation::Session>(circuit, isCancelled,
-                                                               scene.circuitResolver());
+    simulator = std::make_unique<SILICON::simulation::Session>(
+        circuit, isCancelled, scene.circuitResolver());
     configureSimulatorTrace(trace, traceFile);
 
     return simulator->simulateWaveform(duration, inputSnapshots, inputDrivers,

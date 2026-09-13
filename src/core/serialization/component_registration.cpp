@@ -22,6 +22,7 @@
 #include <core/flipflops.hpp>
 #include <core/gates.hpp>
 #include <core/io.hpp>
+#include <core/memory.hpp>
 #include <core/register.hpp>
 #include <core/subcircuit.hpp>
 #include <extraComponents/arithmetic.hpp>
@@ -58,6 +59,7 @@ void registerAllComponents(ComponentRegistry& registry)
   registerComponent<DLatch>(registry);
   registerComponent<JKFlipFlop>(registry);
   registerComponent<Register>(registry);
+  registerComponent<ROM>(registry);
   registerComponent<SubcircuitComponent>(registry);
 
   registerComponent<Extender>(registry);

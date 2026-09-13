@@ -27,6 +27,7 @@
 
 #include <core/activeKeyGuard.hpp>
 #include <core/circuitDocument.hpp>
+#include <core/memory.hpp>
 #include <core/serialization/component_registry.hpp>
 #include <core/subcircuit.hpp>
 
@@ -136,6 +137,11 @@ namespace {
     }
 
     copyProperties(*component, cloned);
+
+    if (const auto sourceRom = std::dynamic_pointer_cast<ROM>(component)) {
+      auto clonedRom = std::dynamic_pointer_cast<ROM>(cloned);
+      clonedRom->refreshBinaryContents(sourceRom->binaryContentsSnapshot());
+    }
 
     auto inputs = remapBuses(component->getInputs(), wireMap);
     cloned->setInputs(inputs);
