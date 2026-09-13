@@ -21,7 +21,6 @@
 #include <QVariant>
 #include <utility>
 
-
 namespace SILICON {
 namespace ui {
 
@@ -108,6 +107,7 @@ enum SiliconTypes {
   DEMULTIPLEXER,
   DECODER,
   REGISTER,
+  ROM_COMPONENT,
   SUBCIRCUIT,
   D_LATCH,
 
