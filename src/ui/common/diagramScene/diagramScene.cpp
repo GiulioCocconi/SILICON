@@ -44,6 +44,7 @@
 #include <ui/common/undoCommands.hpp>
 #include <ui/common/wireRouting.hpp>
 #include <ui/logiFlow/components/graphicalIO.hpp>
+#include <ui/logiFlow/components/graphicalMemory.hpp>
 #include <ui/logiFlow/components/subcircuit/graphicalSubcircuit.hpp>
 #include <ui/logiFlow/logiFlowWindow.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
@@ -727,6 +728,8 @@ namespace ui {
       subcircuit->setDocumentStore(documents);
       subcircuit->setCircuitResolver(resolver);
     }
+    if (auto* rom = dynamic_cast<GraphicalROM*>(componentToBeDrawn))
+      rom->setDocumentStore(documents);
     lastPlacedComponentType       = typeName;
     lastPlacedComponentProperties = initialProperties;
     suppressNextComponentSearch   = !showSearchBox;

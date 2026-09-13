@@ -51,6 +51,7 @@ enum class ComponentCategory {
   Arithmetic,
   FlipFlops,
   Register,
+  Memory,
   Subcircuits,
   Inputs,
   Outputs,

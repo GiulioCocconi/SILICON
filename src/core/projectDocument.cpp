@@ -161,4 +161,18 @@ void DocumentStore::commitDocuments(std::vector<Document> documents,
   listeners.notify(change);
 }
 
+std::shared_ptr<const std::string>
+binaryContentsSnapshot(const DocumentStore& documents, const std::string_view slug)
+{
+  if (!isValidDocumentSlug(slug))
+    return nullptr;
+
+  const auto* document =
+      documents.find(documentPathForSlug(DocumentType::RawBinary, slug));
+  if (!document)
+    return nullptr;
+
+  return std::make_shared<const std::string>(document->getContents());
+}
+
 }  // namespace SILICON::project
