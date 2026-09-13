@@ -278,11 +278,12 @@ private:
     rowHeight    = metrics.height() + 4;
     headerHeight = rowHeight;
 
-    const auto byteCount     = static_cast<std::size_t>(editor->bytes.size());
-    const auto maximumOffset = byteCount == 0 ? 0 : byteCount - 1;
-    offsetDigits             = 8;
-    for (auto value = maximumOffset; value >= (std::uint64_t{1} << 32); value >>= 4)
-      ++offsetDigits;
+    const auto  byteCount            = static_cast<std::size_t>(editor->bytes.size());
+    const auto  maximumOffset        = byteCount == 0 ? 0 : byteCount - 1;
+    std::size_t requiredOffsetDigits = 1;
+    for (auto value = maximumOffset; value >= 16; value >>= 4)
+      ++requiredOffsetDigits;
+    offsetDigits = std::max<std::size_t>(8, requiredOffsetDigits);
 
     bytesPerRow = BytesPerRow;
 
