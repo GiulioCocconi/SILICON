@@ -34,7 +34,7 @@ using namespace SILICON::core;
 inline std::vector<Component_ptr> componentsIn(const Circuit& circuit)
 {
   std::vector<Component_ptr> components;
-  const auto& graph = circuit.getGraph();
+  const auto&                graph = circuit.getGraph();
   components.reserve(boost::num_vertices(graph));
   for (const auto vertex : boost::make_iterator_range(boost::vertices(graph))) {
     if (auto component = graph[vertex].component)
@@ -45,11 +45,10 @@ inline std::vector<Component_ptr> componentsIn(const Circuit& circuit)
 
 inline std::multiset<std::string> componentTypes(const Circuit& circuit)
 {
-  auto components = componentsIn(circuit);
+  auto                       components = componentsIn(circuit);
   std::multiset<std::string> result;
-  std::ranges::transform(components, std::inserter(result, result.end()),
-                         [](const Component_ptr& component) {
-                           return std::string(component->typeName());
-                         });
+  std::ranges::transform(
+      components, std::inserter(result, result.end()),
+      [](const Component_ptr& component) { return std::string(component->typeName()); });
   return result;
 }

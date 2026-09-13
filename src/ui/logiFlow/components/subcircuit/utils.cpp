@@ -36,8 +36,8 @@ SubcircuitRectShape::SubcircuitRectShape(const QSize& size, QGraphicsItem* paren
 {
 }
 
-void SubcircuitRectShape::paint(QPainter* painter,
-                                  const QStyleOptionGraphicsItem* option, QWidget* widget)
+void SubcircuitRectShape::paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
+                                QWidget* widget)
 {
   setPen(QPen(ThemeEngine::getColor("SILICON_INK"), 3));
   setBrush(ThemeEngine::getColor("SILICON_INTERNAL"));

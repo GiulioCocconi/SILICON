@@ -81,14 +81,13 @@ Copyright (c) 2026. Giulio Cocconi
 #include <QVBoxLayout>
 
 #ifdef __EMSCRIPTEN__
-#include <emscripten/emscripten.h>
+  #include <emscripten/emscripten.h>
 #endif
 
 #include <core/simulator.hpp>
 #include <logging/logger.hpp>
 #include <ui/common/aboutDialog.hpp>
 #include <ui/common/binaryEditor.hpp>
-#include <ui/logiFlow/code/codeEditor.hpp>
 #include <ui/common/diagramScene/diagramScene.hpp>
 #include <ui/common/diagramView.hpp>
 #include <ui/common/fileDialogUtils.hpp>
@@ -100,6 +99,7 @@ Copyright (c) 2026. Giulio Cocconi
 #include <ui/common/theme.hpp>
 #include <ui/common/undoCommands.hpp>
 #include <ui/common/waveformViewer.hpp>
+#include <ui/logiFlow/code/codeEditor.hpp>
 #include <ui/logiFlow/componentCatalogOverlay.hpp>
 #include <ui/logiFlow/components/graphicalLogicComponent.hpp>
 #include <ui/logiFlow/components/subcircuit/componentShapeEditor.hpp>
@@ -107,256 +107,261 @@ Copyright (c) 2026. Giulio Cocconi
 #include <ui/logiFlow/components/subcircuit/utils.hpp>
 #include <ui/logiFlow/metadataDescriptionEdit.hpp>
 #include <ui/logiFlow/projectTree.hpp>
-#include <ui/serialization/gui_component_factory.hpp>
 #include <ui/serialization/document_conversion.hpp>
+#include <ui/serialization/gui_component_factory.hpp>
 
 namespace SILICON {
 namespace ui {
-using namespace SILICON::core;
+  using namespace SILICON::core;
 
-namespace {
+  namespace {
 
-  const SILICON::logging::Logger uiLog("ui");
+    const SILICON::logging::Logger uiLog("ui");
 
-  [[nodiscard]] QIcon categoryIcon(const SILICON::project::DocumentType type)
-  {
-    std::string_view iconName;
-    switch (SILICON::project::categoryOf(type)) {
-      case SILICON::project::DocumentCategory::Diagram: iconName = "circuit-board"; break;
-      case SILICON::project::DocumentCategory::Code: iconName = "code"; break;
-      case SILICON::project::DocumentCategory::Binary: iconName = "file"; break;
-    }
-    return Icon(QString::fromUtf8(iconName.data(),
-                                  static_cast<qsizetype>(iconName.size())));
-  }
-
-  class ConversionCommand : public QUndoCommand {
-  public:
-    using Fn = std::function<void()>;
-    ConversionCommand(QString text, Fn undoFn, Fn redoFn)
-      : QUndoCommand(std::move(text)),
-        undoFn(std::move(undoFn)),
-        redoFn(std::move(redoFn))
+    [[nodiscard]] QIcon categoryIcon(const SILICON::project::DocumentType type)
     {
-    }
-    void undo() override { undoFn(); }
-    void redo() override { redoFn(); }
-
-  private:
-    Fn undoFn;
-    Fn redoFn;
-  };
-
-  [[nodiscard]] std::optional<std::vector<std::string>> selectConversionChoices(
-      QWidget* parent, std::vector<SILICON::conversion::ConversionChoice> choices)
-  {
-    if (choices.size() <= 1) {
-      std::vector<std::string> selected;
-      for (const auto& choice : choices)
-        selected.push_back(choice.id);
-      return selected;
-    }
-
-    std::ranges::sort(choices, [](const auto& lhs, const auto& rhs) {
-      if (lhs.dependencies.size() != rhs.dependencies.size())
-        return lhs.dependencies.size() > rhs.dependencies.size();
-      return lhs.label < rhs.label;
-    });
-
-    std::unordered_map<std::string, const SILICON::conversion::ConversionChoice*>
-        choicesById;
-    for (const auto& choice : choices)
-      choicesById.emplace(choice.id, &choice);
-
-    QDialog dialog(parent);
-    dialog.setWindowTitle(QObject::tr("Select Conversion Items"));
-    dialog.setModal(true);
-    dialog.resize(560, 420);
-
-    auto* layout = new QVBoxLayout(&dialog);
-    layout->addWidget(new QLabel(
-        QObject::tr("Select one or more items. Their dependencies are converted "
-                    "automatically."),
-        &dialog));
-
-    auto* tree = new QTreeWidget(&dialog);
-    tree->setColumnCount(1);
-    tree->setHeaderLabels({QObject::tr("Item")});
-    tree->setRootIsDecorated(true);
-    tree->setSelectionMode(QAbstractItemView::NoSelection);
-    constexpr int explicitlySelectedRole = Qt::UserRole;
-    constexpr int choiceIdRole           = Qt::UserRole + 1;
-
-    const auto addDependencies = [&choicesById](this auto&& addDependencies,
-                                                QTreeWidgetItem* parentItem,
-                                                const std::string& choiceId) -> void {
-      const auto choice = choicesById.find(choiceId);
-      if (choice == choicesById.end())
-        return;
-      for (const auto& dependency : choice->second->dependencies) {
-        auto* dependencyItem = new QTreeWidgetItem(parentItem);
-        const auto dependencyChoice = choicesById.find(dependency);
-        dependencyItem->setText(
-            0, QString::fromStdString(dependencyChoice == choicesById.end()
-                                         ? dependency
-                                         : dependencyChoice->second->label));
-        dependencyItem->setFlags(dependencyItem->flags() & ~Qt::ItemIsUserCheckable);
-        addDependencies(dependencyItem, dependency);
+      std::string_view iconName;
+      switch (SILICON::project::categoryOf(type)) {
+        case SILICON::project::DocumentCategory::Diagram:
+          iconName = "circuit-board";
+          break;
+        case SILICON::project::DocumentCategory::Code: iconName = "code"; break;
+        case SILICON::project::DocumentCategory::Binary: iconName = "file"; break;
       }
+      return Icon(
+          QString::fromUtf8(iconName.data(), static_cast<qsizetype>(iconName.size())));
+    }
+
+    class ConversionCommand : public QUndoCommand {
+    public:
+      using Fn = std::function<void()>;
+      ConversionCommand(QString text, Fn undoFn, Fn redoFn)
+        : QUndoCommand(std::move(text)),
+          undoFn(std::move(undoFn)),
+          redoFn(std::move(redoFn))
+      {
+      }
+      void undo() override { undoFn(); }
+      void redo() override { redoFn(); }
+
+    private:
+      Fn undoFn;
+      Fn redoFn;
     };
 
-    for (const auto& choice : choices) {
-      auto* item = new QTreeWidgetItem(tree);
-      item->setText(0, QString::fromStdString(choice.label));
-      item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
-      item->setCheckState(0, Qt::Unchecked);
-      item->setData(0, explicitlySelectedRole, false);
-      item->setData(0, choiceIdRole, QString::fromStdString(choice.id));
-      addDependencies(item, choice.id);
-    }
-    tree->collapseAll();
-    tree->header()->setSectionResizeMode(0, QHeaderView::Stretch);
-    layout->addWidget(tree);
+    [[nodiscard]] std::optional<std::vector<std::string>>
+    selectConversionChoices(QWidget*                                           parent,
+                            std::vector<SILICON::conversion::ConversionChoice> choices)
+    {
+      if (choices.size() <= 1) {
+        std::vector<std::string> selected;
+        for (const auto& choice : choices)
+          selected.push_back(choice.id);
+        return selected;
+      }
 
-    auto* buttons =
-        new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
-    auto* importButton = buttons->button(QDialogButtonBox::Ok);
-    importButton->setText(QObject::tr("Import"));
-    importButton->setEnabled(false);
-    layout->addWidget(buttons);
-    QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-    QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+      std::ranges::sort(choices, [](const auto& lhs, const auto& rhs) {
+        if (lhs.dependencies.size() != rhs.dependencies.size())
+          return lhs.dependencies.size() > rhs.dependencies.size();
+        return lhs.label < rhs.label;
+      });
 
-    QObject::connect(
-        tree, &QTreeWidget::itemChanged, &dialog,
-        [tree, importButton, &choicesById](QTreeWidgetItem* changedItem, int) {
-          const QSignalBlocker blocker(tree);
-          if (!changedItem->parent()
-              && changedItem->flags().testFlag(Qt::ItemIsEnabled)) {
-            changedItem->setData(0, explicitlySelectedRole,
-                                 changedItem->checkState(0) == Qt::Checked);
-          }
+      std::unordered_map<std::string, const SILICON::conversion::ConversionChoice*>
+          choicesById;
+      for (const auto& choice : choices)
+        choicesById.emplace(choice.id, &choice);
 
-          std::vector<std::string> roots;
-          for (int index = 0; index < tree->topLevelItemCount(); ++index) {
-            const auto* item = tree->topLevelItem(index);
-            if (item->data(0, explicitlySelectedRole).toBool())
-              roots.push_back(item->data(0, choiceIdRole).toString().toStdString());
-          }
+      QDialog dialog(parent);
+      dialog.setWindowTitle(QObject::tr("Select Conversion Items"));
+      dialog.setModal(true);
+      dialog.resize(560, 420);
 
-          importButton->setEnabled(!roots.empty());
-          std::vector<std::string> dependencies;
-          const auto collectDependencies =
-              [&choicesById, &dependencies](this auto&& collectDependencies,
-                                             const std::string& id) -> void {
-            const auto choice = choicesById.find(id);
-            if (choice == choicesById.end())
-              return;
-            for (const auto& dependency : choice->second->dependencies) {
-              if (std::ranges::contains(dependencies, dependency))
-                continue;
-              dependencies.push_back(dependency);
-              collectDependencies(dependency);
+      auto* layout = new QVBoxLayout(&dialog);
+      layout->addWidget(new QLabel(
+          QObject::tr("Select one or more items. Their dependencies are converted "
+                      "automatically."),
+          &dialog));
+
+      auto* tree = new QTreeWidget(&dialog);
+      tree->setColumnCount(1);
+      tree->setHeaderLabels({QObject::tr("Item")});
+      tree->setRootIsDecorated(true);
+      tree->setSelectionMode(QAbstractItemView::NoSelection);
+      constexpr int explicitlySelectedRole = Qt::UserRole;
+      constexpr int choiceIdRole           = Qt::UserRole + 1;
+
+      const auto addDependencies = [&choicesById](this auto&&        addDependencies,
+                                                  QTreeWidgetItem*   parentItem,
+                                                  const std::string& choiceId) -> void {
+        const auto choice = choicesById.find(choiceId);
+        if (choice == choicesById.end())
+          return;
+        for (const auto& dependency : choice->second->dependencies) {
+          auto*      dependencyItem   = new QTreeWidgetItem(parentItem);
+          const auto dependencyChoice = choicesById.find(dependency);
+          dependencyItem->setText(
+              0, QString::fromStdString(dependencyChoice == choicesById.end()
+                                            ? dependency
+                                            : dependencyChoice->second->label));
+          dependencyItem->setFlags(dependencyItem->flags() & ~Qt::ItemIsUserCheckable);
+          addDependencies(dependencyItem, dependency);
+        }
+      };
+
+      for (const auto& choice : choices) {
+        auto* item = new QTreeWidgetItem(tree);
+        item->setText(0, QString::fromStdString(choice.label));
+        item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
+        item->setCheckState(0, Qt::Unchecked);
+        item->setData(0, explicitlySelectedRole, false);
+        item->setData(0, choiceIdRole, QString::fromStdString(choice.id));
+        addDependencies(item, choice.id);
+      }
+      tree->collapseAll();
+      tree->header()->setSectionResizeMode(0, QHeaderView::Stretch);
+      layout->addWidget(tree);
+
+      auto* buttons =
+          new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+      auto* importButton = buttons->button(QDialogButtonBox::Ok);
+      importButton->setText(QObject::tr("Import"));
+      importButton->setEnabled(false);
+      layout->addWidget(buttons);
+      QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+      QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+      QObject::connect(
+          tree, &QTreeWidget::itemChanged, &dialog,
+          [tree, importButton, &choicesById](QTreeWidgetItem* changedItem, int) {
+            const QSignalBlocker blocker(tree);
+            if (!changedItem->parent()
+                && changedItem->flags().testFlag(Qt::ItemIsEnabled)) {
+              changedItem->setData(0, explicitlySelectedRole,
+                                   changedItem->checkState(0) == Qt::Checked);
             }
-          };
-          for (const auto& root : roots)
-            collectDependencies(root);
 
-          for (int index = 0; index < tree->topLevelItemCount(); ++index) {
-            auto*      item       = tree->topLevelItem(index);
-            const auto name = item->data(0, choiceIdRole).toString().toStdString();
-            const bool selected   = item->data(0, explicitlySelectedRole).toBool();
-            const bool dependency = std::ranges::contains(dependencies, name);
+            std::vector<std::string> roots;
+            for (int index = 0; index < tree->topLevelItemCount(); ++index) {
+              const auto* item = tree->topLevelItem(index);
+              if (item->data(0, explicitlySelectedRole).toBool())
+                roots.push_back(item->data(0, choiceIdRole).toString().toStdString());
+            }
 
-            auto flags = item->flags() | Qt::ItemIsUserCheckable;
-            flags.setFlag(Qt::ItemIsEnabled, !dependency);
-            item->setFlags(flags);
-            item->setCheckState(0, selected || dependency ? Qt::Checked : Qt::Unchecked);
+            importButton->setEnabled(!roots.empty());
+            std::vector<std::string> dependencies;
+            const auto               collectDependencies =
+                [&choicesById, &dependencies](this auto&&        collectDependencies,
+                                              const std::string& id) -> void {
+              const auto choice = choicesById.find(id);
+              if (choice == choicesById.end())
+                return;
+              for (const auto& dependency : choice->second->dependencies) {
+                if (std::ranges::contains(dependencies, dependency))
+                  continue;
+                dependencies.push_back(dependency);
+                collectDependencies(dependency);
+              }
+            };
+            for (const auto& root : roots)
+              collectDependencies(root);
 
-            auto font = item->font(0);
-            font.setBold(selected && !dependency);
-            font.setItalic(dependency);
-            item->setFont(0, font);
-          }
-        });
+            for (int index = 0; index < tree->topLevelItemCount(); ++index) {
+              auto*      item     = tree->topLevelItem(index);
+              const auto name     = item->data(0, choiceIdRole).toString().toStdString();
+              const bool selected = item->data(0, explicitlySelectedRole).toBool();
+              const bool dependency = std::ranges::contains(dependencies, name);
 
-    if (dialog.exec() != QDialog::Accepted)
-      return std::nullopt;
+              auto flags = item->flags() | Qt::ItemIsUserCheckable;
+              flags.setFlag(Qt::ItemIsEnabled, !dependency);
+              item->setFlags(flags);
+              item->setCheckState(0,
+                                  selected || dependency ? Qt::Checked : Qt::Unchecked);
 
-    std::vector<std::string> roots;
-    for (int index = 0; index < tree->topLevelItemCount(); ++index) {
-      const auto* item = tree->topLevelItem(index);
-      if (item->data(0, explicitlySelectedRole).toBool())
-        roots.push_back(item->data(0, choiceIdRole).toString().toStdString());
+              auto font = item->font(0);
+              font.setBold(selected && !dependency);
+              font.setItalic(dependency);
+              item->setFont(0, font);
+            }
+          });
+
+      if (dialog.exec() != QDialog::Accepted)
+        return std::nullopt;
+
+      std::vector<std::string> roots;
+      for (int index = 0; index < tree->topLevelItemCount(); ++index) {
+        const auto* item = tree->topLevelItem(index);
+        if (item->data(0, explicitlySelectedRole).toBool())
+          roots.push_back(item->data(0, choiceIdRole).toString().toStdString());
+      }
+      return roots;
     }
-    return roots;
-  }
 
-  QAction* makeAction(QObject* parent, const QIcon& icon, const QString& text,
-                      const QString& statusTip = {})
+    QAction* makeAction(QObject* parent, const QIcon& icon, const QString& text,
+                        const QString& statusTip = {})
+    {
+      auto* action = new QAction(icon, text, parent);
+      if (!statusTip.isEmpty())
+        action->setStatusTip(statusTip);
+      return action;
+    }
+
+    QAction* makeAction(QObject* parent, const QString& text,
+                        const QString& statusTip = {})
+    {
+      auto* action = new QAction(text, parent);
+      if (!statusTip.isEmpty())
+        action->setStatusTip(statusTip);
+      return action;
+    }
+
+    ShortcutSetting shortcut(const QString& key, const QString& label, QAction* action,
+                             const QKeySequence& defaultShortcut)
+    {
+      return {
+          .setting =
+              {
+                  .name         = key,
+                  .defaultValue = QVariant::fromValue(defaultShortcut),
+              },
+          .label  = label,
+          .action = action,
+      };
+    }
+
+  }  // namespace
+
+  void LogiFlowWindow::setActionsEnabled(std::initializer_list<QAction*> actions,
+                                         const bool                      enabled)
   {
-    auto* action = new QAction(icon, text, parent);
-    if (!statusTip.isEmpty())
-      action->setStatusTip(statusTip);
-    return action;
+    for (QAction* action : actions) {
+      if (action)
+        action->setEnabled(enabled);
+    }
   }
 
-  QAction* makeAction(QObject* parent, const QString& text, const QString& statusTip = {})
+  void LogiFlowWindow::syncWasmShortcutCapture()
   {
-    auto* action = new QAction(text, parent);
-    if (!statusTip.isEmpty())
-      action->setStatusTip(statusTip);
-    return action;
-  }
-
-  ShortcutSetting shortcut(const QString& key, const QString& label, QAction* action,
-                           const QKeySequence& defaultShortcut)
-  {
-    return {
-        .setting =
-            {
-                .name         = key,
-                .defaultValue = QVariant::fromValue(defaultShortcut),
-            },
-        .label  = label,
-        .action = action,
-    };
-  }
-
-}  // namespace
-
-void LogiFlowWindow::setActionsEnabled(std::initializer_list<QAction*> actions,
-                                       const bool                      enabled)
-{
-  for (QAction* action : actions) {
-    if (action)
-      action->setEnabled(enabled);
-  }
-}
-
-void LogiFlowWindow::syncWasmShortcutCapture()
-{
 #ifdef __EMSCRIPTEN__
-  const QVector<ShortcutSetting> shortcuts = shortcutSettings();
-  QJsonArray                     shortcutSequences;
-  for (const ShortcutSetting& shortcut : shortcuts) {
-    if (!shortcut.action)
-      continue;
-
-    for (const QKeySequence& sequence : shortcut.action->shortcuts()) {
-      if (sequence.isEmpty())
+    const QVector<ShortcutSetting> shortcuts = shortcutSettings();
+    QJsonArray                     shortcutSequences;
+    for (const ShortcutSetting& shortcut : shortcuts) {
+      if (!shortcut.action)
         continue;
 
-      for (int index = 0; index < sequence.count(); ++index)
-        shortcutSequences.append(
-            QKeySequence(sequence[index]).toString(QKeySequence::PortableText));
+      for (const QKeySequence& sequence : shortcut.action->shortcuts()) {
+        if (sequence.isEmpty())
+          continue;
+
+        for (int index = 0; index < sequence.count(); ++index)
+          shortcutSequences.append(
+              QKeySequence(sequence[index]).toString(QKeySequence::PortableText));
+      }
     }
-  }
 
-  const QByteArray shortcutsJson =
-      QJsonDocument(shortcutSequences).toJson(QJsonDocument::Compact);
+    const QByteArray shortcutsJson =
+        QJsonDocument(shortcutSequences).toJson(QJsonDocument::Compact);
 
-  // clang-format off
+    // clang-format off
 EM_ASM(
     {
       const shortcuts = JSON.parse(UTF8ToString($0));
@@ -430,538 +435,549 @@ EM_ASM(
       true);
     },
     shortcutsJson.constData());
-  // clang-format on
+    // clang-format on
 #endif
-}
+  }
 
-void LogiFlowWindow::createActions()
-{
-  newAct = makeAction(this, Icon("file"), tr("&New"), tr("Create a new project"));
-  newCircuitAct =
-      makeAction(this, categoryIcon(SILICON::project::DocumentType::Circuit),
-                 tr("Circuit"), tr("Create a new circuit"));
-  newCodeFileAct = makeAction(
-      this, categoryIcon(SILICON::project::DocumentType::Verilog), tr("Code File..."),
-      tr("Create an empty source-code document"));
-  newBinaryFileAct =
-      makeAction(this, categoryIcon(SILICON::project::DocumentType::RawBinary),
-                 tr("Binary File..."), tr("Create a fixed-size raw binary document"));
-  openAct        = makeAction(this, Icon("open"), tr("&Open..."),
-                              tr("Open an existing logiFlow file"));
-  saveAct = makeAction(this, Icon("save"), tr("&Save"), tr("Save the circuit to disk"));
-  exportImageAct = makeAction(this, Icon("export"), tr("&Export..."),
-                              tr("Export the circuit as an image"));
-  exitAct = makeAction(this, Icon("xmark"), tr("E&xit"), tr("Exit the application"));
-  cutAct  = makeAction(this, Icon("cut"), tr("Cu&t"),
-                       tr("Cut the current selection's contents to the clipboard"));
-  copyAct = makeAction(this, Icon("copy"), tr("&Copy"));
-  pasteAct       = makeAction(this, Icon("paste"), tr("&Paste"),
-                              tr("Paste the clipboard's contents into the current selection"));
-  rotateAct    = makeAction(this, Icon("rotate"), tr("&Rotate"));
-  autoPlaceAct = makeAction(this, Icon("rearrange"), tr("&Auto place"),
-                            tr("Automatically place components and reroute wires"));
-  deleteAct =
-      makeAction(this, Icon("delete"), tr("&Delete"), tr("Delete selected components"));
-  aboutAct    = makeAction(this, Icon("info"), tr("&About"),
-                           tr("Show the application's about box"));
-  settingsAct = makeAction(this, Icon("settings"), tr("&Settings..."),
-                           tr("Edit application settings"));
+  void LogiFlowWindow::createActions()
+  {
+    newAct = makeAction(this, Icon("file"), tr("&New"), tr("Create a new project"));
+    newCircuitAct =
+        makeAction(this, categoryIcon(SILICON::project::DocumentType::Circuit),
+                   tr("Circuit"), tr("Create a new circuit"));
+    newCodeFileAct =
+        makeAction(this, categoryIcon(SILICON::project::DocumentType::Verilog),
+                   tr("Code File..."), tr("Create an empty source-code document"));
+    newBinaryFileAct =
+        makeAction(this, categoryIcon(SILICON::project::DocumentType::RawBinary),
+                   tr("Binary File..."), tr("Create a fixed-size raw binary document"));
+    openAct = makeAction(this, Icon("open"), tr("&Open..."),
+                         tr("Open an existing logiFlow file"));
+    saveAct = makeAction(this, Icon("save"), tr("&Save"), tr("Save the circuit to disk"));
+    exportImageAct = makeAction(this, Icon("export"), tr("&Export..."),
+                                tr("Export the circuit as an image"));
+    exitAct = makeAction(this, Icon("xmark"), tr("E&xit"), tr("Exit the application"));
+    cutAct  = makeAction(this, Icon("cut"), tr("Cu&t"),
+                         tr("Cut the current selection's contents to the clipboard"));
+    copyAct = makeAction(this, Icon("copy"), tr("&Copy"));
+    pasteAct =
+        makeAction(this, Icon("paste"), tr("&Paste"),
+                   tr("Paste the clipboard's contents into the current selection"));
+    rotateAct    = makeAction(this, Icon("rotate"), tr("&Rotate"));
+    autoPlaceAct = makeAction(this, Icon("rearrange"), tr("&Auto place"),
+                              tr("Automatically place components and reroute wires"));
+    deleteAct =
+        makeAction(this, Icon("delete"), tr("&Delete"), tr("Delete selected components"));
+    aboutAct    = makeAction(this, Icon("info"), tr("&About"),
+                             tr("Show the application's about box"));
+    settingsAct = makeAction(this, Icon("settings"), tr("&Settings..."),
+                             tr("Edit application settings"));
 
-  undoAct = makeAction(this, Icon("undo"), tr("&Undo"), tr("Undo the last operation"));
-  undoAct->setIcon(Icon("undo"));
-  undoAct->setStatusTip(tr("Undo the last operation"));
+    undoAct = makeAction(this, Icon("undo"), tr("&Undo"), tr("Undo the last operation"));
+    undoAct->setIcon(Icon("undo"));
+    undoAct->setStatusTip(tr("Undo the last operation"));
 
-  redoAct = makeAction(this, Icon("redo"), tr("&Redo"), tr("Redo the last operation"));
-  redoAct->setIcon(Icon("redo"));
-  redoAct->setStatusTip(tr("Redo the last operation"));
+    redoAct = makeAction(this, Icon("redo"), tr("&Redo"), tr("Redo the last operation"));
+    redoAct->setIcon(Icon("redo"));
+    redoAct->setStatusTip(tr("Redo the last operation"));
 
-  setActionsEnabled({rotateAct, cutAct, copyAct, deleteAct}, false);
+    setActionsEnabled({rotateAct, cutAct, copyAct, deleteAct}, false);
 
-  setNormalModeAct       = new QAction(Icon("mouse-pointer"), "", this);
-  setPanModeAct          = new QAction(Icon("pan"), "", this);
-  setWireCreationModeAct = new QAction(Icon("link"), "", this);
-  setSimulationModeAct   = new QAction(Icon("play"), "", this);
-  toggleFstTraceAct =
-      makeAction(this, Icon("chart"), tr("Trace"), tr("Show waveform viewer"));
-  toggleFstTraceAct->setCheckable(true);
-  cancelInteractionAct =
-      makeAction(this, QString(), tr("Cancel the current interaction"));
+    setNormalModeAct       = new QAction(Icon("mouse-pointer"), "", this);
+    setPanModeAct          = new QAction(Icon("pan"), "", this);
+    setWireCreationModeAct = new QAction(Icon("link"), "", this);
+    setSimulationModeAct   = new QAction(Icon("play"), "", this);
+    toggleFstTraceAct =
+        makeAction(this, Icon("chart"), tr("Trace"), tr("Show waveform viewer"));
+    toggleFstTraceAct->setCheckable(true);
+    cancelInteractionAct =
+        makeAction(this, QString(), tr("Cancel the current interaction"));
 
-  openComponentCatalogAct =
-      makeAction(this, Icon("plus"), "", tr("Open the component catalog"));
-  editSubcircuitShapeAct = makeAction(this, Icon("circuit-board"), tr("Edit Shape"),
-                                      tr("Edit the active circuit shape"));
-  editSubcircuitShapeAct->setVisible(false);
-  editSubcircuitShapeAct->setEnabled(false);
-  codeConversionAct = makeAction(this, Icon("code"), tr("Code"));
-  codeConversionAct->setVisible(false);
-  codeConversionAct->setEnabled(false);
-  setComponentPlacingModeAct =
-      makeAction(this, Icon("plus"), "", tr("Open quick component search"));
+    openComponentCatalogAct =
+        makeAction(this, Icon("plus"), "", tr("Open the component catalog"));
+    editSubcircuitShapeAct = makeAction(this, Icon("circuit-board"), tr("Edit Shape"),
+                                        tr("Edit the active circuit shape"));
+    editSubcircuitShapeAct->setVisible(false);
+    editSubcircuitShapeAct->setEnabled(false);
+    codeConversionAct = makeAction(this, Icon("code"), tr("Code"));
+    codeConversionAct->setVisible(false);
+    codeConversionAct->setEnabled(false);
+    setComponentPlacingModeAct =
+        makeAction(this, Icon("plus"), "", tr("Open quick component search"));
 
-  connect(newAct, &QAction::triggered, this, &LogiFlowWindow::newFile);
-  connect(newCircuitAct, &QAction::triggered, this, &LogiFlowWindow::createCircuit);
-  connect(newCodeFileAct, &QAction::triggered, this, &LogiFlowWindow::createCodeFile);
-  connect(newBinaryFileAct, &QAction::triggered, this, &LogiFlowWindow::createBinaryFile);
-  connect(openAct, &QAction::triggered, this, &LogiFlowWindow::open);
-  connect(saveAct, &QAction::triggered, this, &LogiFlowWindow::save);
-  connect(exportImageAct, &QAction::triggered, this, &LogiFlowWindow::exportImage);
-  connect(exitAct, &QAction::triggered, this, &QWidget::close);
-  connect(cutAct, &QAction::triggered, this, &LogiFlowWindow::cut);
-  connect(copyAct, &QAction::triggered, this, &LogiFlowWindow::copy);
-  connect(pasteAct, &QAction::triggered, this, &LogiFlowWindow::paste);
-  connect(rotateAct, &QAction::triggered, this, &LogiFlowWindow::rotate);
-  connect(autoPlaceAct, &QAction::triggered, this, &LogiFlowWindow::autoPlace);
-  connect(deleteAct, &QAction::triggered, this, &LogiFlowWindow::del);
-  connect(aboutAct, &QAction::triggered, this, &LogiFlowWindow::about);
-  connect(settingsAct, &QAction::triggered, this, &LogiFlowWindow::openSettings);
-  connect(undoAct, &QAction::triggered, this, [this] {
-    const auto type = activeDocumentType();
-    if (type && SILICON::project::categoryOf(*type)
-                    == SILICON::project::DocumentCategory::Binary
-        && binaryEditor->history()->canUndo())
-      binaryEditor->history()->undo();
-    else if (type && SILICON::project::categoryOf(*type)
-                         == SILICON::project::DocumentCategory::Code
-             && codeEditor->document()->isUndoAvailable())
-      codeEditor->undo();
-    else
-      undoStack->undo();
-  });
-  connect(redoAct, &QAction::triggered, this, [this] {
-    const auto type = activeDocumentType();
-    if (type && SILICON::project::categoryOf(*type)
-                    == SILICON::project::DocumentCategory::Binary
-        && binaryEditor->history()->canRedo())
-      binaryEditor->history()->redo();
-    else if (type && SILICON::project::categoryOf(*type)
-                         == SILICON::project::DocumentCategory::Code
-             && codeEditor->document()->isRedoAvailable())
-      codeEditor->redo();
-    else
-      undoStack->redo();
-  });
-  const auto updateHistoryActions = [this] {
-    const auto type = activeDocumentType();
-    undoAct->setEnabled(
-        undoStack->canUndo()
-        || (type && SILICON::project::categoryOf(*type)
-                        == SILICON::project::DocumentCategory::Code
-            && codeEditor->document()->isUndoAvailable())
-        || (type && SILICON::project::categoryOf(*type)
-                        == SILICON::project::DocumentCategory::Binary
-            && binaryEditor->history()->canUndo()));
-    redoAct->setEnabled(
-        undoStack->canRedo()
-        || (type && SILICON::project::categoryOf(*type)
-                        == SILICON::project::DocumentCategory::Code
-            && codeEditor->document()->isRedoAvailable())
-        || (type && SILICON::project::categoryOf(*type)
-                        == SILICON::project::DocumentCategory::Binary
-            && binaryEditor->history()->canRedo()));
-  };
-  connect(undoStack, &QUndoStack::canUndoChanged, this,
-          [updateHistoryActions](bool) { updateHistoryActions(); });
-  connect(undoStack, &QUndoStack::canRedoChanged, this,
-          [updateHistoryActions](bool) { updateHistoryActions(); });
-  connect(codeEditor, &QPlainTextEdit::undoAvailable, this,
-          [updateHistoryActions](bool) { updateHistoryActions(); });
-  connect(codeEditor, &QPlainTextEdit::redoAvailable, this,
-          [updateHistoryActions](bool) { updateHistoryActions(); });
-  connect(binaryEditor->history(), &QUndoStack::canUndoChanged, this,
-          [updateHistoryActions](bool) { updateHistoryActions(); });
-  connect(binaryEditor->history(), &QUndoStack::canRedoChanged, this,
-          [updateHistoryActions](bool) { updateHistoryActions(); });
-  connect(editorStack, &QStackedWidget::currentChanged, this,
-          [updateHistoryActions](int) { updateHistoryActions(); });
-  updateHistoryActions();
+    connect(newAct, &QAction::triggered, this, &LogiFlowWindow::newFile);
+    connect(newCircuitAct, &QAction::triggered, this, &LogiFlowWindow::createCircuit);
+    connect(newCodeFileAct, &QAction::triggered, this, &LogiFlowWindow::createCodeFile);
+    connect(newBinaryFileAct, &QAction::triggered, this,
+            &LogiFlowWindow::createBinaryFile);
+    connect(openAct, &QAction::triggered, this, &LogiFlowWindow::open);
+    connect(saveAct, &QAction::triggered, this, &LogiFlowWindow::save);
+    connect(exportImageAct, &QAction::triggered, this, &LogiFlowWindow::exportImage);
+    connect(exitAct, &QAction::triggered, this, &QWidget::close);
+    connect(cutAct, &QAction::triggered, this, &LogiFlowWindow::cut);
+    connect(copyAct, &QAction::triggered, this, &LogiFlowWindow::copy);
+    connect(pasteAct, &QAction::triggered, this, &LogiFlowWindow::paste);
+    connect(rotateAct, &QAction::triggered, this, &LogiFlowWindow::rotate);
+    connect(autoPlaceAct, &QAction::triggered, this, &LogiFlowWindow::autoPlace);
+    connect(deleteAct, &QAction::triggered, this, &LogiFlowWindow::del);
+    connect(aboutAct, &QAction::triggered, this, &LogiFlowWindow::about);
+    connect(settingsAct, &QAction::triggered, this, &LogiFlowWindow::openSettings);
+    connect(undoAct, &QAction::triggered, this, [this] {
+      const auto type = activeDocumentType();
+      if (type
+          && SILICON::project::categoryOf(*type)
+                 == SILICON::project::DocumentCategory::Binary
+          && binaryEditor->history()->canUndo())
+        binaryEditor->history()->undo();
+      else if (type
+               && SILICON::project::categoryOf(*type)
+                      == SILICON::project::DocumentCategory::Code
+               && codeEditor->document()->isUndoAvailable())
+        codeEditor->undo();
+      else
+        undoStack->undo();
+    });
+    connect(redoAct, &QAction::triggered, this, [this] {
+      const auto type = activeDocumentType();
+      if (type
+          && SILICON::project::categoryOf(*type)
+                 == SILICON::project::DocumentCategory::Binary
+          && binaryEditor->history()->canRedo())
+        binaryEditor->history()->redo();
+      else if (type
+               && SILICON::project::categoryOf(*type)
+                      == SILICON::project::DocumentCategory::Code
+               && codeEditor->document()->isRedoAvailable())
+        codeEditor->redo();
+      else
+        undoStack->redo();
+    });
+    const auto updateHistoryActions = [this] {
+      const auto type = activeDocumentType();
+      undoAct->setEnabled(undoStack->canUndo()
+                          || (type
+                              && SILICON::project::categoryOf(*type)
+                                     == SILICON::project::DocumentCategory::Code
+                              && codeEditor->document()->isUndoAvailable())
+                          || (type
+                              && SILICON::project::categoryOf(*type)
+                                     == SILICON::project::DocumentCategory::Binary
+                              && binaryEditor->history()->canUndo()));
+      redoAct->setEnabled(undoStack->canRedo()
+                          || (type
+                              && SILICON::project::categoryOf(*type)
+                                     == SILICON::project::DocumentCategory::Code
+                              && codeEditor->document()->isRedoAvailable())
+                          || (type
+                              && SILICON::project::categoryOf(*type)
+                                     == SILICON::project::DocumentCategory::Binary
+                              && binaryEditor->history()->canRedo()));
+    };
+    connect(undoStack, &QUndoStack::canUndoChanged, this,
+            [updateHistoryActions](bool) { updateHistoryActions(); });
+    connect(undoStack, &QUndoStack::canRedoChanged, this,
+            [updateHistoryActions](bool) { updateHistoryActions(); });
+    connect(codeEditor, &QPlainTextEdit::undoAvailable, this,
+            [updateHistoryActions](bool) { updateHistoryActions(); });
+    connect(codeEditor, &QPlainTextEdit::redoAvailable, this,
+            [updateHistoryActions](bool) { updateHistoryActions(); });
+    connect(binaryEditor->history(), &QUndoStack::canUndoChanged, this,
+            [updateHistoryActions](bool) { updateHistoryActions(); });
+    connect(binaryEditor->history(), &QUndoStack::canRedoChanged, this,
+            [updateHistoryActions](bool) { updateHistoryActions(); });
+    connect(editorStack, &QStackedWidget::currentChanged, this,
+            [updateHistoryActions](int) { updateHistoryActions(); });
+    updateHistoryActions();
 
-  connect(setNormalModeAct, &QAction::triggered, this, &LogiFlowWindow::setNormalMode);
-  connect(setPanModeAct, &QAction::triggered, this, &LogiFlowWindow::setPanMode);
-  connect(setWireCreationModeAct, &QAction::triggered, this,
-          &LogiFlowWindow::setWireCreationMode);
-  connect(setSimulationModeAct, &QAction::triggered, this,
-          &LogiFlowWindow::setSimulationMode);
-  connect(openComponentCatalogAct, &QAction::triggered, this,
-          &LogiFlowWindow::showComponentCatalog);
-  connect(editSubcircuitShapeAct, &QAction::triggered, this,
-          &LogiFlowWindow::editActiveSubcircuitShape);
-  connect(codeConversionAct, &QAction::triggered, this,
-          &LogiFlowWindow::convertActiveDocument);
-  connect(setComponentPlacingModeAct, &QAction::triggered, this,
-          &LogiFlowWindow::setComponentPlacingMode);
-  connect(cancelInteractionAct, &QAction::triggered, this,
-          &LogiFlowWindow::cancelCurrentInteraction);
-  connect(toggleFstTraceAct, &QAction::toggled, this, &LogiFlowWindow::toggleFstTracing);
+    connect(setNormalModeAct, &QAction::triggered, this, &LogiFlowWindow::setNormalMode);
+    connect(setPanModeAct, &QAction::triggered, this, &LogiFlowWindow::setPanMode);
+    connect(setWireCreationModeAct, &QAction::triggered, this,
+            &LogiFlowWindow::setWireCreationMode);
+    connect(setSimulationModeAct, &QAction::triggered, this,
+            &LogiFlowWindow::setSimulationMode);
+    connect(openComponentCatalogAct, &QAction::triggered, this,
+            &LogiFlowWindow::showComponentCatalog);
+    connect(editSubcircuitShapeAct, &QAction::triggered, this,
+            &LogiFlowWindow::editActiveSubcircuitShape);
+    connect(codeConversionAct, &QAction::triggered, this,
+            &LogiFlowWindow::convertActiveDocument);
+    connect(setComponentPlacingModeAct, &QAction::triggered, this,
+            &LogiFlowWindow::setComponentPlacingMode);
+    connect(cancelInteractionAct, &QAction::triggered, this,
+            &LogiFlowWindow::cancelCurrentInteraction);
+    connect(toggleFstTraceAct, &QAction::toggled, this,
+            &LogiFlowWindow::toggleFstTracing);
 
-  addAction(setComponentPlacingModeAct);
-  addAction(cancelInteractionAct);
-}
+    addAction(setComponentPlacingModeAct);
+    addAction(cancelInteractionAct);
+  }
 
-QVector<ShortcutSetting> LogiFlowWindow::shortcutSettings() const
-{
-  return {
-      shortcut(QStringLiteral("keybindings/new"), tr("New"), newAct,
-               QKeySequence(QKeySequence::New)),
-      shortcut(QStringLiteral("keybindings/open"), tr("Open"), openAct,
-               QKeySequence(QKeySequence::Open)),
-      shortcut(QStringLiteral("keybindings/save"), tr("Save"), saveAct,
-               QKeySequence(QKeySequence::Save)),
-      shortcut(QStringLiteral("keybindings/exportImage"), tr("Export"), exportImageAct,
-               QKeySequence(QKeySequence::Print)),
-      shortcut(QStringLiteral("keybindings/exit"), tr("Exit"), exitAct,
-               QKeySequence(QKeySequence::Quit)),
-      shortcut(QStringLiteral("keybindings/undo"), tr("Undo"), undoAct,
-               QKeySequence(QKeySequence::Undo)),
-      shortcut(QStringLiteral("keybindings/redo"), tr("Redo"), redoAct,
-               QKeySequence(QKeySequence::Redo)),
-      shortcut(QStringLiteral("keybindings/cut"), tr("Cut"), cutAct,
-               QKeySequence(QKeySequence::Cut)),
-      shortcut(QStringLiteral("keybindings/copy"), tr("Copy"), copyAct,
-               QKeySequence(QKeySequence::Copy)),
-      shortcut(QStringLiteral("keybindings/paste"), tr("Paste"), pasteAct,
-               QKeySequence(QKeySequence::Paste)),
-      shortcut(QStringLiteral("keybindings/rotate"), tr("Rotate"), rotateAct,
-               QKeySequence(Qt::AltModifier | Qt::Key_R)),
-      shortcut(QStringLiteral("keybindings/autoPlace"), tr("Auto place"), autoPlaceAct,
-               QKeySequence(Qt::AltModifier | Qt::Key_L)),
-      shortcut(QStringLiteral("keybindings/delete"), tr("Delete"), deleteAct,
-               QKeySequence(QKeySequence::Delete)),
-      shortcut(QStringLiteral("keybindings/normalMode"), tr("Normal mode"),
-               setNormalModeAct, QKeySequence()),
-      shortcut(QStringLiteral("keybindings/panMode"), tr("Pan mode"), setPanModeAct,
-               QKeySequence()),
-      shortcut(QStringLiteral("keybindings/wireCreationMode"), tr("Wire creation mode"),
-               setWireCreationModeAct, QKeySequence(Qt::AltModifier | Qt::Key_W)),
-      shortcut(QStringLiteral("keybindings/simulationMode"), tr("Simulation mode"),
-               setSimulationModeAct,
-               QKeySequence(Qt::AltModifier | Qt::ControlModifier | Qt::Key_S)),
-      shortcut(QStringLiteral("keybindings/componentPlacingMode"),
-               tr("Component placing mode"), setComponentPlacingModeAct,
-               QKeySequence(Qt::AltModifier | Qt::Key_A)),
-      shortcut(QStringLiteral("keybindings/cancelInteraction"),
-               tr("Cancel current interaction"), cancelInteractionAct,
-               QKeySequence(Qt::Key_Escape)),
-      shortcut(QStringLiteral("keybindings/toggleTrace"), tr("Waveform trace"),
-               toggleFstTraceAct, QKeySequence()),
-      shortcut(QStringLiteral("keybindings/settings"), tr("Settings"), settingsAct,
-               QKeySequence()),
-  };
-}
+  QVector<ShortcutSetting> LogiFlowWindow::shortcutSettings() const
+  {
+    return {
+        shortcut(QStringLiteral("keybindings/new"), tr("New"), newAct,
+                 QKeySequence(QKeySequence::New)),
+        shortcut(QStringLiteral("keybindings/open"), tr("Open"), openAct,
+                 QKeySequence(QKeySequence::Open)),
+        shortcut(QStringLiteral("keybindings/save"), tr("Save"), saveAct,
+                 QKeySequence(QKeySequence::Save)),
+        shortcut(QStringLiteral("keybindings/exportImage"), tr("Export"), exportImageAct,
+                 QKeySequence(QKeySequence::Print)),
+        shortcut(QStringLiteral("keybindings/exit"), tr("Exit"), exitAct,
+                 QKeySequence(QKeySequence::Quit)),
+        shortcut(QStringLiteral("keybindings/undo"), tr("Undo"), undoAct,
+                 QKeySequence(QKeySequence::Undo)),
+        shortcut(QStringLiteral("keybindings/redo"), tr("Redo"), redoAct,
+                 QKeySequence(QKeySequence::Redo)),
+        shortcut(QStringLiteral("keybindings/cut"), tr("Cut"), cutAct,
+                 QKeySequence(QKeySequence::Cut)),
+        shortcut(QStringLiteral("keybindings/copy"), tr("Copy"), copyAct,
+                 QKeySequence(QKeySequence::Copy)),
+        shortcut(QStringLiteral("keybindings/paste"), tr("Paste"), pasteAct,
+                 QKeySequence(QKeySequence::Paste)),
+        shortcut(QStringLiteral("keybindings/rotate"), tr("Rotate"), rotateAct,
+                 QKeySequence(Qt::AltModifier | Qt::Key_R)),
+        shortcut(QStringLiteral("keybindings/autoPlace"), tr("Auto place"), autoPlaceAct,
+                 QKeySequence(Qt::AltModifier | Qt::Key_L)),
+        shortcut(QStringLiteral("keybindings/delete"), tr("Delete"), deleteAct,
+                 QKeySequence(QKeySequence::Delete)),
+        shortcut(QStringLiteral("keybindings/normalMode"), tr("Normal mode"),
+                 setNormalModeAct, QKeySequence()),
+        shortcut(QStringLiteral("keybindings/panMode"), tr("Pan mode"), setPanModeAct,
+                 QKeySequence()),
+        shortcut(QStringLiteral("keybindings/wireCreationMode"), tr("Wire creation mode"),
+                 setWireCreationModeAct, QKeySequence(Qt::AltModifier | Qt::Key_W)),
+        shortcut(QStringLiteral("keybindings/simulationMode"), tr("Simulation mode"),
+                 setSimulationModeAct,
+                 QKeySequence(Qt::AltModifier | Qt::ControlModifier | Qt::Key_S)),
+        shortcut(QStringLiteral("keybindings/componentPlacingMode"),
+                 tr("Component placing mode"), setComponentPlacingModeAct,
+                 QKeySequence(Qt::AltModifier | Qt::Key_A)),
+        shortcut(QStringLiteral("keybindings/cancelInteraction"),
+                 tr("Cancel current interaction"), cancelInteractionAct,
+                 QKeySequence(Qt::Key_Escape)),
+        shortcut(QStringLiteral("keybindings/toggleTrace"), tr("Waveform trace"),
+                 toggleFstTraceAct, QKeySequence()),
+        shortcut(QStringLiteral("keybindings/settings"), tr("Settings"), settingsAct,
+                 QKeySequence()),
+    };
+  }
 
-void LogiFlowWindow::applyStoredSettings()
-{
-  SiliconSettings            settings("LogiFlow", this);
-  const CommonSettingsValues values = readCommonSettings(settings);
+  void LogiFlowWindow::applyStoredSettings()
+  {
+    SiliconSettings            settings("LogiFlow", this);
+    const CommonSettingsValues values = readCommonSettings(settings);
 
-  SILICON::simulation::Simulator::setMaxSimulationSteps(
-      static_cast<uint64_t>(values.maxSimulationSteps));
-  SILICON::simulation::Simulator::setMaxTransitionsPerDeltaCycle(
-      values.maxTransitionsPerDeltaCycle);
+    SILICON::simulation::Simulator::setMaxSimulationSteps(
+        static_cast<uint64_t>(values.maxSimulationSteps));
+    SILICON::simulation::Simulator::setMaxTransitionsPerDeltaCycle(
+        values.maxTransitionsPerDeltaCycle);
 
-  ThemeEngine::apply(*qApp, themeModeFromText(values.theme));
+    ThemeEngine::apply(*qApp, themeModeFromText(values.theme));
 
-  const auto shortcuts = shortcutSettings();
-  for (const ShortcutSetting& shortcut : shortcuts) {
-    shortcut.action->setShortcut(
-        SILICON::ui::settings::value(settings, shortcut.setting).value<QKeySequence>());
+    const auto shortcuts = shortcutSettings();
+    for (const ShortcutSetting& shortcut : shortcuts) {
+      shortcut.action->setShortcut(
+          SILICON::ui::settings::value(settings, shortcut.setting).value<QKeySequence>());
 #ifdef __EMSCRIPTEN__
-    shortcut.action->setShortcutContext(Qt::ApplicationShortcut);
-    if (!actions().contains(shortcut.action))
-      addAction(shortcut.action);
+      shortcut.action->setShortcutContext(Qt::ApplicationShortcut);
+      if (!actions().contains(shortcut.action))
+        addAction(shortcut.action);
 #endif
-  }
-
-  syncWasmShortcutCapture();
-}
-
-void LogiFlowWindow::createMenus()
-{
-  fileMenu = menuBar()->addMenu(tr("&File"));
-  auto* newMenu = fileMenu->addMenu(Icon("file"), tr("&New"));
-  newMenu->addAction(newCircuitAct);
-  newMenu->addAction(newCodeFileAct);
-  newMenu->addAction(newBinaryFileAct);
-  fileMenu->addAction(openAct);
-  fileMenu->addAction(saveAct);
-  fileMenu->addAction(exportImageAct);
-  fileMenu->addAction(toggleFstTraceAct);
-  fileMenu->addSeparator();
-  fileMenu->addAction(exitAct);
-
-  editMenu = menuBar()->addMenu(tr("&Edit"));
-  editMenu->addAction(undoAct);
-  editMenu->addAction(redoAct);
-  editMenu->addSeparator();
-  editMenu->addAction(cutAct);
-  editMenu->addAction(copyAct);
-  editMenu->addAction(pasteAct);
-  editMenu->addAction(rotateAct);
-  editMenu->addAction(autoPlaceAct);
-  editMenu->addAction(deleteAct);
-  editMenu->addSeparator();
-  editMenu->addAction(settingsAct);
-
-  helpMenu = menuBar()->addMenu(tr("&Help"));
-  helpMenu->addAction(aboutAct);
-}
-
-void LogiFlowWindow::createToolBar()
-{
-  toolBar = new QToolBar(this);
-  toolBar->setAllowedAreas(Qt::TopToolBarArea | Qt::BottomToolBarArea);
-  toolBar->setFloatable(false);
-
-  toolBar->addAction(newAct);
-  toolBar->addAction(openAct);
-  toolBar->addAction(saveAct);
-
-  diagramToolsSeparator = toolBar->addSeparator();
-
-  toolBar->addAction(setNormalModeAct);
-  toolBar->addAction(setPanModeAct);
-  toolBar->addAction(setWireCreationModeAct);
-  toolBar->addAction(setSimulationModeAct);
-  toolBar->addAction(toggleFstTraceAct);
-
-  documentToolsSeparator = toolBar->addSeparator();
-  toolBar->addAction(openComponentCatalogAct);
-  toolBar->addAction(editSubcircuitShapeAct);
-  toolBar->addAction(codeConversionAct);
-
-  addToolBar(toolBar);
-}
-
-void LogiFlowWindow::createWaveformWindow()
-{
-  waveformWindow = new QDialog(this);
-  waveformWindow->setWindowTitle(tr("Waveform"));
-  waveformWindow->setModal(false);
-  waveformWindow->resize(900, 420);
-
-  const auto layout = new QVBoxLayout(waveformWindow);
-  layout->setContentsMargins(0, 0, 0, 0);
-
-  waveformViewer = new waveform::Viewer(waveformWindow);
-  layout->addWidget(waveformViewer);
-
-  connect(waveformWindow, &QDialog::finished, this, [this] {
-    const QSignalBlocker blocker(toggleFstTraceAct);
-    toggleFstTraceAct->setChecked(false);
-    waveformViewer->setEditMode(false);
-  });
-  connect(diagramScene, &DiagramScene::waveformTraceReset, waveformViewer,
-          &waveform::Viewer::resetTrace);
-  connect(diagramScene, &DiagramScene::waveformTraceSnapshot, waveformViewer,
-          &waveform::Viewer::appendSnapshot);
-  connect(
-      waveformViewer, &waveform::Viewer::editModeChanged, this,
-      [this](const bool enabled) { diagramScene->setIoInteractionsEnabled(!enabled); });
-  connect(waveformViewer, &waveform::Viewer::editTraceCommitted, diagramScene,
-          &DiagramScene::simulateEditedWaveform);
-}
-
-void LogiFlowWindow::updateSubcircuitShapeAction()
-{
-  if (!editSubcircuitShapeAct)
-    return;
-  const bool active = activeDocumentType() == SILICON::project::DocumentType::Circuit;
-  editSubcircuitShapeAct->setVisible(active);
-  editSubcircuitShapeAct->setEnabled(active);
-  updateCodeAction();
-}
-
-std::optional<SILICON::project::DocumentType>
-LogiFlowWindow::activeDocumentType() const noexcept
-{
-  return SILICON::project::documentTypeForPath(activeDocumentPath);
-}
-
-void LogiFlowWindow::updateCodeAction()
-{
-  if (!codeConversionAct)
-    return;
-  const auto* document = projectContext.documents.find(activeDocumentPath);
-  const auto converters = document ? documentConvertersFor(document->getType())
-                                   : std::vector<const DocumentConverter*>{};
-  const auto available = std::ranges::count_if(
-      converters, [](const DocumentConverter* converter) { return converter->available; });
-  codeConversionAct->setVisible(!converters.empty());
-  codeConversionAct->setEnabled(available != 0);
-  codeConversionAct->setToolTip(
-      !converters.empty() && available == 0
-          ? QString::fromUtf8(converters.front()->unavailableReason.data(),
-                              static_cast<qsizetype>(
-                                  converters.front()->unavailableReason.size()))
-          : QString());
-  if (converters.size() == 1) {
-    codeConversionAct->setText(
-        tr("Convert to %1").arg(documentTypeName(converters.front()->target)));
-  } else if (!converters.empty()) {
-    codeConversionAct->setText(tr("Convert..."));
-  }
-  const auto type = activeDocumentType();
-  const bool nonGraphical =
-      type && SILICON::project::categoryOf(*type)
-          != SILICON::project::DocumentCategory::Diagram;
-  setActionsEnabled({setNormalModeAct, setPanModeAct, setWireCreationModeAct,
-                     setSimulationModeAct, toggleFstTraceAct, openComponentCatalogAct,
-                     setComponentPlacingModeAct, autoPlaceAct},
-                    !nonGraphical);
-
-  if (toolBar) {
-    for (auto* action :
-         {setNormalModeAct, setPanModeAct, setWireCreationModeAct, setSimulationModeAct,
-          toggleFstTraceAct, openComponentCatalogAct}) {
-      if (auto* widget = toolBar->widgetForAction(action))
-        widget->setVisible(!nonGraphical);
     }
-    if (auto* widget = toolBar->widgetForAction(diagramToolsSeparator))
-      widget->setVisible(!nonGraphical);
-    if (auto* widget = toolBar->widgetForAction(documentToolsSeparator))
-      widget->setVisible(!nonGraphical || codeConversionAct->isEnabled());
-    if (auto* widget = toolBar->widgetForAction(codeConversionAct))
-      widget->setVisible(codeConversionAct->isVisible()
-                         && codeConversionAct->isEnabled());
-  }
-}
 
-void LogiFlowWindow::commitConvertedDocuments(
-    std::vector<SILICON::project::Document> documents, const std::string& sourcePath,
-    const std::string& activatePath, const QString& commandText)
-{
-  auto& store = projectContext.documents;
-  auto  beforeDocuments = store.getDocuments();
-  auto  afterDocuments  = beforeDocuments;
-
-  for (auto& document : documents) {
-    const auto existing = std::ranges::find(afterDocuments, document.getPath(),
-                                            &SILICON::project::Document::getPath);
-    if (existing == afterDocuments.end())
-      afterDocuments.push_back(std::move(document));
-    else
-      *existing = std::move(document);
+    syncWasmShortcutCapture();
   }
 
-  SILICON::project::CircuitDependencyGraph validatedDependencies;
-  validatedDependencies.rebuildFromProject(afterDocuments);
+  void LogiFlowWindow::createMenus()
+  {
+    fileMenu      = menuBar()->addMenu(tr("&File"));
+    auto* newMenu = fileMenu->addMenu(Icon("file"), tr("&New"));
+    newMenu->addAction(newCircuitAct);
+    newMenu->addAction(newCodeFileAct);
+    newMenu->addAction(newBinaryFileAct);
+    fileMenu->addAction(openAct);
+    fileMenu->addAction(saveAct);
+    fileMenu->addAction(exportImageAct);
+    fileMenu->addAction(toggleFstTraceAct);
+    fileMenu->addSeparator();
+    fileMenu->addAction(exitAct);
 
-  auto apply = [this, afterDocuments, activatePath] {
-    projectContext.setDocuments(afterDocuments);
-    rebuildProjectTree();
-    switchToDocument(activatePath, true);
-  };
-  auto restore = [this, beforeDocuments, sourcePath] {
-    if (projectContext.documents.contains(sourcePath))
-      switchToDocument(sourcePath, false);
-    projectContext.setDocuments(beforeDocuments);
-    rebuildProjectTree();
-    switchToDocument(sourcePath, true);
-  };
-  undoStack->push(
-      new ConversionCommand(commandText, std::move(restore), std::move(apply)));
-}
+    editMenu = menuBar()->addMenu(tr("&Edit"));
+    editMenu->addAction(undoAct);
+    editMenu->addAction(redoAct);
+    editMenu->addSeparator();
+    editMenu->addAction(cutAct);
+    editMenu->addAction(copyAct);
+    editMenu->addAction(pasteAct);
+    editMenu->addAction(rotateAct);
+    editMenu->addAction(autoPlaceAct);
+    editMenu->addAction(deleteAct);
+    editMenu->addSeparator();
+    editMenu->addAction(settingsAct);
 
-void LogiFlowWindow::convertActiveDocument()
-{
-  const auto* source = projectContext.documents.find(activeDocumentPath);
-  if (!source)
-    return;
-
-  const auto converters = documentConvertersFor(source->getType());
-  std::vector<SILICON::project::DocumentType> targets;
-  QStringList                                  labels;
-  for (const auto* converter : converters) {
-    if (!converter->available)
-      continue;
-    targets.push_back(converter->target);
-    labels.push_back(documentTypeName(converter->target));
+    helpMenu = menuBar()->addMenu(tr("&Help"));
+    helpMenu->addAction(aboutAct);
   }
 
-  if (targets.empty())
-    return;
-  if (targets.size() == 1) {
-    convertActiveDocumentTo(targets.front());
-    return;
+  void LogiFlowWindow::createToolBar()
+  {
+    toolBar = new QToolBar(this);
+    toolBar->setAllowedAreas(Qt::TopToolBarArea | Qt::BottomToolBarArea);
+    toolBar->setFloatable(false);
+
+    toolBar->addAction(newAct);
+    toolBar->addAction(openAct);
+    toolBar->addAction(saveAct);
+
+    diagramToolsSeparator = toolBar->addSeparator();
+
+    toolBar->addAction(setNormalModeAct);
+    toolBar->addAction(setPanModeAct);
+    toolBar->addAction(setWireCreationModeAct);
+    toolBar->addAction(setSimulationModeAct);
+    toolBar->addAction(toggleFstTraceAct);
+
+    documentToolsSeparator = toolBar->addSeparator();
+    toolBar->addAction(openComponentCatalogAct);
+    toolBar->addAction(editSubcircuitShapeAct);
+    toolBar->addAction(codeConversionAct);
+
+    addToolBar(toolBar);
   }
 
-  SILICON::ui::inputDialog::getItem(
-      this, tr("Convert Document"), tr("Target format"), labels, 0, false,
-      [this, labels = std::move(labels), targets = std::move(targets)](
-          const QString& selected) {
-        const auto index = labels.indexOf(selected);
-        if (index >= 0 && index < static_cast<qsizetype>(targets.size()))
-          convertActiveDocumentTo(targets[static_cast<std::size_t>(index)]);
-      });
-}
+  void LogiFlowWindow::createWaveformWindow()
+  {
+    waveformWindow = new QDialog(this);
+    waveformWindow->setWindowTitle(tr("Waveform"));
+    waveformWindow->setModal(false);
+    waveformWindow->resize(900, 420);
 
-void LogiFlowWindow::convertActiveDocumentTo(
-    const SILICON::project::DocumentType target)
-{
-  try {
-    saveActiveDocumentPayload();
-    const auto sourcePath = activeDocumentPath;
-    auto&      store      = projectContext.documents;
-    const auto* source    = store.find(sourcePath);
+    const auto layout = new QVBoxLayout(waveformWindow);
+    layout->setContentsMargins(0, 0, 0, 0);
+
+    waveformViewer = new waveform::Viewer(waveformWindow);
+    layout->addWidget(waveformViewer);
+
+    connect(waveformWindow, &QDialog::finished, this, [this] {
+      const QSignalBlocker blocker(toggleFstTraceAct);
+      toggleFstTraceAct->setChecked(false);
+      waveformViewer->setEditMode(false);
+    });
+    connect(diagramScene, &DiagramScene::waveformTraceReset, waveformViewer,
+            &waveform::Viewer::resetTrace);
+    connect(diagramScene, &DiagramScene::waveformTraceSnapshot, waveformViewer,
+            &waveform::Viewer::appendSnapshot);
+    connect(
+        waveformViewer, &waveform::Viewer::editModeChanged, this,
+        [this](const bool enabled) { diagramScene->setIoInteractionsEnabled(!enabled); });
+    connect(waveformViewer, &waveform::Viewer::editTraceCommitted, diagramScene,
+            &DiagramScene::simulateEditedWaveform);
+  }
+
+  void LogiFlowWindow::updateSubcircuitShapeAction()
+  {
+    if (!editSubcircuitShapeAct)
+      return;
+    const bool active = activeDocumentType() == SILICON::project::DocumentType::Circuit;
+    editSubcircuitShapeAct->setVisible(active);
+    editSubcircuitShapeAct->setEnabled(active);
+    updateCodeAction();
+  }
+
+  std::optional<SILICON::project::DocumentType>
+  LogiFlowWindow::activeDocumentType() const noexcept
+  {
+    return SILICON::project::documentTypeForPath(activeDocumentPath);
+  }
+
+  void LogiFlowWindow::updateCodeAction()
+  {
+    if (!codeConversionAct)
+      return;
+    const auto* document   = projectContext.documents().find(activeDocumentPath);
+    const auto  converters = document ? documentConvertersFor(document->getType())
+                                      : std::vector<const DocumentConverter*>{};
+    const auto  available =
+        std::ranges::count_if(converters, [](const DocumentConverter* converter) {
+          return converter->available;
+        });
+    codeConversionAct->setVisible(!converters.empty());
+    codeConversionAct->setEnabled(available != 0);
+    codeConversionAct->setToolTip(
+        !converters.empty() && available == 0
+            ? QString::fromUtf8(
+                  converters.front()->unavailableReason.data(),
+                  static_cast<qsizetype>(converters.front()->unavailableReason.size()))
+            : QString());
+    if (converters.size() == 1) {
+      codeConversionAct->setText(
+          tr("Convert to %1").arg(documentTypeName(converters.front()->target)));
+    } else if (!converters.empty()) {
+      codeConversionAct->setText(tr("Convert..."));
+    }
+    const auto type         = activeDocumentType();
+    const bool nonGraphical = type
+                              && SILICON::project::categoryOf(*type)
+                                     != SILICON::project::DocumentCategory::Diagram;
+    setActionsEnabled({setNormalModeAct, setPanModeAct, setWireCreationModeAct,
+                       setSimulationModeAct, toggleFstTraceAct, openComponentCatalogAct,
+                       setComponentPlacingModeAct, autoPlaceAct},
+                      !nonGraphical);
+
+    if (toolBar) {
+      for (auto* action :
+           {setNormalModeAct, setPanModeAct, setWireCreationModeAct, setSimulationModeAct,
+            toggleFstTraceAct, openComponentCatalogAct}) {
+        if (auto* widget = toolBar->widgetForAction(action))
+          widget->setVisible(!nonGraphical);
+      }
+      if (auto* widget = toolBar->widgetForAction(diagramToolsSeparator))
+        widget->setVisible(!nonGraphical);
+      if (auto* widget = toolBar->widgetForAction(documentToolsSeparator))
+        widget->setVisible(!nonGraphical || codeConversionAct->isEnabled());
+      if (auto* widget = toolBar->widgetForAction(codeConversionAct))
+        widget->setVisible(codeConversionAct->isVisible()
+                           && codeConversionAct->isEnabled());
+    }
+  }
+
+  void LogiFlowWindow::commitConvertedDocuments(
+      std::vector<SILICON::project::Document> documents, const std::string& sourcePath,
+      const std::string& activatePath, const QString& commandText)
+  {
+    const auto& store           = projectContext.documents();
+    auto        beforeDocuments = store.getDocuments();
+    auto        afterDocuments  = beforeDocuments;
+
+    for (auto& document : documents) {
+      const auto existing = std::ranges::find(afterDocuments, document.getPath(),
+                                              &SILICON::project::Document::getPath);
+      if (existing == afterDocuments.end())
+        afterDocuments.push_back(std::move(document));
+      else
+        *existing = std::move(document);
+    }
+
+    SILICON::project::CircuitDependencyGraph validatedDependencies;
+    validatedDependencies.rebuildFromProject(afterDocuments);
+
+    auto apply = [this, afterDocuments, activatePath] {
+      projectContext.setDocuments(afterDocuments);
+      rebuildProjectTree();
+      switchToDocument(activatePath, true);
+    };
+    auto restore = [this, beforeDocuments, sourcePath] {
+      if (projectContext.documents().contains(sourcePath))
+        switchToDocument(sourcePath, false);
+      projectContext.setDocuments(beforeDocuments);
+      rebuildProjectTree();
+      switchToDocument(sourcePath, true);
+    };
+    undoStack->push(
+        new ConversionCommand(commandText, std::move(restore), std::move(apply)));
+  }
+
+  void LogiFlowWindow::convertActiveDocument()
+  {
+    const auto* source = projectContext.documents().find(activeDocumentPath);
     if (!source)
-      throw std::runtime_error("The active document no longer exists");
-
-    auto prepared = prepareDocumentConversion(
-        *source, target, store.getDocuments(), circuitResolver);
-    auto selected = selectConversionChoices(this, prepared.choices);
-    if (!selected)
       return;
 
-    auto result = prepared.execute(*selected);
-    const auto commandText =
-        tr("Convert to %1").arg(documentTypeName(target));
-
-    QStringList conflicts;
-    for (const auto& document : result.documents)
-      if (store.contains(document.getPath()))
-        conflicts.push_back(QString::fromStdString(document.getPath()));
-
-    auto commit = [this, result = std::move(result), sourcePath,
-                   commandText]() mutable {
-      commitConvertedDocuments(std::move(result.documents), sourcePath,
-                               result.activatePath, commandText);
-    };
-
-    if (!conflicts.empty()) {
-      SILICON::ui::inputDialog::question(
-          this, tr("Replace Converted Documents"),
-          tr("The following documents already exist and will be replaced:\n\n%1")
-              .arg(conflicts.join('\n')),
-          std::move(commit));
-    } else {
-      commit();
+    const auto converters = documentConvertersFor(source->getType());
+    std::vector<SILICON::project::DocumentType> targets;
+    QStringList                                 labels;
+    for (const auto* converter : converters) {
+      if (!converter->available)
+        continue;
+      targets.push_back(converter->target);
+      labels.push_back(documentTypeName(converter->target));
     }
-  } catch (const std::exception& error) {
-    SILICON::ui::inputDialog::critical(
-        this, tr("Code Conversion Error"),
-        tr("Failed to convert the active document:\n%1").arg(error.what()));
+
+    if (targets.empty())
+      return;
+    if (targets.size() == 1) {
+      convertActiveDocumentTo(targets.front());
+      return;
+    }
+
+    SILICON::ui::inputDialog::getItem(
+        this, tr("Convert Document"), tr("Target format"), labels, 0, false,
+        [this, labels = std::move(labels),
+         targets = std::move(targets)](const QString& selected) {
+          const auto index = labels.indexOf(selected);
+          if (index >= 0 && index < static_cast<qsizetype>(targets.size()))
+            convertActiveDocumentTo(targets[static_cast<std::size_t>(index)]);
+        });
   }
-}
 
-void LogiFlowWindow::editActiveSubcircuitShape()
-{
-  if (activeDocumentType() != SILICON::project::DocumentType::Circuit)
-    return;
+  void
+  LogiFlowWindow::convertActiveDocumentTo(const SILICON::project::DocumentType target)
+  {
+    try {
+      saveActiveDocumentPayload();
+      const auto  sourcePath = activeDocumentPath;
+      const auto& store      = projectContext.documents();
+      const auto* source     = store.find(sourcePath);
+      if (!source)
+        throw std::runtime_error("The active document no longer exists");
 
-  const auto slug = SILICON::project::documentSlugForPath(activeDocumentPath);
-  if (!slug)
-    return;
+      auto prepared = prepareDocumentConversion(
+          *source, target, store.getDocuments(),
+          SILICON::core::ComponentRegistry::instance(), circuitResolver);
+      auto selected = selectConversionChoices(this, prepared.choices);
+      if (!selected)
+        return;
 
-  try {
-    saveActiveDocumentPayload();
-    editGraphicalSubcircuitShape(*slug, projectContext, undoStack, this);
-  } catch (const std::exception& e) {
-    SILICON::ui::inputDialog::warning(
-        this, tr("Edit shape"),
-        tr("Failed to save the active circuit before editing its shape:\n%1")
-            .arg(e.what()));
+      auto       result      = prepared.execute(*selected);
+      const auto commandText = tr("Convert to %1").arg(documentTypeName(target));
+
+      QStringList conflicts;
+      for (const auto& document : result.documents)
+        if (store.contains(document.getPath()))
+          conflicts.push_back(QString::fromStdString(document.getPath()));
+
+      auto commit = [this, result = std::move(result), sourcePath,
+                     commandText]() mutable {
+        commitConvertedDocuments(std::move(result.documents), sourcePath,
+                                 result.activatePath, commandText);
+      };
+
+      if (!conflicts.empty()) {
+        SILICON::ui::inputDialog::question(
+            this, tr("Replace Converted Documents"),
+            tr("The following documents already exist and will be replaced:\n\n%1")
+                .arg(conflicts.join('\n')),
+            std::move(commit));
+      } else {
+        commit();
+      }
+    } catch (const std::exception& error) {
+      SILICON::ui::inputDialog::critical(
+          this, tr("Code Conversion Error"),
+          tr("Failed to convert the active document:\n%1").arg(error.what()));
+    }
   }
-}
+
+  void LogiFlowWindow::editActiveSubcircuitShape()
+  {
+    if (activeDocumentType() != SILICON::project::DocumentType::Circuit)
+      return;
+
+    const auto slug = SILICON::project::documentSlugForPath(activeDocumentPath);
+    if (!slug)
+      return;
+
+    try {
+      saveActiveDocumentPayload();
+      editGraphicalSubcircuitShape(*slug, projectContext, undoStack, this);
+    } catch (const std::exception& e) {
+      SILICON::ui::inputDialog::warning(
+          this, tr("Edit shape"),
+          tr("Failed to save the active circuit before editing its shape:\n%1")
+              .arg(e.what()));
+    }
+  }
 
 }  // namespace ui
 }  // namespace SILICON

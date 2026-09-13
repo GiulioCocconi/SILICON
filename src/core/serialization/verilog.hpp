@@ -13,8 +13,8 @@
 #include <string>
 #include <string_view>
 
-#include <core/sourceFile.hpp>
 #include <core/serialization/yosys/yosys_tool.hpp>
+#include <core/sourceFile.hpp>
 
 namespace SILICON::core {
 class Circuit;

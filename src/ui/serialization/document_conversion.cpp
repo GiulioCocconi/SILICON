@@ -34,12 +34,11 @@ namespace {
   [[nodiscard]] Document
   materializeDocument(SILICON::conversion::SemanticDocument document)
   {
-    if (auto* source = std::get_if<SILICON::conversion::VerilogSource>(
-            &document.payload))
+    if (auto* source = std::get_if<SILICON::conversion::VerilogSource>(&document.payload))
       return {std::move(document.path), std::move(source->contents)};
 
-    auto circuit = std::make_shared<Circuit>(
-        std::get<Circuit>(std::move(document.payload)));
+    auto circuit =
+        std::make_shared<Circuit>(std::get<Circuit>(std::move(document.payload)));
     DiagramScene scene;
     scene.setSubcircuitDocumentMode(true);
     scene.loadCircuit(std::move(circuit), GUIComponentFactory::instance(), false);
@@ -80,9 +79,10 @@ namespace {
 const DocumentConverter* documentConverterFor(const DocumentType source,
                                               const DocumentType target)
 {
-  const auto found = std::ranges::find_if(Converters, [source, target](const auto& converter) {
-    return converter.source == source && converter.target == target;
-  });
+  const auto found =
+      std::ranges::find_if(Converters, [source, target](const auto& converter) {
+        return converter.source == source && converter.target == target;
+      });
   return found == Converters.end() ? nullptr : found;
 }
 
@@ -97,10 +97,10 @@ std::vector<const DocumentConverter*> documentConvertersFor(const DocumentType s
 }
 
 PreparedDocumentConversion
-prepareDocumentConversion(const Document&                 source,
-                          const DocumentType               target,
-                          const std::span<const Document> projectDocuments,
-                          const SILICON::core::CircuitResolver& resolver)
+prepareDocumentConversion(const Document& source, const DocumentType target,
+                          const std::span<const Document>         projectDocuments,
+                          const SILICON::core::ComponentRegistry& registry,
+                          const SILICON::core::CircuitResolver&   resolver)
 {
   const auto* converter = documentConverterFor(source.getType(), target);
   if (!converter)
@@ -109,18 +109,18 @@ prepareDocumentConversion(const Document&                 source,
     throw std::runtime_error(std::string(converter->unavailableReason));
 
   auto prepared = SILICON::conversion::prepareDocumentConversion(
-      source, target, projectDocuments, resolver);
+      source, target, projectDocuments, registry, resolver);
   return {
       .choices = std::move(prepared.choices),
       .execute =
-          [execute = std::move(prepared.execute)](
-              const std::span<const std::string> selected) {
-            auto semantic = execute(selected);
+          [execute =
+               std::move(prepared.execute)](const std::span<const std::string> selected) {
+            auto                  semantic = execute(selected);
             std::vector<Document> documents;
             documents.reserve(semantic.documents.size());
             for (auto& document : semantic.documents)
               documents.push_back(materializeDocument(std::move(document)));
-            return ConversionResult{.documents = std::move(documents),
+            return ConversionResult{.documents    = std::move(documents),
                                     .activatePath = std::move(semantic.activatePath)};
           },
   };

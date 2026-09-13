@@ -46,18 +46,18 @@ struct DocumentTypeInfo {
 };
 
 inline constexpr std::array<DocumentTypeInfo, 3> DOCUMENT_TYPE_INFO{{
-    {.type = DocumentType::Circuit,
+    {.type     = DocumentType::Circuit,
      .category = DocumentCategory::Diagram,
-     .root = "circuits/",
-     .suffix = ".json"},
-    {.type = DocumentType::Verilog,
+     .root     = "circuits/",
+     .suffix   = ".json"},
+    {.type     = DocumentType::Verilog,
      .category = DocumentCategory::Code,
-     .root = "code/",
-     .suffix = ".v"},
-    {.type = DocumentType::RawBinary,
+     .root     = "code/",
+     .suffix   = ".v"},
+    {.type     = DocumentType::RawBinary,
      .category = DocumentCategory::Binary,
-     .root = "bin/",
-     .suffix = {}},
+     .root     = "bin/",
+     .suffix   = {}},
 }};
 
 [[nodiscard]] constexpr const DocumentTypeInfo& documentTypeInfo(const DocumentType type)
@@ -103,37 +103,32 @@ public:
   void setContents(std::string contents);
 
 private:
-  std::string                path;
-  std::string                contents;
+  std::string path;
+  std::string contents;
 };
 
 class DocumentStore {
 public:
   using Listener = std::function<void(const DocumentChange&)>;
 
-  void setDocuments(std::vector<Document> documents);
-  void upsertDocument(Document document);
-  void insertDocument(Document document, std::size_t index);
-  void removeDocument(std::string_view documentPath);
-  void clear();
-
   /** Returned pointers/references are invalidated by any store mutation. */
   [[nodiscard]] const Document* find(std::string_view documentPath) const noexcept;
-  [[nodiscard]] bool contains(std::string_view documentPath) const noexcept;
-  [[nodiscard]] bool contains(DocumentType type) const noexcept;
+  [[nodiscard]] bool            contains(std::string_view documentPath) const noexcept;
+  [[nodiscard]] bool            contains(DocumentType type) const noexcept;
   [[nodiscard]] const std::vector<Document>& getDocuments() const noexcept;
-  [[nodiscard]] std::optional<std::size_t> indexOf(std::string_view documentPath) const;
+  [[nodiscard]] std::optional<std::size_t>   indexOf(std::string_view documentPath) const;
 
-  std::uint64_t addListener(Listener listener);
-  void          removeListener(std::uint64_t id);
+  std::uint64_t addListener(Listener listener) const;
+  void          removeListener(std::uint64_t id) const;
 
 private:
   friend class ProjectContext;
 
-  void commitDocuments(std::vector<Document> documents, const DocumentChange& change);
+  void commitDocuments(std::vector<Document> documents,
+                       const DocumentChange& change) noexcept;
 
-  std::vector<Document> documents;
-  SILICON::core::CallbackRegistry<const DocumentChange&> listeners;
+  std::vector<Document>                                          documents;
+  mutable SILICON::core::CallbackRegistry<const DocumentChange&> listeners;
 };
 
 }  // namespace SILICON::project

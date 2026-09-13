@@ -32,7 +32,6 @@ namespace SILICON::core {
 class Circuit;
 }
 
-
 namespace SILICON {
 namespace ui {
 using namespace SILICON::core;

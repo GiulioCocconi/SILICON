@@ -151,7 +151,7 @@ TEST(FstWrapperTest, HierarchyTreeConstruction)
   }
 
   Reader reader(filename);
-  auto      top = reader.buildHierarchyTree();
+  auto   top = reader.buildHierarchyTree();
 
   EXPECT_EQ(top.name, "Top");
   EXPECT_EQ(top.type, FST_ST_VCD_MODULE);
@@ -295,7 +295,7 @@ TEST(FstWrapperTest, EnumTables)
     auto writer = std::move(builder).finish();
   }
 
-  Reader   reader(filename);
+  Reader      reader(filename);
   std::string captured_enum_str;
 
   // Search the raw hierarchy attributes to extract the encoded payload.
@@ -351,9 +351,8 @@ TEST(FstTraceWriterTest, RegistersSignalsAndEmitsSnapshots)
   fstHandle h_scalar, h_bus;
 
   {
-    TraceWriter writer(filename,
-                          {{"scalar", 1}, {"bus", 4}, {"ignored_zero_width", 0}},
-                          {.topScopeName = "Trace"});
+    TraceWriter writer(filename, {{"scalar", 1}, {"bus", 4}, {"ignored_zero_width", 0}},
+                       {.topScopeName = "Trace"});
 
     EXPECT_EQ(writer.signalCount(), 2);
     ASSERT_TRUE(writer.handleForSignal("scalar").has_value());
@@ -402,8 +401,8 @@ TEST(FstTraceWriterTest, NormalizesSampledValues)
 
   {
     TraceWriter writer(filename,
-                          {{"wide", 3}, {"empty", 2}, {"invalid", 2}, {"missing", 2}},
-                          {.topScopeName = "Trace"});
+                       {{"wide", 3}, {"empty", 2}, {"invalid", 2}, {"missing", 2}},
+                       {.topScopeName = "Trace"});
 
     h_wide    = *writer.handleForSignal("wide");
     h_empty   = *writer.handleForSignal("empty");
@@ -524,7 +523,7 @@ TEST(SiliconFstWriterTest, SimulatorFstTraceUsesConfiguredBusNames)
     simulator.run(5);
   }
 
-  Reader  reader(filename);
+  Reader     reader(filename);
   const auto hierarchy = reader.buildHierarchyTree();
 
   EXPECT_EQ(hierarchy.name, "SimTrace");

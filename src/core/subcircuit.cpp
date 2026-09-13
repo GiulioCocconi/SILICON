@@ -50,14 +50,12 @@ SubcircuitComponent::SubcircuitComponent(const CircuitResolver* resolver)
   });
 }
 
-std::shared_ptr<SubcircuitComponent>
-SubcircuitComponent::imported(std::string slug, std::vector<std::string> inputNames,
-                              std::vector<Bus> inputs,
-                              std::vector<std::string> outputNames,
-                              std::vector<Bus> outputs)
+std::shared_ptr<SubcircuitComponent> SubcircuitComponent::imported(
+    std::string slug, std::vector<std::string> inputNames, std::vector<Bus> inputs,
+    std::vector<std::string> outputNames, std::vector<Bus> outputs)
 {
-  auto component = std::make_shared<SubcircuitComponent>();
-  component->properties["slug"] = std::move(slug);
+  auto component                  = std::make_shared<SubcircuitComponent>();
+  component->properties["slug"]   = std::move(slug);
   component->transientInputNames  = std::move(inputNames);
   component->transientOutputNames = std::move(outputNames);
   component->setInputs(inputs);
@@ -84,7 +82,7 @@ void SubcircuitComponent::configureFromSlug(std::string_view slug)
     return;
   }
 
-  auto definition = resolver->resolve(slug);
+  auto definition      = resolver->resolve(slug);
   auto externalInputs  = makeExternalBuses(definition.inputs);
   auto externalOutputs = makeExternalBuses(definition.outputs);
   setInputs(externalInputs);

@@ -359,9 +359,9 @@ private:
   [[nodiscard]] QStringList visibleNames() const;
   [[nodiscard]] QStringList displayedValues() const;
   [[nodiscard]] QString displayValue(int signalIndex, const core::BusValue& value) const;
-  void                  setSelectedSignalIndex(int signalIndex);
-  void                  showSignalFormatMenu(int signalIndex, QPoint globalPosition);
-  void                  saveTrace();
+  void                      setSelectedSignalIndex(int signalIndex);
+  void                      showSignalFormatMenu(int signalIndex, QPoint globalPosition);
+  void                      saveTrace();
 };
 
 }  // namespace SILICON::ui::waveform

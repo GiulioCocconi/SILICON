@@ -36,13 +36,13 @@ protected:
 
 private:
   struct CompiledKeywordGroup {
-    CodeSyntaxStyle     style;
-    QRegularExpression                expression;
+    CodeSyntaxStyle    style;
+    QRegularExpression expression;
   };
 
   struct CompiledContainedRule {
-    CodeSyntaxStyle     style;
-    QRegularExpression                expression;
+    CodeSyntaxStyle    style;
+    QRegularExpression expression;
   };
 
   struct CompiledMatchRule {
@@ -68,8 +68,8 @@ private:
   static constexpr std::size_t StyleCount = 13;
 
   [[nodiscard]] const QTextCharFormat& format(CodeSyntaxStyle style) const;
-  [[nodiscard]] static RegionEnd findRegionEnd(const QString& text, qsizetype from,
-                                               const CompiledRegionRule& region);
+  [[nodiscard]] static RegionEnd       findRegionEnd(const QString& text, qsizetype from,
+                                                     const CompiledRegionRule& region);
   void applyContainedRules(const QString& text, qsizetype start, qsizetype end,
                            const std::vector<CompiledContainedRule>& rules);
 

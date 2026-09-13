@@ -53,401 +53,397 @@
 
 namespace SILICON {
 namespace ui {
-using namespace SILICON::core;
+  using namespace SILICON::core;
 
-namespace {
+  namespace {
 
-std::pair<std::string, std::string>
-graphicalDocumentMetadata(const SILICON::project::Document& document)
-{
-  try {
-    const auto scene = nlohmann::json::parse(document.getContents());
-    if (scene.contains("circuit") && scene["circuit"].is_object())
-      return {scene["circuit"].value("name", ""),
-              scene["circuit"].value("description", "")};
-  } catch (const nlohmann::json::exception&) {
-  }
-  return {};
-}
-
-}  // namespace
-
-void LogiFlowWindow::updatePropertyDock()
-{
-  auto* selectedProjectItem =
-      projectTree ? projectTree->selectedProjectItem() : nullptr;
-
-  const auto itemKind = selectedProjectItem
-                            ? std::optional{ProjectTree::itemKind(selectedProjectItem)}
-                            : std::nullopt;
-  const auto itemType = selectedProjectItem
-                            ? ProjectTree::itemDocumentType(selectedProjectItem)
-                            : std::nullopt;
-
-  const bool hasProperties =
-      !itemType || SILICON::project::categoryOf(*itemType)
-                       == SILICON::project::DocumentCategory::Diagram;
-  propertyDock->setVisible(hasProperties);
-  if (!hasProperties)
-    return;
-
-  // 1. Assign the container immediately.
-  // QDockWidget::setWidget automatically deletes the previous widget.
-  auto* container = new QWidget();
-  auto* layout    = new QFormLayout(container);
-  propertyDock->setWidget(container);
-
-  // 2. Gather selected logic components cleanly
-  std::vector<GraphicalLogicComponent*> selectedNodes;
-  for (QGraphicsItem* item : diagramScene->selectedItems()) {
-    if (auto* logicComp =
-            category_cast<GraphicalLogicComponent>(item, ItemCategory::LogicComponent);
-        logicComp && logicComp->getComponent()) {
-      selectedNodes.push_back(logicComp);
+    std::pair<std::string, std::string>
+    graphicalDocumentMetadata(const SILICON::project::Document& document)
+    {
+      try {
+        const auto scene = nlohmann::json::parse(document.getContents());
+        if (scene.contains("circuit") && scene["circuit"].is_object())
+          return {scene["circuit"].value("name", ""),
+                  scene["circuit"].value("description", "")};
+      } catch (const nlohmann::json::exception&) {
+      }
+      return {};
     }
-  }
 
-  if (selectedNodes.empty()) {
-    if (!selectedProjectItem) {
-      layout->addRow(new QLabel(tr("Select a project, circuit, or one or more "
-                                   "components\nto view properties.")));
+  }  // namespace
+
+  void LogiFlowWindow::updatePropertyDock()
+  {
+    auto* selectedProjectItem =
+        projectTree ? projectTree->selectedProjectItem() : nullptr;
+
+    const auto itemKind = selectedProjectItem
+                              ? std::optional{ProjectTree::itemKind(selectedProjectItem)}
+                              : std::nullopt;
+    const auto itemType = selectedProjectItem
+                              ? ProjectTree::itemDocumentType(selectedProjectItem)
+                              : std::nullopt;
+
+    const bool hasProperties = !itemType
+                               || SILICON::project::categoryOf(*itemType)
+                                      == SILICON::project::DocumentCategory::Diagram;
+    propertyDock->setVisible(hasProperties);
+    if (!hasProperties)
       return;
+
+    // 1. Assign the container immediately.
+    // QDockWidget::setWidget automatically deletes the previous widget.
+    auto* container = new QWidget();
+    auto* layout    = new QFormLayout(container);
+    propertyDock->setWidget(container);
+
+    // 2. Gather selected logic components cleanly
+    std::vector<GraphicalLogicComponent*> selectedNodes;
+    for (QGraphicsItem* item : diagramScene->selectedItems()) {
+      if (auto* logicComp =
+              category_cast<GraphicalLogicComponent>(item, ItemCategory::LogicComponent);
+          logicComp && logicComp->getComponent()) {
+        selectedNodes.push_back(logicComp);
+      }
     }
 
-    if (itemKind == ProjectTreeItemKind::Section && itemType) {
-      layout->addRow(new QLabel(
-          tr("Select a %1 to view its properties.")
-              .arg(documentTypeName(*itemType).toLower())));
-      return;
-    }
-
-    auto* nameEdit        = new QLineEdit(container);
-    auto* descriptionEdit = new MetadataDescriptionEdit(container);
-    descriptionEdit->setMinimumHeight(90);
-
-    auto pushMetadataEdit = [this](const QString& label, const std::string& oldValue,
-                                   const std::string&           newValue,
-                                   MetadataEditCommand::ApplyFn apply) {
-      if (oldValue == newValue)
+    if (selectedNodes.empty()) {
+      if (!selectedProjectItem) {
+        layout->addRow(new QLabel(tr("Select a project, circuit, or one or more "
+                                     "components\nto view properties.")));
         return;
+      }
 
-      undoStack->push(
-          new MetadataEditCommand(label, oldValue, newValue, std::move(apply)));
-    };
+      if (itemKind == ProjectTreeItemKind::Section && itemType) {
+        layout->addRow(new QLabel(tr("Select a %1 to view its properties.")
+                                      .arg(documentTypeName(*itemType).toLower())));
+        return;
+      }
 
-    auto schedulePropertyDockRefresh = [this] {
-      QTimer::singleShot(0, this, &LogiFlowWindow::updatePropertyDock);
-    };
+      auto* nameEdit        = new QLineEdit(container);
+      auto* descriptionEdit = new MetadataDescriptionEdit(container);
+      descriptionEdit->setMinimumHeight(90);
 
-    if (itemKind == ProjectTreeItemKind::Project) {
-      if (!currentProjectInfo)
-        currentProjectInfo = defaultProjectInfo(currentFileName);
-
-      nameEdit->setText(QString::fromStdString(currentProjectInfo->name));
-      descriptionEdit->setPlainText(
-          QString::fromStdString(currentProjectInfo->description));
-      descriptionEdit->document()->setModified(false);
-
-      connect(nameEdit, &QLineEdit::editingFinished, this,
-              [this, nameEdit, pushMetadataEdit, schedulePropertyDockRefresh] {
-                if (!currentProjectInfo || !nameEdit->isModified())
-                  return;
-
-                const auto oldValue = currentProjectInfo->name;
-                const auto newValue = nameEdit->text().toStdString();
-                nameEdit->setModified(false);
-                pushMetadataEdit(
-                    tr("Modify Project Name"), oldValue, newValue,
-                    [this, schedulePropertyDockRefresh](const std::string& value) {
-                      if (!currentProjectInfo)
-                        return;
-                      currentProjectInfo->name = value;
-                      rebuildProjectTree();
-                      schedulePropertyDockRefresh();
-                    });
-              });
-      descriptionEdit->commit = [this, descriptionEdit, pushMetadataEdit,
-                                 schedulePropertyDockRefresh] {
-        if (!currentProjectInfo || !descriptionEdit->document()->isModified())
+      auto pushMetadataEdit = [this](const QString& label, const std::string& oldValue,
+                                     const std::string&           newValue,
+                                     MetadataEditCommand::ApplyFn apply) {
+        if (oldValue == newValue)
           return;
 
-        const auto oldValue = currentProjectInfo->description;
-        const auto newValue = descriptionEdit->toPlainText().toStdString();
-        descriptionEdit->document()->setModified(false);
-        pushMetadataEdit(tr("Modify Project Description"), oldValue, newValue,
-                         [this, schedulePropertyDockRefresh](const std::string& value) {
-                           if (!currentProjectInfo)
-                             return;
-                           currentProjectInfo->description = value;
-                           schedulePropertyDockRefresh();
-                         });
+        undoStack->push(
+            new MetadataEditCommand(label, oldValue, newValue, std::move(apply)));
       };
-    } else {
-      const auto documentPath = ProjectTree::documentPath(selectedProjectItem);
-      const auto noun = itemType ? documentTypeName(*itemType) : tr("Document");
 
-      std::string name;
-      std::string description;
-      if (activeDocumentPath == documentPath) {
-        if (const auto circuit = activeCircuit()) {
-          name        = circuit->getName();
-          description = circuit->getDescription();
+      auto schedulePropertyDockRefresh = [this] {
+        QTimer::singleShot(0, this, &LogiFlowWindow::updatePropertyDock);
+      };
+
+      if (itemKind == ProjectTreeItemKind::Project) {
+        if (!currentProjectInfo)
+          currentProjectInfo = defaultProjectInfo(currentFileName);
+
+        nameEdit->setText(QString::fromStdString(currentProjectInfo->name));
+        descriptionEdit->setPlainText(
+            QString::fromStdString(currentProjectInfo->description));
+        descriptionEdit->document()->setModified(false);
+
+        connect(nameEdit, &QLineEdit::editingFinished, this,
+                [this, nameEdit, pushMetadataEdit, schedulePropertyDockRefresh] {
+                  if (!currentProjectInfo || !nameEdit->isModified())
+                    return;
+
+                  const auto oldValue = currentProjectInfo->name;
+                  const auto newValue = nameEdit->text().toStdString();
+                  nameEdit->setModified(false);
+                  pushMetadataEdit(
+                      tr("Modify Project Name"), oldValue, newValue,
+                      [this, schedulePropertyDockRefresh](const std::string& value) {
+                        if (!currentProjectInfo)
+                          return;
+                        currentProjectInfo->name = value;
+                        rebuildProjectTree();
+                        schedulePropertyDockRefresh();
+                      });
+                });
+        descriptionEdit->commit = [this, descriptionEdit, pushMetadataEdit,
+                                   schedulePropertyDockRefresh] {
+          if (!currentProjectInfo || !descriptionEdit->document()->isModified())
+            return;
+
+          const auto oldValue = currentProjectInfo->description;
+          const auto newValue = descriptionEdit->toPlainText().toStdString();
+          descriptionEdit->document()->setModified(false);
+          pushMetadataEdit(tr("Modify Project Description"), oldValue, newValue,
+                           [this, schedulePropertyDockRefresh](const std::string& value) {
+                             if (!currentProjectInfo)
+                               return;
+                             currentProjectInfo->description = value;
+                             schedulePropertyDockRefresh();
+                           });
+        };
+      } else {
+        const auto documentPath = ProjectTree::documentPath(selectedProjectItem);
+        const auto noun         = itemType ? documentTypeName(*itemType) : tr("Document");
+
+        std::string name;
+        std::string description;
+        if (activeDocumentPath == documentPath) {
+          if (const auto circuit = activeCircuit()) {
+            name        = circuit->getName();
+            description = circuit->getDescription();
+          }
+        } else if (const auto* document = projectContext.documents().find(documentPath)) {
+          std::tie(name, description) = graphicalDocumentMetadata(*document);
         }
-      } else if (const auto* document =
-                     projectContext.documents.find(documentPath)) {
-        std::tie(name, description) = graphicalDocumentMetadata(*document);
+
+        nameEdit->setText(QString::fromStdString(name));
+        descriptionEdit->setPlainText(QString::fromStdString(description));
+        descriptionEdit->document()->setModified(false);
+
+        connect(nameEdit, &QLineEdit::editingFinished, this,
+                [this, nameEdit, documentPath, noun, oldValue = name, pushMetadataEdit,
+                 schedulePropertyDockRefresh] {
+                  if (!nameEdit->isModified())
+                    return;
+
+                  const auto newValue = nameEdit->text().toStdString();
+                  nameEdit->setModified(false);
+                  pushMetadataEdit(tr("Modify %1 Name").arg(noun), oldValue, newValue,
+                                   [this, documentPath, schedulePropertyDockRefresh](
+                                       const std::string& value) {
+                                     if (!activateProjectDocument(documentPath))
+                                       return;
+                                     if (const auto circuit = activeCircuit()) {
+                                       circuit->setName(value);
+                                       saveActiveDocumentPayload();
+                                     }
+                                     rebuildProjectTree();
+                                     schedulePropertyDockRefresh();
+                                   });
+                });
+
+        descriptionEdit->commit = [this, documentPath, noun, descriptionEdit,
+                                   oldValue = description, pushMetadataEdit,
+                                   schedulePropertyDockRefresh] {
+          if (!descriptionEdit->document()->isModified())
+            return;
+
+          const auto newValue = descriptionEdit->toPlainText().toStdString();
+          descriptionEdit->document()->setModified(false);
+          pushMetadataEdit(tr("Modify %1 Description").arg(noun), oldValue, newValue,
+                           [this, documentPath,
+                            schedulePropertyDockRefresh](const std::string& value) {
+                             if (!activateProjectDocument(documentPath))
+                               return;
+                             if (const auto circuit = activeCircuit()) {
+                               circuit->setDescription(value);
+                               saveActiveDocumentPayload();
+                             }
+                             schedulePropertyDockRefresh();
+                           });
+        };
       }
 
-      nameEdit->setText(QString::fromStdString(name));
-      descriptionEdit->setPlainText(QString::fromStdString(description));
-      descriptionEdit->document()->setModified(false);
-
-      connect(nameEdit, &QLineEdit::editingFinished, this,
-              [this, nameEdit, documentPath, noun, oldValue = name,
-               pushMetadataEdit, schedulePropertyDockRefresh] {
-                if (!nameEdit->isModified())
-                  return;
-
-                const auto newValue = nameEdit->text().toStdString();
-                nameEdit->setModified(false);
-                pushMetadataEdit(
-                    tr("Modify %1 Name").arg(noun), oldValue, newValue,
-                    [this, documentPath,
-                     schedulePropertyDockRefresh](const std::string& value) {
-                      if (!activateProjectDocument(documentPath))
-                        return;
-                      if (const auto circuit = activeCircuit()) {
-                        circuit->setName(value);
-                        saveActiveDocumentPayload();
-                      }
-                      rebuildProjectTree();
-                      schedulePropertyDockRefresh();
-                    });
-              });
-
-      descriptionEdit->commit =
-          [this, documentPath, noun, descriptionEdit, oldValue = description,
-           pushMetadataEdit, schedulePropertyDockRefresh] {
-            if (!descriptionEdit->document()->isModified())
-              return;
-
-            const auto newValue = descriptionEdit->toPlainText().toStdString();
-            descriptionEdit->document()->setModified(false);
-            pushMetadataEdit(
-                tr("Modify %1 Description").arg(noun), oldValue, newValue,
-                [this, documentPath,
-                 schedulePropertyDockRefresh](const std::string& value) {
-                  if (!activateProjectDocument(documentPath))
-                    return;
-                  if (const auto circuit = activeCircuit()) {
-                    circuit->setDescription(value);
-                    saveActiveDocumentPayload();
-                  }
-                  schedulePropertyDockRefresh();
-                });
-          };
+      layout->addRow(tr("Name"), nameEdit);
+      layout->addRow(tr("Description"), descriptionEdit);
+      return;
     }
 
-    layout->addRow(tr("Name"), nameEdit);
-    layout->addRow(tr("Description"), descriptionEdit);
-    return;
-  }
+    // 3. Intersect properties to find common configurable keys
+    auto commonProps = selectedNodes.front()->getComponent()->getProperties();
 
-  // 3. Intersect properties to find common configurable keys
-  auto commonProps = selectedNodes.front()->getComponent()->getProperties();
+    for (const GraphicalLogicComponent* node : selectedNodes | std::views::drop(1)) {
+      const auto& props = node->getComponent()->getProperties();
 
-  for (const GraphicalLogicComponent* node : selectedNodes | std::views::drop(1)) {
-    const auto& props = node->getComponent()->getProperties();
+      std::erase_if(commonProps, [&](const auto& pair) {
+        const auto& [key, val] = pair;
+        auto it                = props.find(key);
+        return it == props.end() || it->second.index() != val.index();
+      });
+    }
 
-    std::erase_if(commonProps, [&](const auto& pair) {
-      const auto& [key, val] = pair;
-      auto it                = props.find(key);
-      return it == props.end() || it->second.index() != val.index();
-    });
-  }
-
-  if (commonProps.empty()) {
+    if (commonProps.empty()) {
       layout->addRow(
           new QLabel(tr("No common configurable\nproperties among selection.")));
-    return;
-  }
-
-  // Helper lambda to apply the property to all components and handle validation
-  // exceptions
-  auto applyProperty = [this, selectedNodes](const std::string&   key,
-                                             const PropertyValue& newVal) {
-    try {
-      auto* command = new ModifyPropertyCommand(key);
-
-      for (GraphicalLogicComponent* node : selectedNodes) {
-        const auto oldValue = node->getComponent()->getProperty(key);
-        if (oldValue)
-          command->addPropertyChange(node, *oldValue, newVal);
-      }
-
-      if (command->isEmpty()) {
-        delete command;
-      } else {
-        undoStack->push(command);
-      }
-    } catch (const std::exception& e) {
-      SILICON::ui::inputDialog::warning(this, tr("Invalid Property"), e.what());
-      QTimer::singleShot(0, this, &LogiFlowWindow::updatePropertyDock);
+      return;
     }
-  };
 
-  // 4. Build UI for common properties
-  for (const auto& [key, initialValue] : commonProps) {
-    // Check if the value differs across the selection
-    const bool isMixed = std::ranges::any_of(
-        selectedNodes | std::views::drop(1), [&](const GraphicalLogicComponent* node) {
-          return node->getComponent()->getProperty(key) != initialValue;
-        });
+    // Helper lambda to apply the property to all components and handle validation
+    // exceptions
+    auto applyProperty = [this, selectedNodes](const std::string&   key,
+                                               const PropertyValue& newVal) {
+      try {
+        auto* command = new ModifyPropertyCommand(key);
 
-    auto createPropertyWidget = [&]<typename T>(const T& arg) {
-      if constexpr (std::is_same_v<T, bool>) {
-        auto* checkBox = new QCheckBox(container);
-
-        if (isMixed) {
-          checkBox->setTristate(true);
-          checkBox->setCheckState(Qt::PartiallyChecked);
-        } else {
-          checkBox->setChecked(arg);
+        for (GraphicalLogicComponent* node : selectedNodes) {
+          const auto oldValue = node->getComponent()->getProperty(key);
+          if (oldValue)
+            command->addPropertyChange(node, *oldValue, newVal);
         }
+
+        if (command->isEmpty()) {
+          delete command;
+        } else {
+          undoStack->push(command);
+        }
+      } catch (const std::exception& e) {
+        SILICON::ui::inputDialog::warning(this, tr("Invalid Property"), e.what());
+        QTimer::singleShot(0, this, &LogiFlowWindow::updatePropertyDock);
+      }
+    };
+
+    // 4. Build UI for common properties
+    for (const auto& [key, initialValue] : commonProps) {
+      // Check if the value differs across the selection
+      const bool isMixed = std::ranges::any_of(
+          selectedNodes | std::views::drop(1), [&](const GraphicalLogicComponent* node) {
+            return node->getComponent()->getProperty(key) != initialValue;
+          });
+
+      auto createPropertyWidget = [&]<typename T>(const T& arg) {
+        if constexpr (std::is_same_v<T, bool>) {
+          auto* checkBox = new QCheckBox(container);
+
+          if (isMixed) {
+            checkBox->setTristate(true);
+            checkBox->setCheckState(Qt::PartiallyChecked);
+          } else {
+            checkBox->setChecked(arg);
+          }
 
           connect(checkBox, &QCheckBox::checkStateChanged, this,
                   [=](Qt::CheckState state) {
-          if (state == Qt::PartiallyChecked)
-            return;
-          checkBox->setTristate(false);
-          applyProperty(key, state == Qt::Checked);
-        });
-
-        layout->addRow(QString::fromStdString(key), checkBox);
-      } else if constexpr (std::is_same_v<T, int>) {
-        auto*         spinBox = new PropertySpinBox(container);
-        constexpr int MIN_VAL = std::numeric_limits<int>::min();
-        constexpr int MAX_VAL = std::numeric_limits<int>::max();
-
-        spinBox->setRange(MIN_VAL, MAX_VAL);
-
-        if (isMixed) {
-          spinBox->setMixed(true, tr("Mixed values"));
-        } else {
-          spinBox->setValue(arg);
-        }
-
-        connect(spinBox, &QSpinBox::valueChanged, this, [=](int val) {
-          if (val == MIN_VAL && spinBox->isMixed())
-            return;
-          spinBox->setMixed(false);
-          applyProperty(key, val);
-        });
-
-        layout->addRow(QString::fromStdString(key), spinBox);
-      } else if constexpr (std::is_same_v<T, std::string>) {
-        const auto stringOptions =
-            selectedNodes.front()->getComponent()->getStringPropertyOptions(key);
-        if (stringOptions) {
-          auto* comboBox = new QComboBox(container);
-
-          for (const std::string& option : stringOptions->get()) {
-            comboBox->addItem(QString::fromStdString(option));
-          }
-
-          if (isMixed) {
-            comboBox->setPlaceholderText(tr("Mixed values"));
-            comboBox->setCurrentIndex(-1);
-          } else {
-            comboBox->setCurrentText(QString::fromStdString(arg));
-          }
-
-          connect(comboBox, &QComboBox::currentTextChanged, this,
-                  [=](const QString& text) {
-                    if (text.isEmpty())
+                    if (state == Qt::PartiallyChecked)
                       return;
-                    applyProperty(key, text.toStdString());
+                    checkBox->setTristate(false);
+                    applyProperty(key, state == Qt::Checked);
                   });
 
-          layout->addRow(QString::fromStdString(key), comboBox);
-          return;
-        }
+          layout->addRow(QString::fromStdString(key), checkBox);
+        } else if constexpr (std::is_same_v<T, int>) {
+          auto*         spinBox = new PropertySpinBox(container);
+          constexpr int MIN_VAL = std::numeric_limits<int>::min();
+          constexpr int MAX_VAL = std::numeric_limits<int>::max();
 
-        auto* lineEdit = new QLineEdit(container);
+          spinBox->setRange(MIN_VAL, MAX_VAL);
 
-        if (isMixed) {
-          lineEdit->setPlaceholderText(tr("Mixed values..."));
-        } else {
-          lineEdit->setText(QString::fromStdString(arg));
-        }
+          if (isMixed) {
+            spinBox->setMixed(true, tr("Mixed values"));
+          } else {
+            spinBox->setValue(arg);
+          }
 
-        connect(lineEdit, &QLineEdit::editingFinished, this, [=]() {
-          if (!lineEdit->isModified())
+          connect(spinBox, &QSpinBox::valueChanged, this, [=](int val) {
+            if (val == MIN_VAL && spinBox->isMixed())
+              return;
+            spinBox->setMixed(false);
+            applyProperty(key, val);
+          });
+
+          layout->addRow(QString::fromStdString(key), spinBox);
+        } else if constexpr (std::is_same_v<T, std::string>) {
+          const auto stringOptions =
+              selectedNodes.front()->getComponent()->getStringPropertyOptions(key);
+          if (stringOptions) {
+            auto* comboBox = new QComboBox(container);
+
+            for (const std::string& option : stringOptions->get()) {
+              comboBox->addItem(QString::fromStdString(option));
+            }
+
+            if (isMixed) {
+              comboBox->setPlaceholderText(tr("Mixed values"));
+              comboBox->setCurrentIndex(-1);
+            } else {
+              comboBox->setCurrentText(QString::fromStdString(arg));
+            }
+
+            connect(comboBox, &QComboBox::currentTextChanged, this,
+                    [=](const QString& text) {
+                      if (text.isEmpty())
+                        return;
+                      applyProperty(key, text.toStdString());
+                    });
+
+            layout->addRow(QString::fromStdString(key), comboBox);
             return;
+          }
 
-          applyProperty(key, lineEdit->text().toStdString());
-          lineEdit->setModified(false);
-        });
+          auto* lineEdit = new QLineEdit(container);
 
-        layout->addRow(QString::fromStdString(key), lineEdit);
-      } else if constexpr (std::is_same_v<T, BusValue>) {
-        auto* lineEdit = new QLineEdit(container);
-        if (isMixed)
-          lineEdit->setPlaceholderText(tr("Mixed values..."));
-        else
-          lineEdit->setText(QString::fromStdString(
-              SILICON::core::formatValue(arg, BusValueFormat::Raw)));
+          if (isMixed) {
+            lineEdit->setPlaceholderText(tr("Mixed values..."));
+          } else {
+            lineEdit->setText(QString::fromStdString(arg));
+          }
 
-        connect(lineEdit, &QLineEdit::editingFinished, this, [=, this]() {
-          if (!lineEdit->isModified())
-            return;
-          try {
-            applyProperty(
-                key, SILICON::core::busValueFromBits(lineEdit->text().toStdString()));
+          connect(lineEdit, &QLineEdit::editingFinished, this, [=]() {
+            if (!lineEdit->isModified())
+              return;
+
+            applyProperty(key, lineEdit->text().toStdString());
             lineEdit->setModified(false);
-          } catch (const std::exception& error) {
+          });
+
+          layout->addRow(QString::fromStdString(key), lineEdit);
+        } else if constexpr (std::is_same_v<T, BusValue>) {
+          auto* lineEdit = new QLineEdit(container);
+          if (isMixed)
+            lineEdit->setPlaceholderText(tr("Mixed values..."));
+          else
+            lineEdit->setText(QString::fromStdString(
+                SILICON::core::formatValue(arg, BusValueFormat::Raw)));
+
+          connect(lineEdit, &QLineEdit::editingFinished, this, [=, this]() {
+            if (!lineEdit->isModified())
+              return;
+            try {
+              applyProperty(
+                  key, SILICON::core::busValueFromBits(lineEdit->text().toStdString()));
+              lineEdit->setModified(false);
+            } catch (const std::exception& error) {
               SILICON::ui::inputDialog::warning(this, tr("Invalid Property"),
                                                 error.what());
-          }
-        });
+            }
+          });
 
-        layout->addRow(QString::fromStdString(key), lineEdit);
-      }
-    };
+          layout->addRow(QString::fromStdString(key), lineEdit);
+        }
+      };
 
-    std::visit(createPropertyWidget, initialValue);
+      std::visit(createPropertyWidget, initialValue);
+    }
   }
-}
 
-// --- Property SpinBox
-// ------------------------------------------------------------------
+  // --- Property SpinBox
+  // ------------------------------------------------------------------
 
-PropertySpinBox::PropertySpinBox(QWidget* parent) : QSpinBox(parent)
-{
-  setButtonSymbols(NoButtons);
-}
-
-void PropertySpinBox::setMixed(const bool mixed, const QString& placeholder)
-{
-  m_isMixed = mixed;
-
-  if (mixed) {
-    lineEdit()->setPlaceholderText(placeholder);
-    setValue(minimum());
-  } else {
-    lineEdit()->setPlaceholderText("");
+  PropertySpinBox::PropertySpinBox(QWidget* parent) : QSpinBox(parent)
+  {
+    setButtonSymbols(NoButtons);
   }
-}
 
-bool PropertySpinBox::isMixed() const
-{
-  return m_isMixed;
-}
+  void PropertySpinBox::setMixed(const bool mixed, const QString& placeholder)
+  {
+    m_isMixed = mixed;
 
-QString PropertySpinBox::textFromValue(const int val) const
-{
-  return m_isMixed && val == minimum() ? QString{} : QSpinBox::textFromValue(val);
-}
+    if (mixed) {
+      lineEdit()->setPlaceholderText(placeholder);
+      setValue(minimum());
+    } else {
+      lineEdit()->setPlaceholderText("");
+    }
+  }
+
+  bool PropertySpinBox::isMixed() const
+  {
+    return m_isMixed;
+  }
+
+  QString PropertySpinBox::textFromValue(const int val) const
+  {
+    return m_isMixed && val == minimum() ? QString{} : QSpinBox::textFromValue(val);
+  }
 
 }  // namespace ui
 }  // namespace SILICON

@@ -16,8 +16,8 @@
 
  */
 
-#include "tests.hpp"
 #include "circuitTestHelpers.hpp"
+#include "tests.hpp"
 
 #include <core/circuit.hpp>
 #include <core/gates.hpp>
@@ -80,7 +80,7 @@ TEST(CircuitTest, SingleGateInputsOutputs)
 
 TEST(CircuitTest, ResolvesGraphBackedComponentByVertexId)
 {
-  auto component = std::make_shared<AndGate>();
+  auto    component = std::make_shared<AndGate>();
   Circuit circuit(component, false);
 
   const auto vertex = circuit.getVertexId(component.get());
@@ -95,11 +95,10 @@ TEST(CircuitTest, BoundaryComponentsDefineNamedInterface)
   auto b = std::make_shared<Wire>();
   auto o = std::make_shared<Wire>();
 
-  Component_set components{
-      std::make_shared<DummyInputComponent>(Bus{a}, "data"),
-      std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, o),
-      std::make_shared<DummyOutputComponent>(Bus{o}, "result")};
-  Circuit circuit(components, false);
+  Component_set components{std::make_shared<DummyInputComponent>(Bus{a}, "data"),
+                           std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, o),
+                           std::make_shared<DummyOutputComponent>(Bus{o}, "result")};
+  Circuit       circuit(components, false);
 
   const auto inputs  = circuit.getInputPorts();
   const auto outputs = circuit.getOutputPorts();
@@ -115,12 +114,11 @@ TEST(CircuitTest, BoundaryComponentsDefineNamedInterface)
 
 TEST(CircuitTest, BoundaryFallbackIsIndependentPerDirection)
 {
-  auto a = std::make_shared<Wire>();
-  auto o = std::make_shared<Wire>();
-  Component_set components{
-      std::make_shared<DummyInputComponent>(Bus{a}, "data"),
-      std::make_shared<NotGate>(a, o)};
-  Circuit circuit(components, false);
+  auto          a = std::make_shared<Wire>();
+  auto          o = std::make_shared<Wire>();
+  Component_set components{std::make_shared<DummyInputComponent>(Bus{a}, "data"),
+                           std::make_shared<NotGate>(a, o)};
+  Circuit       circuit(components, false);
 
   const auto inputs  = circuit.getInputPorts();
   const auto outputs = circuit.getOutputPorts();
@@ -669,7 +667,7 @@ TEST(CircuitTest, SerializeEmptyCircuit)
   Circuit c;
   c.setName("main");
   c.setDescription("Main circuit");
-  auto    serialized = c.serialize();
+  auto serialized = c.serialize();
   EXPECT_FALSE(serialized.empty());
 
   auto json = nlohmann::json::parse(serialized);
@@ -1194,9 +1192,8 @@ TEST(CircuitTest, SerializeIncludesProperties)
 TEST(CircuitTest, DeserializeRestoresStringListProperty)
 {
   ComponentRegistry registry;
-  registry.registerType(
-      std::string(StringListTestComponent::Type),
-      [] { return std::make_shared<StringListTestComponent>(); });
+  registry.registerType(std::string(StringListTestComponent::Type),
+                        [] { return std::make_shared<StringListTestComponent>(); });
 
   auto component = std::make_shared<StringListTestComponent>();
   component->setProperty("orientation", std::string("LEFT"));
@@ -1467,7 +1464,8 @@ TEST(CircuitTest, GetLevelMapIndependentGates)
 TEST(CircuitTest, GetLevelMapDiamond)
 {
   // a → NOT(x) → AND(x, b) → o
-  // Both NOT and b are at level 0, AND is at level 1 (max of NOT level+1 and b level+1 = 1).
+  // Both NOT and b are at level 0, AND is at level 1 (max of NOT level+1 and b level+1 =
+  // 1).
   auto a = std::make_shared<Wire>();
   auto b = std::make_shared<Wire>();
   auto x = std::make_shared<Wire>();

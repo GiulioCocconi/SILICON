@@ -17,21 +17,16 @@
 
 #include <core/circuit.hpp>
 #include <core/projectDocument.hpp>
-#include <core/serialization/yosys/netlist.hpp>
 
 namespace SILICON::core {
+class ComponentRegistry;
 class CircuitResolver;
-}
+}  // namespace SILICON::core
 
 namespace SILICON::conversion {
 
 struct VerilogSource {
   std::string contents;
-};
-
-struct YosysDesign {
-  std::string                   json;
-  SILICON::yosys::ModuleDependencyGraph modules;
 };
 
 struct ConversionChoice {
@@ -53,14 +48,15 @@ struct SemanticConversionResult {
 };
 
 struct PreparedSemanticConversion {
-  std::vector<ConversionChoice> choices;
+  std::vector<ConversionChoice>                                         choices;
   std::function<SemanticConversionResult(std::span<const std::string>)> execute;
 };
 
-[[nodiscard]] PreparedSemanticConversion prepareDocumentConversion(
-    const SILICON::project::Document& source,
-    SILICON::project::DocumentType target,
-    std::span<const SILICON::project::Document> projectDocuments,
-    const SILICON::core::CircuitResolver& resolver);
+[[nodiscard]] PreparedSemanticConversion
+prepareDocumentConversion(const SILICON::project::Document&           source,
+                          SILICON::project::DocumentType              target,
+                          std::span<const SILICON::project::Document> projectDocuments,
+                          const SILICON::core::ComponentRegistry&     registry,
+                          const SILICON::core::CircuitResolver&       resolver);
 
 }  // namespace SILICON::conversion

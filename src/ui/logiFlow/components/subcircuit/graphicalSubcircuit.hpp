@@ -32,69 +32,70 @@ class DocumentStore;
 
 namespace SILICON {
 namespace ui {
-using namespace SILICON::core;
-
-/**
- * @brief Graphical component wrapper for a registered subcircuit.
- *
- * The component listens for subcircuit registry changes and redraws its
- * rectangle and ports from the selected subcircuit's graphical metadata.
- */
-class GraphicalSubcircuitComponent : public GraphicalLogicComponent {
-  Q_OBJECT
-public:
-  /** @brief Creates a graphical subcircuit with an empty slug. */
-  explicit GraphicalSubcircuitComponent(
-      QGraphicsItem*                   parent    = nullptr,
-      SILICON::project::DocumentStore* documents = nullptr,
-      const CircuitResolver* resolver = nullptr);
+  using namespace SILICON::core;
 
   /**
-   * @brief Creates a graphical subcircuit and immediately selects a slug.
-   * @param slug Subcircuit registry slug.
-   * @param parent Optional parent graphics item.
+   * @brief Graphical component wrapper for a registered subcircuit.
+   *
+   * The component listens for subcircuit registry changes and redraws its
+   * rectangle and ports from the selected subcircuit's graphical metadata.
    */
-  explicit GraphicalSubcircuitComponent(
-      std::string slug, QGraphicsItem* parent = nullptr,
-      SILICON::project::DocumentStore* documents = nullptr,
-      const CircuitResolver* resolver = nullptr);
+  class GraphicalSubcircuitComponent : public GraphicalLogicComponent {
+    Q_OBJECT
+  public:
+    /** @brief Creates a graphical subcircuit with an empty slug. */
+    explicit GraphicalSubcircuitComponent(
+        QGraphicsItem*                         parent    = nullptr,
+        const SILICON::project::DocumentStore* documents = nullptr,
+        const CircuitResolver*                 resolver  = nullptr);
 
-  /** @brief Unregisters the subcircuit registry listener. */
-  ~GraphicalSubcircuitComponent() override;
+    /**
+     * @brief Creates a graphical subcircuit and immediately selects a slug.
+     * @param slug Subcircuit registry slug.
+     * @param parent Optional parent graphics item.
+     */
+    explicit GraphicalSubcircuitComponent(
+        std::string slug, QGraphicsItem* parent = nullptr,
+        const SILICON::project::DocumentStore* documents = nullptr,
+        const CircuitResolver*                 resolver  = nullptr);
 
-  /** @brief Replaces the associated core subcircuit component. */
-  void setComponent(const Component_ptr& component) override;
+    /** @brief Unregisters the subcircuit registry listener. */
+    ~GraphicalSubcircuitComponent() override;
 
-  /** @brief Applies a component property and refreshes metadata when the slug changes. */
-  void applyProperty(std::string_view key, const PropertyValue& value) override;
+    /** @brief Replaces the associated core subcircuit component. */
+    void setComponent(const Component_ptr& component) override;
 
-  /** @brief Reloads shape and ports from the active registry document. */
-  void refreshFromMetadata();
-  void setDocumentStore(SILICON::project::DocumentStore* documents);
-  void setCircuitResolver(const CircuitResolver* resolver);
+    /** @brief Applies a component property and refreshes metadata when the slug changes.
+     */
+    void applyProperty(std::string_view key, const PropertyValue& value) override;
 
-  /** @brief Uses default metadata derived only from the attached imported buses. */
-  void useAttachedInterfaceMetadata();
+    /** @brief Reloads shape and ports from the active registry document. */
+    void refreshFromMetadata();
+    void setDocumentStore(const SILICON::project::DocumentStore* documents);
+    void setCircuitResolver(const CircuitResolver* resolver);
 
-  int type() const override { return SiliconTypes::SUBCIRCUIT; }
+    /** @brief Uses default metadata derived only from the attached imported buses. */
+    void useAttachedInterfaceMetadata();
 
-private:
-  std::uint64_t registryListenerId = 0;
-  SILICON::project::DocumentStore* documents = nullptr;
-  const CircuitResolver*           resolver  = nullptr;
+    int type() const override { return SiliconTypes::SUBCIRCUIT; }
 
-  void subscribeToDocuments();
-  void unsubscribeFromDocuments();
+  private:
+    std::uint64_t                          registryListenerId = 0;
+    const SILICON::project::DocumentStore* documents          = nullptr;
+    const CircuitResolver*                 resolver           = nullptr;
 
-  /** @brief Returns the slug stored by the associated core component. */
-  [[nodiscard]] std::string currentSlug() const;
+    void subscribeToDocuments();
+    void unsubscribeFromDocuments();
 
-  /** @brief Applies parsed metadata to the rendered shape and ports. */
-  void                      applyMetadata(const GraphicalSubcircuitMetadata& metadata);
+    /** @brief Returns the slug stored by the associated core component. */
+    [[nodiscard]] std::string currentSlug() const;
 
-  /** @brief Rebuilds visible ports when subcircuit I/O shape changes. */
-  void                      updatePortSizes() override;
-};
+    /** @brief Applies parsed metadata to the rendered shape and ports. */
+    void applyMetadata(const GraphicalSubcircuitMetadata& metadata);
+
+    /** @brief Rebuilds visible ports when subcircuit I/O shape changes. */
+    void updatePortSizes() override;
+  };
 
 }  // namespace ui
 }  // namespace SILICON

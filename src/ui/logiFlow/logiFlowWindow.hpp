@@ -43,12 +43,13 @@ class QStackedWidget;
 class QToolBar;
 class QUndoStack;
 
-#include <core/projectContext.hpp>
 #include <core/projectCircuitResolver.hpp>
+#include <core/projectContext.hpp>
+#include <core/serialization/component_registry.hpp>
 #include <core/serialization/projectFile.hpp>
 
 #ifdef __EMSCRIPTEN__
-#include <emscripten/html5.h>
+  #include <emscripten/html5.h>
 #endif
 
 #ifndef QT_NO_CONTEXTMENU
@@ -61,501 +62,501 @@ class Circuit;
 
 namespace SILICON {
 namespace ui {
-class AboutDialog;
-class ComponentCatalogOverlay;
-class CodeEditor;
-class BinaryEditor;
-class DiagramScene;
-class DiagramView;
-class GraphicalLogStream;
-class LogSideView;
-class ProjectTree;
-namespace waveform {
-  class Viewer;
-}
-struct ShortcutSetting;
-
-/**
- * @brief Main window for the LogiFlow graphical circuit editor.
- *
- * Owns the diagram scene/view, project tree, action/menu/toolbar wiring, property
- * editor, waveform viewer, and log dock used by the LogiFlow application.
- */
-class LogiFlowWindow : public QMainWindow {
-  Q_OBJECT
-
-public:
-  /**
-   * @brief Constructs and initializes the LogiFlow editor window.
-   */
-  LogiFlowWindow();
-
-  /**
-   * @brief Disconnects window-owned callbacks and scene signal connections.
-   */
-  ~LogiFlowWindow() override;
-
-  /** @brief Returns the undo stack used by diagram and project commands. */
-  [[nodiscard]] QUndoStack* getUndoStack() const { return this->undoStack; }
-
-  /** @brief Returns the dock widget view that displays application log output. */
-  [[nodiscard]] LogSideView* getLogSideView() const { return this->logSideView; }
-
-  [[nodiscard]] const std::string& activeProjectDocumentPath() const noexcept
-  {
-    return activeDocumentPath;
+  class AboutDialog;
+  class ComponentCatalogOverlay;
+  class CodeEditor;
+  class BinaryEditor;
+  class DiagramScene;
+  class DiagramView;
+  class GraphicalLogStream;
+  class LogSideView;
+  class ProjectTree;
+  namespace waveform {
+    class Viewer;
   }
-  bool activateProjectDocument(const std::string& documentPath);
+  struct ShortcutSetting;
 
-
-protected:
-#ifndef QT_NO_CONTEXTMENU
   /**
-   * @brief Opens the diagram context menu for mode and editing actions.
-   * @param event Qt context-menu event delivered to the main window
+   * @brief Main window for the LogiFlow graphical circuit editor.
+   *
+   * Owns the diagram scene/view, project tree, action/menu/toolbar wiring, property
+   * editor, waveform viewer, and log dock used by the LogiFlow application.
    */
-  void contextMenuEvent(QContextMenuEvent* event) override;
+  class LogiFlowWindow : public QMainWindow {
+    Q_OBJECT
+
+  public:
+    /**
+     * @brief Constructs and initializes the LogiFlow editor window.
+     */
+    LogiFlowWindow();
+
+    /**
+     * @brief Disconnects window-owned callbacks and scene signal connections.
+     */
+    ~LogiFlowWindow() override;
+
+    /** @brief Returns the undo stack used by diagram and project commands. */
+    [[nodiscard]] QUndoStack* getUndoStack() const { return this->undoStack; }
+
+    /** @brief Returns the dock widget view that displays application log output. */
+    [[nodiscard]] LogSideView* getLogSideView() const { return this->logSideView; }
+
+    [[nodiscard]] const std::string& activeProjectDocumentPath() const noexcept
+    {
+      return activeDocumentPath;
+    }
+    bool activateProjectDocument(const std::string& documentPath);
+
+  protected:
+#ifndef QT_NO_CONTEXTMENU
+    /**
+     * @brief Opens the diagram context menu for mode and editing actions.
+     * @param event Qt context-menu event delivered to the main window
+     */
+    void contextMenuEvent(QContextMenuEvent* event) override;
 #endif  // QT_NO_CONTEXTMENU
 
-  /**
-   * @brief Handles viewport events needed by floating child widgets.
-   * @param watched Object that received the event
-   * @param event Event being filtered
-   * @return True when the event was consumed
-   */
-  bool eventFilter(QObject* watched, QEvent* event) override;
+    /**
+     * @brief Handles viewport events needed by floating child widgets.
+     * @param watched Object that received the event
+     * @param event Event being filtered
+     * @return True when the event was consumed
+     */
+    bool eventFilter(QObject* watched, QEvent* event) override;
 
-  /**
-   * @brief Keeps floating overlays aligned when the main window is resized.
-   * @param event Qt resize event
-   */
-  void resizeEvent(QResizeEvent* event) override;
-  void closeEvent(QCloseEvent* event) override;
+    /**
+     * @brief Keeps floating overlays aligned when the main window is resized.
+     * @param event Qt resize event
+     */
+    void resizeEvent(QResizeEvent* event) override;
+    void closeEvent(QCloseEvent* event) override;
 
-private slots:
-  /** @brief Resets the editor to a new unsaved project. */
-  void newFile();
+  private slots:
+    /** @brief Resets the editor to a new unsaved project. */
+    void newFile();
 
-  /** @brief Opens a saved LogiFlow project file from disk. */
-  void open();
+    /** @brief Opens a saved LogiFlow project file from disk. */
+    void open();
 
-  /** @brief Saves the active project to its current filename or prompts for one. */
-  bool save();
+    /** @brief Saves the active project to its current filename or prompts for one. */
+    bool save();
 
-  /** @brief Placeholder slot for exporting the diagram as an image. */
-  void exportImage() {}
+    /** @brief Placeholder slot for exporting the diagram as an image. */
+    void exportImage() {}
 
-  /**
-   * @brief Copies the current selection to the clipboard, then deletes it.
-   *
-   * Deletion only happens after the selection is successfully serialized into the
-   * application clipboard MIME format.
-   */
-  void cut();
+    /**
+     * @brief Copies the current selection to the clipboard, then deletes it.
+     *
+     * Deletion only happens after the selection is successfully serialized into the
+     * application clipboard MIME format.
+     */
+    void cut();
 
-  /**
-   * @brief Copies the current diagram selection to the clipboard.
-   *
-   * The clipboard payload uses the Silicon LogiFlow BSON MIME format.
-   */
-  void copy();
+    /**
+     * @brief Copies the current diagram selection to the clipboard.
+     *
+     * The clipboard payload uses the Silicon LogiFlow BSON MIME format.
+     */
+    void copy();
 
-  /**
-   * @brief Pastes a Silicon LogiFlow selection from the clipboard.
-   *
-   * Invalid, empty, or unrelated clipboard data is ignored.
-   */
-  void paste();
+    /**
+     * @brief Pastes a Silicon LogiFlow selection from the clipboard.
+     *
+     * Invalid, empty, or unrelated clipboard data is ignored.
+     */
+    void paste();
 
-  /** @brief Rotates all selected graphical components. */
-  void rotate();
+    /** @brief Rotates all selected graphical components. */
+    void rotate();
 
-  /** @brief Automatically places components and reroutes wires. */
-  void autoPlace();
+    /** @brief Automatically places components and reroutes wires. */
+    void autoPlace();
 
-  /** @brief Deletes the current selection from the diagram. */
-  void del();  // Delete is a CPP keyword
+    /** @brief Deletes the current selection from the diagram. */
+    void del();  // Delete is a CPP keyword
 
-  /** @brief Shows the application about dialog. */
-  void about() const;
+    /** @brief Shows the application about dialog. */
+    void about() const;
 
-  /** @brief Opens the LogiFlow settings dialog. */
-  void openSettings();
+    /** @brief Opens the LogiFlow settings dialog. */
+    void openSettings();
 
-  /** @brief Returns the diagram scene to normal editing mode. */
-  void setNormalMode();
+    /** @brief Returns the diagram scene to normal editing mode. */
+    void setNormalMode();
 
-  /** @brief Switches the diagram scene to panning mode. */
-  void setPanMode();
+    /** @brief Switches the diagram scene to panning mode. */
+    void setPanMode();
 
-  /** @brief Switches the diagram scene to wire creation mode. */
-  void setWireCreationMode();
+    /** @brief Switches the diagram scene to wire creation mode. */
+    void setWireCreationMode();
 
-  /** @brief Switches the diagram scene to simulation mode. */
-  void setSimulationMode();
+    /** @brief Switches the diagram scene to simulation mode. */
+    void setSimulationMode();
 
-  /** @brief Switches the diagram scene to component placing mode. */
-  void setComponentPlacingMode();
+    /** @brief Switches the diagram scene to component placing mode. */
+    void setComponentPlacingMode();
 
-  /** @brief Opens the component catalog overlay above the diagram view. */
-  void showComponentCatalog();
-  void editActiveSubcircuitShape();
-  /** @brief Converts the active circuit/code document into another registered form. */
-  void convertActiveDocument();
+    /** @brief Opens the component catalog overlay above the diagram view. */
+    void showComponentCatalog();
+    void editActiveSubcircuitShape();
+    /** @brief Converts the active circuit/code document into another registered form. */
+    void convertActiveDocument();
 
-  /** @brief Cancels any active scene interaction and returns to normal editing. */
-  void cancelCurrentInteraction();
+    /** @brief Cancels any active scene interaction and returns to normal editing. */
+    void cancelCurrentInteraction();
 
-  /**
-   * @brief Enables or disables FST waveform tracing for the current scene.
-   * @param enabled True to write FST traces during simulation
-   */
-  void toggleFstTracing(bool enabled);
+    /**
+     * @brief Enables or disables FST waveform tracing for the current scene.
+     * @param enabled True to write FST traces during simulation
+     */
+    void toggleFstTracing(bool enabled);
 
-  /** @brief Refreshes the status bar text for the current scene mode. */
-  void updateStatus() const;
+    /** @brief Refreshes the status bar text for the current scene mode. */
+    void updateStatus() const;
 
-  /** @brief Updates action enabled states and property UI after selection changes. */
-  void selectionChanged();
+    /** @brief Updates action enabled states and property UI after selection changes. */
+    void selectionChanged();
 
-  /** @brief Handles user selection changes in the project circuit tree. */
-  void projectTreeSelectionChanged();
+    /** @brief Handles user selection changes in the project circuit tree. */
+    void projectTreeSelectionChanged();
 
-  /**
-   * @brief Shows the context menu for project-tree circuit actions.
-   * @param position Position within the project tree viewport
-   */
-  void showProjectTreeContextMenu(const QPoint& position);
+    /**
+     * @brief Shows the context menu for project-tree circuit actions.
+     * @param position Position within the project tree viewport
+     */
+    void showProjectTreeContextMenu(const QPoint& position);
 
-  /** @brief Prompts for and inserts a new circuit into the current project. */
-  void createCircuit();
+    /** @brief Prompts for and inserts a new circuit into the current project. */
+    void createCircuit();
 
-  void createCodeFile();
-  void createBinaryFile();
+    void createCodeFile();
+    void createBinaryFile();
 
-  /** @brief Rebuilds the property dock for the current selection or active circuit. */
-  void updatePropertyDock();
+    /** @brief Rebuilds the property dock for the current selection or active circuit. */
+    void updatePropertyDock();
 
-private:
-  /** @brief Creates QAction instances, shortcuts, and action signal connections. */
-  void createActions();
+  private:
+    /** @brief Creates QAction instances, shortcuts, and action signal connections. */
+    void createActions();
 
-  /** @brief Builds the main menu bar from the configured actions. */
-  void createMenus();
+    /** @brief Builds the main menu bar from the configured actions. */
+    void createMenus();
 
-  /** @brief Builds the main toolbar from the configured actions. */
-  void createToolBar();
+    /** @brief Builds the main toolbar from the configured actions. */
+    void createToolBar();
 
-  /** @brief Creates the waveform viewer dialog used by simulations. */
-  void createWaveformWindow();
+    /** @brief Creates the waveform viewer dialog used by simulations. */
+    void createWaveformWindow();
 
-  /** @brief Applies persisted window, dock, and shortcut settings. */
-  void applyStoredSettings();
+    /** @brief Applies persisted window, dock, and shortcut settings. */
+    void applyStoredSettings();
 
-  /** @brief Repositions and resizes the component catalog overlay. */
-  void updateComponentCatalogGeometry();
-  void updateSubcircuitShapeAction();
-  /** @brief Updates the contextual conversion action for the active document. */
-  void               updateCodeAction();
-  void convertActiveDocumentTo(SILICON::project::DocumentType target);
-  void commitConvertedDocuments(std::vector<SILICON::project::Document> documents,
-                                const std::string& sourcePath,
-                                const std::string& activatePath,
-                                const QString&     commandText);
-  [[nodiscard]] std::optional<SILICON::project::DocumentType>
-  activeDocumentType() const noexcept;
+    /** @brief Repositions and resizes the component catalog overlay. */
+    void updateComponentCatalogGeometry();
+    void updateSubcircuitShapeAction();
+    /** @brief Updates the contextual conversion action for the active document. */
+    void updateCodeAction();
+    void convertActiveDocumentTo(SILICON::project::DocumentType target);
+    void commitConvertedDocuments(std::vector<SILICON::project::Document> documents,
+                                  const std::string&                      sourcePath,
+                                  const std::string&                      activatePath,
+                                  const QString&                          commandText);
+    [[nodiscard]] std::optional<SILICON::project::DocumentType>
+    activeDocumentType() const noexcept;
 
-  /**
-   * @brief Updates the current project filename and window title.
-   * @param fn New project filename
-   */
-  void setFileName(const QString& fn);
+    /**
+     * @brief Updates the current project filename and window title.
+     * @param fn New project filename
+     */
+    void setFileName(const QString& fn);
 
-  /**
-   * @brief Loads project or legacy circuit content into the window.
-   * @param fileName Source filename used for metadata and error messages
-   * @param fileContent Serialized file bytes to parse
-   */
-  void loadCircuitContent(const QString& fileName, const QByteArray& fileContent);
+    /**
+     * @brief Loads project or legacy circuit content into the window.
+     * @param fileName Source filename used for metadata and error messages
+     * @param fileContent Serialized file bytes to parse
+     */
+    void loadCircuitContent(const QString& fileName, const QByteArray& fileContent);
 
-  /** @brief Creates and wires the project tree widget shown in the project dock. */
-  void initializeProjectTree();
+    /** @brief Creates and wires the project tree widget shown in the project dock. */
+    void initializeProjectTree();
 
-  /** @brief Rebuilds the project tree from the active project documents. */
-  void rebuildProjectTree();
+    /** @brief Rebuilds the project tree from the active project documents. */
+    void rebuildProjectTree();
 
-  /** @brief Serializes the active editor into the shared project document store. */
-  void saveActiveDocumentPayload();
-  void loadDocumentPayload(const SILICON::project::Document& document);
+    /** @brief Serializes the active editor into the shared project document store. */
+    void saveActiveDocumentPayload();
+    void loadDocumentPayload(const SILICON::project::Document& document);
 
-  /**
-   * @brief Prompts to save when the project undo stack contains unsaved edits.
-   * @param continuation Operation to run after saving or discarding changes
-   */
-  void confirmSaveIfDirty(std::function<void()> continuation);
-  [[nodiscard]] bool hasUnsavedChanges() const;
+    /**
+     * @brief Prompts to save when the project undo stack contains unsaved edits.
+     * @param continuation Operation to run after saving or discarding changes
+     */
+    void               confirmSaveIfDirty(std::function<void()> continuation);
+    [[nodiscard]] bool hasUnsavedChanges() const;
 
-  /** Switches to a project document, optionally selecting it in the tree. */
-  bool switchToDocument(const std::string& path, bool selectInTree);
+    /** Switches to a project document, optionally selecting it in the tree. */
+    bool switchToDocument(const std::string& path, bool selectInTree);
 
-  /** Selects a project document in the tree without switching editors. */
-  void selectProjectTreeDocument(const std::string& path);
+    /** Selects a project document in the tree without switching editors. */
+    void selectProjectTreeDocument(const std::string& path);
 
-  /** @brief Resets the window to a fresh, single-circuit project state. */
-  void resetProjectState();
+    /** @brief Resets the window to a fresh, single-circuit project state. */
+    void resetProjectState();
 
-  /** Removes a document from the store and derived dependency graph. */
-  void removeDocument(const std::string& path);
+    /** Removes a document from the store and derived dependency graph. */
+    void removeDocument(const std::string& path);
 
-  /** Inserts a document and optionally activates it. */
-  void insertDocument(SILICON::project::Document    document,
-                      std::optional<std::ptrdiff_t> insertAt, bool activate);
+    /** Inserts a document and optionally activates it. */
+    void insertDocument(SILICON::project::Document    document,
+                        std::optional<std::ptrdiff_t> insertAt, bool activate);
 
-  /** Generates a unique project path for a graphical document. */
-  [[nodiscard]] std::string uniqueDocumentPath(SILICON::project::DocumentType type,
-                                               const QString& requestedName) const;
+    /** Generates a unique project path for a graphical document. */
+    [[nodiscard]] std::string uniqueDocumentPath(SILICON::project::DocumentType type,
+                                                 const QString& requestedName) const;
 
-  /** Creates an empty serialized graphical document. */
-  [[nodiscard]] std::string
-  emptyGraphicalDocumentJson(SILICON::project::DocumentType type,
-                             const std::string& name) const;
-  void createDocument(SILICON::project::DocumentType type);
-  void pushCreateDocumentCommand(SILICON::project::Document document,
-                                 const QString& commandText);
-  void deleteSelectedDocument();
-  /** @brief Returns the logical circuit currently owned by the diagram scene. */
-  [[nodiscard]] std::shared_ptr<SILICON::core::Circuit> activeCircuit();
+    /** Creates an empty serialized graphical document. */
+    [[nodiscard]] std::string
+         emptyGraphicalDocumentJson(SILICON::project::DocumentType type,
+                                    const std::string&             name) const;
+    void createDocument(SILICON::project::DocumentType type);
+    void pushCreateDocumentCommand(SILICON::project::Document document,
+                                   const QString&             commandText);
+    void deleteSelectedDocument();
+    /** @brief Returns the logical circuit currently owned by the diagram scene. */
+    [[nodiscard]] std::shared_ptr<SILICON::core::Circuit> activeCircuit();
 
 #ifdef __EMSCRIPTEN__
-  /**
-   * @brief Browser keydown callback used to catch Escape outside Qt focus handling.
-   * @param eventType Emscripten event type
-   * @param keyEvent Browser keyboard event data
-   * @param userData Pointer to the LogiFlowWindow instance
-   * @return EM_TRUE when the event was handled
-   */
-  static EM_BOOL wasmKeyDownCallback(int                            eventType,
-                                     const EmscriptenKeyboardEvent* keyEvent,
-                                     void*                          userData);
+    /**
+     * @brief Browser keydown callback used to catch Escape outside Qt focus handling.
+     * @param eventType Emscripten event type
+     * @param keyEvent Browser keyboard event data
+     * @param userData Pointer to the LogiFlowWindow instance
+     * @return EM_TRUE when the event was handled
+     */
+    static EM_BOOL wasmKeyDownCallback(int                            eventType,
+                                       const EmscriptenKeyboardEvent* keyEvent,
+                                       void*                          userData);
 
-  /**
-   * @brief Handles a browser Escape key press for overlays and active interactions.
-   * @return True when Escape was consumed
-   */
-  bool handleWasmEscapeKey();
+    /**
+     * @brief Handles a browser Escape key press for overlays and active interactions.
+     * @return True when Escape was consumed
+     */
+    bool handleWasmEscapeKey();
 #endif
 
-  /**
-   * @brief Serializes the current selection and stores it on the system clipboard.
-   * @return True when a non-empty selection was copied successfully
-   */
-  bool copySelectionToClipboard();
+    /**
+     * @brief Serializes the current selection and stores it on the system clipboard.
+     * @return True when a non-empty selection was copied successfully
+     */
+    bool copySelectionToClipboard();
 
-  /** @brief Builds the editable shortcut table shown in the settings dialog. */
-  QVector<ShortcutSetting> shortcutSettings() const;
+    /** @brief Builds the editable shortcut table shown in the settings dialog. */
+    QVector<ShortcutSetting> shortcutSettings() const;
 
-  [[nodiscard]] static QString documentTypeName(SILICON::project::DocumentType type);
-  [[nodiscard]] static std::string defaultMainCircuitPath();
-  [[nodiscard]] static SILICON::project::Document defaultCircuitDocument();
-  [[nodiscard]] static SILICON::project::ProjectInfo
-                            defaultProjectInfo(const QString& currentFileName);
-  [[nodiscard]] std::string projectMainCircuitPath() const;
+    [[nodiscard]] static QString documentTypeName(SILICON::project::DocumentType type);
+    [[nodiscard]] static std::string                defaultMainCircuitPath();
+    [[nodiscard]] static SILICON::project::Document defaultCircuitDocument();
+    [[nodiscard]] static SILICON::project::ProjectInfo
+                              defaultProjectInfo(const QString& currentFileName);
+    [[nodiscard]] std::string projectMainCircuitPath() const;
     void                      ensureProjectDocuments();
-  static void setActionsEnabled(std::initializer_list<QAction*> actions, bool enabled);
-  void        syncWasmShortcutCapture();
+    static void setActionsEnabled(std::initializer_list<QAction*> actions, bool enabled);
+    void        syncWasmShortcutCapture();
 
-  /** @brief Main toolbar containing edit, mode, and simulation actions. */
-  QToolBar* toolBar = nullptr;
-  QAction*  diagramToolsSeparator  = nullptr;
-  QAction*  documentToolsSeparator = nullptr;
+    /** @brief Main toolbar containing edit, mode, and simulation actions. */
+    QToolBar* toolBar                = nullptr;
+    QAction*  diagramToolsSeparator  = nullptr;
+    QAction*  documentToolsSeparator = nullptr;
 
-  /** @brief Dock containing the project circuit tree. */
-  QDockWidget* componentsDock = nullptr;
+    /** @brief Dock containing the project circuit tree. */
+    QDockWidget* componentsDock = nullptr;
 
-  /** @brief Dock containing the current property editor. */
-  QDockWidget* propertyDock = nullptr;
+    /** @brief Dock containing the current property editor. */
+    QDockWidget* propertyDock = nullptr;
 
-  /** @brief Dock containing application log output. */
-  QDockWidget* logDock = nullptr;
+    /** @brief Dock containing application log output. */
+    QDockWidget* logDock = nullptr;
 
-  /** @brief Tree widget listing project metadata and circuit files. */
-  ProjectTree* projectTree = nullptr;
+    /** @brief Tree widget listing project metadata and circuit files. */
+    ProjectTree* projectTree = nullptr;
 
-  /** @brief Floating window that hosts the waveform viewer. */
-  QDialog* waveformWindow = nullptr;
+    /** @brief Floating window that hosts the waveform viewer. */
+    QDialog* waveformWindow = nullptr;
 
-  /** @brief Widget used to inspect simulation waveforms. */
-  waveform::Viewer* waveformViewer = nullptr;
+    /** @brief Widget used to inspect simulation waveforms. */
+    waveform::Viewer* waveformViewer = nullptr;
 
-  /** @brief Widget that displays captured application log lines. */
-  LogSideView* logSideView = nullptr;
+    /** @brief Widget that displays captured application log lines. */
+    LogSideView* logSideView = nullptr;
 
-  /** @brief Adapter that forwards Boost.Log output into the Qt log side view. */
-  GraphicalLogStream* graphicalLogStream = nullptr;
+    /** @brief Adapter that forwards Boost.Log output into the Qt log side view. */
+    GraphicalLogStream* graphicalLogStream = nullptr;
 
-  /** @brief Graphics scene that owns the editable circuit diagram. */
-  DiagramScene* diagramScene = nullptr;
+    /** @brief Graphics scene that owns the editable circuit diagram. */
+    DiagramScene* diagramScene = nullptr;
 
-  /** @brief Graphics view used to render and navigate the diagram scene. */
-  DiagramView* diagramView = nullptr;
-  /** @brief Selects between the graphical circuit view and the source editor. */
-  QStackedWidget* editorStack = nullptr;
-  /** @brief Metadata-driven, line-numbered source editor. */
-  CodeEditor* codeEditor = nullptr;
-  /** @brief Fixed-size, nibble-oriented binary editor. */
-  BinaryEditor* binaryEditor = nullptr;
+    /** @brief Graphics view used to render and navigate the diagram scene. */
+    DiagramView* diagramView = nullptr;
+    /** @brief Selects between the graphical circuit view and the source editor. */
+    QStackedWidget* editorStack = nullptr;
+    /** @brief Metadata-driven, line-numbered source editor. */
+    CodeEditor* codeEditor = nullptr;
+    /** @brief Fixed-size, nibble-oriented binary editor. */
+    BinaryEditor* binaryEditor = nullptr;
 
-  /** @brief Floating searchable component catalog, shown over the diagram viewport. */
-  ComponentCatalogOverlay* componentCatalogOverlay = nullptr;
+    /** @brief Floating searchable component catalog, shown over the diagram viewport. */
+    ComponentCatalogOverlay* componentCatalogOverlay = nullptr;
 
-  /** @brief File menu. */
-  QMenu* fileMenu = nullptr;
+    /** @brief File menu. */
+    QMenu* fileMenu = nullptr;
 
-  /** @brief Edit menu. */
-  QMenu* editMenu = nullptr;
+    /** @brief Edit menu. */
+    QMenu* editMenu = nullptr;
 
-  /** @brief Help menu. */
-  QMenu* helpMenu = nullptr;
+    /** @brief Help menu. */
+    QMenu* helpMenu = nullptr;
 
-  /** @brief Creates a new project. */
-  QAction* newAct           = nullptr;
-  QAction* newCircuitAct    = nullptr;
-  QAction* newCodeFileAct   = nullptr;
-  QAction* newBinaryFileAct = nullptr;
+    /** @brief Creates a new project. */
+    QAction* newAct           = nullptr;
+    QAction* newCircuitAct    = nullptr;
+    QAction* newCodeFileAct   = nullptr;
+    QAction* newBinaryFileAct = nullptr;
 
-  /** @brief Opens an existing project. */
-  QAction* openAct = nullptr;
+    /** @brief Opens an existing project. */
+    QAction* openAct = nullptr;
 
-  /** @brief Saves the current project. */
-  QAction* saveAct = nullptr;
+    /** @brief Saves the current project. */
+    QAction* saveAct = nullptr;
 
-  /** @brief Exports the current diagram image. */
-  QAction* exportImageAct = nullptr;
+    /** @brief Exports the current diagram image. */
+    QAction* exportImageAct = nullptr;
 
-  /** @brief Closes the application window. */
-  QAction* exitAct = nullptr;
+    /** @brief Closes the application window. */
+    QAction* exitAct = nullptr;
 
-  /** @brief Cuts the current selection. */
-  QAction* cutAct = nullptr;
+    /** @brief Cuts the current selection. */
+    QAction* cutAct = nullptr;
 
-  /** @brief Copies the current selection. */
-  QAction* copyAct = nullptr;
+    /** @brief Copies the current selection. */
+    QAction* copyAct = nullptr;
 
-  /** @brief Pastes a copied selection. */
-  QAction* pasteAct = nullptr;
+    /** @brief Pastes a copied selection. */
+    QAction* pasteAct = nullptr;
 
-  /** @brief Rotates selected components. */
-  QAction* rotateAct = nullptr;
+    /** @brief Rotates selected components. */
+    QAction* rotateAct = nullptr;
 
-  /** @brief Automatically places components and reroutes wires. */
-  QAction* autoPlaceAct = nullptr;
+    /** @brief Automatically places components and reroutes wires. */
+    QAction* autoPlaceAct = nullptr;
 
-  /** @brief Deletes the current selection. */
-  QAction* deleteAct = nullptr;
+    /** @brief Deletes the current selection. */
+    QAction* deleteAct = nullptr;
 
-  /** @brief Opens the about dialog. */
-  QAction* aboutAct = nullptr;
+    /** @brief Opens the about dialog. */
+    QAction* aboutAct = nullptr;
 
-  /** @brief Opens the settings dialog. */
-  QAction* settingsAct = nullptr;
+    /** @brief Opens the settings dialog. */
+    QAction* settingsAct = nullptr;
 
-  /** @brief Activates normal editing mode. */
-  QAction* setNormalModeAct = nullptr;
+    /** @brief Activates normal editing mode. */
+    QAction* setNormalModeAct = nullptr;
 
-  /** @brief Activates panning mode. */
-  QAction* setPanModeAct = nullptr;
+    /** @brief Activates panning mode. */
+    QAction* setPanModeAct = nullptr;
 
-  /** @brief Activates wire creation mode. */
-  QAction* setWireCreationModeAct = nullptr;
+    /** @brief Activates wire creation mode. */
+    QAction* setWireCreationModeAct = nullptr;
 
-  /** @brief Activates simulation mode. */
-  QAction* setSimulationModeAct = nullptr;
+    /** @brief Activates simulation mode. */
+    QAction* setSimulationModeAct = nullptr;
 
-  /** @brief Toggles FST trace generation for simulations. */
-  QAction* toggleFstTraceAct = nullptr;
+    /** @brief Toggles FST trace generation for simulations. */
+    QAction* toggleFstTraceAct = nullptr;
 
-  /** @brief Cancels the active diagram interaction. */
-  QAction* cancelInteractionAct = nullptr;
+    /** @brief Cancels the active diagram interaction. */
+    QAction* cancelInteractionAct = nullptr;
 
-  /** @brief Opens the component catalog overlay. */
-  QAction* openComponentCatalogAct = nullptr;
-  QAction* editSubcircuitShapeAct  = nullptr;
-  QAction* codeConversionAct       = nullptr;
+    /** @brief Opens the component catalog overlay. */
+    QAction* openComponentCatalogAct = nullptr;
+    QAction* editSubcircuitShapeAct  = nullptr;
+    QAction* codeConversionAct       = nullptr;
 
-  /** @brief Activates component placing mode. */
-  QAction* setComponentPlacingModeAct = nullptr;
+    /** @brief Activates component placing mode. */
+    QAction* setComponentPlacingModeAct = nullptr;
 
-  /** @brief Undo action created from the shared undo stack. */
-  QAction* undoAct = nullptr;
+    /** @brief Undo action created from the shared undo stack. */
+    QAction* undoAct = nullptr;
 
-  /** @brief Redo action created from the shared undo stack. */
-  QAction* redoAct = nullptr;
+    /** @brief Redo action created from the shared undo stack. */
+    QAction* redoAct = nullptr;
 
-  /** @brief Undo stack shared by diagram and project operations. */
-  QUndoStack* undoStack = nullptr;
+    /** @brief Undo stack shared by diagram and project operations. */
+    QUndoStack* undoStack = nullptr;
 
-  /** @brief Current project file path, or an empty string for unsaved projects. */
-  QString currentFileName;
+    /** @brief Current project file path, or an empty string for unsaved projects. */
+    QString currentFileName;
 
-  /** @brief Allows the close event triggered after an accepted dirty-file prompt. */
-  bool closeAfterSaveConfirmation = false;
+    /** @brief Allows the close event triggered after an accepted dirty-file prompt. */
+    bool closeAfterSaveConfirmation = false;
 
-  /** @brief Optional persisted metadata for the current project. */
-  std::optional<SILICON::project::ProjectMetadata> currentProjectMetadata;
+    /** @brief Optional persisted metadata for the current project. */
+    std::optional<SILICON::project::ProjectMetadata> currentProjectMetadata;
 
-  /** @brief Optional persisted project information for the current project. */
-  std::optional<SILICON::project::ProjectInfo> currentProjectInfo;
+    /** @brief Optional persisted project information for the current project. */
+    std::optional<SILICON::project::ProjectInfo> currentProjectInfo;
 
-  /** @brief Project-relative path of the circuit loaded in the diagram scene. */
-  std::string activeDocumentPath;
-  /** @brief Tracks code edits already flushed to DocumentStore but not to disk. */
-  bool                                     codeDocumentsDirty = false;
-  bool                                     binaryDocumentsDirty = false;
-  SILICON::project::ProjectContext projectContext;
-  SILICON::project::ProjectCircuitResolver circuitResolver{projectContext};
+    /** @brief Project-relative path of the circuit loaded in the diagram scene. */
+    std::string activeDocumentPath;
+    /** @brief Tracks code edits already flushed to DocumentStore but not to disk. */
+    bool                                     codeDocumentsDirty   = false;
+    bool                                     binaryDocumentsDirty = false;
+    SILICON::project::ProjectContext         projectContext;
+    SILICON::project::ProjectCircuitResolver circuitResolver{
+        projectContext, SILICON::core::ComponentRegistry::instance()};
 
-  /** @brief Lazily shown application about dialog. */
-  AboutDialog* aboutDialog = nullptr;
-};
-
-/**
- * @brief Spin box that can display an empty mixed-value state in property editors.
- *
- * Used when multiple selected items have different numeric values for the same
- * editable property.
- */
-class PropertySpinBox : public QSpinBox {
-  Q_OBJECT
-
-public:
-  /**
-   * @brief Constructs a property spin box without visible step buttons.
-   * @param parent Optional Qt parent widget
-   */
-  explicit PropertySpinBox(QWidget* parent = nullptr);
+    /** @brief Lazily shown application about dialog. */
+    AboutDialog* aboutDialog = nullptr;
+  };
 
   /**
-   * @brief Sets whether the spin box should display a mixed-value placeholder.
-   * @param mixed True when selected items do not share a single value
-   * @param placeholder Placeholder text to show while mixed
+   * @brief Spin box that can display an empty mixed-value state in property editors.
+   *
+   * Used when multiple selected items have different numeric values for the same
+   * editable property.
    */
-  void setMixed(bool mixed, const QString& placeholder = QString());
+  class PropertySpinBox : public QSpinBox {
+    Q_OBJECT
 
-  /** @brief Returns whether the spin box is currently in mixed-value mode. */
-  [[nodiscard]] bool isMixed() const;
+  public:
+    /**
+     * @brief Constructs a property spin box without visible step buttons.
+     * @param parent Optional Qt parent widget
+     */
+    explicit PropertySpinBox(QWidget* parent = nullptr);
 
-protected:
-  /**
-   * @brief Converts the current value to display text, hiding the sentinel mixed value.
-   * @param val Numeric value to format
-   * @return Display text for the spin box line edit
-   */
-  [[nodiscard]] QString textFromValue(int val) const override;
+    /**
+     * @brief Sets whether the spin box should display a mixed-value placeholder.
+     * @param mixed True when selected items do not share a single value
+     * @param placeholder Placeholder text to show while mixed
+     */
+    void setMixed(bool mixed, const QString& placeholder = QString());
 
-private:
-  /** @brief Tracks whether the widget is displaying a mixed-value placeholder. */
-  bool m_isMixed = false;
-};
+    /** @brief Returns whether the spin box is currently in mixed-value mode. */
+    [[nodiscard]] bool isMixed() const;
+
+  protected:
+    /**
+     * @brief Converts the current value to display text, hiding the sentinel mixed value.
+     * @param val Numeric value to format
+     * @return Display text for the spin box line edit
+     */
+    [[nodiscard]] QString textFromValue(int val) const override;
+
+  private:
+    /** @brief Tracks whether the widget is displaying a mixed-value placeholder. */
+    bool m_isMixed = false;
+  };
 
 }  // namespace ui
 }  // namespace SILICON

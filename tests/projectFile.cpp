@@ -173,15 +173,15 @@ TEST(ProjectFileTest, WritesAndReadsProjectArchive)
   FileCleanup cleanup{path};
 
   SILICON::project::ProjectFile projectFile{
-      .metadata        = {.formatVersion  = SILICON::project::FORMAT_VERSION,
-                          .siliconVersion = SILICON_VERSION,
-                          .creationDate   = "2026-01-02T03:04:05Z",
-                          .lastModify     = "2026-01-02T03:05:06Z"},
-      .project         = {.name        = "CPU demo",
-                          .mainCircuit = std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH),
-                          .description = "Demo project"},
-      .documents       = {{std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH),
-                           R"({"circuit":{},"visual":{"components":[],"wires":[]}})"}}};
+      .metadata  = {.formatVersion  = SILICON::project::FORMAT_VERSION,
+                    .siliconVersion = SILICON_VERSION,
+                    .creationDate   = "2026-01-02T03:04:05Z",
+                    .lastModify     = "2026-01-02T03:05:06Z"},
+      .project   = {.name        = "CPU demo",
+                    .mainCircuit = std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH),
+                    .description = "Demo project"},
+      .documents = {{std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH),
+                     R"({"circuit":{},"visual":{"components":[],"wires":[]}})"}}};
 
   SILICON::project::writeProjectFile(path, projectFile);
 
@@ -212,7 +212,7 @@ TEST(ProjectFileTest, RejectsObsoleteProjectFields)
 {
   const auto  path = tempProjectPath("obsolete_project_field");
   FileCleanup cleanup{path};
-  auto        project = validProject();
+  auto        project  = validProject();
   project["codeFiles"] = nlohmann::ordered_json::array();
   writeZip(path, {{"mimetype", std::string(SILICON::project::MIME_TYPE)},
                   {"metadata.json", validMetadata().dump(2)},
@@ -396,11 +396,11 @@ TEST(ProjectFileTest, RejectsLegacySubcircuitPathBeforeCreatingArchive)
   const auto                    path = tempProjectPath("nested_subcircuit");
   FileCleanup                   cleanup{path};
   SILICON::project::ProjectFile projectFile{
-      .metadata        = SILICON::project::metadataForNewFile(),
-      .project         = {.name        = "Invalid",
-                          .mainCircuit = std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH),
-                          .description = ""},
-      .documents       = {{std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), "{}"}}};
+      .metadata  = SILICON::project::metadataForNewFile(),
+      .project   = {.name        = "Invalid",
+                    .mainCircuit = std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH),
+                    .description = ""},
+      .documents = {{std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), "{}"}}};
 
   EXPECT_THROW(projectFile.documents.emplace_back("subcircuits/adder.json", "{}"),
                std::invalid_argument);
@@ -425,12 +425,12 @@ TEST(ProjectFileTest, RejectsDuplicateDocumentPathsBeforeCreatingArchive)
   const auto                    path = tempProjectPath("duplicate_document_paths");
   FileCleanup                   cleanup{path};
   SILICON::project::ProjectFile projectFile{
-      .metadata        = SILICON::project::metadataForNewFile(),
-      .project         = {.name        = "Invalid",
-                          .mainCircuit = std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH),
-                          .description = ""},
-      .documents       = {{std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), "{}"},
-                          {std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), "{}"}}};
+      .metadata  = SILICON::project::metadataForNewFile(),
+      .project   = {.name        = "Invalid",
+                    .mainCircuit = std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH),
+                    .description = ""},
+      .documents = {{std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), "{}"},
+                    {std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), "{}"}}};
 
   EXPECT_THROW(SILICON::project::writeProjectFile(path, projectFile), std::runtime_error);
   EXPECT_FALSE(std::filesystem::exists(path));
@@ -441,13 +441,13 @@ TEST(ProjectFileTest, RejectsDuplicateCircuitNamesBeforeCreatingArchive)
   const auto                    path = tempProjectPath("duplicate_subcircuit_slugs");
   FileCleanup                   cleanup{path};
   SILICON::project::ProjectFile projectFile{
-      .metadata        = SILICON::project::metadataForNewFile(),
-      .project         = {.name        = "Invalid",
-                          .mainCircuit = std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH),
-                          .description = ""},
-      .documents       = {{std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), "{}"},
-                          {"circuits/adder.json", "{}"},
-                          {"circuits/adder.json", "{}"}}};
+      .metadata  = SILICON::project::metadataForNewFile(),
+      .project   = {.name        = "Invalid",
+                    .mainCircuit = std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH),
+                    .description = ""},
+      .documents = {{std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH), "{}"},
+                    {"circuits/adder.json", "{}"},
+                    {"circuits/adder.json", "{}"}}};
 
   EXPECT_THROW(SILICON::project::writeProjectFile(path, projectFile), std::runtime_error);
   EXPECT_FALSE(std::filesystem::exists(path));

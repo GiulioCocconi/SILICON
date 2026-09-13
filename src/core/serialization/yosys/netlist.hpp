@@ -203,7 +203,7 @@ public:
   /** @brief Emit a hierarchical instance and recursively serialize its definition. */
   void addSubcircuitInstance(std::string_view slug, const std::vector<core::Bus>& inputs,
                              const std::vector<core::Bus>& outputs,
-                             const core::CircuitResolver* resolver);
+                             const core::CircuitResolver*  resolver);
 
   /** @internal Constructed only by the circuit serializer. */
   explicit SerializationContext(Impl& impl) : impl(impl) {}

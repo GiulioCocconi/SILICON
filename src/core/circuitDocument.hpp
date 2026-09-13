@@ -21,7 +21,13 @@ struct SubcircuitDefinition {
   std::vector<CircuitPort> outputs;
 };
 
-/** Explicit source of project-local reusable Circuit definitions. */
+/**
+ * Explicit source of project-local reusable Circuit definitions.
+ *
+ * Resolver pointers passed into circuits and components are non-owning. The
+ * resolver must outlive every circuit, component, elaborator, simulation
+ * session, or serialization operation that retains or uses that pointer.
+ */
 class CircuitResolver {
 public:
   virtual ~CircuitResolver() = default;

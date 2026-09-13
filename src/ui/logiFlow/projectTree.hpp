@@ -35,8 +35,9 @@ class ProjectTree : public QTreeWidget {
 public:
   explicit ProjectTree(QWidget* parent = nullptr);
 
-  void rebuild(const project::ProjectInfo& project, std::span<const project::Document> documents,
-               std::string_view activeDocumentPath = {});
+  void rebuild(const project::ProjectInfo&        project,
+               std::span<const project::Document> documents,
+               std::string_view                   activeDocumentPath = {});
 
   void selectDocument(std::string_view path);
   void clearDocumentSelection();
@@ -46,7 +47,7 @@ public:
 
   [[nodiscard]] static ProjectTreeItemKind itemKind(const QTreeWidgetItem* item);
   [[nodiscard]] static std::optional<project::DocumentType>
-  itemDocumentType(const QTreeWidgetItem* item);
+                                   itemDocumentType(const QTreeWidgetItem* item);
   [[nodiscard]] static std::string documentPath(const QTreeWidgetItem* item);
 
 private:

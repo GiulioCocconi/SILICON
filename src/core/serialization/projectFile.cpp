@@ -154,8 +154,9 @@ namespace {
 
   [[nodiscard]] bool isDocumentRoot(const std::string_view path)
   {
-    return std::ranges::any_of(DOCUMENT_TYPE_INFO,
-                               [&](const DocumentTypeInfo& info) { return path == info.root; });
+    return std::ranges::any_of(DOCUMENT_TYPE_INFO, [&](const DocumentTypeInfo& info) {
+      return path == info.root;
+    });
   }
 
   [[nodiscard]] std::vector<std::string> documentEntries(zip_t* archive)
@@ -187,7 +188,7 @@ namespace {
     return entries;
   }
 
-  void validateDocuments(const std::string_view     mainCircuit,
+  void validateDocuments(const std::string_view       mainCircuit,
                          const std::vector<Document>& documents)
   {
     if (documentTypeForPath(mainCircuit) != DocumentType::Circuit)
@@ -224,7 +225,8 @@ namespace {
 
   [[nodiscard]] ProjectMetadata parseMetadata(zip_t* archive)
   {
-    const auto json = nlohmann::json::parse(readEntry(archive, std::string(MetadataPath)));
+    const auto json =
+        nlohmann::json::parse(readEntry(archive, std::string(MetadataPath)));
     ProjectMetadata metadata{
         .formatVersion  = requireField<int>(json, "formatVersion", MetadataPath),
         .siliconVersion = requireField<std::string>(json, "siliconVersion", MetadataPath),
@@ -298,7 +300,7 @@ ProjectFile readProjectFile(const std::filesystem::path& path)
   auto metadata = parseMetadata(archive.get());
   auto project  = parseProjectInfo(archive.get());
 
-  const auto documentPaths = documentEntries(archive.get());
+  const auto            documentPaths = documentEntries(archive.get());
   std::vector<Document> documents;
   documents.reserve(documentPaths.size());
   for (const auto& documentPath : documentPaths)

@@ -14,17 +14,22 @@
 namespace SILICON::project {
 class ProjectContext;
 
-/** Resolves reusable Circuit documents from one explicit project context. */
+/**
+ * Resolves reusable Circuit documents from one explicit project context and
+ * component registry. Both dependencies must outlive this resolver.
+ */
 class ProjectCircuitResolver final : public SILICON::core::CircuitResolver {
 public:
-  explicit ProjectCircuitResolver(const ProjectContext& project);
+  ProjectCircuitResolver(const ProjectContext&                   project,
+                         const SILICON::core::ComponentRegistry& registry);
 
   [[nodiscard]] SILICON::core::SubcircuitDefinition
   resolve(std::string_view slug) const override;
 
 private:
-  const ProjectContext&         project;
-  mutable std::vector<std::string> activeSlugs;
+  const ProjectContext&                   project;
+  const SILICON::core::ComponentRegistry& registry;
+  mutable std::vector<std::string>        activeSlugs;
 };
 
 }  // namespace SILICON::project

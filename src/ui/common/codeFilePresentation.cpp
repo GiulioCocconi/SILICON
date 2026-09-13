@@ -16,10 +16,10 @@
 namespace SILICON::ui {
 namespace {
 
-constexpr std::array Presentations{
-    CodeFilePresentation{.type        = project::DocumentType::Verilog,
-                         .displayName = "Verilog",
-                         .syntax      = &VERILOG_CODE_SYNTAX}};
+  constexpr std::array Presentations{
+      CodeFilePresentation{.type        = project::DocumentType::Verilog,
+                           .displayName = "Verilog",
+                           .syntax      = &VERILOG_CODE_SYNTAX}};
 
 }  // namespace
 

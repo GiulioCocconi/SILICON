@@ -34,191 +34,193 @@ Copyright (c) 2026. Giulio Cocconi
 #include <QWidget>
 
 #ifdef __EMSCRIPTEN__
-#include <emscripten/emscripten.h>
+  #include <emscripten/emscripten.h>
 #endif
 
+#include <core/circuitDocument.hpp>
 #include <core/serialization/component_registry.hpp>
 #include <core/serialization/projectFile.hpp>
 #include <core/simulator.hpp>
-#include <core/circuitDocument.hpp>
 #include <logging/logger.hpp>
 #include <ui/common/aboutDialog.hpp>
 #include <ui/common/binaryEditor.hpp>
-#include <ui/logiFlow/code/codeEditor.hpp>
 #include <ui/common/diagramScene/diagramScene.hpp>
 #include <ui/common/diagramView.hpp>
 #include <ui/common/graphicalLogStream.hpp>
 #include <ui/common/logSideView.hpp>
+#include <ui/logiFlow/code/codeEditor.hpp>
 #include <ui/logiFlow/componentCatalogOverlay.hpp>
 
 namespace SILICON {
 namespace ui {
-using namespace SILICON::core;
+  using namespace SILICON::core;
 
-const SILICON::logging::Logger uiLog("ui");
+  const SILICON::logging::Logger uiLog("ui");
 
-LogiFlowWindow::~LogiFlowWindow()
-{
+  LogiFlowWindow::~LogiFlowWindow()
+  {
 #ifdef __EMSCRIPTEN__
-  emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_DOCUMENT, nullptr, true,
-                                  nullptr);
+    emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_DOCUMENT, nullptr, true,
+                                    nullptr);
 #endif
 
-  // QObject disconnects receivers in its base destructor, but by then this class's
-  // C++ members have already been destroyed. Some children (notably QUndoStack)
-  // emit state-change signals from their destructors, so disconnect every owned
-  // sender while LogiFlowWindow is still fully alive.
-  const auto ownedObjects =
-      findChildren<QObject*>(QString(), Qt::FindChildrenRecursively);
-  for (auto* object : ownedObjects)
-    disconnect(object, nullptr, this, nullptr);
+    // QObject disconnects receivers in its base destructor, but by then this class's
+    // C++ members have already been destroyed. Some children (notably QUndoStack)
+    // emit state-change signals from their destructors, so disconnect every owned
+    // sender while LogiFlowWindow is still fully alive.
+    const auto ownedObjects =
+        findChildren<QObject*>(QString(), Qt::FindChildrenRecursively);
+    for (auto* object : ownedObjects)
+      disconnect(object, nullptr, this, nullptr);
 
-  // QToolBar only releases its transient drag state in mouseReleaseEvent().
-  // Finish a pending drag before Qt destroys the toolbar during window teardown.
-  if (toolBar) {
-    QMouseEvent releaseEvent(QEvent::MouseButtonRelease, QPointF(), QPointF(),
-                             Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
-    QApplication::sendEvent(toolBar, &releaseEvent);
+    // QToolBar only releases its transient drag state in mouseReleaseEvent().
+    // Finish a pending drag before Qt destroys the toolbar during window teardown.
+    if (toolBar) {
+      QMouseEvent releaseEvent(QEvent::MouseButtonRelease, QPointF(), QPointF(),
+                               Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+      QApplication::sendEvent(toolBar, &releaseEvent);
+    }
   }
-}
 
 #ifdef __EMSCRIPTEN__
-EM_BOOL LogiFlowWindow::wasmKeyDownCallback(int, const EmscriptenKeyboardEvent* keyEvent,
-                                            void* userData)
-{
-  if (!userData || !keyEvent)
-    return EM_FALSE;
+  EM_BOOL LogiFlowWindow::wasmKeyDownCallback(int,
+                                              const EmscriptenKeyboardEvent* keyEvent,
+                                              void*                          userData)
+  {
+    if (!userData || !keyEvent)
+      return EM_FALSE;
 
-  if (std::strcmp(keyEvent->key, "Escape") != 0
-      && std::strcmp(keyEvent->code, "Escape") != 0)
-    return EM_FALSE;
+    if (std::strcmp(keyEvent->key, "Escape") != 0
+        && std::strcmp(keyEvent->code, "Escape") != 0)
+      return EM_FALSE;
 
-  auto* window = static_cast<LogiFlowWindow*>(userData);
-  return window->handleWasmEscapeKey() ? EM_TRUE : EM_FALSE;
-}
+    auto* window = static_cast<LogiFlowWindow*>(userData);
+    return window->handleWasmEscapeKey() ? EM_TRUE : EM_FALSE;
+  }
 
-bool LogiFlowWindow::handleWasmEscapeKey()
-{
-  if (QApplication::activeModalWidget())
-    return false;
+  bool LogiFlowWindow::handleWasmEscapeKey()
+  {
+    if (QApplication::activeModalWidget())
+      return false;
 
-  if (componentCatalogOverlay && componentCatalogOverlay->isVisible()) {
-    componentCatalogOverlay->hide();
+    if (componentCatalogOverlay && componentCatalogOverlay->isVisible()) {
+      componentCatalogOverlay->hide();
+      return true;
+    }
+
+    if (diagramScene)
+      diagramScene->cancelCurrentInteraction();
+
     return true;
   }
-
-  if (diagramScene)
-    diagramScene->cancelCurrentInteraction();
-
-  return true;
-}
 #endif
 
-LogiFlowWindow::LogiFlowWindow()
-{
-  const auto centralWidget = new QWidget();
-  setCentralWidget(centralWidget);
+  LogiFlowWindow::LogiFlowWindow()
+  {
+    const auto centralWidget = new QWidget();
+    setCentralWidget(centralWidget);
 
-  const auto layout = new QHBoxLayout();
-  layout->setContentsMargins(5, 5, 5, 5);
-  centralWidget->setLayout(layout);
+    const auto layout = new QHBoxLayout();
+    layout->setContentsMargins(5, 5, 5, 5);
+    centralWidget->setLayout(layout);
 
-  componentsDock = new QDockWidget(this);
-  propertyDock   = new QDockWidget(this);
-  logDock        = new QDockWidget(this);
+    componentsDock = new QDockWidget(this);
+    propertyDock   = new QDockWidget(this);
+    logDock        = new QDockWidget(this);
 
-  addDockWidget(Qt::LeftDockWidgetArea, componentsDock);
-  addDockWidget(Qt::LeftDockWidgetArea, propertyDock);
-  addDockWidget(Qt::BottomDockWidgetArea, logDock);
+    addDockWidget(Qt::LeftDockWidgetArea, componentsDock);
+    addDockWidget(Qt::LeftDockWidgetArea, propertyDock);
+    addDockWidget(Qt::BottomDockWidgetArea, logDock);
 
-  propertyDock->setFeatures(QDockWidget::DockWidgetMovable);
-  componentsDock->setFeatures(QDockWidget::DockWidgetMovable);
-  logDock->setFeatures(QDockWidget::DockWidgetMovable);
-  logDock->setAllowedAreas(Qt::BottomDockWidgetArea | Qt::TopDockWidgetArea);
+    propertyDock->setFeatures(QDockWidget::DockWidgetMovable);
+    componentsDock->setFeatures(QDockWidget::DockWidgetMovable);
+    logDock->setFeatures(QDockWidget::DockWidgetMovable);
+    logDock->setAllowedAreas(Qt::BottomDockWidgetArea | Qt::TopDockWidgetArea);
 
-  propertyDock->setWindowTitle("Properties");
-  componentsDock->setWindowTitle("Project");
-  logDock->setWindowTitle("Logs");
+    propertyDock->setWindowTitle("Properties");
+    componentsDock->setWindowTitle("Project");
+    logDock->setWindowTitle("Logs");
 
-  splitDockWidget(componentsDock, propertyDock, Qt::Vertical);
+    splitDockWidget(componentsDock, propertyDock, Qt::Vertical);
 
-  diagramScene = new DiagramScene(this);
-  diagramScene->setDocumentStore(&projectContext.documents);
-  diagramScene->setCircuitResolver(&circuitResolver);
-  diagramView  = new DiagramView(this);
-  diagramView->setScene(diagramScene);
-  codeEditor = new CodeEditor(this);
-  connect(codeEditor->document(), &QTextDocument::modificationChanged, this,
-          [this](const bool modified) {
-            if (modified && codeEditor->fileType())
-              codeDocumentsDirty = true;
-          });
-  binaryEditor = new BinaryEditor(this);
-  connect(binaryEditor->history(), &QUndoStack::cleanChanged, this,
-          [this](const bool clean) {
-            const auto type = activeDocumentType();
-            if (!clean && type
-                && SILICON::project::categoryOf(*type)
-                    == SILICON::project::DocumentCategory::Binary)
-              binaryDocumentsDirty = true;
-          });
-  editorStack = new QStackedWidget(this);
-  editorStack->addWidget(diagramView);
-  editorStack->addWidget(codeEditor);
-  editorStack->addWidget(binaryEditor);
-  editorStack->setCurrentWidget(diagramView);
+    diagramScene = new DiagramScene(this);
+    diagramScene->setDocumentStore(&projectContext.documents());
+    diagramScene->setCircuitResolver(&circuitResolver);
+    diagramView = new DiagramView(this);
+    diagramView->setScene(diagramScene);
+    codeEditor = new CodeEditor(this);
+    connect(codeEditor->document(), &QTextDocument::modificationChanged, this,
+            [this](const bool modified) {
+              if (modified && codeEditor->fileType())
+                codeDocumentsDirty = true;
+            });
+    binaryEditor = new BinaryEditor(this);
+    connect(binaryEditor->history(), &QUndoStack::cleanChanged, this,
+            [this](const bool clean) {
+              const auto type = activeDocumentType();
+              if (!clean && type
+                  && SILICON::project::categoryOf(*type)
+                         == SILICON::project::DocumentCategory::Binary)
+                binaryDocumentsDirty = true;
+            });
+    editorStack = new QStackedWidget(this);
+    editorStack->addWidget(diagramView);
+    editorStack->addWidget(codeEditor);
+    editorStack->addWidget(binaryEditor);
+    editorStack->setCurrentWidget(diagramView);
 
-  connect(diagramScene, &DiagramScene::modeChanged, this, &LogiFlowWindow::updateStatus);
-  updateStatus();
+    connect(diagramScene, &DiagramScene::modeChanged, this,
+            &LogiFlowWindow::updateStatus);
+    updateStatus();
 
-  connect(diagramScene, &DiagramScene::selectionChanged, this,
-          &LogiFlowWindow::selectionChanged);
+    connect(diagramScene, &DiagramScene::selectionChanged, this,
+            &LogiFlowWindow::selectionChanged);
 
-  layout->addWidget(editorStack);
-  componentCatalogOverlay = new ComponentCatalogOverlay(
-      diagramScene, projectContext.documents, &circuitResolver,
-      diagramView->viewport());
-  diagramView->viewport()->installEventFilter(this);
-  updateComponentCatalogGeometry();
-  initializeProjectTree();
+    layout->addWidget(editorStack);
+    componentCatalogOverlay =
+        new ComponentCatalogOverlay(diagramScene, projectContext.documents(),
+                                    &circuitResolver, diagramView->viewport());
+    diagramView->viewport()->installEventFilter(this);
+    updateComponentCatalogGeometry();
+    initializeProjectTree();
 
-  aboutDialog = new AboutDialog("SILICON", this);
+    aboutDialog = new AboutDialog("SILICON", this);
 
-  undoStack = new QUndoStack(this);
+    undoStack = new QUndoStack(this);
 
-  createActions();
-  applyStoredSettings();
-  createMenus();
-  createToolBar();
-  createWaveformWindow();
+    createActions();
+    applyStoredSettings();
+    createMenus();
+    createToolBar();
+    createWaveformWindow();
 
-  logSideView        = new LogSideView(logDock);
-  graphicalLogStream = new GraphicalLogStream(this);
-  logDock->setWidget(logSideView);
-  logDock->setMinimumHeight(logSideView->minimumSizeHint().height());
-  logDock->resize(width(), logSideView->sizeHint().height());
+    logSideView        = new LogSideView(logDock);
+    graphicalLogStream = new GraphicalLogStream(this);
+    logDock->setWidget(logSideView);
+    logDock->setMinimumHeight(logSideView->minimumSizeHint().height());
+    logDock->resize(width(), logSideView->sizeHint().height());
 
 #ifdef __EMSCRIPTEN__
-  emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_DOCUMENT, this, true,
-                                  &LogiFlowWindow::wasmKeyDownCallback);
+    emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_DOCUMENT, this, true,
+                                    &LogiFlowWindow::wasmKeyDownCallback);
 #endif
 
-  connect(graphicalLogStream, &GraphicalLogStream::lineReceived, logSideView,
-          &LogSideView::appendLine, Qt::QueuedConnection);
-  graphicalLogStream->attachToBoostLog();
+    connect(graphicalLogStream, &GraphicalLogStream::lineReceived, logSideView,
+            &LogSideView::appendLine, Qt::QueuedConnection);
+    graphicalLogStream->attachToBoostLog();
 
-  resizeDocks({componentsDock, propertyDock}, {320, 260}, Qt::Vertical);
-  resizeDocks({logDock}, {180}, Qt::Vertical);
+    resizeDocks({componentsDock, propertyDock}, {320, 260}, Qt::Vertical);
+    resizeDocks({logDock}, {180}, Qt::Vertical);
 
-  setWindowTitle(tr("SILICON LogiFlow"));
-  setMinimumSize(160, 160);
+    setWindowTitle(tr("SILICON LogiFlow"));
+    setMinimumSize(160, 160);
 
-  resetProjectState();
-  rebuildProjectTree();
-  updatePropertyDock();
+    resetProjectState();
+    rebuildProjectTree();
+    updatePropertyDock();
 
-  uiLog.info("Qt logging sideview initialized");
-}
+    uiLog.info("Qt logging sideview initialized");
+  }
 
 }  // namespace ui
 }  // namespace SILICON

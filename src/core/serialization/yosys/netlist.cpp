@@ -32,10 +32,10 @@
 #include <boost/graph/adjacency_list.hpp>
 
 #include <core/circuit.hpp>
+#include <core/circuitDocument.hpp>
 #include <core/component.hpp>
 #include <core/serialization/component_registry.hpp>
 #include <core/subcircuit.hpp>
-#include <core/circuitDocument.hpp>
 #include <utils/num_formatting.hpp>
 
 namespace SILICON::yosys {
@@ -218,7 +218,7 @@ namespace {
     }
 
     [[nodiscard]] ModuleInterface
-    ensureSubcircuit(const std::string_view slug,
+    ensureSubcircuit(const std::string_view                slug,
                      const SILICON::core::CircuitResolver* resolver)
     {
       const std::string slugString(slug);

@@ -26,9 +26,9 @@
 #include <boost/graph/graph_traits.hpp>
 
 #include <core/activeKeyGuard.hpp>
+#include <core/circuitDocument.hpp>
 #include <core/serialization/component_registry.hpp>
 #include <core/subcircuit.hpp>
-#include <core/circuitDocument.hpp>
 
 namespace SILICON::simulation {
 
@@ -225,7 +225,7 @@ namespace {
 }  // namespace
 
 CircuitElaborator::CircuitElaborator(const ComponentRegistry& registry,
-                                     const CircuitResolver* resolver)
+                                     const CircuitResolver*   resolver)
   : registry(registry), resolver(resolver)
 {
 }

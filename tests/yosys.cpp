@@ -16,9 +16,9 @@
 
  */
 
-#include "tests.hpp"
 #include "circuitTestHelpers.hpp"
 #include "subcircuitFixtures.hpp"
+#include "tests.hpp"
 
 #include <algorithm>
 #include <array>
@@ -37,6 +37,9 @@
 #include <core/circuit.hpp>
 #include <core/flipflops.hpp>
 #include <core/io.hpp>
+#include <core/projectCircuitResolver.hpp>
+#include <core/projectContext.hpp>
+#include <core/projectDocument.hpp>
 #include <core/register.hpp>
 #include <core/serialization/component_registration.hpp>
 #include <core/serialization/verilog.hpp>
@@ -44,9 +47,6 @@
 #include <core/serialization/yosys/yosys_tool.hpp>
 #include <core/simulator.hpp>
 #include <core/subcircuit.hpp>
-#include <core/projectDocument.hpp>
-#include <core/projectContext.hpp>
-#include <core/projectCircuitResolver.hpp>
 #include <extraComponents/arithmetic.hpp>
 #include <extraComponents/multiplexer.hpp>
 #include <extraComponents/utils.hpp>
@@ -136,8 +136,8 @@ private:
 // Local composition of the primitive Yosys API (the convenience wrappers were
 // removed from the library): parse-only read, then elaborate preserving the
 // module hierarchy, then deserialize into a Silicon circuit.
-[[nodiscard]] Circuit importVerilog(const std::string_view source,
-                                    const std::string_view topModule,
+[[nodiscard]] Circuit importVerilog(const std::string_view             source,
+                                    const std::string_view             topModule,
                                     const SILICON::yosys::ToolOptions& options = {})
 {
   return SILICON::yosys::deserialize(
@@ -395,7 +395,7 @@ TEST(YosysTest, MakesDuplicateBoundaryNamesUnique)
   Circuit circuit(Component_set{std::make_shared<DummyInputComponent>(Bus{a}, "signal"),
                                 std::make_shared<DummyOutputComponent>(Bus{b}, "signal")},
                   false);
-  const auto  json  = nlohmann::json::parse(SILICON::yosys::serialize(circuit));
+  const auto json   = nlohmann::json::parse(SILICON::yosys::serialize(circuit));
   const auto& ports = onlyModule(json).at("ports");
   EXPECT_TRUE(ports.contains("signal"));
   EXPECT_TRUE(ports.contains("signal_2"));
@@ -489,8 +489,9 @@ TEST(YosysTest, ExtenderLowersToPosAndRoundTripsWithItsModeAndWidths)
   EXPECT_EQ(restored->getPropertyValue<int>("outSize"), 6);
   EXPECT_EQ(restored->getPropertyValue<std::string>("mode"),
             std::string(Extender::SignedMode));
-  EXPECT_EQ(cellTypes(onlyModule(nlohmann::json::parse(SILICON::yosys::serialize(imported)))),
-            (std::multiset<std::string>{"$pos", "$pos"}));
+  EXPECT_EQ(
+      cellTypes(onlyModule(nlohmann::json::parse(SILICON::yosys::serialize(imported)))),
+      (std::multiset<std::string>{"$pos", "$pos"}));
 }
 
 TEST(YosysTest, ComplementerLowersToSubAndRoundTripsWithoutAnAdder)
@@ -514,8 +515,9 @@ TEST(YosysTest, ComplementerLowersToSubAndRoundTripsWithoutAnAdder)
   ASSERT_TRUE(restored);
   EXPECT_EQ(restored->getPropertyValue<int>("size"), 5);
   EXPECT_FALSE(findComponent<AdderNBits>(imported));
-  EXPECT_EQ(cellTypes(onlyModule(nlohmann::json::parse(SILICON::yosys::serialize(imported)))),
-            (std::multiset<std::string>{"$pos", "$sub"}));
+  EXPECT_EQ(
+      cellTypes(onlyModule(nlohmann::json::parse(SILICON::yosys::serialize(imported)))),
+      (std::multiset<std::string>{"$pos", "$sub"}));
 }
 
 TEST(YosysTest, LowersSequentialComponents)
@@ -631,17 +633,17 @@ TEST(YosysTest, CustomTechnologyCellsRoundTripToNativeComponents)
     std::string_view cellType;
   };
   static constexpr std::array registerModes{
-                                               RegisterMode{true, true, "SILICON_PIPO"},
+      RegisterMode{true, true, "SILICON_PIPO"},
       RegisterMode{true, false, "SILICON_PISO"},
       RegisterMode{false, true, "SILICON_SIPO"},
       RegisterMode{false, false, "SILICON_SISO"},
   };
-                                               for (const auto& mode : registerModes) {
+  for (const auto& mode : registerModes) {
     SCOPED_TRACE(mode.cellType);
     const auto  reg = registerWithMode(mode.parallelInput, mode.parallelOutput);
-  const auto  registerDesign = exportComponent(reg);
-  const auto& registerCell   = onlyCell(registerDesign);
-  EXPECT_EQ(registerCell.at("type"), mode.cellType);
+    const auto  registerDesign = exportComponent(reg);
+    const auto& registerCell   = onlyCell(registerDesign);
+    EXPECT_EQ(registerCell.at("type"), mode.cellType);
     EXPECT_EQ(registerCell.at("connections").at("DATA").size(),
               mode.parallelInput ? 4 : 1);
     EXPECT_EQ(registerCell.at("connections").at("OUT").size(),
@@ -1149,19 +1151,18 @@ TEST(YosysTest, BuildsModuleDependencyGraph)
 {
   using SILICON::yosys::Json;
 
-  const Json design{{"modules",
-                     {{"top",
-                       {{"cells",
-                         {{"second_child", {{"type", "child"}}},
-                          {"primitive", {{"type", "$and"}}},
-                          {"first_child", {{"type", "child"}}},
-                          {"helper_instance", {{"type", "helper"}}}}}}},
-                      {"helper", {{"cells", {{"leaf_instance", {{"type", "leaf"}}}}}}},
-                      {"child", {{"cells", Json::object()}}},
-                      {"leaf", Json::object()},
-                      {"external",
-                       {{"attributes", {{"blackbox", "1"}}},
-                        {"cells", Json::object()}}}}}};
+  const Json design{
+      {"modules",
+       {{"top",
+         {{"cells",
+           {{"second_child", {{"type", "child"}}},
+            {"primitive", {{"type", "$and"}}},
+            {"first_child", {{"type", "child"}}},
+            {"helper_instance", {{"type", "helper"}}}}}}},
+        {"helper", {{"cells", {{"leaf_instance", {{"type", "leaf"}}}}}}},
+        {"child", {{"cells", Json::object()}}},
+        {"leaf", Json::object()},
+        {"external", {{"attributes", {{"blackbox", "1"}}}, {"cells", Json::object()}}}}}};
 
   const auto graph = SILICON::yosys::moduleDependencyGraph(design.dump());
 
@@ -1175,8 +1176,7 @@ TEST(YosysTest, BuildsModuleDependencyGraph)
 
   EXPECT_EQ(graph.modules(),
             (std::vector<std::string>{"child", "helper", "leaf", "top"}));
-  EXPECT_EQ(graph.dependenciesOf("top"),
-            (std::vector<std::string>{"child", "helper"}));
+  EXPECT_EQ(graph.dependenciesOf("top"), (std::vector<std::string>{"child", "helper"}));
   EXPECT_EQ(graph.dependenciesOf("helper"), (std::vector<std::string>{"leaf"}));
   EXPECT_EQ(graph.dependenciesOf("child"), std::vector<std::string>{});
   EXPECT_EQ(graph.dependenciesOf("leaf"), std::vector<std::string>{});
@@ -1229,12 +1229,13 @@ TEST(YosysTest, ImportsDeclaredModuleCellsAsSubcircuits)
            {{"child",
              {{"type", "leaf"},
               {"parameters", Json::object()},
-              {"connections", {{"a", Json::array({4})}, {"y", Json::array({5})}}}}}}}}}}}};
+              {"connections",
+               {{"a", Json::array({4})}, {"y", Json::array({5})}}}}}}}}}}}};
 
   const Circuit top = SILICON::yosys::deserialize(design.dump(), "top");
   EXPECT_EQ(componentTypes(top),
-            (std::multiset<std::string>{"DummyInputComponent",
-                                        "DummyOutputComponent", "Subcircuit"}));
+            (std::multiset<std::string>{"DummyInputComponent", "DummyOutputComponent",
+                                        "Subcircuit"}));
   const auto instance = findComponent<SubcircuitComponent>(top);
   ASSERT_TRUE(instance);
   EXPECT_EQ(instance->getPropertyValue<std::string>("slug"),
@@ -1247,8 +1248,8 @@ TEST(YosysTest, ImportsDeclaredModuleCellsAsSubcircuits)
   EXPECT_EQ(instance->importedOutputNames(), (std::vector<std::string>{"y"}));
 
   const auto serialized = Json::parse(top.serialize());
-  const auto serializedInstance = std::ranges::find_if(
-      serialized.at("components"), [](const Json& component) {
+  const auto serializedInstance =
+      std::ranges::find_if(serialized.at("components"), [](const Json& component) {
         return component.value("type", std::string()) == "Subcircuit";
       });
   ASSERT_NE(serializedInstance, serialized.at("components").end());
@@ -1407,7 +1408,8 @@ TEST(YosysTest, YosysAcceptsEveryBuiltInLowering)
     SCOPED_TRACE(std::format("component {} ({})", index, components[index]->typeName()));
     const auto circuit = circuitWithBoundaryPorts(components[index]);
     EXPECT_EQ(validateWithYosys(circuit, std::format("component_{}", index)), 0);
-    EXPECT_NO_THROW((void)SILICON::yosys::deserialize(SILICON::yosys::serialize(circuit)));
+    EXPECT_NO_THROW(
+        (void)SILICON::yosys::deserialize(SILICON::yosys::serialize(circuit)));
     const auto verilog = SILICON::verilog::write(circuit);
     EXPECT_EQ(verilog.find("SILICON_"), std::string::npos);
     EXPECT_NO_THROW((void)importVerilog(verilog, "top"));
@@ -1417,14 +1419,13 @@ TEST(YosysTest, YosysAcceptsEveryBuiltInLowering)
 
 TEST(YosysTest, ExportsSubcircuitsAsHierarchicalModules)
 {
-  if (!ComponentRegistry::instance().hasType(AndGate::Type))
-    registerAllComponents(ComponentRegistry::instance());
-  SILICON::project::ProjectContext project;
-  SILICON::project::ProjectCircuitResolver resolver{project};
-  project.documents.upsertDocument(
-      {SILICON::project::documentPathForSlug(SILICON::project::DocumentType::Circuit,
-                                             "and_child"),
-       andSubcircuitDocument()});
+  auto registry = ComponentRegistry::empty();
+  registerAllComponents(registry);
+  SILICON::project::ProjectContext         project;
+  SILICON::project::ProjectCircuitResolver resolver{project, registry};
+  project.upsertDocument({SILICON::project::documentPathForSlug(
+                              SILICON::project::DocumentType::Circuit, "and_child"),
+                          andSubcircuitDocument()});
 
   {
     auto instance = std::make_shared<SubcircuitComponent>(&resolver);
@@ -1444,7 +1445,6 @@ TEST(YosysTest, ExportsSubcircuitsAsHierarchicalModules)
     EXPECT_NO_THROW((void)importVerilog(verilog, "top"));
 #endif
   }
-
 }
 
 TEST(YosysTest, YosysReadJsonAcceptsExport)
@@ -1536,7 +1536,7 @@ TEST(YosysToolTest, ReportsPathDiscoveryFailure)
 TEST(YosysToolTest, RunsScriptsWithPathDiscoveryAndExplicitSelection)
 {
   YosysLogCapture logCapture;
-  const auto discovered = SILICON::yosys::runScript("help echo");
+  const auto      discovered = SILICON::yosys::runScript("help echo");
   EXPECT_FALSE(discovered.standardOutput.empty());
 
   const SILICON::yosys::ToolOptions explicitOptions{
@@ -1576,8 +1576,7 @@ TEST(YosysToolTest, RejectsInvalidMultiSourceInputs)
 
   const std::array unsafe{
       SourceFile{.path = "../top.v", .contents = "module top; endmodule"}};
-  EXPECT_THROW((void)SILICON::verilog::read(unsafe, "../top.v"),
-               std::invalid_argument);
+  EXPECT_THROW((void)SILICON::verilog::read(unsafe, "../top.v"), std::invalid_argument);
 
   const std::array duplicate{
       SourceFile{.path = "code/top.v", .contents = "module top; endmodule"},
@@ -1586,8 +1585,7 @@ TEST(YosysToolTest, RejectsInvalidMultiSourceInputs)
                std::invalid_argument);
 
   const std::array sources{
-      SourceFile{.path = "code/helper.v",
-                        .contents = "module helper; endmodule"}};
+      SourceFile{.path = "code/helper.v", .contents = "module helper; endmodule"}};
   EXPECT_THROW((void)SILICON::verilog::read(sources, "code/top.v"),
                std::invalid_argument);
 }
@@ -1597,24 +1595,19 @@ TEST(YosysToolTest, ResolvesTransitiveProjectIncludesWithoutParsingUnrelatedFile
   using SILICON::verilog::SourceFile;
 
   constexpr std::array sources{
-      SourceFile{
-          .path = "code/top.v",
-          .contents = R"(`include "helper.v"
+      SourceFile{.path = "code/top.v", .contents = R"(`include "helper.v"
 module top(input a, output y);
   helper child(.a(a), .y(y));
 endmodule
 )"},
-      SourceFile{
-          .path = "code/helper.v",
-          .contents = R"(`include "defs.v"
+      SourceFile{.path = "code/helper.v", .contents = R"(`include "defs.v"
 module helper(input a, output y);
   assign y = `APPLY(a);
 endmodule
 )"},
-      SourceFile{.path     = "code/defs.v",
-                        .contents = "`define APPLY(signal) ~signal\n"},
+      SourceFile{.path = "code/defs.v", .contents = "`define APPLY(signal) ~signal\n"},
       SourceFile{.path     = "code/unrelated.v",
-                        .contents = "this is deliberately invalid Verilog\n"}};
+                 .contents = "this is deliberately invalid Verilog\n"}};
 
   const auto designJson = SILICON::verilog::read(sources, "code/top.v");
   const auto design     = SILICON::yosys::Json::parse(designJson);
@@ -1635,8 +1628,8 @@ TEST(YosysToolTest, ReportsMissingProjectIncludeThroughYosysDiagnostics)
 {
   constexpr std::array sources{SILICON::verilog::SourceFile{
       .path = "code/top.v", .contents = "`include \"missing.v\"\n"}};
-  YosysLogCapture logCapture;
-  std::string     message;
+  YosysLogCapture      logCapture;
+  std::string          message;
   try {
     (void)SILICON::verilog::read(sources, "code/top.v");
   } catch (const std::runtime_error& error) {
@@ -1722,20 +1715,18 @@ TEST(YosysToolTest, ImportsCombinationalVerilogPreservingHelperHierarchy)
   EXPECT_EQ(componentTypes(circuit),
             (std::multiset<std::string>{"Subcircuit", "DummyInputComponent",
                                         "DummyInputComponent", "DummyOutputComponent"}));
-  EXPECT_THROW((void)importVerilog(source, "missing"),
-               std::runtime_error);
+  EXPECT_THROW((void)importVerilog(source, "missing"), std::runtime_error);
 }
 
 TEST(YosysToolTest, ImportsLogicalOperatorsWithVectorTruthSemantics)
 {
   const auto verify = [](const std::string_view expression, const auto& expected) {
-    const auto source = std::format(
-        "module top(input [2:0] a, input [2:0] b, output y); "
-        "assign y = {}; endmodule",
-        expression);
+    const auto source = std::format("module top(input [2:0] a, input [2:0] b, output y); "
+                                    "assign y = {}; endmodule",
+                                    expression);
 
-    const auto hierarchicalJson = SILICON::yosys::elaborateHierarchy(
-        SILICON::verilog::read(source));
+    const auto hierarchicalJson =
+        SILICON::yosys::elaborateHierarchy(SILICON::verilog::read(source));
     EXPECT_EQ(hierarchicalJson.find("$logic_and"), std::string::npos);
     EXPECT_EQ(hierarchicalJson.find("$logic_or"), std::string::npos);
 
@@ -1762,8 +1753,7 @@ TEST(YosysToolTest, ImportsOnlyASingleDiscoveredModule)
 {
   const auto discover = [](const std::string_view source) -> std::string {
     const auto modules =
-        SILICON::yosys::moduleDependencyGraph(SILICON::verilog::read(source))
-            .modules();
+        SILICON::yosys::moduleDependencyGraph(SILICON::verilog::read(source)).modules();
     if (modules.size() != 1)
       throw std::runtime_error("Verilog source must declare exactly one module");
     return modules.front();
@@ -2039,8 +2029,8 @@ TEST(YosysTest, ImportsScalarActiveHighNativeDlatch)
 TEST(YosysToolTest, MapsVerilogToSiliconTechnologyCells)
 {
   const auto mappedTypes = [](const std::string_view source, const std::string_view top) {
-    return cellTypes(onlyModule(nlohmann::json::parse(
-        SILICON::yosys::serialize(importVerilog(source, top)))));
+    return cellTypes(onlyModule(
+        nlohmann::json::parse(SILICON::yosys::serialize(importVerilog(source, top)))));
   };
 
   EXPECT_EQ(mappedTypes(R"(
@@ -2191,9 +2181,8 @@ TEST(YosysToolTest, ImportedTechnologyCellsPreserveRepresentativeBehavior)
       always @* if (en) q <= d;
     endmodule
   )";
-  auto                       latchCircuit =
-      std::make_shared<Circuit>(importVerilog(latchSource, "top"));
-  auto latch = findComponent<DLatch>(*latchCircuit);
+  auto latchCircuit = std::make_shared<Circuit>(importVerilog(latchSource, "top"));
+  auto latch        = findComponent<DLatch>(*latchCircuit);
   ASSERT_TRUE(latch);
   Simulator latchSimulator(latchCircuit);
   EXPECT_EQ(
@@ -2221,9 +2210,8 @@ TEST(YosysToolTest, ImportedTechnologyCellsPreserveRepresentativeBehavior)
           endmodule
         )",
         edge);
-    auto circuit =
-        std::make_shared<Circuit>(importVerilog(source, "top"));
-    auto dff = findComponent<DFlipFlop>(*circuit);
+    auto circuit = std::make_shared<Circuit>(importVerilog(source, "top"));
+    auto dff     = findComponent<DFlipFlop>(*circuit);
     if (!dff)
       throw std::runtime_error("Mapped D flip-flop was not reconstructed");
     Simulator  simulator(circuit);
@@ -2247,9 +2235,8 @@ TEST(YosysToolTest, ImportedTechnologyCellsPreserveRepresentativeBehavior)
       always @(posedge clk) if (en) q <= d;
     endmodule
   )";
-  auto                       enabledCircuit =
-      std::make_shared<Circuit>(importVerilog(enabledSource, "top"));
-  auto dffe = findComponent<EFlipFlop>(*enabledCircuit);
+  auto enabledCircuit = std::make_shared<Circuit>(importVerilog(enabledSource, "top"));
+  auto dffe           = findComponent<EFlipFlop>(*enabledCircuit);
   ASSERT_TRUE(dffe);
   Simulator enabledSimulator(enabledCircuit);
   EXPECT_EQ(
@@ -2281,8 +2268,7 @@ TEST(YosysToolTest, ImportedTechnologyCellsPreserveRepresentativeBehavior)
       assign y = a + b;
     endmodule
   )";
-  auto                       adderCircuit =
-      std::make_shared<Circuit>(importVerilog(adderSource, "top"));
+  auto adderCircuit = std::make_shared<Circuit>(importVerilog(adderSource, "top"));
   std::map<std::string, std::shared_ptr<DummyBusInputComponent>> inputs;
   std::shared_ptr<DummyBusOutputComponent>                       output;
   for (const auto vertex :
@@ -2361,13 +2347,13 @@ TEST(YosysToolTest, TechnologyCellsExportAsBehavioralVerilog)
 
   const Circuit restored = importVerilog(verilog, "top");
   EXPECT_TRUE(componentTypes(restored).contains("FullAdder"));
-  EXPECT_EQ(cellTypes(onlyModule(nlohmann::json::parse(SILICON::yosys::serialize(restored)))),
-            std::multiset<std::string>{"SILICON_FULL_ADDER"});
+  EXPECT_EQ(
+      cellTypes(onlyModule(nlohmann::json::parse(SILICON::yosys::serialize(restored)))),
+      std::multiset<std::string>{"SILICON_FULL_ADDER"});
 
   for (unsigned value = 0; value < 8; ++value) {
-    auto simulated =
-        std::make_shared<Circuit>(importVerilog(verilog, "top"));
-    auto adder = findComponent<FullAdder>(*simulated);
+    auto simulated = std::make_shared<Circuit>(importVerilog(verilog, "top"));
+    auto adder     = findComponent<FullAdder>(*simulated);
     ASSERT_TRUE(adder);
     Simulator simulator(simulated);
     ASSERT_EQ(simulator.setBus(adder->inputBuses()[0],
@@ -2405,8 +2391,7 @@ TEST(YosysToolTest, TechnologyCellsExportAsBehavioralVerilog)
   const auto dffVerilog = SILICON::verilog::write(dffBoundary);
   EXPECT_EQ(dffVerilog.find("SILICON_"), std::string::npos);
   EXPECT_NE(dffVerilog.find("always @"), std::string::npos);
-  auto       dffCircuit =
-      std::make_shared<Circuit>(importVerilog(dffVerilog, "top"));
+  auto dffCircuit  = std::make_shared<Circuit>(importVerilog(dffVerilog, "top"));
   auto restoredDff = findComponent<DFlipFlop>(*dffCircuit);
   ASSERT_TRUE(restoredDff);
   EXPECT_EQ(restoredDff->getPropertyValue<std::string>("triggerEdge"),
@@ -2468,8 +2453,7 @@ TEST(YosysToolTest, ExportsParseableStructuralVerilog)
   circuit.setName("top");
 
   const auto verilog = SILICON::verilog::write(circuit);
-  EXPECT_NE(verilog.find("module top(input a, input b, output y);"),
-            std::string::npos);
+  EXPECT_NE(verilog.find("module top(input a, input b, output y);"), std::string::npos);
   EXPECT_EQ(verilog.find("\n  input a;"), std::string::npos);
   EXPECT_EQ(verilog.find("\n  wire a;"), std::string::npos);
   EXPECT_EQ(verilog.find("\n  output y;"), std::string::npos);
@@ -2569,7 +2553,6 @@ TEST(YosysToolTest, ImportsVectorDffAsRegister)
             std::optional<std::string>(Register::ParallelType));
   EXPECT_EQ(reg->getPropertyValue<std::string>("outputType"),
             std::optional<std::string>(Register::ParallelType));
-
 }
 
 TEST(YosysToolTest, VerilogCircuitVerilogRoundTripPreservesBehavior)
@@ -2631,8 +2614,7 @@ TEST(YosysToolTest, ExternalOperationsAreUnavailableUnderEmscripten)
   };
 
   expectUnavailable([] { (void)SILICON::yosys::runScript("help"); });
-  expectUnavailable(
-      [] { (void)importVerilog("module top; endmodule", "top"); });
+  expectUnavailable([] { (void)importVerilog("module top; endmodule", "top"); });
   expectUnavailable([] {
     const Circuit circuit(Component_set{}, false);
     (void)SILICON::verilog::write(circuit);
