@@ -47,6 +47,7 @@
 #include <ui/common/graphicalWire.hpp>
 #include <ui/logiFlow/components/graphicalIO.hpp>
 #include <ui/logiFlow/components/graphicalLogicComponent.hpp>
+#include <ui/logiFlow/components/graphicalMemory.hpp>
 #include <ui/logiFlow/components/graphicalUtils.hpp>
 #include <ui/logiFlow/components/subcircuit/graphicalSubcircuit.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
@@ -67,13 +68,23 @@ struct PendingWireSegment {
 
 std::shared_ptr<Circuit> deserializeCircuitPayload(const nlohmann::json&    payload,
                                                    const ComponentRegistry& coreRegistry,
-                                                   const CircuitResolver*   resolver)
+                                                   const CircuitResolver* resolver)
 {
   if (!payload.contains("circuit"))
     return nullptr;
 
   return std::make_shared<Circuit>(
       Circuit::deserialize(payload["circuit"].dump(), coreRegistry, resolver));
+}
+
+void attachProjectContext(GraphicalComponent* component, DiagramScene& scene)
+{
+  if (auto* subcircuit = dynamic_cast<GraphicalSubcircuitComponent*>(component)) {
+    subcircuit->setDocumentStore(scene.documentStore());
+    subcircuit->setCircuitResolver(scene.circuitResolver());
+  }
+  if (auto* rom = dynamic_cast<GraphicalROM*>(component))
+    rom->setDocumentStore(scene.documentStore());
 }
 
 void attachCoreComponent(GraphicalComponent* component, const nlohmann::json& compJson,
@@ -190,7 +201,7 @@ void remapPayloadUiIds(nlohmann::json& payload)
 std::vector<std::unique_ptr<GraphicalComponent>>
 deserializeVisualComponents(const nlohmann::json& visual, GUIComponentFactory& guiFactory,
                             const std::shared_ptr<Circuit>& coreCircuit,
-                            const QPointF&                  offset)
+                            const QPointF& offset, DiagramScene& scene)
 {
   // Builds graphical components without adding them to the scene, so callers can decide
   // whether insertion should select the new items.
@@ -208,6 +219,7 @@ deserializeVisualComponents(const nlohmann::json& visual, GUIComponentFactory& g
       continue;
 
     attachCoreComponent(component.get(), compJson, coreCircuit);
+    attachProjectContext(component.get(), scene);
     components.push_back(std::move(component));
   }
 
@@ -512,7 +524,7 @@ void DiagramSceneSerializer::deserialize(const std::string&       jsonStr,
                  deserializeVisualWires(j["visual"], QPointF(), true), false);
   addVisualComponents(scene,
                       deserializeVisualComponents(j["visual"], guiFactory,
-                                                  authoritativeCircuit, QPointF()),
+                                                  authoritativeCircuit, QPointF(), scene),
                       false);
 
   // Once a visual scene exists, its grouped wires define the editable topology. Rebuild
@@ -531,6 +543,8 @@ void DiagramSceneSerializer::loadCircuit(std::shared_ptr<Circuit> circuit,
   scene.clear(false, false);
   scene.setCircuit(std::move(circuit));
   auto components = createAutoplacedVisualComponents(scene.getCircuit(), guiFactory);
+  for (auto& component : components)
+    attachProjectContext(component.get(), scene);
   if (!resolveSubcircuitMetadata) {
     for (auto& component : components)
       if (auto* subcircuit = dynamic_cast<GraphicalSubcircuitComponent*>(component.get()))
@@ -566,7 +580,7 @@ bool DiagramSceneSerializer::insertSelection(const nlohmann::json&    payload,
   auto pastedCircuit =
       deserializeCircuitPayload(remappedPayload, coreRegistry, scene.circuitResolver());
   auto pendingComponents = deserializeVisualComponents(
-      remappedPayload["visual"], guiFactory, pastedCircuit, pasteOffset);
+      remappedPayload["visual"], guiFactory, pastedCircuit, pasteOffset, scene);
   auto pendingWires =
       deserializeVisualWires(remappedPayload["visual"], pasteOffset, true);
 

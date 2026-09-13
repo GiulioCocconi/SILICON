@@ -67,6 +67,7 @@ set(COMMON_SOURCE_FILES
         ${src_dir}/core/gates.cpp
         ${src_dir}/core/flipflops.cpp
         ${src_dir}/core/register.cpp
+        ${src_dir}/core/memory.cpp
         ${src_dir}/core/subcircuit.cpp
         ${src_dir}/core/circuitDocument.cpp
         ${src_dir}/core/projectCircuitResolver.cpp
@@ -128,6 +129,7 @@ set(UI_SOURCE_FILES
         ${src_dir}/ui/logiFlow/components/graphicalGates.cpp
         ${src_dir}/ui/logiFlow/components/graphicalFlipFlops.cpp
         ${src_dir}/ui/logiFlow/components/graphicalRegister.cpp
+        ${src_dir}/ui/logiFlow/components/graphicalMemory.cpp
         ${src_dir}/ui/logiFlow/components/subcircuit/componentShapeEditor.cpp
         ${src_dir}/ui/logiFlow/components/subcircuit/graphicalSubcircuit.cpp
         ${src_dir}/ui/logiFlow/components/subcircuit/metadata.cpp

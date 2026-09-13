@@ -104,6 +104,7 @@ std::string_view componentCategoryName(const ComponentCategory category)
     case Category::Arithmetic: return "Arithmetic";
     case Category::FlipFlops: return "Flip Flops";
     case Category::Register: return "Register";
+    case Category::Memory: return "Memory";
     case Category::Subcircuits: return "Subcircuits";
     case Category::Inputs: return "Inputs";
     case Category::Outputs: return "Outputs";

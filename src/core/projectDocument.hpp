@@ -22,6 +22,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -130,5 +131,9 @@ private:
   std::vector<Document>                                          documents;
   mutable SILICON::core::CallbackRegistry<const DocumentChange&> listeners;
 };
+
+/** Returns an immutable copy of a project raw-binary document, or null if absent. */
+[[nodiscard]] std::shared_ptr<const std::string>
+binaryContentsSnapshot(const DocumentStore& documents, std::string_view slug);
 
 }  // namespace SILICON::project

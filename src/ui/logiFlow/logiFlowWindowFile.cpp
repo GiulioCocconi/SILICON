@@ -18,6 +18,7 @@ Copyright (c) 2026. Giulio Cocconi
 
 #include "logiFlowWindow.hpp"
 
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <format>
@@ -790,8 +791,10 @@ namespace ui {
                 return;
               }
 
+              const auto roundedSize =
+                  std::bit_ceil(static_cast<unsigned int>(sizeEdit->value()));
               pushCreateDocumentCommand(
-                  {path, std::string(static_cast<std::size_t>(sizeEdit->value()), '\0')},
+                  {path, std::string(static_cast<std::size_t>(roundedSize), '\0')},
                   tr("Create Binary File"));
               dialog->accept();
             });
