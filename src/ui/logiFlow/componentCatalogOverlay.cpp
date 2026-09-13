@@ -50,330 +50,331 @@
 
 namespace SILICON {
 namespace ui {
-using namespace SILICON::core;
+  using namespace SILICON::core;
 
-namespace {
+  namespace {
 
-constexpr int CatalogPreviewPadding            = 8;
-constexpr int CatalogCategoryRowHeight         = 32;
-constexpr int CatalogMinimumComponentRowHeight = 32;
-constexpr int CatalogNameColumnPadding         = 28;
+    constexpr int CatalogPreviewPadding            = 8;
+    constexpr int CatalogCategoryRowHeight         = 32;
+    constexpr int CatalogMinimumComponentRowHeight = 32;
+    constexpr int CatalogNameColumnPadding         = 28;
 
-QPixmap componentPreviewPixmap(const ComponentCatalogOverlay::CatalogRow& rowData,
-                               SILICON::project::DocumentStore& documents,
-                               const CircuitResolver* resolver)
-{
-  auto component = GUIComponentFactory::instance().create(rowData.guiType);
-  if (auto* subcircuit = dynamic_cast<GraphicalSubcircuitComponent*>(component.get()))
-    subcircuit->setDocumentStore(&documents);
-  if (auto* subcircuit = dynamic_cast<GraphicalSubcircuitComponent*>(component.get()))
-    subcircuit->setCircuitResolver(resolver);
-  if (!rowData.initialProperties.empty()) {
-    if (auto* logicComponent = dynamic_cast<GraphicalLogicComponent*>(component.get())) {
-      for (const auto& [key, value] : rowData.initialProperties)
-        logicComponent->applyProperty(key, value);
+    QPixmap componentPreviewPixmap(const ComponentCatalogOverlay::CatalogRow& rowData,
+                                   const SILICON::project::DocumentStore&     documents,
+                                   const CircuitResolver*                     resolver)
+    {
+      auto component = GUIComponentFactory::instance().create(rowData.guiType);
+      if (auto* subcircuit = dynamic_cast<GraphicalSubcircuitComponent*>(component.get()))
+        subcircuit->setDocumentStore(&documents);
+      if (auto* subcircuit = dynamic_cast<GraphicalSubcircuitComponent*>(component.get()))
+        subcircuit->setCircuitResolver(resolver);
+      if (!rowData.initialProperties.empty()) {
+        if (auto* logicComponent =
+                dynamic_cast<GraphicalLogicComponent*>(component.get())) {
+          for (const auto& [key, value] : rowData.initialProperties)
+            logicComponent->applyProperty(key, value);
+        }
+      }
+      const QRectF bounds = component->sceneBoundingRect();
+      const QSize  size(
+          static_cast<int>(std::ceil(bounds.width())) + 2 * CatalogPreviewPadding,
+          static_cast<int>(std::ceil(bounds.height())) + 2 * CatalogPreviewPadding);
+
+      QPixmap pixmap(size);
+      pixmap.fill(Qt::transparent);
+
+      QGraphicsScene previewScene;
+      previewScene.addItem(component.get());
+
+      QPainter painter(&pixmap);
+      painter.setRenderHint(QPainter::Antialiasing);
+      previewScene.render(
+          &painter,
+          QRectF(QPointF(CatalogPreviewPadding, CatalogPreviewPadding), bounds.size()),
+          bounds, Qt::KeepAspectRatio);
+      previewScene.removeItem(component.get());
+
+      return pixmap;
     }
-  }
-  const QRectF bounds    = component->sceneBoundingRect();
-  const QSize  size(
-      static_cast<int>(std::ceil(bounds.width())) + 2 * CatalogPreviewPadding,
-      static_cast<int>(std::ceil(bounds.height())) + 2 * CatalogPreviewPadding);
-
-  QPixmap pixmap(size);
-  pixmap.fill(Qt::transparent);
-
-  QGraphicsScene previewScene;
-  previewScene.addItem(component.get());
-
-  QPainter painter(&pixmap);
-  painter.setRenderHint(QPainter::Antialiasing);
-  previewScene.render(
-      &painter,
-      QRectF(QPointF(CatalogPreviewPadding, CatalogPreviewPadding), bounds.size()),
-      bounds, Qt::KeepAspectRatio);
-  previewScene.removeItem(component.get());
-
-  return pixmap;
-}
 
     std::vector<ComponentCatalogOverlay::CatalogRow>
     componentCatalogRows(const bool                             editingSubcircuit,
                          const SILICON::project::DocumentStore& documents)
-{
-  Q_UNUSED(editingSubcircuit);
+    {
+      Q_UNUSED(editingSubcircuit);
 
-  const auto& guiFactory  = GUIComponentFactory::instance();
-  const auto& coreFactory = ComponentRegistry::instance();
+      const auto& guiFactory  = GUIComponentFactory::instance();
+      const auto& coreFactory = ComponentRegistry::instance();
 
-  std::vector<ComponentCatalogOverlay::CatalogRow> catalogRows;
-  for (const std::string& guiType : guiFactory.availableTypes()) {
-    const auto& entryMetadata = guiFactory.metadata(guiType);
-    catalogRows.push_back({.guiType  = guiType,
-                           .metadata = coreFactory.metadata(entryMetadata.coreType),
-                           .initialProperties = {}});
-  }
+      std::vector<ComponentCatalogOverlay::CatalogRow> catalogRows;
+      for (const std::string& guiType : guiFactory.availableTypes()) {
+        const auto& entryMetadata = guiFactory.metadata(guiType);
+        catalogRows.push_back({.guiType  = guiType,
+                               .metadata = coreFactory.metadata(entryMetadata.coreType),
+                               .initialProperties = {}});
+      }
 
-  for (const auto& document : documents.getDocuments()) {
-    if (document.getType() != SILICON::project::DocumentType::Circuit)
-      continue;
-    if (!subcircuitHasGraphicalMetadata(document.getContents()))
-      continue;
+      for (const auto& document : documents.getDocuments()) {
+        if (document.getType() != SILICON::project::DocumentType::Circuit)
+          continue;
+        if (!subcircuitHasGraphicalMetadata(document.getContents()))
+          continue;
 
-    const auto slug = SILICON::project::documentSlugForPath(document.getPath())
-                          .value_or(std::string{});
-    PropertyMap initialProperties;
+        const auto slug = SILICON::project::documentSlugForPath(document.getPath())
+                              .value_or(std::string{});
+        PropertyMap initialProperties;
         initialProperties.emplace(std::string("slug"), PropertyValue(slug));
         catalogRows.push_back({.guiType  = std::string(SubcircuitComponent::Type),
-         .metadata = {.displayName = slug,
-                      .description = "Project subcircuit",
-                      .category    = ComponentCategory::Subcircuits},
-         .initialProperties = std::move(initialProperties)});
+                               .metadata = {.displayName = slug,
+                                            .description = "Project subcircuit",
+                                            .category = ComponentCategory::Subcircuits},
+                               .initialProperties = std::move(initialProperties)});
+      }
+
+      std::ranges::sort(catalogRows, [](const auto& lhs, const auto& rhs) {
+        if (lhs.metadata.category != rhs.metadata.category)
+          return std::to_underlying(lhs.metadata.category)
+                 < std::to_underlying(rhs.metadata.category);
+        return lhs.metadata.displayName < rhs.metadata.displayName;
+      });
+
+      return catalogRows;
+    }
+
+  }  // namespace
+
+  ComponentCatalogOverlay::ComponentCatalogOverlay(
+      DiagramScene* scene, const SILICON::project::DocumentStore& documents,
+      const CircuitResolver* resolver, QWidget* parent)
+    : QWidget(parent), diagramScene(scene), documents(documents), resolver(resolver)
+  {
+    setObjectName(QStringLiteral("componentCatalogOverlay"));
+    setAutoFillBackground(true);
+
+    auto* layout = new QVBoxLayout(this);
+    layout->setContentsMargins(12, 12, 12, 12);
+
+    searchInput = new QLineEdit(this);
+    searchInput->setPlaceholderText(tr("Search components"));
+    layout->addWidget(searchInput);
+
+    table = new QTableWidget(this);
+    table->setColumnCount(3);
+    table->setHorizontalHeaderLabels(
+        {tr("Component shape"), tr("Component name"), tr("Component description")});
+    table->verticalHeader()->hide();
+    table->setSelectionBehavior(QAbstractItemView::SelectRows);
+    table->setSelectionMode(QAbstractItemView::SingleSelection);
+    table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    table->setShowGrid(false);
+    table->setTextElideMode(Qt::ElideNone);
+    table->horizontalHeader()->setStretchLastSection(true);
+    table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Interactive);
+
+    layout->addWidget(table);
+
+    auto* closeShortcut = new QShortcut(QKeySequence(Qt::Key_Escape), this);
+    closeShortcut->setContext(Qt::WidgetWithChildrenShortcut);
+    connect(closeShortcut, &QShortcut::activated, this, &QWidget::hide);
+
+    connect(searchInput, &QLineEdit::textChanged, this, [this] { rebuildRows(); });
+    connect(table, &QTableWidget::cellDoubleClicked, this,
+            [this](int row, int) { activateRow(row); });
+    connect(table, &QTableWidget::itemActivated, this, [this](QTableWidgetItem* item) {
+      if (item)
+        activateRow(item->row());
+    });
+
+    catalogRows = componentCatalogRows(
+        diagramScene && diagramScene->isSubcircuitDocumentMode(), documents);
+    rebuildRows();
+    hide();
   }
 
-  std::ranges::sort(catalogRows, [](const auto& lhs, const auto& rhs) {
-    if (lhs.metadata.category != rhs.metadata.category)
-      return std::to_underlying(lhs.metadata.category)
-             < std::to_underlying(rhs.metadata.category);
-    return lhs.metadata.displayName < rhs.metadata.displayName;
-  });
+  void ComponentCatalogOverlay::open()
+  {
+    catalogRows = componentCatalogRows(
+        diagramScene && diagramScene->isSubcircuitDocumentMode(), documents);
+    QSignalBlocker blocker(searchInput);
+    searchInput->clear();
+    blocker.unblock();
+    rebuildRows();
+    show();
+    raise();
+    searchInput->setFocus(Qt::OtherFocusReason);
+    selectFirstComponentRow();
+  }
 
-  return catalogRows;
-}
+  void ComponentCatalogOverlay::rebuildRows()
+  {
+    table->clearContents();
+    table->setRowCount(0);
 
-}  // namespace
+    const QString query          = searchInput->text().trimmed();
+    const bool    showCategories = query.isEmpty();
 
-ComponentCatalogOverlay::ComponentCatalogOverlay(
-    DiagramScene* scene, SILICON::project::DocumentStore& documents,
-    const CircuitResolver* resolver, QWidget* parent)
-  : QWidget(parent), diagramScene(scene), documents(documents), resolver(resolver)
-{
-  setObjectName(QStringLiteral("componentCatalogOverlay"));
-  setAutoFillBackground(true);
+    std::vector<const CatalogRow*> visibleRows;
+    visibleRows.reserve(catalogRows.size());
 
-  auto* layout = new QVBoxLayout(this);
-  layout->setContentsMargins(12, 12, 12, 12);
+    if (showCategories) {
+      for (const CatalogRow& row : catalogRows)
+        visibleRows.push_back(&row);
+    } else {
+      QStringList         candidates;
+      std::vector<size_t> candidateRows;
+      candidates.reserve(static_cast<qsizetype>(catalogRows.size() * 4));
+      candidateRows.reserve(catalogRows.size() * 4);
 
-  searchInput = new QLineEdit(this);
-  searchInput->setPlaceholderText(tr("Search components"));
-  layout->addWidget(searchInput);
+      for (size_t rowIndex = 0; rowIndex < catalogRows.size(); ++rowIndex) {
+        for (const QString& field : searchableFields(catalogRows[rowIndex])) {
+          candidates.append(field);
+          candidateRows.push_back(rowIndex);
+        }
+      }
 
-  table = new QTableWidget(this);
-  table->setColumnCount(3);
-  table->setHorizontalHeaderLabels(
-      {tr("Component shape"), tr("Component name"), tr("Component description")});
-  table->verticalHeader()->hide();
-  table->setSelectionBehavior(QAbstractItemView::SelectRows);
-  table->setSelectionMode(QAbstractItemView::SingleSelection);
-  table->setEditTriggers(QAbstractItemView::NoEditTriggers);
-  table->setShowGrid(false);
-  table->setTextElideMode(Qt::ElideNone);
-  table->horizontalHeader()->setStretchLastSection(true);
-  table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
-  table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Interactive);
+      std::vector<bool> selected(catalogRows.size(), false);
+      for (const auto& match :
+           SILICON::ui::componentSearchMatcher::rank(candidates, query, false)) {
+        const size_t rowIndex = candidateRows[static_cast<size_t>(match.index)];
+        if (selected[rowIndex])
+          continue;
 
-  layout->addWidget(table);
-
-  auto* closeShortcut = new QShortcut(QKeySequence(Qt::Key_Escape), this);
-  closeShortcut->setContext(Qt::WidgetWithChildrenShortcut);
-  connect(closeShortcut, &QShortcut::activated, this, &QWidget::hide);
-
-  connect(searchInput, &QLineEdit::textChanged, this, [this] { rebuildRows(); });
-  connect(table, &QTableWidget::cellDoubleClicked, this,
-          [this](int row, int) { activateRow(row); });
-  connect(table, &QTableWidget::itemActivated, this, [this](QTableWidgetItem* item) {
-    if (item)
-      activateRow(item->row());
-  });
-
-  catalogRows = componentCatalogRows(
-      diagramScene && diagramScene->isSubcircuitDocumentMode(), documents);
-  rebuildRows();
-  hide();
-}
-
-void ComponentCatalogOverlay::open()
-{
-  catalogRows = componentCatalogRows(
-      diagramScene && diagramScene->isSubcircuitDocumentMode(), documents);
-  QSignalBlocker blocker(searchInput);
-  searchInput->clear();
-  blocker.unblock();
-  rebuildRows();
-  show();
-  raise();
-  searchInput->setFocus(Qt::OtherFocusReason);
-  selectFirstComponentRow();
-}
-
-void ComponentCatalogOverlay::rebuildRows()
-{
-  table->clearContents();
-  table->setRowCount(0);
-
-  const QString query          = searchInput->text().trimmed();
-  const bool    showCategories = query.isEmpty();
-
-  std::vector<const CatalogRow*> visibleRows;
-  visibleRows.reserve(catalogRows.size());
-
-  if (showCategories) {
-    for (const CatalogRow& row : catalogRows)
-      visibleRows.push_back(&row);
-  } else {
-    QStringList         candidates;
-    std::vector<size_t> candidateRows;
-    candidates.reserve(static_cast<qsizetype>(catalogRows.size() * 4));
-    candidateRows.reserve(catalogRows.size() * 4);
-
-    for (size_t rowIndex = 0; rowIndex < catalogRows.size(); ++rowIndex) {
-      for (const QString& field : searchableFields(catalogRows[rowIndex])) {
-        candidates.append(field);
-        candidateRows.push_back(rowIndex);
+        visibleRows.push_back(&catalogRows[rowIndex]);
+        selected[rowIndex] = true;
       }
     }
 
-    std::vector<bool> selected(catalogRows.size(), false);
-      for (const auto& match :
-           SILICON::ui::componentSearchMatcher::rank(candidates, query, false)) {
-      const size_t rowIndex = candidateRows[static_cast<size_t>(match.index)];
-      if (selected[rowIndex])
-        continue;
-
-      visibleRows.push_back(&catalogRows[rowIndex]);
-      selected[rowIndex] = true;
+    std::optional<ComponentRegistry::ComponentCategory> currentCategory;
+    for (const CatalogRow* row : visibleRows) {
+      if (showCategories
+          && (!currentCategory || *currentCategory != row->metadata.category)) {
+        addCategoryRow(row->metadata.category);
+        currentCategory = row->metadata.category;
+      }
+      addComponentRow(*row);
     }
-  }
 
-  std::optional<ComponentRegistry::ComponentCategory> currentCategory;
-  for (const CatalogRow* row : visibleRows) {
-    if (showCategories
-        && (!currentCategory || *currentCategory != row->metadata.category)) {
-      addCategoryRow(row->metadata.category);
-      currentCategory = row->metadata.category;
-    }
-    addComponentRow(*row);
+    resizeCatalogColumns();
+    selectFirstComponentRow();
   }
-
-  resizeCatalogColumns();
-  selectFirstComponentRow();
-}
 
   void
   ComponentCatalogOverlay::addCategoryRow(ComponentRegistry::ComponentCategory category)
-{
-  const int row = table->rowCount();
-  table->insertRow(row);
-  table->setSpan(row, 0, 1, 3);
-  table->setRowHeight(row, CatalogCategoryRowHeight);
+  {
+    const int row = table->rowCount();
+    table->insertRow(row);
+    table->setSpan(row, 0, 1, 3);
+    table->setRowHeight(row, CatalogCategoryRowHeight);
 
-  auto* item = new QTableWidgetItem(
-      QString::fromStdString(std::string(componentCategoryName(category))));
-  QFont font = item->font();
-  font.setBold(true);
-  item->setFont(font);
-  item->setFlags(Qt::NoItemFlags);
-  table->setItem(row, 0, item);
-}
+    auto* item = new QTableWidgetItem(
+        QString::fromStdString(std::string(componentCategoryName(category))));
+    QFont font = item->font();
+    font.setBold(true);
+    item->setFont(font);
+    item->setFlags(Qt::NoItemFlags);
+    table->setItem(row, 0, item);
+  }
 
-void ComponentCatalogOverlay::addComponentRow(const CatalogRow& rowData)
-{
-  const int row = table->rowCount();
-  table->insertRow(row);
+  void ComponentCatalogOverlay::addComponentRow(const CatalogRow& rowData)
+  {
+    const int row = table->rowCount();
+    table->insertRow(row);
 
     QPixmap previewPixmap = componentPreviewPixmap(rowData, documents, resolver);
-  auto*   preview       = new QLabel(table);
-  preview->setFixedSize(previewPixmap.size());
-  preview->setAlignment(Qt::AlignCenter);
-  preview->setPixmap(previewPixmap);
-  table->setCellWidget(row, 0, preview);
+    auto*   preview       = new QLabel(table);
+    preview->setFixedSize(previewPixmap.size());
+    preview->setAlignment(Qt::AlignCenter);
+    preview->setPixmap(previewPixmap);
+    table->setCellWidget(row, 0, preview);
     table->setRowHeight(
         row, std::max(CatalogMinimumComponentRowHeight, previewPixmap.height()));
 
     auto* name =
         new QTableWidgetItem(QString::fromStdString(rowData.metadata.displayName));
-  name->setData(Qt::UserRole, QString::fromStdString(rowData.guiType));
+    name->setData(Qt::UserRole, QString::fromStdString(rowData.guiType));
     name->setData(Qt::UserRole + 1, static_cast<int>(&rowData - catalogRows.data()));
-  table->setItem(row, 1, name);
+    table->setItem(row, 1, name);
 
-  auto* description =
-      new QTableWidgetItem(QString::fromStdString(rowData.metadata.description));
-  description->setData(Qt::UserRole, QString::fromStdString(rowData.guiType));
-  description->setData(Qt::UserRole + 1,
-                       static_cast<int>(&rowData - catalogRows.data()));
-  table->setItem(row, 2, description);
-}
+    auto* description =
+        new QTableWidgetItem(QString::fromStdString(rowData.metadata.description));
+    description->setData(Qt::UserRole, QString::fromStdString(rowData.guiType));
+    description->setData(Qt::UserRole + 1,
+                         static_cast<int>(&rowData - catalogRows.data()));
+    table->setItem(row, 2, description);
+  }
 
-void ComponentCatalogOverlay::activateRow(const int row)
-{
-  if (row < 0)
-    return;
-
-  QTableWidgetItem* item = table->item(row, 1);
-  if (!item)
-    item = table->item(row, 2);
-  if (!item)
-    return;
-
-  const QString typeName = item->data(Qt::UserRole).toString();
-  if (typeName.isEmpty())
-    return;
-
-  const int catalogIndex = item->data(Qt::UserRole + 1).toInt();
-  const PropertyMap initialProperties =
-      catalogIndex >= 0 && catalogIndex < static_cast<int>(catalogRows.size())
-          ? catalogRows[static_cast<size_t>(catalogIndex)].initialProperties
-          : PropertyMap{};
-
-  if (diagramScene->getInteractionMode() != DiagramScene::InteractionMode::NORMAL_MODE)
-    diagramScene->setInteractionMode(DiagramScene::InteractionMode::NORMAL_MODE);
-
-  diagramScene->placeComponent(typeName.toStdString(), false, initialProperties);
-  hide();
-
-  if (!diagramScene->views().empty())
-    diagramScene->views().first()->setFocus(Qt::OtherFocusReason);
-}
-
-void ComponentCatalogOverlay::selectFirstComponentRow()
-{
-  for (int row = 0; row < table->rowCount(); ++row) {
-    const auto* item = table->item(row, 1);
-    if (item && !item->data(Qt::UserRole).toString().isEmpty()) {
-      table->selectRow(row);
+  void ComponentCatalogOverlay::activateRow(const int row)
+  {
+    if (row < 0)
       return;
+
+    QTableWidgetItem* item = table->item(row, 1);
+    if (!item)
+      item = table->item(row, 2);
+    if (!item)
+      return;
+
+    const QString typeName = item->data(Qt::UserRole).toString();
+    if (typeName.isEmpty())
+      return;
+
+    const int         catalogIndex = item->data(Qt::UserRole + 1).toInt();
+    const PropertyMap initialProperties =
+        catalogIndex >= 0 && catalogIndex < static_cast<int>(catalogRows.size())
+            ? catalogRows[static_cast<size_t>(catalogIndex)].initialProperties
+            : PropertyMap{};
+
+    if (diagramScene->getInteractionMode() != DiagramScene::InteractionMode::NORMAL_MODE)
+      diagramScene->setInteractionMode(DiagramScene::InteractionMode::NORMAL_MODE);
+
+    diagramScene->placeComponent(typeName.toStdString(), false, initialProperties);
+    hide();
+
+    if (!diagramScene->views().empty())
+      diagramScene->views().first()->setFocus(Qt::OtherFocusReason);
+  }
+
+  void ComponentCatalogOverlay::selectFirstComponentRow()
+  {
+    for (int row = 0; row < table->rowCount(); ++row) {
+      const auto* item = table->item(row, 1);
+      if (item && !item->data(Qt::UserRole).toString().isEmpty()) {
+        table->selectRow(row);
+        return;
+      }
     }
   }
-}
 
-void ComponentCatalogOverlay::resizeCatalogColumns()
-{
-  table->resizeColumnToContents(0);
+  void ComponentCatalogOverlay::resizeCatalogColumns()
+  {
+    table->resizeColumnToContents(0);
 
-  const QFontMetrics fontMetrics(table->font());
-  int                nameColumnWidth = 0;
-  if (const QTableWidgetItem* headerItem = table->horizontalHeaderItem(1))
-    nameColumnWidth = fontMetrics.horizontalAdvance(headerItem->text());
+    const QFontMetrics fontMetrics(table->font());
+    int                nameColumnWidth = 0;
+    if (const QTableWidgetItem* headerItem = table->horizontalHeaderItem(1))
+      nameColumnWidth = fontMetrics.horizontalAdvance(headerItem->text());
 
-  for (int row = 0; row < table->rowCount(); ++row) {
-    const QTableWidgetItem* item = table->item(row, 1);
-    if (!item)
-      continue;
+    for (int row = 0; row < table->rowCount(); ++row) {
+      const QTableWidgetItem* item = table->item(row, 1);
+      if (!item)
+        continue;
 
-    nameColumnWidth =
-        std::max(nameColumnWidth, fontMetrics.horizontalAdvance(item->text()));
+      nameColumnWidth =
+          std::max(nameColumnWidth, fontMetrics.horizontalAdvance(item->text()));
+    }
+
+    table->setColumnWidth(1, nameColumnWidth + CatalogNameColumnPadding);
   }
 
-  table->setColumnWidth(1, nameColumnWidth + CatalogNameColumnPadding);
-}
-
-QStringList ComponentCatalogOverlay::searchableFields(const CatalogRow& rowData)
-{
-  return {QString::fromStdString(rowData.metadata.displayName),
-          QString::fromStdString(rowData.guiType),
-          QString::fromStdString(rowData.metadata.description),
-          QString::fromStdString(
-              std::string(componentCategoryName(rowData.metadata.category)))};
-}
+  QStringList ComponentCatalogOverlay::searchableFields(const CatalogRow& rowData)
+  {
+    return {QString::fromStdString(rowData.metadata.displayName),
+            QString::fromStdString(rowData.guiType),
+            QString::fromStdString(rowData.metadata.description),
+            QString::fromStdString(
+                std::string(componentCategoryName(rowData.metadata.category)))};
+  }
 
 }  // namespace ui
 }  // namespace SILICON

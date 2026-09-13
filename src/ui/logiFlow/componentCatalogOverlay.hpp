@@ -39,41 +39,41 @@ class QTableWidget;
 
 namespace SILICON {
 namespace ui {
-using namespace SILICON::core;
+  using namespace SILICON::core;
 
-class DiagramScene;
+  class DiagramScene;
 
-class ComponentCatalogOverlay : public QWidget {
-public:
-  struct CatalogRow {
-    std::string                          guiType;
-    ComponentRegistry::ComponentMetadata metadata;
-    PropertyMap                          initialProperties;
+  class ComponentCatalogOverlay : public QWidget {
+  public:
+    struct CatalogRow {
+      std::string                          guiType;
+      ComponentRegistry::ComponentMetadata metadata;
+      PropertyMap                          initialProperties;
+    };
+
+    explicit ComponentCatalogOverlay(DiagramScene*                          scene,
+                                     const SILICON::project::DocumentStore& documents,
+                                     const CircuitResolver*                 resolver,
+                                     QWidget* parent = nullptr);
+
+    void open();
+
+  private:
+    void rebuildRows();
+    void addCategoryRow(ComponentRegistry::ComponentCategory category);
+    void addComponentRow(const CatalogRow& rowData);
+    void activateRow(int row);
+    void selectFirstComponentRow();
+    void resizeCatalogColumns();
+    [[nodiscard]] static QStringList searchableFields(const CatalogRow& rowData);
+
+    DiagramScene*                          diagramScene = nullptr;
+    const SILICON::project::DocumentStore& documents;
+    const CircuitResolver*                 resolver;
+    QLineEdit*                             searchInput = nullptr;
+    QTableWidget*                          table       = nullptr;
+    std::vector<CatalogRow>                catalogRows;
   };
-
-  explicit ComponentCatalogOverlay(DiagramScene* scene,
-                                   SILICON::project::DocumentStore& documents,
-                                   const CircuitResolver* resolver,
-                                   QWidget* parent = nullptr);
-
-  void open();
-
-private:
-  void rebuildRows();
-  void addCategoryRow(ComponentRegistry::ComponentCategory category);
-  void addComponentRow(const CatalogRow& rowData);
-  void activateRow(int row);
-  void selectFirstComponentRow();
-  void resizeCatalogColumns();
-  [[nodiscard]] static QStringList searchableFields(const CatalogRow& rowData);
-
-  DiagramScene*           diagramScene = nullptr;
-  SILICON::project::DocumentStore& documents;
-  const CircuitResolver*           resolver;
-  QLineEdit*              searchInput  = nullptr;
-  QTableWidget*           table        = nullptr;
-  std::vector<CatalogRow> catalogRows;
-};
 
 }  // namespace ui
 }  // namespace SILICON

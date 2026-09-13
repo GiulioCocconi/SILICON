@@ -465,11 +465,12 @@ public:
    *
    * @param jsonStr The JSON string to deserialize
    * @param reg The component registry to create components
+   * @param resolver Optional non-owning resolver that must outlive the returned circuit.
    * @return The deserialized circuit
    */
-  [[nodiscard]] static Circuit
-  deserialize(const std::string& jsonStr, const ComponentRegistry& reg,
-              const CircuitResolver* resolver = nullptr);
+  [[nodiscard]] static Circuit deserialize(const std::string&       jsonStr,
+                                           const ComponentRegistry& reg,
+                                           const CircuitResolver*   resolver = nullptr);
 };
 
 /** @brief Represents a block of components for simulation execution */

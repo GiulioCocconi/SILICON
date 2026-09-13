@@ -34,6 +34,7 @@ class SubcircuitComponent : public Component {
 public:
   static constexpr std::string_view Type = "Subcircuit";
 
+  /** @param resolver Non-owning; must outlive this component when non-null. */
   explicit SubcircuitComponent(const CircuitResolver* resolver = nullptr);
 
   /**
@@ -44,9 +45,8 @@ public:
    * is used on subsequent loads.
    */
   [[nodiscard]] static std::shared_ptr<SubcircuitComponent>
-  imported(std::string slug, std::vector<std::string> inputNames,
-           std::vector<Bus> inputs, std::vector<std::string> outputNames,
-           std::vector<Bus> outputs);
+  imported(std::string slug, std::vector<std::string> inputNames, std::vector<Bus> inputs,
+           std::vector<std::string> outputNames, std::vector<Bus> outputs);
 
   /** Port names retained while an imported module has no project document yet. */
   [[nodiscard]] const std::vector<std::string>& importedInputNames() const
@@ -69,11 +69,12 @@ public:
   void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
 
   void reloadFromResolver();
+  /** Sets a non-owning resolver that must outlive this component. */
   void setCircuitResolver(const CircuitResolver* resolver);
   [[nodiscard]] const CircuitResolver* circuitResolver() const noexcept;
 
 private:
-  const CircuitResolver* resolver = nullptr;
+  const CircuitResolver*   resolver = nullptr;
   std::vector<std::string> transientInputNames;
   std::vector<std::string> transientOutputNames;
 

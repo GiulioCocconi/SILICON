@@ -60,11 +60,12 @@ public:
    * @param sourceCircuit Source/editable circuit to simulate.
    * @param isCancelled Optional cancellation callback used during initial runtime
    * construction.
+   * @param resolver Optional non-owning resolver that must outlive this session.
    * @throws std::invalid_argument if @p sourceCircuit is null.
    */
-  explicit Session(std::shared_ptr<Circuit>     sourceCircuit,
-                   Simulator::CancellationCheck     isCancelled = {},
-                   const SILICON::core::CircuitResolver* resolver = nullptr);
+  explicit Session(std::shared_ptr<Circuit>              sourceCircuit,
+                   Simulator::CancellationCheck          isCancelled = {},
+                   const SILICON::core::CircuitResolver* resolver    = nullptr);
 
   ~Session() = default;
 

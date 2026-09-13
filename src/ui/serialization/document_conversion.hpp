@@ -19,8 +19,9 @@
 #include <core/serialization/document_conversion.hpp>
 
 namespace SILICON::core {
+class ComponentRegistry;
 class CircuitResolver;
-}
+}  // namespace SILICON::core
 
 namespace SILICON::ui {
 
@@ -50,8 +51,9 @@ documentConvertersFor(SILICON::project::DocumentType source);
 
 [[nodiscard]] PreparedDocumentConversion
 prepareDocumentConversion(const SILICON::project::Document&           source,
-                          SILICON::project::DocumentType               target,
+                          SILICON::project::DocumentType              target,
                           std::span<const SILICON::project::Document> projectDocuments,
-                          const SILICON::core::CircuitResolver& resolver);
+                          const SILICON::core::ComponentRegistry&     registry,
+                          const SILICON::core::CircuitResolver&       resolver);
 
 }  // namespace SILICON::ui

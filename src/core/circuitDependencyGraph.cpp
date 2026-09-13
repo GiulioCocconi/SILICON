@@ -127,7 +127,7 @@ namespace {
   }
 
   [[nodiscard]] std::string
-  formatReferencedDocumentMessage(const std::string_view documentPath,
+  formatReferencedDocumentMessage(const std::string_view          documentPath,
                                   const std::vector<std::string>& dependents)
   {
     auto message =
@@ -167,7 +167,7 @@ void CircuitDependencyGraph::removeDocument(const std::string_view documentPath)
 
   validateDocumentRemoval(documentPath);
 
-  auto updated       = *this;
+  auto       updated = *this;
   const auto removed = updated.findVertex(documentPath);
   boost::clear_vertex(*removed, updated.graph);
   boost::remove_vertex(*removed, updated.graph);
@@ -189,7 +189,7 @@ void CircuitDependencyGraph::validateDocumentRemoval(
 
 void CircuitDependencyGraph::rebuildFromProject(const std::vector<Document>& documents)
 {
-  CircuitDependencyGraph rebuilt;
+  CircuitDependencyGraph               rebuilt;
   std::unordered_set<std::string_view> registeredPaths;
 
   for (const auto& document : documents) {

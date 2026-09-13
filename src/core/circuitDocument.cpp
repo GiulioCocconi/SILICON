@@ -19,9 +19,9 @@
 
 namespace SILICON::core {
 
-SubcircuitDefinition parseCircuitDocument(const std::string_view contents,
-                                           const ComponentRegistry& registry,
-                                           const CircuitResolver* resolver)
+SubcircuitDefinition parseCircuitDocument(const std::string_view   contents,
+                                          const ComponentRegistry& registry,
+                                          const CircuitResolver*   resolver)
 {
   auto document = nlohmann::json::parse(contents);
   if (const auto circuit = document.find("circuit"); circuit != document.end())

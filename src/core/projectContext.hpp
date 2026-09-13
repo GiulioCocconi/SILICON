@@ -17,8 +17,8 @@ namespace SILICON::project {
 /** Project-owned document state and its derived Circuit dependency index. */
 class ProjectContext {
 public:
-  DocumentStore          documents;
-  CircuitDependencyGraph circuitDependencies;
+  [[nodiscard]] const DocumentStore&          documents() const noexcept;
+  [[nodiscard]] const CircuitDependencyGraph& circuitDependencies() const noexcept;
 
   void setDocuments(std::vector<Document> documents);
   void upsertDocument(Document document);
@@ -26,8 +26,11 @@ public:
   void removeDocument(std::string_view documentPath);
 
 private:
+  DocumentStore          documents_;
+  CircuitDependencyGraph circuitDependencies_;
+
   void commit(std::vector<Document> documents, CircuitDependencyGraph dependencies,
-              const DocumentChange& change);
+              const DocumentChange& change) noexcept;
 };
 
 }  // namespace SILICON::project

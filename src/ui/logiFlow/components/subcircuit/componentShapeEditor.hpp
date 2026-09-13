@@ -36,7 +36,7 @@ namespace ui {
  * @param undoStack Optional undo stack used to route metadata changes.
  * @param parent Optional parent widget for the dialog and warnings.
  */
-void editGraphicalSubcircuitShape(const std::string&              slug,
+void editGraphicalSubcircuitShape(const std::string&                slug,
                                   SILICON::project::ProjectContext& project,
                                   QUndoStack* undoStack, QWidget* parent = nullptr);
 

@@ -36,7 +36,7 @@ struct ScriptResult {
 [[nodiscard]] std::string readVerilog(std::string_view   source,
                                       const ToolOptions& options = {});
 [[nodiscard]] std::string readVerilog(std::span<const SILICON::core::SourceFile> sources,
-                                      std::string_view entryPath,
+                                      std::string_view   entryPath,
                                       const ToolOptions& options = {});
 
 /** Apply SILICON's language-independent Yosys JSON import lowering. */

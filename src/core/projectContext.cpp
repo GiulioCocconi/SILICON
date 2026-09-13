@@ -15,17 +15,27 @@
 namespace SILICON::project {
 namespace {
 
-void validateUniquePaths(const std::vector<Document>& documents)
-{
-  std::unordered_set<std::string_view> paths;
-  for (const auto& document : documents) {
-    if (!paths.insert(document.getPath()).second)
-      throw std::invalid_argument(
-          std::format("Duplicate project document path: {}", document.getPath()));
+  void validateUniquePaths(const std::vector<Document>& documents)
+  {
+    std::unordered_set<std::string_view> paths;
+    for (const auto& document : documents) {
+      if (!paths.insert(document.getPath()).second)
+        throw std::invalid_argument(
+            std::format("Duplicate project document path: {}", document.getPath()));
+    }
   }
-}
 
 }  // namespace
+
+const DocumentStore& ProjectContext::documents() const noexcept
+{
+  return documents_;
+}
+
+const CircuitDependencyGraph& ProjectContext::circuitDependencies() const noexcept
+{
+  return circuitDependencies_;
+}
 
 void ProjectContext::setDocuments(std::vector<Document> nextDocuments)
 {
@@ -38,11 +48,11 @@ void ProjectContext::setDocuments(std::vector<Document> nextDocuments)
 
 void ProjectContext::upsertDocument(Document document)
 {
-  auto nextDocuments = documents.getDocuments();
-  const auto existing = std::ranges::find(nextDocuments, document.getPath(),
-                                          &Document::getPath);
+  auto       nextDocuments = documents_.getDocuments();
+  const auto existing =
+      std::ranges::find(nextDocuments, document.getPath(), &Document::getPath);
   const auto kind = existing == nextDocuments.end() ? DocumentChangeKind::Added
-                                                     : DocumentChangeKind::Updated;
+                                                    : DocumentChangeKind::Updated;
   const auto path = document.getPath();
   if (existing == nextDocuments.end())
     nextDocuments.push_back(std::move(document));
@@ -57,11 +67,11 @@ void ProjectContext::upsertDocument(Document document)
 
 void ProjectContext::insertDocument(Document document, const std::size_t index)
 {
-  if (documents.contains(document.getPath()))
+  if (documents_.contains(document.getPath()))
     throw std::invalid_argument(
         std::format("Duplicate project document path: {}", document.getPath()));
 
-  auto       nextDocuments = documents.getDocuments();
+  auto       nextDocuments = documents_.getDocuments();
   const auto path          = document.getPath();
   const auto offset        = std::min(index, nextDocuments.size());
   nextDocuments.insert(nextDocuments.begin() + static_cast<std::ptrdiff_t>(offset),
@@ -75,11 +85,11 @@ void ProjectContext::insertDocument(Document document, const std::size_t index)
 
 void ProjectContext::removeDocument(const std::string_view documentPath)
 {
-  if (!documents.contains(documentPath))
+  if (!documents_.contains(documentPath))
     return;
 
-  circuitDependencies.validateDocumentRemoval(documentPath);
-  auto nextDocuments = documents.getDocuments();
+  circuitDependencies_.validateDocumentRemoval(documentPath);
+  auto nextDocuments = documents_.getDocuments();
   std::erase_if(nextDocuments, [&](const Document& document) {
     return document.getPath() == documentPath;
   });
@@ -90,12 +100,12 @@ void ProjectContext::removeDocument(const std::string_view documentPath)
          {.kind = DocumentChangeKind::Removed, .path = std::string(documentPath)});
 }
 
-void ProjectContext::commit(std::vector<Document> nextDocuments,
+void ProjectContext::commit(std::vector<Document>  nextDocuments,
                             CircuitDependencyGraph nextDependencies,
-                            const DocumentChange& change)
+                            const DocumentChange&  change) noexcept
 {
-  circuitDependencies = std::move(nextDependencies);
-  documents.commitDocuments(std::move(nextDocuments), change);
+  circuitDependencies_ = std::move(nextDependencies);
+  documents_.commitDocuments(std::move(nextDocuments), change);
 }
 
 }  // namespace SILICON::project

@@ -56,9 +56,12 @@ public:
   /**
    * @brief Creates an elaborator using the given component registry for cloning and
    * deserialization.
+   * @param registry Registry that must outlive this elaborator.
+   * @param resolver Optional non-owning resolver that must outlive this elaborator and
+   *                 circuits produced through it.
    */
   explicit CircuitElaborator(const core::ComponentRegistry& registry,
-                             const core::CircuitResolver* resolver = nullptr);
+                             const core::CircuitResolver*   resolver = nullptr);
 
   /**
    * @brief Builds a simulator-ready runtime circuit from a source design.
@@ -72,7 +75,7 @@ public:
 
 private:
   const core::ComponentRegistry& registry;
-  const core::CircuitResolver* resolver;
+  const core::CircuitResolver*   resolver;
 };
 
 }  // namespace SILICON::simulation

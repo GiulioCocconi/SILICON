@@ -44,12 +44,9 @@ namespace {
   [[nodiscard]] QString sectionTitle(const project::DocumentType type)
   {
     switch (type) {
-      case project::DocumentType::Circuit:
-        return ProjectTree::tr("Circuits");
-      case project::DocumentType::Verilog:
-        return ProjectTree::tr("Code");
-      case project::DocumentType::RawBinary:
-        return ProjectTree::tr("Binaries");
+      case project::DocumentType::Circuit: return ProjectTree::tr("Circuits");
+      case project::DocumentType::Verilog: return ProjectTree::tr("Code");
+      case project::DocumentType::RawBinary: return ProjectTree::tr("Binaries");
     }
     return {};
   }
@@ -57,13 +54,12 @@ namespace {
   [[nodiscard]] QString documentLabel(const project::Document& document)
   {
     switch (document.getType()) {
-      case project::DocumentType::Circuit:
-        return circuitDisplayName(document);
+      case project::DocumentType::Circuit: return circuitDisplayName(document);
       case project::DocumentType::Verilog:
         return QFileInfo(QString::fromStdString(document.getPath())).fileName();
       case project::DocumentType::RawBinary:
-        return QString::fromStdString(
-            project::documentSlugForPath(document.getPath()).value_or(document.getPath()));
+        return QString::fromStdString(project::documentSlugForPath(document.getPath())
+                                          .value_or(document.getPath()));
     }
     return {};
   }
@@ -97,9 +93,9 @@ ProjectTree::ProjectTree(QWidget* parent) : QTreeWidget(parent)
   setContextMenuPolicy(Qt::CustomContextMenu);
 }
 
-void ProjectTree::rebuild(const project::ProjectInfo& projectInfo,
+void ProjectTree::rebuild(const project::ProjectInfo&              projectInfo,
                           const std::span<const project::Document> documents,
-                          const std::string_view activeDocumentPath)
+                          const std::string_view                   activeDocumentPath)
 {
   const QSignalBlocker blocker(this);
   clear();
@@ -123,7 +119,8 @@ void ProjectTree::selectDocument(const std::string_view path)
   const QSignalBlocker blocker(this);
   clearSelection();
 
-  const auto targetPath = QString::fromUtf8(path.data(), static_cast<qsizetype>(path.size()));
+  const auto targetPath =
+      QString::fromUtf8(path.data(), static_cast<qsizetype>(path.size()));
   for (QTreeWidgetItemIterator it(this); *it; ++it) {
     if ((*it)->data(0, PathRole).toString() != targetPath)
       continue;
@@ -181,7 +178,8 @@ std::string ProjectTree::documentPath(const QTreeWidgetItem* item)
   return item->data(0, PathRole).toString().toStdString();
 }
 
-void ProjectTree::addSection(QTreeWidgetItem* projectItem, const project::DocumentType type,
+void ProjectTree::addSection(QTreeWidgetItem*                         projectItem,
+                             const project::DocumentType              type,
                              const std::span<const project::Document> documents)
 {
   bool hasDocuments = false;

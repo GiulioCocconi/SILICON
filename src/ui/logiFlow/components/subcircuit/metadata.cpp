@@ -30,11 +30,10 @@
 #include <nlohmann/json.hpp>
 
 #include <core/circuit.hpp>
-#include <core/serialization/component_registry.hpp>
 #include <core/circuitDocument.hpp>
+#include <core/serialization/component_registry.hpp>
 #include <ui/common/enums.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
-
 
 namespace SILICON {
 namespace ui {

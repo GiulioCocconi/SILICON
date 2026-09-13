@@ -93,8 +93,7 @@ TEST(MultiplexerTest, LargerMuxSelectsMatchingDataBit)
     sim.setBus(selection, valueFor(selection, selected));
     sim.run(10);
 
-    const State expected = ((0b1010'0100u >> selected) & 1u) ? State::HIGH
-                                                             : State::LOW;
+    const State expected = ((0b1010'0100u >> selected) & 1u) ? State::HIGH : State::LOW;
     EXPECT_EQ(output->getCurrentState(), expected) << "selected=" << selected;
   }
 }
@@ -456,7 +455,7 @@ TEST(MuxDemuxSerializationTest, BusSizeAndMultiPortShapeSurviveRoundTrip)
   demux->setProperty("busSize", 3);
   demux->setProperty("selectionSize", 2);
 
-  Circuit source(Component_set{mux, demux});
+  Circuit    source(Component_set{mux, demux});
   const auto serialized = source.serialize();
 
   ComponentRegistry registry;

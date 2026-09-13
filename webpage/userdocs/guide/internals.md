@@ -150,8 +150,9 @@ separation lets simulation and native circuit deserialization remain independent
 scene data.
 
 Code documents store their source directly in entries such as `code/adder.v`. Verilog is
-the currently registered language. Headless conversion prepares semantic
-`VerilogSource`, `YosysDesign`, and core `Circuit` values without depending on Qt. The UI
+the currently registered language. Headless conversion prepares semantic `VerilogSource`
+and core `Circuit` values without depending on Qt. Any Yosys design graph remains a
+private conversion detail. The UI
 materializes converted circuits as graphical scenes and owns selection, overwrite
 confirmation, undo, and activation. Consequently, the same workflow can later host other
 HDL frontends and binary/memory-file converters without putting editor state in the core.

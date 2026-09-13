@@ -105,7 +105,7 @@ TEST(SiliconWaveformTest, WritesFstTrace)
 
   writeTrace(filename, trace);
 
-  Reader  reader(filename);
+  Reader     reader(filename);
   const auto hierarchy = reader.buildHierarchyTree();
   ASSERT_EQ(hierarchy.name, "Waveform");
   ASSERT_EQ(hierarchy.vars.size(), 2);

@@ -118,11 +118,11 @@ TEST(RegisterTest, MetadataUsesRegisterCategory)
 
 TEST(RegisterTest, ParallelInParallelOutCapturesOnRisingEdge)
 {
-  Bus data(4);
-  Bus out(4);
-  auto clock = std::make_shared<Wire>(State::LOW);
+  Bus  data(4);
+  Bus  out(4);
+  auto clock  = std::make_shared<Wire>(State::LOW);
   auto enable = std::make_shared<Wire>(State::HIGH);
-  auto clear = std::make_shared<Wire>(State::LOW);
+  auto clear  = std::make_shared<Wire>(State::LOW);
 
   auto reg = std::make_shared<Register>(data, clock, enable, clear, out);
   reg->setProperty("size", 4);
@@ -141,11 +141,11 @@ TEST(RegisterTest, ParallelInParallelOutCapturesOnRisingEdge)
 
 TEST(RegisterTest, ClearIsActiveHighAndAsynchronous)
 {
-  Bus data(3);
-  Bus out(3);
-  auto clock = std::make_shared<Wire>(State::LOW);
+  Bus  data(3);
+  Bus  out(3);
+  auto clock  = std::make_shared<Wire>(State::LOW);
   auto enable = std::make_shared<Wire>(State::HIGH);
-  auto clear = std::make_shared<Wire>(State::LOW);
+  auto clear  = std::make_shared<Wire>(State::LOW);
 
   auto reg = std::make_shared<Register>(data, clock, enable, clear, out);
   reg->setProperty("size", 3);
@@ -165,8 +165,8 @@ TEST(RegisterTest, ClearIsActiveHighAndAsynchronous)
 
 TEST(RegisterTest, EnableLowHoldsStateButClearStillOverrides)
 {
-  Bus data(2);
-  Bus out(2);
+  Bus  data(2);
+  Bus  out(2);
   auto clock  = std::make_shared<Wire>(State::LOW);
   auto enable = std::make_shared<Wire>(State::HIGH);
   auto clear  = std::make_shared<Wire>(State::LOW);
@@ -196,11 +196,11 @@ TEST(RegisterTest, EnableLowHoldsStateButClearStillOverrides)
 
 TEST(RegisterTest, SerialInSerialOutShiftsLsbFirst)
 {
-  Bus serialIn(1);
-  Bus serialOut(1);
-  auto clock = std::make_shared<Wire>(State::LOW);
+  Bus  serialIn(1);
+  Bus  serialOut(1);
+  auto clock  = std::make_shared<Wire>(State::LOW);
   auto enable = std::make_shared<Wire>(State::HIGH);
-  auto clear = std::make_shared<Wire>(State::LOW);
+  auto clear  = std::make_shared<Wire>(State::LOW);
 
   auto reg = std::make_shared<Register>(serialIn, clock, enable, clear, serialOut);
   reg->setProperty("size", 3);
@@ -229,11 +229,11 @@ TEST(RegisterTest, SerialInSerialOutShiftsLsbFirst)
 
 TEST(RegisterTest, SerialInParallelOutAccumulatesBits)
 {
-  Bus serialIn(1);
-  Bus out(3);
-  auto clock = std::make_shared<Wire>(State::LOW);
+  Bus  serialIn(1);
+  Bus  out(3);
+  auto clock  = std::make_shared<Wire>(State::LOW);
   auto enable = std::make_shared<Wire>(State::HIGH);
-  auto clear = std::make_shared<Wire>(State::LOW);
+  auto clear  = std::make_shared<Wire>(State::LOW);
 
   auto reg = std::make_shared<Register>(serialIn, clock, enable, clear, out);
   reg->setProperty("size", 3);
@@ -259,8 +259,8 @@ TEST(RegisterTest, SerialInParallelOutAccumulatesBits)
 
 TEST(RegisterTest, ParallelInSerialOutLoadsThenShiftsLsbFirst)
 {
-  Bus data(3);
-  Bus serialOut(1);
+  Bus  data(3);
+  Bus  serialOut(1);
   auto clock  = std::make_shared<Wire>(State::LOW);
   auto enable = std::make_shared<Wire>(State::HIGH);
   auto clear  = std::make_shared<Wire>(State::LOW);
@@ -270,8 +270,7 @@ TEST(RegisterTest, ParallelInSerialOutLoadsThenShiftsLsbFirst)
   reg->setProperty("inputType", std::string("Parallel"));
   reg->setProperty("outputType", std::string("Serial"));
   ASSERT_EQ(reg->getInputs().size(), 5);
-  auto load =
-      reg->getInputs()[static_cast<unsigned int>(Register::Inputs::Load)][0];
+  auto load = reg->getInputs()[static_cast<unsigned int>(Register::Inputs::Load)][0];
 
   auto      circuit = std::make_shared<Circuit>(Component_set{reg});
   Simulator simulator(circuit);
@@ -297,8 +296,8 @@ TEST(RegisterTest, ParallelInSerialOutLoadsThenShiftsLsbFirst)
 
 TEST(RegisterTest, ParallelInSerialOutHonorsExplicitLoadControlPriority)
 {
-  Bus data(3);
-  Bus serialOut(1);
+  Bus  data(3);
+  Bus  serialOut(1);
   auto clock  = std::make_shared<Wire>(State::LOW);
   auto enable = std::make_shared<Wire>(State::HIGH);
   auto clear  = std::make_shared<Wire>(State::LOW);
@@ -307,8 +306,7 @@ TEST(RegisterTest, ParallelInSerialOutHonorsExplicitLoadControlPriority)
   reg->setProperty("size", 3);
   reg->setProperty("inputType", std::string("Parallel"));
   reg->setProperty("outputType", std::string("Serial"));
-  auto load =
-      reg->getInputs()[static_cast<unsigned int>(Register::Inputs::Load)][0];
+  auto load = reg->getInputs()[static_cast<unsigned int>(Register::Inputs::Load)][0];
 
   auto      circuit = std::make_shared<Circuit>(Component_set{reg});
   Simulator simulator(circuit);
@@ -346,11 +344,11 @@ TEST(RegisterTest, ParallelInSerialOutHonorsExplicitLoadControlPriority)
 
 TEST(RegisterTest, DelayAppliesToOutputUpdates)
 {
-  Bus data(1);
-  Bus out(1);
-  auto clock = std::make_shared<Wire>(State::LOW);
+  Bus  data(1);
+  Bus  out(1);
+  auto clock  = std::make_shared<Wire>(State::LOW);
   auto enable = std::make_shared<Wire>(State::HIGH);
-  auto clear = std::make_shared<Wire>(State::LOW);
+  auto clear  = std::make_shared<Wire>(State::LOW);
 
   auto reg = std::make_shared<Register>(data, clock, enable, clear, out);
   reg->setProperty("delay", 5);
@@ -372,8 +370,8 @@ TEST(RegisterTest, SerializationPreservesPropertiesAndBusWidths)
   ComponentRegistry registry;
   registerAllComponents(registry);
 
-  Bus data(4);
-  Bus out(1);
+  Bus  data(4);
+  Bus  out(1);
   auto reg = std::make_shared<Register>(data, std::make_shared<Wire>(State::LOW),
                                         std::make_shared<Wire>(State::HIGH),
                                         std::make_shared<Wire>(State::LOW), out);

@@ -26,10 +26,9 @@
 
 #include <core/serialization/component_registry.hpp>
 #include <ui/common/diagramScene/diagramScene.hpp>
-#include <ui/logiFlow/logiFlowWindow.hpp>
 #include <ui/logiFlow/components/graphicalLogicComponent.hpp>
+#include <ui/logiFlow/logiFlowWindow.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
-
 
 namespace SILICON {
 namespace ui {

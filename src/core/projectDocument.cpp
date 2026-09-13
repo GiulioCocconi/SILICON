@@ -35,7 +35,7 @@ namespace {
     });
   }
 
-  [[nodiscard]] bool isValidDocumentPath(const std::string_view     path,
+  [[nodiscard]] bool isValidDocumentPath(const std::string_view  path,
                                          const DocumentTypeInfo& info)
   {
     if (!path.starts_with(info.root) || !path.ends_with(info.suffix))
@@ -52,12 +52,11 @@ namespace {
 
 std::optional<DocumentType> documentTypeForPath(const std::string_view path)
 {
-  const auto it = std::ranges::find_if(
-      DOCUMENT_TYPE_INFO, [path](const DocumentTypeInfo& info) {
+  const auto it =
+      std::ranges::find_if(DOCUMENT_TYPE_INFO, [path](const DocumentTypeInfo& info) {
         return isValidDocumentPath(path, info);
       });
-  return it == DOCUMENT_TYPE_INFO.end() ? std::nullopt
-                                        : std::optional(it->type);
+  return it == DOCUMENT_TYPE_INFO.end() ? std::nullopt : std::optional(it->type);
 }
 
 std::optional<std::string> documentSlugForPath(const std::string_view path)
@@ -67,8 +66,8 @@ std::optional<std::string> documentSlugForPath(const std::string_view path)
     return std::nullopt;
 
   const auto& info = documentTypeInfo(*type);
-  return std::string(path.substr(info.root.size(),
-                                 path.size() - info.root.size() - info.suffix.size()));
+  return std::string(
+      path.substr(info.root.size(), path.size() - info.root.size() - info.suffix.size()));
 }
 
 bool isValidDocumentSlug(const std::string_view slug)
@@ -114,63 +113,6 @@ void Document::setContents(std::string contents)
   this->contents = std::move(contents);
 }
 
-void DocumentStore::setDocuments(std::vector<Document> documents)
-{
-  std::unordered_set<std::string> paths;
-  for (const auto& document : documents) {
-    if (!paths.insert(document.getPath()).second)
-      throw std::invalid_argument(
-          std::format("Duplicate project document path: {}", document.getPath()));
-  }
-
-  this->documents = std::move(documents);
-  listeners.notify(
-      DocumentChange{.kind = DocumentChangeKind::Reset, .path = std::nullopt});
-}
-
-void DocumentStore::upsertDocument(Document document)
-{
-  const auto path = document.getPath();
-  if (const auto index = indexOf(path)) {
-    documents[*index] = std::move(document);
-    listeners.notify(DocumentChange{.kind = DocumentChangeKind::Updated, .path = path});
-    return;
-  }
-
-  documents.push_back(std::move(document));
-  listeners.notify(DocumentChange{.kind = DocumentChangeKind::Added, .path = path});
-}
-
-void DocumentStore::insertDocument(Document document, const std::size_t index)
-{
-  const auto path = document.getPath();
-  if (contains(path))
-    throw std::invalid_argument(
-        std::format("Duplicate project document path: {}", path));
-
-  documents.insert(documents.begin() + std::min(index, documents.size()),
-                   std::move(document));
-  listeners.notify(DocumentChange{.kind = DocumentChangeKind::Added, .path = path});
-}
-
-void DocumentStore::removeDocument(const std::string_view documentPath)
-{
-  const auto oldSize = documents.size();
-  std::erase_if(documents,
-                [&](const Document& document) { return document.getPath() == documentPath; });
-
-  if (documents.size() != oldSize)
-    listeners.notify(DocumentChange{.kind = DocumentChangeKind::Removed,
-                                    .path = std::string(documentPath)});
-}
-
-void DocumentStore::clear()
-{
-  documents.clear();
-  listeners.notify(
-      DocumentChange{.kind = DocumentChangeKind::Reset, .path = std::nullopt});
-}
-
 const Document* DocumentStore::find(const std::string_view documentPath) const noexcept
 {
   const auto it = std::ranges::find(documents, documentPath, &Document::getPath);
@@ -184,10 +126,8 @@ bool DocumentStore::contains(const std::string_view documentPath) const noexcept
 
 bool DocumentStore::contains(const DocumentType type) const noexcept
 {
-  return std::ranges::any_of(documents,
-                             [type](const Document& document) {
-                               return document.getType() == type;
-                             });
+  return std::ranges::any_of(
+      documents, [type](const Document& document) { return document.getType() == type; });
 }
 
 const std::vector<Document>& DocumentStore::getDocuments() const noexcept
@@ -195,7 +135,8 @@ const std::vector<Document>& DocumentStore::getDocuments() const noexcept
   return documents;
 }
 
-std::optional<std::size_t> DocumentStore::indexOf(const std::string_view documentPath) const
+std::optional<std::size_t>
+DocumentStore::indexOf(const std::string_view documentPath) const
 {
   const auto it = std::ranges::find(documents, documentPath, &Document::getPath);
   if (it == documents.end())
@@ -203,18 +144,18 @@ std::optional<std::size_t> DocumentStore::indexOf(const std::string_view documen
   return static_cast<std::size_t>(std::distance(documents.begin(), it));
 }
 
-std::uint64_t DocumentStore::addListener(Listener listener)
+std::uint64_t DocumentStore::addListener(Listener listener) const
 {
   return listeners.add(std::move(listener));
 }
 
-void DocumentStore::removeListener(const std::uint64_t id)
+void DocumentStore::removeListener(const std::uint64_t id) const
 {
   listeners.remove(id);
 }
 
 void DocumentStore::commitDocuments(std::vector<Document> documents,
-                                    const DocumentChange& change)
+                                    const DocumentChange& change) noexcept
 {
   this->documents.swap(documents);
   listeners.notify(change);

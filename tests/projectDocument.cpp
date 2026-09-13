@@ -3,8 +3,8 @@
  ...
  */
 
-#include <core/projectDocument.hpp>
 #include <core/projectContext.hpp>
+#include <core/projectDocument.hpp>
 
 #include <algorithm>
 #include <cstdint>
@@ -25,8 +25,7 @@ TEST(ProjectDocumentTest, ClassifiesCanonicalFlatPaths)
 {
   EXPECT_EQ(SILICON::project::documentTypeForPath("circuits/main.json"),
             DocumentType::Circuit);
-  EXPECT_EQ(SILICON::project::documentTypeForPath("code/adder.v"),
-            DocumentType::Verilog);
+  EXPECT_EQ(SILICON::project::documentTypeForPath("code/adder.v"), DocumentType::Verilog);
   EXPECT_EQ(SILICON::project::documentTypeForPath("bin/firmware"),
             DocumentType::RawBinary);
   EXPECT_FALSE(SILICON::project::documentTypeForPath(""));
@@ -52,8 +51,7 @@ TEST(ProjectDocumentTest, ValidatesBinarySlugsAndRoundTripsExactNames)
 {
   for (const std::string_view invalid : {"", ".", "..", "a/b", "a\\b", "line\nbreak"}) {
     EXPECT_FALSE(isValidDocumentSlug(invalid));
-    EXPECT_THROW(static_cast<void>(
-                     documentPathForSlug(DocumentType::RawBinary, invalid)),
+    EXPECT_THROW(static_cast<void>(documentPathForSlug(DocumentType::RawBinary, invalid)),
                  std::invalid_argument);
   }
   for (const std::string_view valid : {"firmware", "rom.bin", "name with spaces"}) {
@@ -68,8 +66,7 @@ TEST(ProjectDocumentTest, ValidatesDocumentNamesAndRoundTripsEveryType)
   for (const std::string_view invalid :
        {"", ".", "..", "a/b", "a\\b", "../foo", "foo/bar", "line\nbreak"}) {
     EXPECT_FALSE(isValidDocumentSlug(invalid));
-    EXPECT_THROW(static_cast<void>(
-                     documentPathForSlug(DocumentType::Circuit, invalid)),
+    EXPECT_THROW(static_cast<void>(documentPathForSlug(DocumentType::Circuit, invalid)),
                  std::invalid_argument);
   }
 
@@ -110,68 +107,67 @@ TEST(ProjectDocumentStoreTest, ProjectContextsOwnIndependentDocumentStores)
   ProjectContext first;
   ProjectContext second;
 
-  first.documents.upsertDocument({"circuits/main.json", "first"});
-  second.documents.upsertDocument({"circuits/main.json", "second"});
+  first.upsertDocument({"code/main.v", "first"});
+  second.upsertDocument({"code/main.v", "second"});
 
-  ASSERT_NE(first.documents.find("circuits/main.json"), nullptr);
-  ASSERT_NE(second.documents.find("circuits/main.json"), nullptr);
-  EXPECT_EQ(first.documents.find("circuits/main.json")->getContents(), "first");
-  EXPECT_EQ(second.documents.find("circuits/main.json")->getContents(), "second");
+  ASSERT_NE(first.documents().find("code/main.v"), nullptr);
+  ASSERT_NE(second.documents().find("code/main.v"), nullptr);
+  EXPECT_EQ(first.documents().find("code/main.v")->getContents(), "first");
+  EXPECT_EQ(second.documents().find("code/main.v")->getContents(), "second");
 }
 
 TEST(ProjectDocumentStoreTest, PreservesOrderAcrossMixedKindsAndUpserts)
 {
-  DocumentStore store;
-  store.setDocuments({{"circuits/main.json", "main"},
-                      {"circuits/adder.json", "adder"},
-                      {"code/adder.v", "module adder; endmodule"},
-                      {"bin/firmware", std::string("\0\xff", 2)},
-                      {"circuits/control.json", "control"}});
+  ProjectContext project;
+  project.setDocuments({{"circuits/main.json", "{}"},
+                        {"circuits/adder.json", "{}"},
+                        {"code/adder.v", "module adder; endmodule"},
+                        {"bin/firmware", std::string("\0\xff", 2)},
+                        {"circuits/control.json", "{}"}});
 
-  store.upsertDocument({"circuits/adder.json", "updated"});
+  project.upsertDocument({"circuits/adder.json", R"({"components":[]})"});
+  const auto& store = project.documents();
   ASSERT_EQ(store.getDocuments().size(), 5);
   EXPECT_EQ(store.getDocuments()[1].getPath(), "circuits/adder.json");
-  EXPECT_EQ(store.getDocuments()[1].getContents(), "updated");
+  EXPECT_EQ(store.getDocuments()[1].getContents(), R"({"components":[]})");
 
   const auto& allDocuments = store.getDocuments();
   const auto  circuitCount = std::ranges::count_if(
-      allDocuments,
-      [](const auto& d) { return d.getType() == DocumentType::Circuit; });
+      allDocuments, [](const auto& d) { return d.getType() == DocumentType::Circuit; });
   ASSERT_EQ(circuitCount, 3);
   EXPECT_TRUE(store.contains(DocumentType::Circuit));
 
   const auto codeIt = std::ranges::find_if(
-      allDocuments,
-      [](const auto& d) { return d.getType() == DocumentType::Verilog; });
+      allDocuments, [](const auto& d) { return d.getType() == DocumentType::Verilog; });
   ASSERT_NE(codeIt, allDocuments.end());
   EXPECT_EQ(codeIt->getContents(), "module adder; endmodule");
   EXPECT_EQ(documentTypeForPath(codeIt->getPath()), DocumentType::Verilog);
 
   const auto binaryIt = std::ranges::find_if(
-      allDocuments,
-      [](const auto& d) { return d.getType() == DocumentType::RawBinary; });
+      allDocuments, [](const auto& d) { return d.getType() == DocumentType::RawBinary; });
   ASSERT_NE(binaryIt, allDocuments.end());
   EXPECT_EQ(binaryIt->getContents(), std::string("\0\xff", 2));
 
-  store.removeDocument("circuits/adder.json");
+  project.removeDocument("circuits/adder.json");
   EXPECT_FALSE(store.contains("circuits/adder.json"));
   EXPECT_EQ(store.indexOf("circuits/control.json"), 3);
 }
 
 TEST(ProjectDocumentStoreTest, RejectsDuplicatePaths)
 {
-  DocumentStore store;
+  ProjectContext project;
   EXPECT_THROW(
-      store.setDocuments({{"circuits/main.json", "one"}, {"circuits/main.json", "two"}}),
+      project.setDocuments({{"circuits/main.json", "{}"}, {"circuits/main.json", "{}"}}),
       std::invalid_argument);
 }
 
 TEST(ProjectDocumentStoreTest, NotificationsUseSnapshotAndCanonicalPaths)
 {
-  DocumentStore            store;
+  ProjectContext       project;
+  const DocumentStore& store = project.documents();
   std::vector<std::pair<DocumentChangeKind, std::optional<std::string>>> notifications;
-  std::uint64_t            selfRemovingId = 0;
-  std::uint64_t            addedId        = 0;
+  std::uint64_t selfRemovingId = 0;
+  std::uint64_t addedId        = 0;
 
   selfRemovingId = store.addListener([&](const DocumentChange& change) {
     notifications.emplace_back(change.kind, change.path);
@@ -183,16 +179,16 @@ TEST(ProjectDocumentStoreTest, NotificationsUseSnapshotAndCanonicalPaths)
     }
   });
 
-  store.upsertDocument({"circuits/main.json", "{}"});
+  project.upsertDocument({"circuits/main.json", "{}"});
   EXPECT_EQ(notifications,
             (decltype(notifications){
                 {DocumentChangeKind::Added, std::string("circuits/main.json")}}));
 
-  store.upsertDocument({"circuits/main.json", "updated"});
-  store.removeDocument("missing.json");
-  store.removeDocument("circuits/main.json");
+  project.upsertDocument({"circuits/main.json", R"({"components":[]})"});
+  project.removeDocument("missing.json");
+  project.removeDocument("circuits/main.json");
 
-  store.clear();
+  project.setDocuments({});
   EXPECT_EQ(notifications,
             (decltype(notifications){
                 {DocumentChangeKind::Added, std::string("circuits/main.json")},

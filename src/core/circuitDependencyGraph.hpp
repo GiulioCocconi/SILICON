@@ -49,10 +49,10 @@ namespace SILICON::project {
  */
 class CircuitDependencyGraph {
 public:
-  CircuitDependencyGraph() = default;
-  CircuitDependencyGraph(const CircuitDependencyGraph&) = default;
-  CircuitDependencyGraph& operator=(const CircuitDependencyGraph&) = default;
-  CircuitDependencyGraph(CircuitDependencyGraph&&) noexcept = default;
+  CircuitDependencyGraph()                                             = default;
+  CircuitDependencyGraph(const CircuitDependencyGraph&)                = default;
+  CircuitDependencyGraph& operator=(const CircuitDependencyGraph&)     = default;
+  CircuitDependencyGraph(CircuitDependencyGraph&&) noexcept            = default;
   CircuitDependencyGraph& operator=(CircuitDependencyGraph&&) noexcept = default;
 
   /// @brief List of project-relative document paths.
@@ -92,7 +92,8 @@ public:
    * their dependency edges. The resulting graph must be acyclic; if it is not,
    * a `std::runtime_error` is thrown and the graph is left unchanged.
    *
-   * @param documents The project's ordered documents. Non-graphical documents are ignored.
+   * @param documents The project's ordered documents. Non-graphical documents are
+   * ignored.
    * @throw std::runtime_error If the described dependencies form a cycle.
    */
   void rebuildFromProject(const std::vector<Document>& documents);

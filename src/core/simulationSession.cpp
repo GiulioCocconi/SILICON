@@ -29,8 +29,8 @@ using namespace SILICON::core;
 using namespace SILICON::waveform;
 using namespace SILICON::waveform::fst;
 
-Session::Session(std::shared_ptr<Circuit>     sourceCircuit,
-                 Simulator::CancellationCheck     isCancelled,
+Session::Session(std::shared_ptr<Circuit>              sourceCircuit,
+                 Simulator::CancellationCheck          isCancelled,
                  const SILICON::core::CircuitResolver* resolver)
   : sourceCircuit(std::move(sourceCircuit)),
     elaborator(ComponentRegistry::instance(), resolver)

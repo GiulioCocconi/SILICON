@@ -94,8 +94,8 @@ struct ProjectInfo {
  * independently from the archive container code.
  */
 struct ProjectFile {
-  ProjectMetadata       metadata;
-  ProjectInfo           project;
+  ProjectMetadata metadata;
+  ProjectInfo     project;
   /// Authoritative ordered collection of project documents.
   std::vector<Document> documents;
 };
