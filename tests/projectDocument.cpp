@@ -90,6 +90,51 @@ TEST(ProjectDocumentTest, ContentReplacementUpdatesOnlyPersistedContents)
   EXPECT_EQ(document.getContents(), "new");
 }
 
+TEST(ProjectDocumentTest, ImportsDocumentsFromDefinitiveExtensions)
+{
+  const auto verilog = importDocument("/tmp/Adder.V", "not validated by extension");
+  EXPECT_EQ(verilog.getType(), DocumentType::Verilog);
+  EXPECT_EQ(verilog.getPath(), "code/Adder.v");
+  EXPECT_EQ(verilog.getContents(), "not validated by extension");
+
+  const std::string bytes("\0\xfftext", 6);
+  const auto        binary = importDocument("firmware.BIN", bytes);
+  EXPECT_EQ(binary.getType(), DocumentType::RawBinary);
+  EXPECT_EQ(binary.getPath(), "bin/firmware.BIN");
+  EXPECT_EQ(binary.getContents(), bytes);
+}
+
+TEST(ProjectDocumentTest, ImportsDocumentsDetectedFromContents)
+{
+  const auto circuit = importDocument(
+      "Adder.json", R"({"circuit":{"name":"Adder","components":[]},"visual":{}})");
+  EXPECT_EQ(circuit.getType(), DocumentType::Circuit);
+  EXPECT_EQ(circuit.getPath(), "circuits/Adder.json");
+
+  const auto binary = importDocument("assets/rom.dat", std::string("\x89PNG\r\n", 6));
+  EXPECT_EQ(binary.getType(), DocumentType::RawBinary);
+  EXPECT_EQ(binary.getPath(), "bin/rom.dat");
+}
+
+TEST(ProjectDocumentTest, RejectsUnsupportedImportedDocuments)
+{
+  EXPECT_THROW((void)importDocument("notes.txt", "ordinary text"), std::invalid_argument);
+  EXPECT_THROW((void)importDocument("alu.txt", "module alu; endmodule"),
+               std::invalid_argument);
+  EXPECT_THROW((void)importDocument("data.json", R"({"unrelated":true})"),
+               std::invalid_argument);
+  EXPECT_THROW((void)importDocument("", "module top; endmodule"), std::invalid_argument);
+  EXPECT_THROW((void)importDocument(".v", "module top; endmodule"),
+               std::invalid_argument);
+}
+
+TEST(ProjectDocumentTest, ExportsCanonicalDocumentLeafNames)
+{
+  EXPECT_EQ(documentFileName(Document("circuits/adder.json", "{}")), "adder.json");
+  EXPECT_EQ(documentFileName(Document("code/adder.v", "")), "adder.v");
+  EXPECT_EQ(documentFileName(Document("bin/firmware.bin", "")), "firmware.bin");
+}
+
 TEST(ProjectDocumentTest, DescribesRegisteredDocumentTypes)
 {
   ASSERT_EQ(DOCUMENT_TYPE_INFO.size(), 3);
