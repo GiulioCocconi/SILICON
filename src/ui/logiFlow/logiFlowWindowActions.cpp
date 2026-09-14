@@ -76,7 +76,6 @@ Copyright (c) 2026. Giulio Cocconi
 #include <QToolBar>
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
-#include <QUndoCommand>
 #include <QUndoStack>
 #include <QVBoxLayout>
 
@@ -131,23 +130,6 @@ namespace ui {
       return Icon(
           QString::fromUtf8(iconName.data(), static_cast<qsizetype>(iconName.size())));
     }
-
-    class ConversionCommand : public QUndoCommand {
-    public:
-      using Fn = std::function<void()>;
-      ConversionCommand(QString text, Fn undoFn, Fn redoFn)
-        : QUndoCommand(std::move(text)),
-          undoFn(std::move(undoFn)),
-          redoFn(std::move(redoFn))
-      {
-      }
-      void undo() override { undoFn(); }
-      void redo() override { redoFn(); }
-
-    private:
-      Fn undoFn;
-      Fn redoFn;
-    };
 
     [[nodiscard]] std::optional<std::vector<std::string>>
     selectConversionChoices(QWidget*                                           parent,
@@ -873,40 +855,76 @@ EM_ASM(
     }
   }
 
-  void LogiFlowWindow::commitConvertedDocuments(
+  void LogiFlowWindow::commitDocumentChanges(
       std::vector<SILICON::project::Document> documents, const std::string& sourcePath,
-      const std::string& activatePath, const QString& commandText)
+      const std::string& activatePath, const QString& commandText,
+      const QString& errorTitle)
   {
-    const auto& store           = projectContext.documents();
-    auto        beforeDocuments = store.getDocuments();
-    auto        afterDocuments  = beforeDocuments;
-
-    for (auto& document : documents) {
-      const auto existing = std::ranges::find(afterDocuments, document.getPath(),
-                                              &SILICON::project::Document::getPath);
-      if (existing == afterDocuments.end())
-        afterDocuments.push_back(std::move(document));
-      else
-        *existing = std::move(document);
+    QStringList conflicts;
+    for (const auto& document : documents) {
+      if (projectContext.documents().contains(document.getPath()))
+        conflicts.push_back(QString::fromStdString(document.getPath()));
     }
 
-    SILICON::project::CircuitDependencyGraph validatedDependencies;
-    validatedDependencies.rebuildFromProject(afterDocuments);
+    auto commit = [this, documents = std::move(documents), sourcePath, activatePath,
+                   commandText, errorTitle]() mutable {
+      try {
+        const auto& store           = projectContext.documents();
+        auto        beforeDocuments = store.getDocuments();
+        auto        afterDocuments  = beforeDocuments;
 
-    auto apply = [this, afterDocuments, activatePath] {
-      projectContext.setDocuments(afterDocuments);
-      rebuildProjectTree();
-      switchToDocument(activatePath, true);
+        for (auto& document : documents) {
+          const auto existing = std::ranges::find(afterDocuments, document.getPath(),
+                                                  &SILICON::project::Document::getPath);
+          if (existing == afterDocuments.end())
+            afterDocuments.push_back(std::move(document));
+          else
+            *existing = std::move(document);
+        }
+
+        SILICON::project::CircuitDependencyGraph validatedDependencies;
+        validatedDependencies.rebuildFromProject(afterDocuments);
+
+        auto applySnapshot =
+            [this](const std::vector<SILICON::project::Document>& snapshot,
+                   const std::string&                             activePath) {
+              activeDocumentPath = activePath;
+              projectContext.setDocuments(snapshot);
+              const auto* document = projectContext.documents().find(activePath);
+              if (!document)
+                throw std::runtime_error("Project-state command has no active document");
+
+              loadDocumentPayload(*document);
+              rebuildProjectTree();
+              selectProjectTreeDocument(activePath);
+              updateSubcircuitShapeAction();
+              updatePropertyDock();
+            };
+
+        auto apply = [applySnapshot, afterDocuments, activatePath] {
+          applySnapshot(afterDocuments, activatePath);
+        };
+        auto restore = [applySnapshot, beforeDocuments, sourcePath] {
+          applySnapshot(beforeDocuments, sourcePath);
+        };
+        undoStack->push(
+            new CallbackUndoCommand(commandText, std::move(restore), std::move(apply)));
+      } catch (const std::exception& error) {
+        SILICON::ui::inputDialog::critical(
+            this, errorTitle,
+            tr("Failed to update the project documents:\n%1").arg(error.what()));
+      }
     };
-    auto restore = [this, beforeDocuments, sourcePath] {
-      if (projectContext.documents().contains(sourcePath))
-        switchToDocument(sourcePath, false);
-      projectContext.setDocuments(beforeDocuments);
-      rebuildProjectTree();
-      switchToDocument(sourcePath, true);
-    };
-    undoStack->push(
-        new ConversionCommand(commandText, std::move(restore), std::move(apply)));
+
+    if (!conflicts.empty()) {
+      SILICON::ui::inputDialog::question(
+          this, tr("Replace Existing Documents"),
+          tr("The following documents already exist and will be replaced:\n\n%1")
+              .arg(conflicts.join('\n')),
+          std::move(commit));
+    } else {
+      commit();
+    }
   }
 
   void LogiFlowWindow::convertActiveDocument()
@@ -963,26 +981,8 @@ EM_ASM(
       auto       result      = prepared.execute(*selected);
       const auto commandText = tr("Convert to %1").arg(documentTypeName(target));
 
-      QStringList conflicts;
-      for (const auto& document : result.documents)
-        if (store.contains(document.getPath()))
-          conflicts.push_back(QString::fromStdString(document.getPath()));
-
-      auto commit = [this, result = std::move(result), sourcePath,
-                     commandText]() mutable {
-        commitConvertedDocuments(std::move(result.documents), sourcePath,
-                                 result.activatePath, commandText);
-      };
-
-      if (!conflicts.empty()) {
-        SILICON::ui::inputDialog::question(
-            this, tr("Replace Converted Documents"),
-            tr("The following documents already exist and will be replaced:\n\n%1")
-                .arg(conflicts.join('\n')),
-            std::move(commit));
-      } else {
-        commit();
-      }
+      commitDocumentChanges(std::move(result.documents), sourcePath, result.activatePath,
+                            commandText, tr("Code Conversion Error"));
     } catch (const std::exception& error) {
       SILICON::ui::inputDialog::critical(
           this, tr("Code Conversion Error"),

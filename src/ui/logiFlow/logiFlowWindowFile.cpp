@@ -51,7 +51,6 @@ Copyright (c) 2026. Giulio Cocconi
 #include <QStatusBar>
 #include <QStringList>
 #include <QTemporaryFile>
-#include <QUndoCommand>
 #include <QUndoStack>
 
 #include <nlohmann/json.hpp>
@@ -105,26 +104,6 @@ namespace ui {
 
       throw std::logic_error("Unhandled InteractionMode in interactionModeName");
     }
-
-    class ProjectStateCommand : public QUndoCommand {
-    public:
-      using Fn = std::function<void()>;
-
-      ProjectStateCommand(QString text, Fn undoFn, Fn redoFn,
-                          QUndoCommand* parent = nullptr)
-        : QUndoCommand(std::move(text), parent),
-          undoFn(std::move(undoFn)),
-          redoFn(std::move(redoFn))
-      {
-      }
-
-      void undo() override { undoFn(); }
-      void redo() override { redoFn(); }
-
-    private:
-      Fn undoFn;
-      Fn redoFn;
-    };
 
     bool hasClipboardItems(const nlohmann::json& payload)
     {
@@ -638,9 +617,12 @@ namespace ui {
     if (!projectTree)
       return;
 
+    projectTree->clearSelection();
     if (auto* item = projectTree->itemAt(position)) {
       projectTree->setCurrentItem(item);
       item->setSelected(true);
+    } else {
+      projectTree->setCurrentItem(nullptr);
     }
 
 #ifdef __EMSCRIPTEN__
@@ -656,7 +638,13 @@ namespace ui {
     newMenu->addAction(newCodeFileAct);
     newMenu->addAction(newBinaryFileAct);
 
+    menu->addSeparator();
+    menu->addAction(Icon("import"), tr("Import Document..."), this,
+                    &LogiFlowWindow::importProjectDocument);
+
     if (const auto selection = projectTree->selectedDocument()) {
+      menu->addAction(Icon("export"), tr("Export Document..."), this,
+                      &LogiFlowWindow::exportSelectedDocument);
       menu->addSeparator();
       menu->addAction(Icon("pencil"), tr("Rename Document..."), this,
                       &LogiFlowWindow::renameSelectedDocument);
@@ -688,7 +676,59 @@ namespace ui {
 
     auto removeDocumentCommand = [this, path] { removeDocument(path); };
     undoStack->push(
-        new ProjectStateCommand(commandText, removeDocumentCommand, addDocument));
+        new CallbackUndoCommand(commandText, removeDocumentCommand, addDocument));
+  }
+
+  void LogiFlowWindow::importProjectDocument()
+  {
+    SILICON::ui::fileDialog::openFileContent(
+        this, tr("Import Document"),
+        tr("Supported Documents (*.json *.v *.bin);;All Files (*)"),
+        [this](const QString& fileName, const QByteArray& fileContent) {
+          try {
+            auto document = SILICON::project::importDocument(
+                fileName.toStdString(),
+                std::string(fileContent.constData(),
+                            static_cast<std::size_t>(fileContent.size())));
+
+            saveActiveDocumentPayload();
+            const auto sourcePath = activeDocumentPath;
+            const auto importPath = document.getPath();
+            commitDocumentChanges({std::move(document)}, sourcePath, importPath,
+                                  tr("Import Document"), tr("Document Import Error"));
+          } catch (const std::exception& error) {
+            SILICON::ui::inputDialog::critical(
+                this, tr("Document Import Error"),
+                tr("Failed to import the document:\n%1").arg(error.what()));
+          }
+        });
+  }
+
+  void LogiFlowWindow::exportSelectedDocument()
+  {
+    const auto selection = projectTree ? projectTree->selectedDocument() : std::nullopt;
+    if (!selection)
+      return;
+
+    try {
+      if (selection->path == activeDocumentPath)
+        saveActiveDocumentPayload();
+
+      const auto* document = projectContext.documents().find(selection->path);
+      if (!document)
+        throw std::runtime_error("The selected document no longer exists");
+
+      const auto& contents = document->getContents();
+      SILICON::ui::fileDialog::saveFileContent(
+          this, tr("Export Document"),
+          QString::fromStdString(SILICON::project::documentFileName(*document)),
+          tr("All Files (*)"),
+          QByteArray(contents.data(), static_cast<qsizetype>(contents.size())));
+    } catch (const std::exception& error) {
+      SILICON::ui::inputDialog::critical(
+          this, tr("Document Export Error"),
+          tr("Failed to export the document:\n%1").arg(error.what()));
+    }
   }
 
   void LogiFlowWindow::createCircuit()
@@ -907,7 +947,7 @@ namespace ui {
                 updatePropertyDock();
               };
 
-          undoStack->push(new ProjectStateCommand(
+          undoStack->push(new CallbackUndoCommand(
               title,
               [applyState, beforeDocuments, beforeProject, beforeActivePath] {
                 applyState(beforeDocuments, beforeProject, beforeActivePath);
@@ -969,7 +1009,7 @@ namespace ui {
             insertDocument(document, index, true);
           };
 
-          undoStack->push(new ProjectStateCommand(title, restoreDocument, removeStored));
+          undoStack->push(new CallbackUndoCommand(title, restoreDocument, removeStored));
         });
   }
 
