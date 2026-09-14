@@ -92,7 +92,6 @@ void writeFile(const std::filesystem::path& path, const std::string_view content
 
   Circuit circuit(components, false);
   circuit.setName(TopModule);
-  circuit.setDescription("4-bit counter: next_count = count + 1, sampled by clk.");
   return circuit;
 }
 

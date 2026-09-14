@@ -61,7 +61,6 @@ std::string graphicalAndSubcircuitDocument()
     "circuit": {
       "version": "0.1.0",
       "name": "graphical_and_subcircuit",
-      "description": "",
       "components": [
         {
           "id": 0,
@@ -116,7 +115,6 @@ std::string graphicalBusSubcircuitDocument()
     "circuit": {
       "version": "0.1.0",
       "name": "graphical_bus_subcircuit",
-      "description": "",
       "components": [
         {
           "id": 0,
@@ -156,7 +154,6 @@ std::string busNotCoreDocument()
     "circuit": {
       "version": "0.1.0",
       "name": "bus_not_core",
-      "description": "",
       "components": [
         {
           "id": 0,
@@ -176,7 +173,6 @@ std::string delayedNotSubcircuitDocument()
     "circuit": {
       "version": "0.1.0",
       "name": "delayed_not",
-      "description": "",
       "components": [
         {
           "id": 0,
@@ -196,7 +192,6 @@ std::string doubleNotSubcircuitDocument()
     "circuit": {
       "version": "0.1.0",
       "name": "double_not",
-      "description": "",
       "components": [
         {
           "id": 0,
@@ -223,7 +218,6 @@ std::string nestedAndSubcircuitDocument()
     "circuit": {
       "version": "0.1.0",
       "name": "nested_and",
-      "description": "",
       "components": [
         {
           "id": 0,
@@ -243,7 +237,6 @@ std::string romSubcircuitDocument()
     "circuit": {
       "version": "0.1.0",
       "name": "rom_leaf",
-      "description": "",
       "components": [
         {
           "id": 0,
@@ -263,7 +256,6 @@ std::string nestedRomSubcircuitDocument()
     "circuit": {
       "version": "0.1.0",
       "name": "rom_parent",
-      "description": "",
       "components": [
         {
           "id": 0,
@@ -283,7 +275,6 @@ std::string romSimulationLeafDocument()
     "circuit": {
       "version": "0.1.0",
       "name": "rom_sim_leaf",
-      "description": "",
       "components": [
         {
           "id": 0,
@@ -331,7 +322,6 @@ std::string romSimulationParentDocument()
     "circuit": {
       "version": "0.1.0",
       "name": "rom_sim_parent",
-      "description": "",
       "components": [
         {
           "id": 0,
@@ -389,7 +379,6 @@ std::string feedbackLatchCoreDocument()
     "circuit": {
       "version": "0.1.0",
       "name": "feedback_latch",
-      "description": "",
       "components": [
         {
           "id": 0,
@@ -480,7 +469,6 @@ TEST_F(SubcircuitTest, DeserializesSubcircuitSlugProperty)
   const auto json = R"({
     "version": "0.1.0",
     "name": "main",
-    "description": "",
     "components": [
       {
         "id": 0,
@@ -509,7 +497,6 @@ TEST_F(SubcircuitTest, DeserializesSubcircuitWithMissingSavedOutputs)
   const auto json = R"({
     "version": "0.1.0",
     "name": "main",
-    "description": "",
     "components": [
       {
         "id": 0,
@@ -589,7 +576,6 @@ TEST_F(SubcircuitTest, RuntimeElaborationLeavesSavedCircuitUnchanged)
   const auto json = R"({
     "version": "0.1.0",
     "name": "main",
-    "description": "",
     "components": [
       {
         "id": 0,
@@ -622,7 +608,6 @@ TEST_F(SubcircuitTest, RemapsTwoInstancesOfSameSubcircuitIndependently)
   const auto json = R"({
     "version": "0.1.0",
     "name": "main",
-    "description": "",
     "components": [
       {
         "id": 0,
@@ -970,8 +955,7 @@ TEST_F(SubcircuitTest, HydratesRomSnapshotsInNestedResolvedDefinitions)
   project.upsertDocument({documentPathForSlug(DocumentType::RawBinary, "program"),
                           std::string("\x10\x20\x30\x40", 4)});
   project.upsertDocument(subcircuitDocument("rom_leaf", romSubcircuitDocument()));
-  project.upsertDocument(
-      subcircuitDocument("rom_parent", nestedRomSubcircuitDocument()));
+  project.upsertDocument(subcircuitDocument("rom_parent", nestedRomSubcircuitDocument()));
 
   auto root = std::make_shared<SubcircuitComponent>(&resolver);
   root->setPropertyValue("slug", std::string("rom_parent"));
@@ -992,16 +976,15 @@ TEST_F(SubcircuitTest, SimulatesRomInsideSingleSubcircuit)
 {
   project.upsertDocument({documentPathForSlug(DocumentType::RawBinary, "program"),
                           std::string("\x10\x20\x30\x40", 4)});
-  project.upsertDocument(
-      subcircuitDocument("rom_sim_leaf", romSimulationLeafDocument()));
+  project.upsertDocument(subcircuitDocument("rom_sim_leaf", romSimulationLeafDocument()));
 
   auto component = std::make_shared<SubcircuitComponent>(&resolver);
   component->setPropertyValue("slug", std::string("rom_sim_leaf"));
 
-  Bus address(2);
+  Bus  address(2);
   auto cs = std::make_shared<Wire>();
   auto oe = std::make_shared<Wire>();
-  Bus data(8);
+  Bus  data(8);
   component->setInput(0, address);
   component->setInput(1, Bus{cs});
   component->setInput(2, Bus{oe});
@@ -1024,18 +1007,17 @@ TEST_F(SubcircuitTest, SimulatesRomInsideNestedSubcircuits)
 {
   project.upsertDocument({documentPathForSlug(DocumentType::RawBinary, "program"),
                           std::string("\x10\x20\x30\x40", 4)});
-  project.upsertDocument(
-      subcircuitDocument("rom_sim_leaf", romSimulationLeafDocument()));
+  project.upsertDocument(subcircuitDocument("rom_sim_leaf", romSimulationLeafDocument()));
   project.upsertDocument(
       subcircuitDocument("rom_sim_parent", romSimulationParentDocument()));
 
   auto component = std::make_shared<SubcircuitComponent>(&resolver);
   component->setPropertyValue("slug", std::string("rom_sim_parent"));
 
-  Bus address(2);
+  Bus  address(2);
   auto cs = std::make_shared<Wire>();
   auto oe = std::make_shared<Wire>();
-  Bus data(8);
+  Bus  data(8);
   component->setInput(0, address);
   component->setInput(1, Bus{cs});
   component->setInput(2, Bus{oe});
@@ -1058,16 +1040,15 @@ TEST_F(SubcircuitTest, ElaboratedRomRuntimeStaysStableAfterSourceRefresh)
 {
   project.upsertDocument({documentPathForSlug(DocumentType::RawBinary, "program"),
                           std::string("\x10\x20\x30\x40", 4)});
-  project.upsertDocument(
-      subcircuitDocument("rom_sim_leaf", romSimulationLeafDocument()));
+  project.upsertDocument(subcircuitDocument("rom_sim_leaf", romSimulationLeafDocument()));
 
   auto component = std::make_shared<SubcircuitComponent>(&resolver);
   component->setPropertyValue("slug", std::string("rom_sim_leaf"));
 
-  Bus address(2);
+  Bus  address(2);
   auto cs = std::make_shared<Wire>();
   auto oe = std::make_shared<Wire>();
-  Bus data(8);
+  Bus  data(8);
   component->setInput(0, address);
   component->setInput(1, Bus{cs});
   component->setInput(2, Bus{oe});

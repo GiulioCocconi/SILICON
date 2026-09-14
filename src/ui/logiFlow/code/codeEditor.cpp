@@ -20,14 +20,18 @@
 #include <QAbstractItemView>
 #include <QByteArray>
 #include <QCompleter>
+#include <QContextMenuEvent>
 #include <QEvent>
+#include <QFontInfo>
 #include <QKeyEvent>
+#include <QMenu>
 #include <QPaintEvent>
 #include <QPainter>
 #include <QResizeEvent>
 #include <QScrollBar>
 #include <QStringListModel>
 #include <QTextBlock>
+#include <QWheelEvent>
 #include <QWidget>
 
 #include <ui/common/codeFilePresentation.hpp>
@@ -342,6 +346,70 @@ void CodeEditor::keyPressEvent(QKeyEvent* event)
     showCompletion(explicitRequest);
   else
     completer->popup()->hide();
+}
+
+#ifndef QT_NO_CONTEXTMENU
+void CodeEditor::contextMenuEvent(QContextMenuEvent* event)
+{
+  #ifdef __EMSCRIPTEN__
+  auto* menu = new QMenu(this);
+  menu->setAttribute(Qt::WA_DeleteOnClose);
+  #else
+  QMenu stackMenu(this);
+  auto* menu = &stackMenu;
+  #endif
+
+  auto* cutAction = menu->addAction(tr("Cut"), this, &QPlainTextEdit::cut);
+  cutAction->setEnabled(!isReadOnly() && textCursor().hasSelection());
+  auto* copyAction = menu->addAction(tr("Copy"), this, &QPlainTextEdit::copy);
+  copyAction->setEnabled(textCursor().hasSelection());
+  auto* pasteAction = menu->addAction(tr("Paste"), this, &QPlainTextEdit::paste);
+  pasteAction->setEnabled(!isReadOnly() && canPaste());
+  auto* deleteAction = menu->addAction(tr("Delete"), this, [this] {
+    auto cursor = textCursor();
+    cursor.removeSelectedText();
+  });
+  deleteAction->setEnabled(!isReadOnly() && textCursor().hasSelection());
+  menu->addSeparator();
+  auto* selectAllAction =
+      menu->addAction(tr("Select All"), this, &QPlainTextEdit::selectAll);
+  selectAllAction->setEnabled(!document()->isEmpty());
+
+  #ifdef __EMSCRIPTEN__
+  menu->popup(event->globalPos());
+  #else
+  menu->exec(event->globalPos());
+  #endif
+  event->accept();
+}
+#endif
+
+void CodeEditor::wheelEvent(QWheelEvent* event)
+{
+  const int delta = event->angleDelta().y();
+  if (!(event->modifiers() & Qt::ControlModifier) || delta == 0) {
+    QPlainTextEdit::wheelEvent(event);
+    return;
+  }
+
+  constexpr qreal MinimumFontSize = 6.0;
+  constexpr qreal MaximumFontSize = 48.0;
+  const int       steps           = std::max(1, std::abs(delta) / 120);
+
+  if (zoomFontPointSize <= 0.0)
+    zoomFontPointSize = QFontInfo(font()).pointSizeF();
+  if (zoomFontPointSize <= 0.0)
+    zoomFontPointSize = 10.0;
+  zoomFontPointSize = std::clamp(zoomFontPointSize + (delta > 0 ? steps : -steps),
+                                 MinimumFontSize, MaximumFontSize);
+
+  QFont editorFont = font();
+  editorFont.setPointSizeF(zoomFontPointSize);
+  setFont(editorFont);
+  document()->setDefaultFont(editorFont);
+  updateLineNumberAreaWidth();
+  lineNumberArea->update();
+  event->accept();
 }
 
 int CodeEditor::lineNumberAreaWidth() const

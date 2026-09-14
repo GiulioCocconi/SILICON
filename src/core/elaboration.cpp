@@ -246,7 +246,6 @@ std::shared_ptr<Circuit> CircuitElaborator::elaborate(const Circuit& sourceCircu
 
   auto runtimeCircuit = std::make_shared<Circuit>(context.components, false);
   runtimeCircuit->setName(sourceCircuit.getName());
-  runtimeCircuit->setDescription(sourceCircuit.getDescription());
 
   return runtimeCircuit;
 }

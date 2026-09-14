@@ -825,20 +825,51 @@ EM_ASM(
                        setComponentPlacingModeAct, autoPlaceAct},
                       !nonGraphical);
 
-    if (toolBar) {
-      for (auto* action :
-           {setNormalModeAct, setPanModeAct, setWireCreationModeAct, setSimulationModeAct,
-            toggleFstTraceAct, openComponentCatalogAct}) {
-        if (auto* widget = toolBar->widgetForAction(action))
-          widget->setVisible(!nonGraphical);
+    updateDocumentActionVisibility();
+  }
+
+  void LogiFlowWindow::updateDocumentActionVisibility()
+  {
+    if (!toolBar)
+      return;
+
+    const auto type    = activeDocumentType();
+    const bool diagram = type
+                         && SILICON::project::categoryOf(*type)
+                                == SILICON::project::DocumentCategory::Diagram;
+
+    const bool catalogVisible = diagram && openComponentCatalogAct->isEnabled();
+    const bool shapeVisible =
+        editSubcircuitShapeAct->isVisible() && editSubcircuitShapeAct->isEnabled();
+    const bool conversionVisible =
+        codeConversionAct->isVisible() && codeConversionAct->isEnabled();
+
+    // QWidget visibility is not authoritative for toolbar actions: Qt may recreate or
+    // show the widget again after the shared QAction changes state. Remove unavailable
+    // actions from this toolbar and re-add the active group in its canonical order.
+    for (auto* action :
+         {diagramToolsSeparator, setNormalModeAct, setPanModeAct, setWireCreationModeAct,
+          setSimulationModeAct, toggleFstTraceAct, documentToolsSeparator,
+          openComponentCatalogAct, editSubcircuitShapeAct, codeConversionAct})
+      toolBar->removeAction(action);
+
+    if (diagram) {
+      toolBar->addAction(diagramToolsSeparator);
+      for (auto* action : {setNormalModeAct, setPanModeAct, setWireCreationModeAct,
+                           setSimulationModeAct, toggleFstTraceAct}) {
+        if (action->isEnabled())
+          toolBar->addAction(action);
       }
-      if (auto* widget = toolBar->widgetForAction(diagramToolsSeparator))
-        widget->setVisible(!nonGraphical);
-      if (auto* widget = toolBar->widgetForAction(documentToolsSeparator))
-        widget->setVisible(!nonGraphical || codeConversionAct->isEnabled());
-      if (auto* widget = toolBar->widgetForAction(codeConversionAct))
-        widget->setVisible(codeConversionAct->isVisible()
-                           && codeConversionAct->isEnabled());
+    }
+
+    if (catalogVisible || shapeVisible || conversionVisible) {
+      toolBar->addAction(documentToolsSeparator);
+      if (catalogVisible)
+        toolBar->addAction(openComponentCatalogAct);
+      if (shapeVisible)
+        toolBar->addAction(editSubcircuitShapeAct);
+      if (conversionVisible)
+        toolBar->addAction(codeConversionAct);
     }
   }
 

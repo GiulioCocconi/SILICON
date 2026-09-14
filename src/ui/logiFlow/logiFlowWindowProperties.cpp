@@ -25,7 +25,6 @@
 #include <optional>
 #include <ranges>
 #include <string>
-#include <tuple>
 #include <type_traits>
 #include <utility>
 #include <variant>
@@ -42,8 +41,6 @@
 #include <QTimer>
 #include <QWidget>
 
-#include <nlohmann/json.hpp>
-
 #include <ui/common/diagramScene/diagramScene.hpp>
 #include <ui/common/inputDialogUtils.hpp>
 #include <ui/common/undoCommands.hpp>
@@ -54,23 +51,6 @@
 namespace SILICON {
 namespace ui {
   using namespace SILICON::core;
-
-  namespace {
-
-    std::pair<std::string, std::string>
-    graphicalDocumentMetadata(const SILICON::project::Document& document)
-    {
-      try {
-        const auto scene = nlohmann::json::parse(document.getContents());
-        if (scene.contains("circuit") && scene["circuit"].is_object())
-          return {scene["circuit"].value("name", ""),
-                  scene["circuit"].value("description", "")};
-      } catch (const nlohmann::json::exception&) {
-      }
-      return {};
-    }
-
-  }  // namespace
 
   void LogiFlowWindow::updatePropertyDock()
   {
@@ -84,9 +64,7 @@ namespace ui {
                               ? ProjectTree::itemDocumentType(selectedProjectItem)
                               : std::nullopt;
 
-    const bool hasProperties = !itemType
-                               || SILICON::project::categoryOf(*itemType)
-                                      == SILICON::project::DocumentCategory::Diagram;
+    const bool hasProperties = itemKind != ProjectTreeItemKind::Document;
     propertyDock->setVisible(hasProperties);
     if (!hasProperties)
       return;
@@ -178,67 +156,6 @@ namespace ui {
                              if (!currentProjectInfo)
                                return;
                              currentProjectInfo->description = value;
-                             schedulePropertyDockRefresh();
-                           });
-        };
-      } else {
-        const auto documentPath = ProjectTree::documentPath(selectedProjectItem);
-        const auto noun         = itemType ? documentTypeName(*itemType) : tr("Document");
-
-        std::string name;
-        std::string description;
-        if (activeDocumentPath == documentPath) {
-          if (const auto circuit = activeCircuit()) {
-            name        = circuit->getName();
-            description = circuit->getDescription();
-          }
-        } else if (const auto* document = projectContext.documents().find(documentPath)) {
-          std::tie(name, description) = graphicalDocumentMetadata(*document);
-        }
-
-        nameEdit->setText(QString::fromStdString(name));
-        descriptionEdit->setPlainText(QString::fromStdString(description));
-        descriptionEdit->document()->setModified(false);
-
-        connect(nameEdit, &QLineEdit::editingFinished, this,
-                [this, nameEdit, documentPath, noun, oldValue = name, pushMetadataEdit,
-                 schedulePropertyDockRefresh] {
-                  if (!nameEdit->isModified())
-                    return;
-
-                  const auto newValue = nameEdit->text().toStdString();
-                  nameEdit->setModified(false);
-                  pushMetadataEdit(tr("Modify %1 Name").arg(noun), oldValue, newValue,
-                                   [this, documentPath, schedulePropertyDockRefresh](
-                                       const std::string& value) {
-                                     if (!activateProjectDocument(documentPath))
-                                       return;
-                                     if (const auto circuit = activeCircuit()) {
-                                       circuit->setName(value);
-                                       saveActiveDocumentPayload();
-                                     }
-                                     rebuildProjectTree();
-                                     schedulePropertyDockRefresh();
-                                   });
-                });
-
-        descriptionEdit->commit = [this, documentPath, noun, descriptionEdit,
-                                   oldValue = description, pushMetadataEdit,
-                                   schedulePropertyDockRefresh] {
-          if (!descriptionEdit->document()->isModified())
-            return;
-
-          const auto newValue = descriptionEdit->toPlainText().toStdString();
-          descriptionEdit->document()->setModified(false);
-          pushMetadataEdit(tr("Modify %1 Description").arg(noun), oldValue, newValue,
-                           [this, documentPath,
-                            schedulePropertyDockRefresh](const std::string& value) {
-                             if (!activateProjectDocument(documentPath))
-                               return;
-                             if (const auto circuit = activeCircuit()) {
-                               circuit->setDescription(value);
-                               saveActiveDocumentPayload();
-                             }
                              schedulePropertyDockRefresh();
                            });
         };
