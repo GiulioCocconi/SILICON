@@ -133,9 +133,6 @@ private:
   /** @brief Name of the circuit */
   std::string name = "main";
 
-  /** @brief Human-readable description of the circuit */
-  std::string description;
-
   /** @brief Maps components to their vertex descriptors in the graph */
   std::unordered_map<const Component*, VertexDescriptor> componentToVertex;
 
@@ -228,19 +225,6 @@ public:
    * @brief Sets the human-readable circuit name.
    */
   void setName(std::string newName) { name = std::move(newName); }
-
-  /**
-   * @brief Gets the human-readable circuit description.
-   */
-  [[nodiscard]] const std::string& getDescription() const { return description; }
-
-  /**
-   * @brief Sets the human-readable circuit description.
-   */
-  void setDescription(std::string newDescription)
-  {
-    description = std::move(newDescription);
-  }
 
   /**
    * @brief Enables interactive mode for live circuit editing.

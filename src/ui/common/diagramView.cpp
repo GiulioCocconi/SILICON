@@ -34,11 +34,17 @@ DiagramView::DiagramView(QWidget* parent) : QGraphicsView(parent)
 
 void DiagramView::setScene(DiagramScene* scene)
 {
-  connect(scene, &DiagramScene::modeChanged, this, &DiagramView::modeChanged);
-
-  modeChanged(scene->getInteractionMode());
+  if (auto* previousScene = qobject_cast<DiagramScene*>(QGraphicsView::scene()))
+    disconnect(previousScene, &DiagramScene::modeChanged, this,
+               &DiagramView::modeChanged);
 
   QGraphicsView::setScene(scene);
+
+  if (!scene)
+    return;
+
+  connect(scene, &DiagramScene::modeChanged, this, &DiagramView::modeChanged);
+  modeChanged(scene->getInteractionMode());
 }
 
 void DiagramView::wheelEvent(QWheelEvent* event)
@@ -47,8 +53,8 @@ void DiagramView::wheelEvent(QWheelEvent* event)
 
   // Keep the route stable while a wire is actively being drawn. Wire creation mode
   // itself can still zoom before the first endpoint and between completed wires.
-  const auto dg = dynamic_cast<DiagramScene*>(scene());
-  if (dg->getInteractionMode() == InteractionMode::WIRE_CREATION_MODE
+  const auto* dg = qobject_cast<DiagramScene*>(scene());
+  if (dg && dg->getInteractionMode() == InteractionMode::WIRE_CREATION_MODE
       && dg->isWireCreationInProgress()) {
     event->ignore();
     return;

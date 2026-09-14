@@ -25,7 +25,7 @@ QLabel[heading="true"], QLabel#titleLabel {
     letter-spacing: 1px;
 }
 
-QTextEdit.mono, QPlainTextEdit, QLabel.mono {
+QTextEdit.mono, QPlainTextEdit, QLineEdit.mono, QLabel.mono, QAbstractScrollArea.mono {
     font-family: "NovaMono";
 }
 

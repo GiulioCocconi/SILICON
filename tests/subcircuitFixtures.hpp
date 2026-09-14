@@ -26,7 +26,6 @@ inline std::string andSubcircuitDocument()
     "circuit": {
       "version": "0.1.0",
       "name": "and_subcircuit",
-      "description": "",
       "components": [
         {
           "id": 0,

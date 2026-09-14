@@ -18,10 +18,12 @@
 #include <core/projectDocument.hpp>
 
 class QCompleter;
+class QContextMenuEvent;
 class QEvent;
 class QKeyEvent;
 class QPaintEvent;
 class QResizeEvent;
+class QWheelEvent;
 class QStringListModel;
 class QWidget;
 
@@ -44,9 +46,13 @@ public:
   [[nodiscard]] bool        isCompletionPopupVisible() const;
 
 protected:
+#ifndef QT_NO_CONTEXTMENU
+  void contextMenuEvent(QContextMenuEvent* event) override;
+#endif
   void resizeEvent(QResizeEvent* event) override;
   void changeEvent(QEvent* event) override;
   void keyPressEvent(QKeyEvent* event) override;
+  void wheelEvent(QWheelEvent* event) override;
 
 private:
   friend class CodeLineNumberArea;
@@ -69,6 +75,7 @@ private:
   QStringListModel*                             completionModel;
   std::vector<QRegularExpression>               indentationTriggers;
   std::optional<SILICON::project::DocumentType> fileTypeValue;
+  qreal                                         zoomFontPointSize = 0.0;
 };
 
 }  // namespace SILICON::ui
