@@ -154,7 +154,6 @@ namespace ui {
     scene["circuit"] =
         nlohmann::ordered_json{{"version", SILICON_VERSION},
                                {"name", circuitName},
-                               {"description", ""},
                                {"components", nlohmann::ordered_json::array()}};
     scene["visual"]["components"] = nlohmann::ordered_json::array();
     scene["visual"]["wires"]      = nlohmann::ordered_json::array();
