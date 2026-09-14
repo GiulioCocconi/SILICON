@@ -13,6 +13,7 @@
 #include <vector>
 
 #include <gtest/gtest.h>
+#include <nlohmann/json.hpp>
 
 using namespace SILICON::core;
 using namespace SILICON::project;
@@ -196,4 +197,84 @@ TEST(ProjectDocumentStoreTest, NotificationsUseSnapshotAndCanonicalPaths)
                 {DocumentChangeKind::Removed, std::string("circuits/main.json")},
                 {DocumentChangeKind::Reset, std::nullopt}}));
   store.removeListener(addedId);
+}
+
+TEST(ProjectDocumentStoreTest, RenamesCircuitAndRewritesSubcircuitReferences)
+{
+  ProjectContext project;
+  project.setDocuments(
+      {{"circuits/main.json",
+        R"({"circuit":{"name":"main","components":[{"type":"Subcircuit","properties":{"slug":"child"}},{"type":"ROM","properties":{"binaryContents":"child"}}]},"visual":{"components":[],"wires":[]}})"},
+       {"circuits/child.json",
+        R"({"circuit":{"name":"Child title","components":[]},"visual":{"components":[],"wires":[]}})"},
+       {"bin/child", "binary"}});
+
+  project.renameDocument("circuits/child.json", "circuits/renamed child.json");
+
+  const auto& documents = project.documents().getDocuments();
+  ASSERT_EQ(documents.size(), 3);
+  EXPECT_EQ(documents[0].getPath(), "circuits/main.json");
+  EXPECT_EQ(documents[1].getPath(), "circuits/renamed child.json");
+  EXPECT_EQ(documents[2].getPath(), "bin/child");
+
+  const auto main = nlohmann::json::parse(documents[0].getContents());
+  EXPECT_EQ(main["circuit"]["components"][0]["properties"]["slug"], "renamed child");
+  EXPECT_EQ(main["circuit"]["components"][1]["properties"]["binaryContents"], "child");
+
+  const auto renamed = nlohmann::json::parse(documents[1].getContents());
+  EXPECT_EQ(renamed["circuit"]["name"], "renamed child");
+  EXPECT_EQ(project.circuitDependencies().dependentsOf("circuits/renamed child.json"),
+            (CircuitDependencyGraph::DocumentPathList{"circuits/main.json"}));
+}
+
+TEST(ProjectDocumentStoreTest, RenamesBinaryAndRewritesRomReferences)
+{
+  ProjectContext project;
+  project.setDocuments(
+      {{"circuits/main.json",
+        R"({"circuit":{"name":"main","components":[{"type":"ROM","properties":{"binaryContents":"program"}},{"type":"Subcircuit","properties":{"slug":"program"}}]},"visual":{"components":[],"wires":[]}})"},
+       {"circuits/program.json",
+        R"({"circuit":{"name":"program","components":[]},"visual":{"components":[],"wires":[]}})"},
+       {"bin/program", "binary"}});
+
+  project.renameDocument("bin/program", "bin/firmware");
+
+  const auto& documents = project.documents().getDocuments();
+  ASSERT_EQ(documents.size(), 3);
+  EXPECT_EQ(documents[2].getPath(), "bin/firmware");
+  EXPECT_EQ(documents[2].getContents(), "binary");
+  const auto main = nlohmann::json::parse(documents[0].getContents());
+  EXPECT_EQ(main["circuit"]["components"][0]["properties"]["binaryContents"], "firmware");
+  EXPECT_EQ(main["circuit"]["components"][1]["properties"]["slug"], "program");
+}
+
+TEST(ProjectDocumentStoreTest, RenamesCodeWithoutChangingContents)
+{
+  ProjectContext project;
+  project.setDocuments({{"code/old.v", "module old; endmodule"}});
+
+  project.renameDocument("code/old.v", "code/new.v");
+
+  ASSERT_EQ(project.documents().getDocuments().size(), 1);
+  EXPECT_EQ(project.documents().getDocuments()[0].getPath(), "code/new.v");
+  EXPECT_EQ(project.documents().getDocuments()[0].getContents(), "module old; endmodule");
+}
+
+TEST(ProjectDocumentStoreTest, RejectsInvalidDocumentRenames)
+{
+  ProjectContext project;
+  project.setDocuments({{"circuits/main.json", R"({"name":"main","components":[]})"},
+                        {"circuits/other.json", R"({"name":"other","components":[]})"}});
+
+  EXPECT_THROW(project.renameDocument("circuits/missing.json", "circuits/new.json"),
+               std::invalid_argument);
+  EXPECT_THROW(project.renameDocument("circuits/main.json", "circuits/other.json"),
+               std::invalid_argument);
+  EXPECT_THROW(project.renameDocument("circuits/main.json", "code/main.v"),
+               std::invalid_argument);
+  EXPECT_THROW(project.renameDocument("circuits/missing.json", "circuits/missing.json"),
+               std::invalid_argument);
+
+  EXPECT_NO_THROW(project.renameDocument("circuits/main.json", "circuits/main.json"));
+  EXPECT_EQ(project.documents().getDocuments().size(), 2);
 }
