@@ -32,7 +32,7 @@ namespace {
   using SILICON::project::DocumentType;
 
   [[nodiscard]] Document
-  materializeDocument(SILICON::conversion::SemanticDocument document)
+  materializeDocument(SILICON::conversion::SemanticDocument&& document)
   {
     if (auto* source = std::get_if<SILICON::conversion::VerilogSource>(&document.payload))
       return {std::move(document.path), std::move(source->contents)};
@@ -83,7 +83,7 @@ const DocumentConverter* documentConverterFor(const DocumentType source,
       std::ranges::find_if(Converters, [source, target](const auto& converter) {
         return converter.source == source && converter.target == target;
       });
-  return found == Converters.end() ? nullptr : found;
+  return found == Converters.end() ? nullptr : std::to_address(found);
 }
 
 std::vector<const DocumentConverter*> documentConvertersFor(const DocumentType source)
