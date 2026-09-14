@@ -80,6 +80,17 @@ namespace ui {
                                Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
       QApplication::sendEvent(toolBar, &releaseEvent);
     }
+
+    // QObject children are normally deleted by QMainWindow's base destructor, which
+    // runs after this class's members have been destroyed. The scene's graphical
+    // components unsubscribe from projectContext during teardown, so destroy the scene
+    // explicitly while projectContext and circuitResolver are still alive.
+    if (diagramScene) {
+      if (diagramView)
+        diagramView->setScene(nullptr);
+      delete diagramScene;
+      diagramScene = nullptr;
+    }
   }
 
 #ifdef __EMSCRIPTEN__

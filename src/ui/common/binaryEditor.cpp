@@ -68,6 +68,7 @@ public:
     : QAbstractScrollArea(editor), editor(editor)
   {
     setFocusPolicy(Qt::StrongFocus);
+    setProperty("class", "mono");
     setFont(monospacedFont());
     setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     verticalScrollBar()->setSingleStep(1);
@@ -351,6 +352,8 @@ BinaryEditor::BinaryEditor(QWidget* parent)
     offsetEdit(new QLineEdit(this)),
     undoHistory(new QUndoStack(this))
 {
+  setProperty("class", "mono");
+  setFont(monospacedFont());
   auto* layout = new QVBoxLayout(this);
   layout->setContentsMargins(0, 0, 0, 0);
   layout->addWidget(hexView, 1);
@@ -378,7 +381,10 @@ BinaryEditor::BinaryEditor(QWidget* parent)
     auto* fieldLayout          = new QVBoxLayout(container);
     fieldLayout->setContentsMargins(0, 0, 0, 0);
     fieldLayout->setSpacing(2);
-    fieldLayout->addWidget(new QLabel(inspectorLabel(format, width), container));
+    auto* label = new QLabel(inspectorLabel(format, width), container);
+    label->setProperty("class", "mono");
+    label->setFont(monospacedFont());
+    fieldLayout->addWidget(label);
     auto* edit = new QLineEdit(container);
     edit->setProperty("class", "mono");
     edit->setFont(monospacedFont());
@@ -397,7 +403,10 @@ BinaryEditor::BinaryEditor(QWidget* parent)
   auto* offsetLayout    = new QVBoxLayout(offsetContainer);
   offsetLayout->setContentsMargins(0, 0, 0, 0);
   offsetLayout->setSpacing(2);
-  offsetLayout->addWidget(new QLabel(tr("Offset"), offsetContainer));
+  auto* offsetLabel = new QLabel(tr("Offset"), offsetContainer);
+  offsetLabel->setProperty("class", "mono");
+  offsetLabel->setFont(monospacedFont());
+  offsetLayout->addWidget(offsetLabel);
   offsetEdit->setProperty("class", "mono");
   offsetEdit->setFont(monospacedFont());
   offsetEdit->setPlaceholderText(tr("Decimal or 0x-prefixed hexadecimal"));

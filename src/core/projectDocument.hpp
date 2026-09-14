@@ -22,6 +22,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -107,6 +108,19 @@ private:
   std::string contents;
 };
 
+/**
+ * Creates a project document from an external file name and payload.
+ *
+ * Definitive extensions are preferred; otherwise the payload is inspected for a
+ * Silicon circuit or non-text binary data. Verilog is extension-only.
+ *
+ * @throws std::invalid_argument if the name is invalid or the file type is unsupported.
+ */
+[[nodiscard]] Document importDocument(std::string_view fileName, std::string contents);
+
+/** Returns the external leaf filename used when exporting a project document. */
+[[nodiscard]] std::string documentFileName(const Document& document);
+
 class DocumentStore {
 public:
   using Listener = std::function<void(const DocumentChange&)>;
@@ -130,5 +144,9 @@ private:
   std::vector<Document>                                          documents;
   mutable SILICON::core::CallbackRegistry<const DocumentChange&> listeners;
 };
+
+/** Returns an immutable copy of a project raw-binary document, or null if absent. */
+[[nodiscard]] std::shared_ptr<const std::string>
+binaryContentsSnapshot(const DocumentStore& documents, std::string_view slug);
 
 }  // namespace SILICON::project

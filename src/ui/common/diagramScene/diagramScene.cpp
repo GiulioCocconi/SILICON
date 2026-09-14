@@ -44,6 +44,7 @@
 #include <ui/common/undoCommands.hpp>
 #include <ui/common/wireRouting.hpp>
 #include <ui/logiFlow/components/graphicalIO.hpp>
+#include <ui/logiFlow/components/graphicalMemory.hpp>
 #include <ui/logiFlow/components/subcircuit/graphicalSubcircuit.hpp>
 #include <ui/logiFlow/logiFlowWindow.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
@@ -159,11 +160,10 @@ namespace ui {
       // coincident route portions near a port can make a later graphical wire overwrite
       // that port's original assignment. Keep the logical topology authoritative and only
       // refresh the cached circuit after applying the new geometry. Rebuilding from the
-      // components resets circuit-level metadata, so carry it across explicitly.
+      // components resets the circuit name, so carry it across explicitly.
       auto refreshedCircuit =
           std::make_shared<Circuit>(coreComponentsFor(components), false);
       refreshedCircuit->setName(activeCircuit.getName());
-      refreshedCircuit->setDescription(activeCircuit.getDescription());
       scene.setCircuit(std::move(refreshedCircuit));
       scene.update();
     }
@@ -727,6 +727,8 @@ namespace ui {
       subcircuit->setDocumentStore(documents);
       subcircuit->setCircuitResolver(resolver);
     }
+    if (auto* rom = dynamic_cast<GraphicalROM*>(componentToBeDrawn))
+      rom->setDocumentStore(documents);
     lastPlacedComponentType       = typeName;
     lastPlacedComponentProperties = initialProperties;
     suppressNextComponentSearch   = !showSearchBox;

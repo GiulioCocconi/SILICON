@@ -257,11 +257,13 @@ namespace ui {
     void updateSubcircuitShapeAction();
     /** @brief Updates the contextual conversion action for the active document. */
     void updateCodeAction();
+    /** @brief Hides toolbar controls that are unavailable for the active document. */
+    void updateDocumentActionVisibility();
     void convertActiveDocumentTo(SILICON::project::DocumentType target);
-    void commitConvertedDocuments(std::vector<SILICON::project::Document> documents,
-                                  const std::string&                      sourcePath,
-                                  const std::string&                      activatePath,
-                                  const QString&                          commandText);
+    void commitDocumentChanges(std::vector<SILICON::project::Document> documents,
+                               const std::string&                      sourcePath,
+                               const std::string&                      activatePath,
+                               const QString& commandText, const QString& errorTitle);
     [[nodiscard]] std::optional<SILICON::project::DocumentType>
     activeDocumentType() const noexcept;
 
@@ -322,6 +324,9 @@ namespace ui {
     void createDocument(SILICON::project::DocumentType type);
     void pushCreateDocumentCommand(SILICON::project::Document document,
                                    const QString&             commandText);
+    void importProjectDocument();
+    void exportSelectedDocument();
+    void renameSelectedDocument();
     void deleteSelectedDocument();
     /** @brief Returns the logical circuit currently owned by the diagram scene. */
     [[nodiscard]] std::shared_ptr<SILICON::core::Circuit> activeCircuit();
