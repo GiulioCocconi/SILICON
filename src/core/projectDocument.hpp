@@ -108,6 +108,19 @@ private:
   std::string contents;
 };
 
+/**
+ * Creates a project document from an external file name and payload.
+ *
+ * Definitive extensions are preferred; otherwise the payload is inspected for a
+ * Silicon circuit or non-text binary data. Verilog is extension-only.
+ *
+ * @throws std::invalid_argument if the name is invalid or the file type is unsupported.
+ */
+[[nodiscard]] Document importDocument(std::string_view fileName, std::string contents);
+
+/** Returns the external leaf filename used when exporting a project document. */
+[[nodiscard]] std::string documentFileName(const Document& document);
+
 class DocumentStore {
 public:
   using Listener = std::function<void(const DocumentChange&)>;

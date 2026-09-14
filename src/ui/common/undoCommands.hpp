@@ -30,140 +30,155 @@
 #include <core/component.hpp>
 #include <ui/common/graphicalWire.hpp>
 
-
 namespace SILICON {
 namespace ui {
-using namespace SILICON::core;
+  using namespace SILICON::core;
 
-class GraphicalItem;
-class GraphicalComponent;
-class GraphicalLogicComponent;
-class DiagramScene;
+  class GraphicalItem;
+  class GraphicalComponent;
+  class GraphicalLogicComponent;
+  class DiagramScene;
 
-class MetadataEditCommand : public QUndoCommand {
-public:
-  using ApplyFn = std::function<void(const std::string&)>;
+  /** Undo command backed by caller-provided state transition callbacks. */
+  class CallbackUndoCommand : public QUndoCommand {
+  public:
+    using Callback = std::function<void()>;
 
-  MetadataEditCommand(QString text, std::string oldValue, std::string newValue,
-                      ApplyFn apply, QUndoCommand* parent = nullptr);
-  void undo() override;
-  void redo() override;
-
-private:
-  std::string oldValue;
-  std::string newValue;
-  ApplyFn     apply;
-};
-
-class MoveItemCommand : public QUndoCommand {
-public:
-  explicit MoveItemCommand(QUndoCommand* parent = nullptr) : QUndoCommand(parent)
-  {
-    setText("Move Item(s)");
-  }
-
-  void addItemMove(GraphicalItem* item, const QPointF& oldPos, const QPointF& newPos);
-
-  void undo() override;
-  void redo() override;
-
-private:
-  struct ItemMove {
-    DiagramScene* scene;
-    uint64_t      uiId;
-    QPointF       oldPos;
-    QPointF       newPos;
-  };
-  std::vector<ItemMove> moves;
-  std::string           documentPath;
-  bool                  skipInitialRedo = true;
-};
-
-class MoveWirePointCommand : public QUndoCommand {
-public:
-  explicit MoveWirePointCommand(GraphicalWireSegment* segment, size_t pointIndex,
-                                const QPointF& oldPos, const QPointF& newPos,
-                                QUndoCommand* parent = nullptr);
-
-  void undo() override;
-  void redo() override;
-
-private:
-  DiagramScene* scene;
-  std::string   documentPath;
-  uint64_t      uiId;
-  size_t        pointIndex;
-  QPointF       oldPos;
-  QPointF       newPos;
-  bool          skipInitialRedo = true;
-};
-
-class RotateItemCommand : public QUndoCommand {
-public:
-  explicit RotateItemCommand(GraphicalComponent* component, qreal oldRotation,
-                             qreal newRotation, QUndoCommand* parent = nullptr);
-
-  void undo() override;
-  void redo() override;
-
-private:
-  DiagramScene* scene;
-  std::string   documentPath;
-  uint64_t      uiId;
-  qreal         oldRotation;
-  qreal         newRotation;
-  bool          skipInitialRedo = true;
-};
-
-class ModifyPropertyCommand : public QUndoCommand {
-public:
-  explicit ModifyPropertyCommand(std::string key, QUndoCommand* parent = nullptr);
-
-  void               addPropertyChange(GraphicalLogicComponent* component,
-                                       const PropertyValue& oldValue, const PropertyValue& newValue);
-  [[nodiscard]] bool isEmpty() const { return changes.empty(); }
-
-  void undo() override;
-  void redo() override;
-
-private:
-  struct PropertyChange {
-    DiagramScene* scene;
-    uint64_t      uiId;
-    PropertyValue oldValue;
-    PropertyValue newValue;
-  };
-
-  void apply(bool useNewValue);
-
-  std::string                 key;
-  std::string                 documentPath;
-  std::vector<PropertyChange> changes;
-};
-
-class SceneSelectionCommand : public QUndoCommand {
-public:
-  enum class Operation { Add, Remove };
-
-  SceneSelectionCommand(DiagramScene* scene, const nlohmann::json& payload,
-                        Operation operation, bool skipInitialRedo = false,
+    CallbackUndoCommand(QString text, Callback undoCallback, Callback redoCallback,
                         QUndoCommand* parent = nullptr);
 
-  void undo() override;
-  void redo() override;
+    void undo() override;
+    void redo() override;
 
-private:
-  [[nodiscard]] nlohmann::json payload() const;
-  static QByteArray            encodePayload(const nlohmann::json& payload);
-  static nlohmann::json        decodePayload(const QByteArray& payload);
-  static QPointF               payloadOrigin(const nlohmann::json& payload);
+  private:
+    Callback undoCallback;
+    Callback redoCallback;
+  };
 
-  DiagramScene* scene;
-  std::string   documentPath;
-  QByteArray    bsonPayload;
-  Operation     operation;
-  bool          skipInitialRedo;
-};
+  class MetadataEditCommand : public QUndoCommand {
+  public:
+    using ApplyFn = std::function<void(const std::string&)>;
+
+    MetadataEditCommand(QString text, std::string oldValue, std::string newValue,
+                        ApplyFn apply, QUndoCommand* parent = nullptr);
+    void undo() override;
+    void redo() override;
+
+  private:
+    std::string oldValue;
+    std::string newValue;
+    ApplyFn     apply;
+  };
+
+  class MoveItemCommand : public QUndoCommand {
+  public:
+    explicit MoveItemCommand(QUndoCommand* parent = nullptr) : QUndoCommand(parent)
+    {
+      setText("Move Item(s)");
+    }
+
+    void addItemMove(GraphicalItem* item, const QPointF& oldPos, const QPointF& newPos);
+
+    void undo() override;
+    void redo() override;
+
+  private:
+    struct ItemMove {
+      DiagramScene* scene;
+      uint64_t      uiId;
+      QPointF       oldPos;
+      QPointF       newPos;
+    };
+    std::vector<ItemMove> moves;
+    std::string           documentPath;
+    bool                  skipInitialRedo = true;
+  };
+
+  class MoveWirePointCommand : public QUndoCommand {
+  public:
+    explicit MoveWirePointCommand(GraphicalWireSegment* segment, size_t pointIndex,
+                                  const QPointF& oldPos, const QPointF& newPos,
+                                  QUndoCommand* parent = nullptr);
+
+    void undo() override;
+    void redo() override;
+
+  private:
+    DiagramScene* scene;
+    std::string   documentPath;
+    uint64_t      uiId;
+    size_t        pointIndex;
+    QPointF       oldPos;
+    QPointF       newPos;
+    bool          skipInitialRedo = true;
+  };
+
+  class RotateItemCommand : public QUndoCommand {
+  public:
+    explicit RotateItemCommand(GraphicalComponent* component, qreal oldRotation,
+                               qreal newRotation, QUndoCommand* parent = nullptr);
+
+    void undo() override;
+    void redo() override;
+
+  private:
+    DiagramScene* scene;
+    std::string   documentPath;
+    uint64_t      uiId;
+    qreal         oldRotation;
+    qreal         newRotation;
+    bool          skipInitialRedo = true;
+  };
+
+  class ModifyPropertyCommand : public QUndoCommand {
+  public:
+    explicit ModifyPropertyCommand(std::string key, QUndoCommand* parent = nullptr);
+
+    void               addPropertyChange(GraphicalLogicComponent* component,
+                                         const PropertyValue& oldValue, const PropertyValue& newValue);
+    [[nodiscard]] bool isEmpty() const { return changes.empty(); }
+
+    void undo() override;
+    void redo() override;
+
+  private:
+    struct PropertyChange {
+      DiagramScene* scene;
+      uint64_t      uiId;
+      PropertyValue oldValue;
+      PropertyValue newValue;
+    };
+
+    void apply(bool useNewValue);
+
+    std::string                 key;
+    std::string                 documentPath;
+    std::vector<PropertyChange> changes;
+  };
+
+  class SceneSelectionCommand : public QUndoCommand {
+  public:
+    enum class Operation { Add, Remove };
+
+    SceneSelectionCommand(DiagramScene* scene, const nlohmann::json& payload,
+                          Operation operation, bool skipInitialRedo = false,
+                          QUndoCommand* parent = nullptr);
+
+    void undo() override;
+    void redo() override;
+
+  private:
+    [[nodiscard]] nlohmann::json payload() const;
+    static QByteArray            encodePayload(const nlohmann::json& payload);
+    static nlohmann::json        decodePayload(const QByteArray& payload);
+    static QPointF               payloadOrigin(const nlohmann::json& payload);
+
+    DiagramScene* scene;
+    std::string   documentPath;
+    QByteArray    bsonPayload;
+    Operation     operation;
+    bool          skipInitialRedo;
+  };
 
 }  // namespace ui
 }  // namespace SILICON
