@@ -15,8 +15,6 @@
 #include <QSignalBlocker>
 #include <QTreeWidgetItemIterator>
 
-#include <nlohmann/json.hpp>
-
 #include <ui/common/icons.hpp>
 
 namespace SILICON::ui {
@@ -28,17 +26,8 @@ namespace {
 
   [[nodiscard]] QString circuitDisplayName(const project::Document& document)
   {
-    try {
-      const auto scene = nlohmann::json::parse(document.getContents());
-      if (scene.contains("circuit") && scene["circuit"].is_object()) {
-        const auto name = scene["circuit"].value("name", "");
-        if (!name.empty())
-          return QString::fromStdString(name);
-      }
-    } catch (const nlohmann::json::exception&) {
-    }
-
-    return QFileInfo(QString::fromStdString(document.getPath())).baseName();
+    return QString::fromStdString(
+        project::documentSlugForPath(document.getPath()).value_or(document.getPath()));
   }
 
   [[nodiscard]] QString sectionTitle(const project::DocumentType type)

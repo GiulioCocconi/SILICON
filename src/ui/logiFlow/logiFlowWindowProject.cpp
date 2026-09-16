@@ -153,15 +153,11 @@ namespace ui {
 
   std::string
   LogiFlowWindow::emptyGraphicalDocumentJson(const SILICON::project::DocumentType type,
-                                             const std::string& name) const
+                                             const std::string& /*name*/) const
   {
-    const auto circuitName = name.empty() ? documentTypeName(type).toStdString() : name;
-
     nlohmann::ordered_json scene;
-    scene["circuit"] =
-        nlohmann::ordered_json{{"version", SILICON_VERSION},
-                               {"name", circuitName},
-                               {"components", nlohmann::ordered_json::array()}};
+    scene["circuit"] = nlohmann::ordered_json{
+        {"version", SILICON_VERSION}, {"components", nlohmann::ordered_json::array()}};
     scene["visual"]["components"] = nlohmann::ordered_json::array();
     scene["visual"]["wires"]      = nlohmann::ordered_json::array();
 

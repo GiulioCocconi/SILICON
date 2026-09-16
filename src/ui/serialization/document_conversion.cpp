@@ -42,7 +42,6 @@ namespace {
     const auto slug = SILICON::project::documentSlugForPath(document.path);
     if (!slug)
       throw std::invalid_argument("Converted circuit has an invalid document path");
-    circuit->setName(*slug);
     DiagramScene scene;
     scene.setSubcircuitDocumentMode(true);
     scene.loadCircuit(std::move(circuit), GUIComponentFactory::instance(), false);

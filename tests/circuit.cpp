@@ -665,14 +665,12 @@ TEST(CircuitTest, SplitDagAndNonDagEmpty)
 TEST(CircuitTest, SerializeEmptyCircuit)
 {
   Circuit c;
-  c.setName("main");
-  auto serialized = c.serialize();
+  auto    serialized = c.serialize();
   EXPECT_FALSE(serialized.empty());
 
   auto json = nlohmann::json::parse(serialized);
   EXPECT_EQ(json["components"].size(), 0);
   EXPECT_EQ(json["version"], SILICON_VERSION);
-  EXPECT_EQ(json["name"], "main");
   EXPECT_FALSE(json.contains("description"));
 }
 
@@ -864,7 +862,6 @@ TEST(CircuitTest, SerializeComplexCircuit)
 
   EXPECT_EQ(json["components"].size(), 5);
   EXPECT_TRUE(json.contains("version"));
-  EXPECT_TRUE(json.contains("name"));
 }
 
 TEST(CircuitTest, DeserializeEmptyCircuit)
@@ -872,13 +869,12 @@ TEST(CircuitTest, DeserializeEmptyCircuit)
   ComponentRegistry registry;
   registerAllComponents(registry);
 
-  std::string json = R"({"version": ")" + std::string(SILICON_VERSION)
-                     + R"(", "components": [], "name": "test"})";
+  std::string json =
+      R"({"version": ")" + std::string(SILICON_VERSION) + R"(", "components": []})";
 
   auto c = Circuit::deserialize(json, registry);
 
   EXPECT_EQ(boost::num_vertices(c.getGraph()), 0);
-  EXPECT_EQ(c.getName(), "test");
 }
 
 TEST(CircuitTest, DeserializeSingleGate)

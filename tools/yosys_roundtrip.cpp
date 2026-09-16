@@ -122,7 +122,7 @@ int main(const int argc, char** argv)
 
     const auto circuit =
         SILICON::yosys::deserialize(readFile(sourceJsonPath), moduleName);
-    writeFile(siliconJsonPath, SILICON::yosys::serialize(circuit));
+    writeFile(siliconJsonPath, SILICON::yosys::serialize(circuit, moduleName));
 
     runYosys(exportScriptPath,
              std::format("read_json {}\n"

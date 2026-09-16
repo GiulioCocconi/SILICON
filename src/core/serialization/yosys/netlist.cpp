@@ -436,11 +436,10 @@ void SerializationContext::addSubcircuitInstance(
           std::move(connections));
 }
 
-std::string serialize(const Circuit& circuit)
+std::string serialize(const Circuit& circuit, const std::string_view moduleName)
 {
-  DesignBuilder     builder;
-  const std::string moduleName = circuit.getName().empty() ? "main" : circuit.getName();
-  builder.serializeModule(circuit, moduleName);
+  DesignBuilder builder;
+  builder.serializeModule(circuit, std::string(moduleName));
   Json design = Json{{"creator", std::format("Silicon {}", SILICON_VERSION)},
                      {"modules", std::move(builder.modules)}};
   return design.dump(2);

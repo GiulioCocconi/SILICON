@@ -169,7 +169,6 @@ namespace {
 
       Component_set componentSet(components.begin(), components.end());
       Circuit       result(componentSet, false);
-      result.setName(moduleName);
       return result;
     }
 
@@ -657,7 +656,8 @@ namespace {
           const bool isUnsignedExtension =
               inputWidth > 0 && inputWidth < bitsJson.size()
               && std::ranges::all_of(
-                  bitsJson.begin(), bitsJson.begin() + inputWidth, [](const Json& bit) {
+                  bitsJson.begin(), bitsJson.begin() + inputWidth,
+                  [](const Json& bit) {
                     return bit.is_number_integer() || bit.is_number_unsigned();
                   });
           if (isUnsignedExtension) {

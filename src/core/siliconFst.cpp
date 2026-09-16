@@ -28,15 +28,6 @@ using namespace SILICON::core;
 
 namespace {
 
-  CircuitWriter::Options optionsForCircuit(const Circuit&         circuit,
-                                           CircuitWriter::Options options)
-  {
-    if (options.topScopeName.empty() && !circuit.getName().empty())
-      options.topScopeName = circuit.getName();
-
-    return options;
-  }
-
   std::vector<CircuitWriter::NamedBus> collectCircuitIoBuses(const Circuit& circuit)
   {
     std::vector<CircuitWriter::NamedBus> buses;
@@ -112,8 +103,7 @@ CircuitWriter::CircuitWriter(std::string_view fileName, const Circuit& circuit)
 
 CircuitWriter::CircuitWriter(std::string_view fileName, const Circuit& circuit,
                              Options options)
-  : CircuitWriter(fileName, collectCircuitIoBuses(circuit),
-                  optionsForCircuit(circuit, std::move(options)))
+  : CircuitWriter(fileName, collectCircuitIoBuses(circuit), std::move(options))
 {
 }
 
