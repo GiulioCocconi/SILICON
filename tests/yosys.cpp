@@ -42,6 +42,7 @@
 #include <core/projectDocument.hpp>
 #include <core/register.hpp>
 #include <core/serialization/component_registration.hpp>
+#include <core/serialization/document_conversion.hpp>
 #include <core/serialization/verilog.hpp>
 #include <core/serialization/yosys/netlist.hpp>
 #include <core/serialization/yosys/yosys_tool.hpp>
@@ -2596,6 +2597,69 @@ TEST(YosysToolTest, VerilogCircuitVerilogRoundTripPreservesBehavior)
     EXPECT_EQ(evaluate(importVerilog(source, "top"), value),
               evaluate(importVerilog(roundTrippedVerilog, "top"), value));
   }
+}
+
+TEST(YosysToolTest, VerilogConversionNamesCircuitAfterSelectedModule)
+{
+  const SILICON::project::Document source{
+      "code/design.v",
+      "module inverter(input a, output y); assign y = ~a; endmodule\n"
+      "module alu(input a, output y); inverter child(.a(a), .y(y)); endmodule\n"};
+  const std::vector<SILICON::project::Document> documents{source};
+  SILICON::project::ProjectContext              project;
+  project.setDocuments(documents);
+  SILICON::project::ProjectCircuitResolver resolver{
+      project, SILICON::core::ComponentRegistry::instance()};
+
+  auto prepared = SILICON::conversion::prepareDocumentConversion(
+      source, SILICON::project::DocumentType::Circuit, documents,
+      SILICON::core::ComponentRegistry::instance(), resolver);
+  ASSERT_EQ(prepared.choices.size(), 2);
+
+  const std::array<std::string, 1> selected{"alu"};
+  const auto                       converted = prepared.execute(selected);
+  EXPECT_EQ(converted.activatePath, "circuits/alu.json");
+  ASSERT_EQ(converted.documents.size(), 2);
+  for (const auto& document : converted.documents) {
+    ASSERT_TRUE(std::holds_alternative<Circuit>(document.payload));
+    const auto slug = SILICON::project::documentSlugForPath(document.path);
+    ASSERT_TRUE(slug);
+    EXPECT_EQ(std::get<Circuit>(document.payload).getName(), *slug);
+  }
+}
+
+TEST(YosysToolTest, CircuitConversionPreservesModulePortsAndLogic)
+{
+  auto    wire = std::make_shared<Wire>();
+  Circuit circuit(
+      Component_set{std::make_shared<DummyInputComponent>(Bus{wire}, "signal_in"),
+                    std::make_shared<DummyOutputComponent>(Bus{wire}, "signal_out")},
+      false);
+  circuit.setName("stale_name");
+
+  const SILICON::project::Document source{
+      "circuits/passthrough.json",
+      nlohmann::json{{"circuit", nlohmann::json::parse(circuit.serialize())}}.dump()};
+  const std::vector<SILICON::project::Document> documents{source};
+  SILICON::project::ProjectContext              project;
+  project.setDocuments(documents);
+  auto registry = ComponentRegistry::empty();
+  registerAllComponents(registry);
+  SILICON::project::ProjectCircuitResolver resolver{project, registry};
+
+  auto prepared = SILICON::conversion::prepareDocumentConversion(
+      source, SILICON::project::DocumentType::Verilog, documents, registry, resolver);
+  const auto converted = prepared.execute({});
+
+  ASSERT_EQ(converted.documents.size(), 1);
+  ASSERT_TRUE(std::holds_alternative<SILICON::conversion::VerilogSource>(
+      converted.documents.front().payload));
+  const auto& verilog =
+      std::get<SILICON::conversion::VerilogSource>(converted.documents.front().payload)
+          .contents;
+  EXPECT_NE(verilog.find("module passthrough(input signal_in, output signal_out);"),
+            std::string::npos);
+  EXPECT_NE(verilog.find("assign signal_out = signal_in;"), std::string::npos);
 }
 #endif
 

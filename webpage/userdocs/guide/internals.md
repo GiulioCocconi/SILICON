@@ -92,7 +92,7 @@ example.sil
 ├── metadata.json
 ├── project.json
 ├── circuits/
-│   ├── main.json
+│   ├── untitled.json
 │   ├── controller.json
 │   └── adder.json
 ├── code/
@@ -102,13 +102,12 @@ example.sil
 ```
 
 `metadata.json` contains the archive `formatVersion`, the Silicon version that wrote the
-file, and UTC creation/modification timestamps. `project.json` contains the project name,
-description, and `mainCircuit`, which must name an existing flat JSON entry below
-`circuits/`. There must be at least one circuit. Additional reusable circuits are flat
-entries under `circuits/`, source documents use registered extensions under `code/`, and
-raw binaries live under `bin/`. Absolute paths, traversal segments, reserved entries,
-unknown document formats, duplicate paths, or a main-circuit reference outside
-`circuits/` are rejected.
+file, and UTC creation/modification timestamps. `project.json` contains the project name
+and description. There must be at least one circuit, but no circuit has project-level
+priority. Reusable circuits are flat entries under `circuits/`, source documents use
+registered extensions under `code/`, and raw binaries live under `bin/`. Absolute paths,
+traversal segments, reserved entries, unknown document formats, or duplicate paths are
+rejected.
 
 Inside a running editor, every concrete format is represented by the same
 `silicon::project::Document`. Its validated project-relative path is its only identity

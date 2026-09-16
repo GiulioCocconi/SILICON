@@ -81,37 +81,44 @@ namespace ui {
     return {};
   }
 
-  std::string LogiFlowWindow::defaultMainCircuitPath()
+  std::string LogiFlowWindow::defaultCircuitPath()
   {
-    return std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH);
+    return std::string(SILICON::project::DEFAULT_CIRCUIT_PATH);
   }
 
   SILICON::project::Document LogiFlowWindow::defaultCircuitDocument()
   {
-    return {defaultMainCircuitPath(), ""};
+    return {defaultCircuitPath(), ""};
   }
 
   SILICON::project::ProjectInfo
   LogiFlowWindow::defaultProjectInfo(const QString& currentFileName)
   {
-    return {.name        = defaultProjectName(currentFileName).toStdString(),
-            .mainCircuit = defaultMainCircuitPath(),
-            .description = ""};
+    return {.name = defaultProjectName(currentFileName).toStdString(), .description = ""};
   }
 
-  std::string LogiFlowWindow::projectMainCircuitPath() const
+  std::optional<std::string>
+  LogiFlowWindow::firstCircuitPath(const std::string_view excludedPath) const
   {
-    if (currentProjectInfo && !currentProjectInfo->mainCircuit.empty())
-      return currentProjectInfo->mainCircuit;
-
-    return defaultMainCircuitPath();
+    const auto& documents = projectContext.documents().getDocuments();
+    const auto  circuit = std::ranges::find_if(documents, [excludedPath](const auto& d) {
+      return d.getType() == SILICON::project::DocumentType::Circuit
+             && d.getPath() != excludedPath;
+    });
+    if (circuit == documents.end())
+      return std::nullopt;
+    return circuit->getPath();
   }
 
   void LogiFlowWindow::ensureProjectDocuments()
   {
     const auto& store = projectContext.documents();
-    if (!store.contains(SILICON::project::DocumentType::Circuit))
-      projectContext.upsertDocument(defaultCircuitDocument());
+    if (!store.contains(SILICON::project::DocumentType::Circuit)) {
+      projectContext.upsertDocument(
+          {defaultCircuitPath(),
+           emptyGraphicalDocumentJson(SILICON::project::DocumentType::Circuit,
+                                      "Untitled")});
+    }
   }
 
   void LogiFlowWindow::initializeProjectTree()
@@ -210,8 +217,12 @@ namespace ui {
 
   void LogiFlowWindow::saveActiveDocumentPayload()
   {
-    if (activeDocumentPath.empty())
-      activeDocumentPath = projectMainCircuitPath();
+    if (activeDocumentPath.empty()) {
+      const auto fallback = firstCircuitPath();
+      if (!fallback)
+        throw std::runtime_error("Project has no circuit document");
+      activeDocumentPath = *fallback;
+    }
 
     const auto& store          = projectContext.documents();
     const auto* activeDocument = store.find(activeDocumentPath);
@@ -310,6 +321,7 @@ namespace ui {
       if (selectInTree)
         selectProjectTreeDocument(path);
       updateSubcircuitShapeAction();
+      updateEditActions();
       updatePropertyDock();
       return true;
     }
@@ -349,10 +361,7 @@ namespace ui {
     if (selectInTree)
       selectProjectTreeDocument(path);
 
-    const bool code =
-        SILICON::project::categoryOf(type) == SILICON::project::DocumentCategory::Code;
-    setActionsEnabled({cutAct, copyAct, pasteAct, deleteAct}, code);
-    rotateAct->setEnabled(false);
+    updateEditActions();
     updatePropertyDock();
     return true;
   }
@@ -364,8 +373,11 @@ namespace ui {
     if (!document)
       return;
 
-    if (activeDocumentPath == path && !switchToDocument(projectMainCircuitPath(), true))
-      return;
+    if (activeDocumentPath == path) {
+      const auto fallback = firstCircuitPath(path);
+      if (!fallback || !switchToDocument(*fallback, true))
+        return;
+    }
 
     projectContext.removeDocument(path);
     rebuildProjectTree();

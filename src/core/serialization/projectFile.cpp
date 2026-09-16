@@ -188,18 +188,12 @@ namespace {
     return entries;
   }
 
-  void validateDocuments(const std::string_view       mainCircuit,
-                         const std::vector<Document>& documents)
+  void validateDocuments(const std::vector<Document>& documents)
   {
-    if (documentTypeForPath(mainCircuit) != DocumentType::Circuit)
-      throw std::runtime_error(
-          "project.json.mainCircuit must reference a valid circuit JSON entry");
-
     std::vector<std::string_view> paths;
     paths.reserve(documents.size());
 
-    bool hasCircuit     = false;
-    bool hasMainCircuit = false;
+    bool hasCircuit = false;
 
     for (const auto& document : documents) {
       paths.push_back(document.getPath());
@@ -207,8 +201,6 @@ namespace {
         continue;
 
       hasCircuit = true;
-      if (document.getPath() == mainCircuit)
-        hasMainCircuit = true;
     }
 
     std::ranges::sort(paths);
@@ -217,10 +209,6 @@ namespace {
 
     if (!hasCircuit)
       throw std::runtime_error("Project archive must contain at least one circuit entry");
-
-    if (!hasMainCircuit)
-      throw std::runtime_error(
-          "project.json.mainCircuit does not match an archive circuit entry");
   }
 
   [[nodiscard]] ProjectMetadata parseMetadata(zip_t* archive)
@@ -243,14 +231,12 @@ namespace {
   [[nodiscard]] ProjectInfo parseProjectInfo(zip_t* archive)
   {
     const auto json = nlohmann::json::parse(readEntry(archive, std::string(ProjectPath)));
-    if (!json.is_object() || json.size() != 3 || !json.contains("name")
-        || !json.contains("mainCircuit") || !json.contains("description"))
-      throw std::runtime_error(
-          "project.json must contain only name, mainCircuit, and description");
-    return ProjectInfo{
-        .name        = requireField<std::string>(json, "name", ProjectPath),
-        .mainCircuit = requireField<std::string>(json, "mainCircuit", ProjectPath),
-        .description = requireField<std::string>(json, "description", ProjectPath)};
+    if (!json.is_object() || json.size() != 2 || !json.contains("name")
+        || !json.contains("description"))
+      throw std::runtime_error("project.json must contain only name and description");
+    return ProjectInfo{.name = requireField<std::string>(json, "name", ProjectPath),
+                       .description =
+                           requireField<std::string>(json, "description", ProjectPath)};
   }
 
   [[nodiscard]] nlohmann::ordered_json metadataToJson(const ProjectMetadata& m)
@@ -263,8 +249,7 @@ namespace {
 
   [[nodiscard]] nlohmann::ordered_json projectInfoToJson(const ProjectInfo& p)
   {
-    return {
-        {"name", p.name}, {"mainCircuit", p.mainCircuit}, {"description", p.description}};
+    return {{"name", p.name}, {"description", p.description}};
   }
 
 }  // namespace
@@ -306,7 +291,7 @@ ProjectFile readProjectFile(const std::filesystem::path& path)
   for (const auto& documentPath : documentPaths)
     documents.emplace_back(documentPath, readEntry(archive.get(), documentPath));
 
-  validateDocuments(project.mainCircuit, documents);
+  validateDocuments(documents);
 
   return ProjectFile{.metadata  = std::move(metadata),
                      .project   = std::move(project),
@@ -315,7 +300,7 @@ ProjectFile readProjectFile(const std::filesystem::path& path)
 
 void writeProjectFile(const std::filesystem::path& path, const ProjectFile& projectFile)
 {
-  validateDocuments(projectFile.project.mainCircuit, projectFile.documents);
+  validateDocuments(projectFile.documents);
 
   int       errorCode = 0;
   UniqueZip archive(

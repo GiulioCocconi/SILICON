@@ -159,11 +159,10 @@ namespace ui {
       // Recalculating component buses from geometry here is both redundant and unsafe:
       // coincident route portions near a port can make a later graphical wire overwrite
       // that port's original assignment. Keep the logical topology authoritative and only
-      // refresh the cached circuit after applying the new geometry. Rebuilding from the
-      // components resets the circuit name, so carry it across explicitly.
+      // refresh the cached circuit after applying the new geometry. DiagramScene applies
+      // the document name when accepting the replacement cache.
       auto refreshedCircuit =
           std::make_shared<Circuit>(coreComponentsFor(components), false);
-      refreshedCircuit->setName(activeCircuit.getName());
       scene.setCircuit(std::move(refreshedCircuit));
       scene.update();
     }
