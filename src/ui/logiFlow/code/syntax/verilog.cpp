@@ -361,33 +361,33 @@ namespace {
         indentation.pop_back();
     } else if (startsWithBlockStatement(previousCode)) {
       if (!isTerminatedBlockStatement(previousCode))
-        addIndentLevel(indentation);
+        addIndentLevel(indentation, context.indentWidth);
     } else if (startsWithDeclarationBlock(previousCode)) {
       if (!endsWithWord(previousCode, "end"))
-        addIndentLevel(indentation);
+        addIndentLevel(indentation, context.indentWidth);
     } else if (startsWithModule(previousCode)) {
       const auto trimmed = trimRight(previousCode);
       if (!trimmed.empty() && (trimmed.back() == '(' || trimmed.back() == ','))
-        addIndentLevel(indentation);
+        addIndentLevel(indentation, context.indentWidth);
     } else if (endsWithBegin(previousCode)
                && (!isOpenStatement(olderCode) || isCaseLabel(olderCode))) {
-      addIndentLevel(indentation);
+      addIndentLevel(indentation, context.indentWidth);
     } else if (!containsBegin(previousCode) && startsWithBlockStatement(olderCode)
                && !isOpenStatement(olderCode) && !containsBegin(olderCode)) {
-      removeIndentLevel(indentation);
+      removeIndentLevel(indentation, context.indentWidth);
     } else if (isOpenStatement(previousCode) && !isOpenStatement(olderCode)) {
-      addIndentLevel(indentation);
+      addIndentLevel(indentation, context.indentWidth);
     } else if (closesMultilineStatement(previousCode)
                && !isOnlyClosingStatement(previousCode) && isOpenStatement(olderCode)
                && !trimLeft(olderCode).empty()) {
-      removeIndentLevel(indentation);
+      removeIndentLevel(indentation, context.indentWidth);
     } else if (startsWithPreprocessorBranch(previousCode)) {
-      addIndentLevel(indentation);
+      addIndentLevel(indentation, context.indentWidth);
     }
 
     // Current-line corrections mirror Vim's indentkeys-triggered reindent pass.
     if (startsWithBlockCloser(currentCode)) {
-      removeIndentLevel(indentation);
+      removeIndentLevel(indentation, context.indentWidth);
     } else if (startsWithEndModule(currentCode)) {
       // Module indentation is deliberately disabled, matching Vim's default.
     } else if (startsWithStandaloneBegin(currentCode)) {
@@ -399,13 +399,13 @@ namespace {
           && (startsWithBlockStatement(previousCode)
               || trimRight(previousCode).ends_with(')')
               || isOpenStatement(previousCode))) {
-        removeIndentLevel(indentation);
+        removeIndentLevel(indentation, context.indentWidth);
       }
     } else if (trimLeft(currentCode).starts_with(')')
                && (isOpenStatement(previousCode) || isOpenStatement(olderCode))) {
-      removeIndentLevel(indentation);
+      removeIndentLevel(indentation, context.indentWidth);
     } else if (startsWithPreprocessorCloser(currentCode)) {
-      removeIndentLevel(indentation);
+      removeIndentLevel(indentation, context.indentWidth);
     }
 
     return indentation;
@@ -421,6 +421,7 @@ namespace {
   constexpr CodeIndentation VerilogIndentation{
       .indentationFor  = verilogIndentationFor,
       .triggerPatterns = IndentationTriggerPatterns,
+      .indentWidth     = 2,
   };
 
 }  // namespace

@@ -26,7 +26,7 @@ namespace SILICON::ui::indentation {
 [[nodiscard]] bool regexSearch(std::string_view value, const std::regex& expression);
 [[nodiscard]] bool endsWithWord(std::string_view value, std::string_view word);
 
-void addIndentLevel(std::string& indentation);
-void removeIndentLevel(std::string& indentation);
+void addIndentLevel(std::string& indentation, int indentWidth);
+void removeIndentLevel(std::string& indentation, int indentWidth);
 
 }  // namespace SILICON::ui::indentation
