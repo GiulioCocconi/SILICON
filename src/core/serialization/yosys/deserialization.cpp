@@ -265,6 +265,31 @@ namespace {
         return bus(port, ConnectionRole::Consumer, expectedWidth);
       }
 
+      [[nodiscard]] std::vector<Bus> consumerLanes(const std::string_view port,
+                                                   const std::size_t      laneWidth,
+                                                   const std::size_t      laneCount) const
+      {
+        // Yosys flattens word lanes into one LSB-first JSON array. Decode each lane
+        // separately so readBus() can recognize an all-literal word as a constant bus.
+        const auto& bits          = requireObjectMember(connectionsJson, port, context);
+        const auto  expectedWidth = laneWidth * laneCount;
+        if (!bits.is_array() || bits.size() != expectedWidth) {
+          fail(context, std::format("'{}' must be {} bits wide", port, expectedWidth));
+        }
+
+        std::vector<Bus> lanes;
+        lanes.reserve(laneCount);
+        for (std::size_t lane = 0; lane < laneCount; ++lane) {
+          Json laneBits = Json::array();
+          for (std::size_t bit = 0; bit < laneWidth; ++bit)
+            laneBits.push_back(bits[lane * laneWidth + bit]);
+          lanes.push_back(importer.readBus(
+              laneBits, ConnectionRole::Consumer,
+              std::format("{}.{} lane {}", context, port, lane), laneWidth));
+        }
+        return lanes;
+      }
+
       [[nodiscard]] Bus
       driver(const std::string_view           port,
              const std::optional<std::size_t> expectedWidth = std::nullopt) const
@@ -936,15 +961,18 @@ namespace {
       const auto lanes          = laneCount(selectionWidth, "$bmux", cell.where());
       if (lanes > std::numeric_limits<std::size_t>::max() / width)
         fail(cell.where(), "$bmux packed input width is too large");
-      const Bus a = cell.consumer("A", width * lanes);
       const Bus s = cell.consumer("S", selectionWidth);
       const Bus y = cell.driver("Y", width);
 
       std::vector<Bus> inputs;
       if (width == 1) {
-        inputs = {a, s};
+        // A scalar mux intentionally represents every one-bit lane in one packed bus.
+        const Bus a = cell.consumer("A", lanes);
+        inputs      = {a, s};
       } else {
-        inputs = split(a, width, lanes);
+        // Read packed data one word at a time so a fully literal lane remains one
+        // sized ConstantComponent instead of being assembled from scalar constants.
+        inputs = cell.consumerLanes("A", width, lanes);
         inputs.push_back(s);
       }
       addMuxLike<Multiplexer>(selectionWidth, width, std::move(inputs), {y});
