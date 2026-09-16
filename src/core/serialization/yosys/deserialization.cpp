@@ -818,10 +818,63 @@ namespace {
     void importNot(const Cell& cell)
     {
       const auto [a, y] = equalWidthUnary(cell, "$not");
-      for (std::size_t bit = 0; bit < y.size(); ++bit) {
-        auto gate = std::make_shared<NotGate>(a[static_cast<unsigned short>(bit)],
-                                              y[static_cast<unsigned short>(bit)]);
-        addWithZeroDelay(std::move(gate));
+      auto gate         = std::make_shared<NotGate>(a[0], y[0]);
+      gate->setProperty("size", static_cast<int>(y.size()));
+      gate->setInputs({a});
+      gate->setOutputs({y});
+      addWithZeroDelay(std::move(gate));
+    }
+
+    template <typename GateType> void importLogicalBinary(const Cell& cell)
+    {
+      static constexpr auto parameters = std::to_array<std::string_view>(
+          {"A_SIGNED", "B_SIGNED", "A_WIDTH", "B_WIDTH", "Y_WIDTH"});
+      static constexpr auto connections =
+          std::to_array<std::string_view>({"A", "B", "Y"});
+      cell.requireSchema(parameters, connections);
+
+      (void)cell.flag("A_SIGNED");
+      (void)cell.flag("B_SIGNED");
+      const auto aWidth = cell.width("A_WIDTH");
+      const auto bWidth = cell.width("B_WIDTH");
+      const auto yWidth = cell.width("Y_WIDTH");
+      const Bus  a      = cell.consumer("A", aWidth);
+      const Bus  b      = cell.consumer("B", bWidth);
+      const Bus  y      = cell.driver("Y", yWidth);
+
+      const Bus truth = yWidth == 1 ? y : Bus(1);
+      auto      gate  = std::make_shared<GateType>();
+      gate->setProperty("delay", 0);
+      connectAndAdd(std::move(gate), {a, b}, {truth});
+
+      if (yWidth > 1) {
+        components.push_back(
+            std::make_shared<Extender>(truth, y, std::string(Extender::UnsignedMode)));
+      }
+    }
+
+    void importLogicNot(const Cell& cell)
+    {
+      static constexpr auto parameters =
+          std::to_array<std::string_view>({"A_SIGNED", "A_WIDTH", "Y_WIDTH"});
+      static constexpr auto connections = std::to_array<std::string_view>({"A", "Y"});
+      cell.requireSchema(parameters, connections);
+
+      (void)cell.flag("A_SIGNED");
+      const auto aWidth = cell.width("A_WIDTH");
+      const auto yWidth = cell.width("Y_WIDTH");
+      const Bus  a      = cell.consumer("A", aWidth);
+      const Bus  y      = cell.driver("Y", yWidth);
+
+      const Bus truth = yWidth == 1 ? y : Bus(1);
+      auto      gate  = std::make_shared<NotGate>(a[0], truth[0]);
+      gate->setInputs({a});
+      gate->setOutputs({truth});
+      addWithZeroDelay(std::move(gate));
+
+      if (yWidth > 1) {
+        components.push_back(
+            std::make_shared<Extender>(truth, y, std::string(Extender::UnsignedMode)));
       }
     }
 
@@ -1299,6 +1352,9 @@ namespace {
               {"$or", &Importer::importBinaryGate<OrGate>},
               {"$xor", &Importer::importBinaryGate<XorGate>},
               {"$not", &Importer::importNot},
+              {"$logic_and", &Importer::importLogicalBinary<AndGate>},
+              {"$logic_or", &Importer::importLogicalBinary<OrGate>},
+              {"$logic_not", &Importer::importLogicNot},
               {"$_NAND_", &Importer::importFineBinaryGate<NandGate>},
               {"$_NOR_", &Importer::importFineBinaryGate<NorGate>},
               {"$pos", &Importer::importPos},

@@ -891,21 +891,25 @@ TEST(YosysTest, ImportsGeneralCombinationalNetlistWithConstants)
           {"netnames", Json::object()}}}}}};
 
   Circuit imported = SILICON::yosys::deserialize(design.dump());
-  EXPECT_EQ(
-      componentTypes(imported),
-      (std::multiset<std::string>{"AndGate", "ConstantComponent",
-                                  "DummyBusInputComponent", "DummyBusOutputComponent",
-                                  "NotGate", "NotGate", "WireMerger", "WireSplitter"}));
+  EXPECT_EQ(componentTypes(imported),
+            (std::multiset<std::string>{"AndGate", "ConstantComponent",
+                                        "DummyBusInputComponent",
+                                        "DummyBusOutputComponent", "NotGate"}));
   auto importedConstant = findComponent<ConstantComponent>(imported);
   ASSERT_TRUE(importedConstant);
   EXPECT_EQ(importedConstant->getPropertyValue<int>("size"), 2);
   EXPECT_EQ(importedConstant->getPropertyValue<BusValue>("value"),
             busValueFromBits("01"));
+  const auto importedNot = findComponent<NotGate>(imported);
+  ASSERT_TRUE(importedNot);
+  EXPECT_EQ(importedNot->getPropertyValue<int>("size"), 2);
 
   auto registry = ComponentRegistry::empty();
   registerAllComponents(registry);
   const Circuit restored = Circuit::deserialize(imported.serialize(), registry);
   EXPECT_EQ(componentTypes(restored), componentTypes(imported));
+  ASSERT_TRUE(findComponent<NotGate>(restored));
+  EXPECT_EQ(findComponent<NotGate>(restored)->getPropertyValue<int>("size"), 2);
   EXPECT_NO_THROW({
     const auto reparsed =
         nlohmann::json::parse(SILICON::yosys::serialize(restored, "top"));
@@ -1646,6 +1650,22 @@ TEST(YosysToolTest, RejectsInvalidMultiSourceInputs)
                std::invalid_argument);
 }
 
+TEST(YosysToolTest, RejectsImplicitNets)
+{
+  YosysLogCapture logCapture;
+  std::string     message;
+  try {
+    (void)SILICON::verilog::read(
+        "module top(input [7:0] a, output [7:0] y); assign y = a + B; endmodule");
+  } catch (const std::runtime_error& error) {
+    message = error.what();
+  }
+
+  EXPECT_NE(message.find("script-execution phase"), std::string::npos);
+  EXPECT_NE(logCapture.text().find("Identifier `\\B' is implicitly declared"),
+            std::string::npos);
+}
+
 TEST(YosysToolTest, ResolvesTransitiveProjectIncludesWithoutParsingUnrelatedFiles)
 {
   using SILICON::verilog::SourceFile;
@@ -1775,21 +1795,25 @@ TEST(YosysToolTest, ImportsCombinationalVerilogPreservingHelperHierarchy)
 
 TEST(YosysToolTest, ImportsLogicalOperatorsWithVectorTruthSemantics)
 {
-  const auto verify = [](const std::string_view expression, const auto& expected) {
+  const auto verify = [](const std::string_view expression,
+                         const std::string_view yosysCell,
+                         const std::string_view siliconComponent, const auto& expected) {
     const auto source = std::format("module top(input [2:0] a, input [2:0] b, output y); "
                                     "assign y = {}; endmodule",
                                     expression);
 
     const auto hierarchicalJson =
         SILICON::yosys::elaborateHierarchy(SILICON::verilog::read(source));
-    EXPECT_EQ(hierarchicalJson.find("$logic_and"), std::string::npos);
-    EXPECT_EQ(hierarchicalJson.find("$logic_or"), std::string::npos);
+    EXPECT_NE(hierarchicalJson.find(yosysCell), std::string::npos);
 
     const std::array circuits{
         std::make_shared<Circuit>(SILICON::yosys::deserialize(hierarchicalJson, "top")),
         std::make_shared<Circuit>(importVerilog(source, "top")),
     };
     for (const auto& circuit : circuits) {
+      EXPECT_EQ(componentTypes(*circuit).count(std::string(siliconComponent)), 1);
+      EXPECT_EQ(componentTypes(*circuit).count("WireSplitter"), 0);
+      EXPECT_EQ(componentTypes(*circuit).count("WireMerger"), 0);
       for (unsigned int a = 0; a < 8; ++a) {
         for (unsigned int b = 0; b < 8; ++b) {
           SCOPED_TRACE(std::format("{} with a={} b={}", expression, a, b));
@@ -1800,8 +1824,74 @@ TEST(YosysToolTest, ImportsLogicalOperatorsWithVectorTruthSemantics)
     }
   };
 
-  verify("a && b", [](const bool a, const bool b) { return a && b; });
-  verify("a || b", [](const bool a, const bool b) { return a || b; });
+  verify("a && b", "$logic_and", "AndGate",
+         [](const bool a, const bool b) { return a && b; });
+  verify("a || b", "$logic_or", "OrGate",
+         [](const bool a, const bool b) { return a || b; });
+}
+
+TEST(YosysToolTest, ImportsLogicalNotAsOneGate)
+{
+  constexpr std::string_view source =
+      "module top(input [2:0] a, output y); assign y = !a; endmodule";
+  auto circuit = std::make_shared<Circuit>(importVerilog(source, "top"));
+
+  EXPECT_EQ(componentTypes(*circuit).count("NotGate"), 1);
+  EXPECT_EQ(componentTypes(*circuit).count("OrGate"), 0);
+  EXPECT_EQ(componentTypes(*circuit).count("WireSplitter"), 0);
+  ASSERT_TRUE(findComponent<NotGate>(*circuit));
+  EXPECT_EQ(findComponent<NotGate>(*circuit)->getPropertyValue<int>("size"), 1);
+  const auto serialized = SILICON::yosys::serialize(*circuit, "top");
+  EXPECT_NE(serialized.find("$logic_not"), std::string::npos);
+
+  const auto input  = findNamedComponent<DummyBusInputComponent>(*circuit, "a");
+  const auto output = findNamedComponent<DummyOutputComponent>(*circuit, "y");
+  ASSERT_TRUE(input);
+  ASSERT_TRUE(output);
+
+  input->setBusValue(valueFor(input->outputBuses()[0], 0));
+  Simulator simulator(circuit);
+  ASSERT_EQ(simulator.runUntilIdle(), Simulator::RunResult::Completed);
+  EXPECT_EQ(output->inputBuses()[0].getCurrentValue(), valueFor(1, 1));
+
+  ASSERT_EQ(
+      simulator.setBus(input->outputBuses()[0], valueFor(input->outputBuses()[0], 2)),
+      Simulator::RunResult::Completed);
+  EXPECT_EQ(output->inputBuses()[0].getCurrentValue(), valueFor(1, 0));
+}
+
+TEST(YosysToolTest, KeepsAluLogicalOperationsAndVectorNotCompact)
+{
+  constexpr std::string_view source = R"(
+    module alu(
+      input [2:0] opcode,
+      input [7:0] OperandA,
+      input B,
+      output reg [7:0] result
+    );
+      always @* begin
+        case (opcode)
+          3'b000: result = OperandA + B;
+          3'b001: result = OperandA - B;
+          3'b100: result = OperandA && B;
+          3'b101: result = OperandA || B;
+          3'b110: result = ~OperandA;
+          3'b111: result = OperandA ^ OperandA;
+          default: result = 0;
+        endcase
+      end
+    endmodule
+  )";
+
+  const Circuit circuit = importVerilog(source, "alu");
+  const auto    types   = componentTypes(circuit);
+  EXPECT_EQ(types.count("AndGate"), 1);
+  EXPECT_EQ(types.count("OrGate"), 1);
+  EXPECT_EQ(types.count("NotGate"), 1);
+  EXPECT_EQ(types.count("Multiplexer"), 1);
+  EXPECT_LT(types.size(), 25);
+  ASSERT_TRUE(findComponent<NotGate>(circuit));
+  EXPECT_EQ(findComponent<NotGate>(circuit)->getPropertyValue<int>("size"), 8);
 }
 
 TEST(YosysToolTest, ImportsOnlyASingleDiscoveredModule)

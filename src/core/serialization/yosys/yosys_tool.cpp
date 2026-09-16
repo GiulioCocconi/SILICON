@@ -440,7 +440,7 @@ std::string readVerilog(const std::span<const SILICON::core::SourceFile> sources
   const auto sourcePath = workspace.path() / std::filesystem::path(entryPath);
   const auto jsonPath   = workspace.path() / "design.json";
 
-  (void)runScript(std::format("read_verilog {}\n"
+  (void)runScript(std::format("read_verilog -noautowire {}\n"
                               // `proc` converts processes ($dff/$mux cells) so the JSON
                               // backend can emit them; it is required before write_json
                               // even though readVerilog performs no further elaboration.
@@ -484,7 +484,6 @@ std::string elaborateHierarchy(const std::string_view json, const ToolOptions& o
                               "t:$or r:Y_WIDTH=1 %i "
                               "t:$xor r:Y_WIDTH=1 %i "
                               "t:$not r:Y_WIDTH=1 %i "
-                              "t:$logic_not t:$logic_and t:$logic_or "
                               "t:$reduce_and t:$reduce_or t:$reduce_xor\n"
                               "extract_fa\n"
                               "techmap -map {}\n"

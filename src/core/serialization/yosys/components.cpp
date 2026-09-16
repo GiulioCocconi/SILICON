@@ -122,6 +122,15 @@ void BoundaryIoComponent::serializeYosys(SerializationContext& context) const
 
 void AndGate::serializeYosys(SerializationContext& context) const
 {
+  const bool logical =
+      !getPropertyValue<bool>("bitwise").value_or(false) && outputBuses().size() == 1
+      && outputBuses()[0].size() == 1
+      && std::ranges::any_of(inputBuses(), [](const Bus& bus) { return bus.size() > 1; });
+  if (logical) {
+    emitLogicalGateFold(context, *this, "$logic_and");
+    return;
+  }
+
   // Yosys $and cells have exactly two vector inputs. Fold Silicon's arbitrary
   // number of equally sized inputs from left to right, writing the final value to Y.
   emitGateFold(context, *this, "$and", false);
@@ -129,6 +138,15 @@ void AndGate::serializeYosys(SerializationContext& context) const
 
 void OrGate::serializeYosys(SerializationContext& context) const
 {
+  const bool logical =
+      !getPropertyValue<bool>("bitwise").value_or(false) && outputBuses().size() == 1
+      && outputBuses()[0].size() == 1
+      && std::ranges::any_of(inputBuses(), [](const Bus& bus) { return bus.size() > 1; });
+  if (logical) {
+    emitLogicalGateFold(context, *this, "$logic_or");
+    return;
+  }
+
   // Build a chain of binary $or cells so multi-input and bitwise Silicon OR gates
   // retain their original input count and bus width.
   emitGateFold(context, *this, "$or", false);
@@ -136,9 +154,15 @@ void OrGate::serializeYosys(SerializationContext& context) const
 
 void NotGate::serializeYosys(SerializationContext& context) const
 {
-  // A Silicon NOT maps directly to an unsigned, width-preserving Yosys $not cell.
-  emitUnary(context, "not", "$not", context.bits(requireBus(*this, true, 0)),
-            context.bits(requireBus(*this, false, 0)));
+  const auto& input  = requireBus(*this, true, 0);
+  const auto& output = requireBus(*this, false, 0);
+  if (input.size() != output.size() && output.size() != 1) {
+    throw std::runtime_error(
+        "Cannot export 'NotGate': output must be scalar or match the input width");
+  }
+
+  emitUnary(context, "not", input.size() == output.size() ? "$not" : "$logic_not",
+            context.bits(input), context.bits(output));
 }
 
 void NandGate::serializeYosys(SerializationContext& context) const
