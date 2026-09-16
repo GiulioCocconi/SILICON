@@ -19,6 +19,7 @@
 #include "circuitAutoplacer.hpp"
 
 #include "boundaryIoPlacement.hpp"
+#include "circuitAutoplacerHeuristics.hpp"
 
 #include "utils/ranges_wrapper.hpp"
 
@@ -89,13 +90,7 @@ namespace {
 
   bool hasComponentClearance(const QRectF& candidate, std::span<const QRectF> accepted)
   {
-    const double halfClearance = ComponentClearance / 2.0;
-    const QRectF paddedCandidate =
-        candidate.adjusted(-halfClearance, -halfClearance, halfClearance, halfClearance);
-    return std::ranges::none_of(accepted, [&](const QRectF& bounds) {
-      return paddedCandidate.intersects(
-          bounds.adjusted(-halfClearance, -halfClearance, halfClearance, halfClearance));
-    });
+    return detail::hasBoundsClearance(candidate, accepted, ComponentClearance);
   }
 
   std::vector<GraphicalLogicComponent*>
@@ -377,8 +372,10 @@ namespace {
 
       const bool verticalOrder =
           group.side == PortSide::LEFT || group.side == PortSide::RIGHT;
+      GraphLayout::PlacementMap proposals;
+      proposals.reserve(group.sources.size());
       for (const OrderedSource& source : group.sources) {
-        QPointF&    position = placements.at(source.component);
+        QPointF     position = placements.at(source.component);
         const qreal targetCoordinate =
             source.targetCoordinate / static_cast<qreal>(source.connectionCount);
         const qreal sourceCoordinate =
@@ -388,7 +385,42 @@ namespace {
         else
           position.rx() += targetCoordinate - sourceCoordinate;
         position = DiagramScene::snapToGrid(position);
-        alreadyOrdered.insert(source.component);
+        proposals.emplace(source.component, position);
+      }
+
+      // Aligning a wide source directly with every terminal of a dense mux can make
+      // several source symbols overlap. A later generic separation pass then scatters
+      // them to arbitrary sides of the target and destroys the signal-flow layout.
+      // Treat the whole group as one transaction: only commit an ordered alignment when
+      // it remains clear of every component and stays outside the target's input side.
+      const QRectF targetBounds =
+          movedComponentObstacle(group.target, placements.at(group.target), 0);
+      bool                valid = true;
+      std::vector<QRectF> accepted;
+      accepted.reserve(placements.size());
+      for (GraphicalLogicComponent* component : orderedComponents(placements, false)) {
+        const QPointF position = proposals.contains(component) ? proposals.at(component)
+                                                               : placements.at(component);
+        const QRectF  bounds   = movedComponentObstacle(component, position, 0);
+        if (proposals.contains(component)
+            && !detail::boundsLieOutsideTarget(group.side, bounds, targetBounds,
+                                               ComponentClearance)) {
+          valid = false;
+          break;
+        }
+        if (!hasComponentClearance(bounds, accepted)) {
+          valid = false;
+          break;
+        }
+        accepted.push_back(bounds);
+      }
+
+      if (!valid)
+        continue;
+
+      for (const auto& [component, position] : proposals) {
+        placements.at(component) = position;
+        alreadyOrdered.insert(component);
       }
     }
   }
@@ -907,7 +939,6 @@ namespace {
     stackSymmetricFeedbackPairs(connections, placements);
     separateLogicComponents(placements);
     compactOrderedFanIns(connections, placements);
-    separateLogicComponents(placements);
     return routePreparedCandidate(connections, std::move(placements), options,
                                   routingOrder);
   }
@@ -928,10 +959,10 @@ namespace {
       position = DiagramScene::snapToGrid(center + (position - center) * factor);
   }
 
-  using PlacementScore =
-      std::tuple<std::size_t, std::size_t, std::size_t, double, double>;
+  using PlacementScore = detail::AutoplacementQuality;
 
-  PlacementScore scorePlacement(const CircuitAutoplacement& placement)
+  PlacementScore scorePlacement(std::span<const RoutableConnection> connections,
+                                const CircuitAutoplacement&         placement)
   {
     // Component Bounds Calculation
     std::vector<QRectF> componentBounds;
@@ -971,6 +1002,36 @@ namespace {
       }
     }
 
+    // Prefer placements where the peer terminal lies in front of both connected ports.
+    // Libavoid can legally route a connection that immediately doubles back around its
+    // source or target, so route completeness alone does not distinguish a readable
+    // signal-flow layout from a compact but backwards one.
+    std::size_t directionViolations = 0;
+    double      wrongWayDistance    = 0.0;
+    for (const RoutableConnection& connection : connections) {
+      if (!placement.components.contains(connection.source)
+          || !placement.components.contains(connection.target))
+        continue;
+
+      const QPointF sourcePort = movedPortPosition(
+          connection.source, connection.sourcePort,
+          placement.components.at(connection.source), &placement.ioPortOrientations);
+      const QPointF targetPort = movedPortPosition(
+          connection.target, connection.targetPort,
+          placement.components.at(connection.target), &placement.ioPortOrientations);
+      const qreal sourceViolation = detail::portDirectionViolationDistance(
+          effectivePortSide(connection.source, connection.sourcePort,
+                            placement.ioPortOrientations),
+          sourcePort, targetPort);
+      const qreal targetViolation = detail::portDirectionViolationDistance(
+          effectivePortSide(connection.target, connection.targetPort,
+                            placement.ioPortOrientations),
+          targetPort, sourcePort);
+      directionViolations += static_cast<std::size_t>(sourceViolation > 0.0)
+                             + static_cast<std::size_t>(targetViolation > 0.0);
+      wrongWayDistance += sourceViolation + targetViolation;
+    }
+
     // Point calculation and Wire length
     std::size_t intermediatePoints = 0;
     double      wireLength         = 0.0;
@@ -995,13 +1056,19 @@ namespace {
     // A bend is worth several grid steps, but never an arbitrarily long detour. This
     // keeps routes simple without allowing one fewer point to flatten a feedback circuit
     // into a huge loop around the whole diagram.
-    const double routingCost =
-        wireLength + intermediatePoints * 4.0 * DiagramScene::GRID_SIZE;
+    const double routingCost = wireLength
+                               + intermediatePoints * 4.0 * DiagramScene::GRID_SIZE
+                               + 2.0 * wrongWayDistance;
 
     const double area =
         layoutBounds ? layoutBounds->width() * layoutBounds->height() : 0.0;
 
-    return {overlaps, sharedSegments, crossings, routingCost, area};
+    return {.overlaps            = overlaps,
+            .directionViolations = directionViolations,
+            .sharedSegments      = sharedSegments,
+            .crossings           = crossings,
+            .routingCost         = routingCost,
+            .area                = area};
   }
 
   bool verticalSide(const PortSide side)
@@ -1116,7 +1183,7 @@ namespace {
       const CircuitAutoplacerOptions& options, std::size_t routingOrder)
   {
     constexpr int  maxPasses = 2;
-    PlacementScore bestScore = scorePlacement(best);
+    PlacementScore bestScore = scorePlacement(connections, best);
 
     for (int pass = 0; pass < maxPasses; ++pass) {
       bool                                  improved = false;
@@ -1152,7 +1219,7 @@ namespace {
           if (!proposal)
             continue;
 
-          const PlacementScore proposalScore = scorePlacement(*proposal);
+          const PlacementScore proposalScore = scorePlacement(connections, *proposal);
           if (proposalScore < bestScore) {
             best      = std::move(*proposal);
             bestScore = proposalScore;
@@ -1223,7 +1290,7 @@ CircuitAutoplacer::compute(const Circuit&                            circuit,
         options.progress(candidateIndex + 1, candidateCount);
       continue;
     }
-    const auto score = scorePlacement(*candidate);
+    const auto score = scorePlacement(resolvedConnections, *candidate);
     if (!bestScore || score < *bestScore) {
       best      = std::move(*candidate);
       bestScore = score;
@@ -1244,12 +1311,9 @@ CircuitAutoplacer::compute(const Circuit&                            circuit,
     if (options.isCancelled && options.isCancelled())
       break;
 
-    // A non-interactive HDL import requests only one ranked candidate. Recomputing that
-    // same deterministic layered placement on every fallback attempt merely scales the
-    // same congested corridors and can never change their topology. Continue the normal
-    // candidate sequence here: try the other layered direction first, then deterministic
-    // force-directed seeds. Interactive placement also benefits by continuing after the
-    // candidates it has already examined instead of repeating them.
+    // Continue the normal candidate sequence rather than repeating and scaling the same
+    // deterministic layered placement: try any remaining layered direction first, then
+    // deterministic force-directed seeds.
     const int          fallbackCandidateIndex = candidateCount + routingAttempt;
     GraphLayoutOptions fallbackLayoutOptions  = options.graphLayout;
     if (fallbackCandidateIndex < static_cast<int>(layoutDirections.size())) {
@@ -1268,7 +1332,7 @@ CircuitAutoplacer::compute(const Circuit&                            circuit,
                        static_cast<std::size_t>(candidateCount + routingAttempt));
     if (candidate) {
       best      = std::move(*candidate);
-      bestScore = scorePlacement(best);
+      bestScore = scorePlacement(resolvedConnections, best);
     }
 
     if (options.progress)
@@ -1279,12 +1343,7 @@ CircuitAutoplacer::compute(const Circuit&                            circuit,
     throw std::runtime_error("Circuit autoplacement could not produce a complete route");
   }
 
-  // The single-candidate path is used while materialising an imported circuit. Keep
-  // that conversion bounded: refinement reroutes several proposals per component and is
-  // intended for the explicit interactive "Auto place" command, which requests many
-  // candidates and exposes cancellation progress.
-  if (bestScore && candidateCount > 1
-      && !(options.isCancelled && options.isCancelled())) {
+  if (bestScore && !(options.isCancelled && options.isCancelled())) {
     best = refinePlacementWithRouting(resolvedConnections, std::move(best), options,
                                       static_cast<std::size_t>(candidateCount));
   }
