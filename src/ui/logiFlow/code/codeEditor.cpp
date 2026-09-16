@@ -23,6 +23,7 @@
 #include <QContextMenuEvent>
 #include <QEvent>
 #include <QFontInfo>
+#include <QFontMetrics>
 #include <QKeyEvent>
 #include <QMenu>
 #include <QPaintEvent>
@@ -63,7 +64,7 @@ CodeEditor::CodeEditor(QWidget* parent)
 {
   setLineWrapMode(QPlainTextEdit::NoWrap);
   setProperty("class", "mono");
-  setTabStopDistance(fontMetrics().horizontalAdvance(QChar::VisualTabCharacter));
+  updateIndentationSettings();
   completer->setWidget(this);
   completer->setModel(completionModel);
   completer->setCaseSensitivity(Qt::CaseSensitive);
@@ -104,6 +105,7 @@ void CodeEditor::setFileType(const SILICON::project::DocumentType type)
   refreshTheme();
   rebuildCompletionCandidates();
   rebuildIndentationTriggers();
+  updateIndentationSettings();
 }
 
 void CodeEditor::clearFileType()
@@ -206,6 +208,7 @@ void CodeEditor::indentCurrentLine()
                                       static_cast<std::size_t>(currentUtf8.size())),
       .previousNonBlankLines =
           std::span<const std::string_view>(previousLines).first(previousCount),
+      .indentWidth = currentIndentWidth(),
   };
   const auto desiredIndentUtf8 = indentation->indentationFor(context);
   const auto desiredIndent     = QString::fromUtf8(
@@ -313,6 +316,23 @@ void CodeEditor::keyPressEvent(QKeyEvent* event)
     }
   }
 
+  if (event->key() == Qt::Key_Tab || event->key() == Qt::Key_Backtab) {
+    if (event->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier)) {
+      QPlainTextEdit::keyPressEvent(event);
+      return;
+    }
+    const int indent = currentIndentWidth();
+    if (event->key() == Qt::Key_Tab) {
+      QTextCursor cursor = textCursor();
+      cursor.insertText(QString(indent, QLatin1Char(' ')));
+      setTextCursor(cursor);
+    } else {
+      dedentSelection();
+    }
+    event->accept();
+    return;
+  }
+
   if (event->matches(QKeySequence::InsertParagraphSeparator)) {
     QTextCursor cursor = textCursor();
     cursor.beginEditBlock();
@@ -397,9 +417,18 @@ void CodeEditor::wheelEvent(QWheelEvent* event)
   editorFont.setPointSizeF(zoomFontPointSize);
   setFont(editorFont);
   document()->setDefaultFont(editorFont);
+  updateIndentationSettings();
   updateLineNumberAreaWidth();
   lineNumberArea->update();
   event->accept();
+}
+
+QFont CodeEditor::lineNumberFont() const
+{
+  QFont lineFont = document()->defaultFont();
+  if (zoomFontPointSize > 0.0)
+    lineFont.setPointSizeF(zoomFontPointSize);
+  return lineFont;
 }
 
 int CodeEditor::lineNumberAreaWidth() const
@@ -407,12 +436,14 @@ int CodeEditor::lineNumberAreaWidth() const
   int digits = 1;
   for (int lines = std::max(1, blockCount()); lines >= 10; lines /= 10)
     ++digits;
-  return 12 + fontMetrics().horizontalAdvance(QLatin1Char('9')) * digits;
+  return 12 + QFontMetrics(lineNumberFont()).horizontalAdvance(QLatin1Char('9')) * digits;
 }
 
 void CodeEditor::paintLineNumberArea(QPaintEvent* event)
 {
   QPainter painter(lineNumberArea);
+  painter.setFont(lineNumberFont());
+  const QFontMetrics metrics = painter.fontMetrics();
   painter.fillRect(event->rect(), palette().color(QPalette::AlternateBase));
   QTextBlock block       = firstVisibleBlock();
   int        blockNumber = block.blockNumber();
@@ -423,7 +454,7 @@ void CodeEditor::paintLineNumberArea(QPaintEvent* event)
     if (block.isVisible() && bottom >= event->rect().top()) {
       painter.setPen(palette().color(
           blockNumber == currentBlock ? QPalette::Text : QPalette::PlaceholderText));
-      painter.drawText(0, top, lineNumberArea->width() - 6, fontMetrics().height(),
+      painter.drawText(0, top, lineNumberArea->width() - 6, metrics.height(),
                        Qt::AlignRight, QString::number(blockNumber + 1));
     }
     block  = block.next();
@@ -436,9 +467,7 @@ void CodeEditor::paintLineNumberArea(QPaintEvent* event)
 void CodeEditor::resizeEvent(QResizeEvent* event)
 {
   QPlainTextEdit::resizeEvent(event);
-  const QRect contents = contentsRect();
-  lineNumberArea->setGeometry(
-      QRect(contents.left(), contents.top(), lineNumberAreaWidth(), contents.height()));
+  updateLineNumberAreaGeometry();
 }
 
 void CodeEditor::changeEvent(QEvent* event)
@@ -449,6 +478,7 @@ void CodeEditor::changeEvent(QEvent* event)
     lineNumberArea->update();
   } else if (event->type() == QEvent::FontChange
              || event->type() == QEvent::ApplicationFontChange) {
+    updateIndentationSettings();
     updateLineNumberAreaWidth();
     lineNumberArea->update();
   }
@@ -457,6 +487,71 @@ void CodeEditor::changeEvent(QEvent* event)
 void CodeEditor::updateLineNumberAreaWidth()
 {
   setViewportMargins(lineNumberAreaWidth(), 0, 0, 0);
+  updateLineNumberAreaGeometry();
+}
+
+void CodeEditor::updateLineNumberAreaGeometry()
+{
+  const QRect contents = contentsRect();
+  lineNumberArea->setGeometry(
+      QRect(contents.left(), contents.top(), lineNumberAreaWidth(), contents.height()));
+}
+
+int CodeEditor::currentIndentWidth() const
+{
+  if (!fileTypeValue)
+    return 4;
+  const auto* indentation = codeFilePresentation(*fileTypeValue).syntax->indentation;
+  return indentation ? indentation->indentWidth : 4;
+}
+
+void CodeEditor::updateIndentationSettings()
+{
+  const int width = currentIndentWidth();
+  setTabStopDistance(fontMetrics().horizontalAdvance(QLatin1Char(' '))
+                     * static_cast<qreal>(width));
+}
+
+void CodeEditor::dedentSelection()
+{
+  QTextCursor cursor = textCursor();
+  const int   indent = currentIndentWidth();
+  cursor.beginEditBlock();
+
+  const QTextBlock firstBlock = cursor.block();
+  const QTextBlock lastBlock =
+      cursor.hasSelection() ? document()->findBlock(cursor.selectionEnd()) : firstBlock;
+
+  std::vector<std::pair<int, int>> removals;
+  for (QTextBlock block = firstBlock;
+       block.isValid() && block.position() <= lastBlock.position();
+       block = block.next()) {
+    const QString text        = block.text();
+    int           removeCount = 0;
+    while (removeCount < text.size() && removeCount < indent) {
+      const QChar ch = text.at(removeCount);
+      if (ch == QLatin1Char(' ')) {
+        ++removeCount;
+      } else if (ch == QLatin1Char('\t')) {
+        ++removeCount;
+        break;
+      } else {
+        break;
+      }
+    }
+    if (removeCount > 0)
+      removals.emplace_back(block.position(), removeCount);
+  }
+
+  for (auto it = removals.rbegin(); it != removals.rend(); ++it) {
+    QTextCursor blockCursor(document());
+    blockCursor.setPosition(it->first);
+    blockCursor.setPosition(it->first + it->second, QTextCursor::KeepAnchor);
+    blockCursor.removeSelectedText();
+  }
+
+  cursor.endEditBlock();
+  setTextCursor(cursor);
 }
 
 }  // namespace SILICON::ui
