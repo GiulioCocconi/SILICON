@@ -35,7 +35,7 @@ using SourceFile = core::SourceFile;
 
 [[nodiscard]] std::string write(std::string_view          yosysJson,
                                 const yosys::ToolOptions& options = {});
-[[nodiscard]] std::string write(const core::Circuit&      circuit,
+[[nodiscard]] std::string write(const core::Circuit& circuit, std::string_view moduleName,
                                 const yosys::ToolOptions& options = {});
 
 }  // namespace SILICON::verilog

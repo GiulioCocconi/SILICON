@@ -217,23 +217,16 @@ namespace ui {
     [[nodiscard]] const WireManager&       getWireManager() const { return wireManager; }
     [[nodiscard]] std::shared_ptr<Circuit> getCircuit() const { return circuit; }
 
-    /** @brief Replaces the derived topology cache while retaining the document name. */
+    /** @brief Replaces the derived topology cache. */
     void setCircuit(std::shared_ptr<Circuit> newCircuit)
     {
-      if (newCircuit)
-        newCircuit->setName(circuitName);
       circuit = std::move(newCircuit);
     }
 
-    /** @brief Installs an authoritative circuit and adopts its persisted name. */
+    /** @brief Installs an authoritative circuit. */
     void setDocumentCircuit(std::shared_ptr<Circuit> newCircuit)
     {
-      circuitName = newCircuit ? newCircuit->getName() : "Untitled";
-      circuit     = std::move(newCircuit);
-    }
-    [[nodiscard]] const std::string& getCircuitName() const noexcept
-    {
-      return circuitName;
+      circuit = std::move(newCircuit);
     }
 
     /**
@@ -546,9 +539,6 @@ namespace ui {
 
     /** @brief Underlying logic circuit model */
     std::shared_ptr<Circuit> circuit;
-
-    /** @brief Persisted document name, independent of the disposable topology cache. */
-    std::string circuitName = "Untitled";
 
     /** @brief O(1) lookup table for runtime graphical items by stable UI id */
     std::unordered_map<uint64_t, GraphicalItem*> itemsByUiId;

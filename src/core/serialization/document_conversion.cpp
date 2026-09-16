@@ -42,21 +42,21 @@ namespace {
 
     auto circuit = SILICON::core::deserializeCircuitDocument(source.getContents(),
                                                              registry, &resolver);
-    circuit.setName(*slug);
 
     const auto path = SILICON::project::documentPathForSlug(DocumentType::Verilog, *slug);
     return {
         .choices = {},
         .execute =
-            [path,
+            [path, slug = *slug,
              circuit = std::move(circuit)](const std::span<const std::string> selected) {
               if (!selected.empty())
                 throw std::invalid_argument(
                     "Circuit-to-Verilog conversion does not accept selections");
               std::vector<SemanticDocument> documents;
-              documents.push_back({.path    = path,
-                                   .payload = VerilogSource{
-                                       .contents = SILICON::verilog::write(circuit)}});
+              documents.push_back(
+                  {.path    = path,
+                   .payload = VerilogSource{.contents =
+                                                SILICON::verilog::write(circuit, slug)}});
               return SemanticConversionResult{.documents    = std::move(documents),
                                               .activatePath = path};
             },
