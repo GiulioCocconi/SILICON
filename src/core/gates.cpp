@@ -40,6 +40,14 @@ namespace {
     return gate.getPropertyValue<int>("size").value_or(1);
   }
 
+  State busTruthValue(const Bus& bus)
+  {
+    State result = State::LOW;
+    for (const auto& wire : bus)
+      result = result || Wire::safeGetCurrentState(wire);
+    return result;
+  }
+
   template <typename Reducer, typename Finalizer = std::identity>
   void simulateBitwiseGate(Gate& gate, SILICON::simulation::Simulator& sim,
                            State initialState, Reducer&& reducer,
@@ -52,7 +60,7 @@ namespace {
     if (!gateBitwiseEnabled(gate)) {
       State result = initialState;
       for (const auto& input : inputs)
-        result = reducer(result, Wire::safeGetCurrentState(input[0]));
+        result = reducer(result, busTruthValue(input));
 
       sim.updateWire(outputs[0][0], finalizer(result), delay, gate.weak_from_this());
       return;
@@ -176,16 +184,47 @@ void OrGate::simulate(SILICON::simulation::Simulator& sim)
                       [](const State lhs, const State rhs) { return lhs || rhs; });
 }
 
+NotGate::NotGate() : Gate(false)
+{
+  initializeNotProperties();
+}
+
 NotGate::NotGate(Wire_ptr input, Wire_ptr output) : Gate({input}, output, false)
 {
+  initializeNotProperties();
+}
+
+void NotGate::initializeNotProperties()
+{
   setProperty("delay", 2);
+  defineProperty("size", 1);
+  setPropertyCallback("size", [this](const PropertyValue& value) {
+    const int size = std::get<int>(value);
+    if (size < 1)
+      throw std::invalid_argument("Gate size must be at least 1");
+    if (!inputs.empty() && !outputs.empty())
+      setSize(size);
+    return value;
+  });
 }
 
 void NotGate::simulate(SILICON::simulation::Simulator& sim)
 {
-  State s = !Wire::safeGetCurrentState(inputs[0][0]);
-  sim.updateWire(this->outputs[0][0], s, getPropertyValue<int>("delay").value_or(0),
-                 weak_from_this());
+  const auto delay = getPropertyValue<int>("delay").value_or(0);
+  if (outputs[0].size() == 1) {
+    sim.updateWire(outputs[0][0], !busTruthValue(inputs[0]), delay, weak_from_this());
+    return;
+  }
+
+  if (inputs[0].size() != outputs[0].size())
+    throw std::logic_error("NOT gate input and output widths must match");
+
+  for (std::size_t bit = 0; bit < outputs[0].size(); ++bit) {
+    sim.updateWire(
+        outputs[0][static_cast<unsigned short>(bit)],
+        !Wire::safeGetCurrentState(inputs[0][static_cast<unsigned short>(bit)]), delay,
+        weak_from_this());
+  }
 }
 
 NandGate::NandGate(const std::vector<Wire_ptr>& inputs, Wire_ptr output)
