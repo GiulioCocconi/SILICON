@@ -20,6 +20,7 @@
 class QCompleter;
 class QContextMenuEvent;
 class QEvent;
+class QFont;
 class QKeyEvent;
 class QPaintEvent;
 class QResizeEvent;
@@ -41,7 +42,7 @@ public:
   void clearFileType();
 
   [[nodiscard]] const std::optional<SILICON::project::DocumentType>& fileType() const;
-  [[nodiscard]] QString     completionPrefix() const;
+  [[nodiscard]] QString completionPrefix() const;
 
 protected:
 #ifndef QT_NO_CONTEXTMENU
@@ -55,17 +56,22 @@ protected:
 private:
   friend class CodeLineNumberArea;
 
-  [[nodiscard]] int  lineNumberAreaWidth() const;
-  void               paintLineNumberArea(QPaintEvent* event);
-  void               updateLineNumberAreaWidth();
-  void               refreshTheme();
-  void               rebuildCompletionCandidates();
-  void               rebuildIndentationTriggers();
-  void               showCompletion(bool explicitRequest);
-  void               insertCompletion(const QString& completion);
-  void               indentCurrentLine();
-  [[nodiscard]] bool currentLineMatchesIndentationTrigger() const;
-  [[nodiscard]] bool isWordDelimiter(QChar character) const;
+  [[nodiscard]] int   lineNumberAreaWidth() const;
+  void                paintLineNumberArea(QPaintEvent* event);
+  [[nodiscard]] QFont lineNumberFont() const;
+  void                updateLineNumberAreaWidth();
+  void                updateLineNumberAreaGeometry();
+  void                refreshTheme();
+  void                rebuildCompletionCandidates();
+  void                rebuildIndentationTriggers();
+  [[nodiscard]] int   currentIndentWidth() const;
+  void                updateIndentationSettings();
+  void                showCompletion(bool explicitRequest);
+  void                insertCompletion(const QString& completion);
+  void                indentCurrentLine();
+  void                dedentSelection();
+  [[nodiscard]] bool  currentLineMatchesIndentationTrigger() const;
+  [[nodiscard]] bool  isWordDelimiter(QChar character) const;
 
   CodeLineNumberArea*                           lineNumberArea;
   CodeSyntaxHighlighter*                        syntaxHighlighter;

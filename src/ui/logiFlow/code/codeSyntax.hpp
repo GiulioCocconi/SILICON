@@ -59,13 +59,16 @@ struct CodeSyntaxRegionRule {
 struct CodeIndentationContext {
   std::string_view                  currentLine;
   std::span<const std::string_view> previousNonBlankLines;
+  int                               indentWidth;
 };
 
 using CodeIndentationFunction = std::string (*)(const CodeIndentationContext&);
 
+/** Number of spaces per indentation level. */
 struct CodeIndentation {
   CodeIndentationFunction           indentationFor;
   std::span<const std::string_view> triggerPatterns;
+  int                               indentWidth;
 };
 
 /** Qt-independent description consumed by code-editor features. */
