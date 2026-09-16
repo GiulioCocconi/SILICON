@@ -365,6 +365,10 @@ std::string DiagramSceneSerializer::serialize() const
     activeCircuit = std::make_shared<Circuit>(coreComps, false);
   }
 
+  // Topology edits and simulation deliberately replace or clear the cached Circuit.
+  // The document name is independent state and must survive those cache rebuilds.
+  activeCircuit->setName(scene.getCircuitName());
+
   j["circuit"] = nlohmann::json::parse(activeCircuit->serialize());
 
   nlohmann::ordered_json visualComponents = nlohmann::ordered_json::array();
@@ -507,8 +511,9 @@ void DiagramSceneSerializer::deserialize(const std::string&       jsonStr,
   if (hasCircuitPart) {
     authoritativeCircuit =
         deserializeCircuitPayload(j, coreRegistry, scene.circuitResolver());
-    scene.setCircuit(authoritativeCircuit);
+    scene.setDocumentCircuit(authoritativeCircuit);
   } else {
+    scene.setDocumentCircuit(nullptr);
     QMessageBox::warning(QApplication::activeWindow(),
                          QObject::tr("Visual circuit warning"),
                          QObject::tr("Simulation properties are not present in the "
@@ -541,7 +546,7 @@ void DiagramSceneSerializer::loadCircuit(std::shared_ptr<Circuit> circuit,
                                          const bool resolveSubcircuitMetadata)
 {
   scene.clear(false, false);
-  scene.setCircuit(std::move(circuit));
+  scene.setDocumentCircuit(std::move(circuit));
   auto components = createAutoplacedVisualComponents(scene.getCircuit(), guiFactory);
   for (auto& component : components)
     attachProjectContext(component.get(), scene);

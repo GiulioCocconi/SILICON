@@ -927,17 +927,14 @@ TEST_F(SubcircuitTest, ResolvesCircuitReadDirectlyFromProjectArchive)
   ProjectFileCleanup cleanup{path};
   const auto         timestamp = currentUtcTimestamp();
   writeProjectFile(
-      path,
-      {.metadata  = {.formatVersion  = FORMAT_VERSION,
-                     .siliconVersion = SILICON_VERSION,
-                     .creationDate   = timestamp,
-                     .lastModify     = timestamp},
-       .project   = {.name        = "resolver test",
-                     .mainCircuit = std::string(DEFAULT_MAIN_CIRCUIT_PATH),
-                     .description = ""},
-       .documents = {
-           {std::string(DEFAULT_MAIN_CIRCUIT_PATH), graphicalAndSubcircuitDocument()},
-           subcircuitDocument("persisted", graphicalBusSubcircuitDocument())}});
+      path, {.metadata  = {.formatVersion  = FORMAT_VERSION,
+                           .siliconVersion = SILICON_VERSION,
+                           .creationDate   = timestamp,
+                           .lastModify     = timestamp},
+             .project   = {.name = "resolver test", .description = ""},
+             .documents = {
+                 {std::string(DEFAULT_CIRCUIT_PATH), graphicalAndSubcircuitDocument()},
+                 subcircuitDocument("persisted", graphicalBusSubcircuitDocument())}});
 
   ProjectContext loadedProject;
   loadedProject.setDocuments(readProjectFile(path).documents);

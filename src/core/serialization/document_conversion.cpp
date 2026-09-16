@@ -40,9 +40,8 @@ namespace {
     if (source.getType() != DocumentType::Circuit || !slug)
       throw std::invalid_argument("Only circuits can be converted to Verilog");
 
-    auto circuit =
-        SILICON::core::parseCircuitDocument(source.getContents(), registry, &resolver)
-            .circuit;
+    auto circuit = SILICON::core::deserializeCircuitDocument(source.getContents(),
+                                                             registry, &resolver);
     circuit.setName(*slug);
 
     const auto path = SILICON::project::documentPathForSlug(DocumentType::Verilog, *slug);

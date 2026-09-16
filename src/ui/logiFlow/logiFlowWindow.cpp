@@ -21,6 +21,7 @@ Copyright (c) 2026. Giulio Cocconi
 #include <cstring>
 
 #include <QApplication>
+#include <QClipboard>
 #include <QDockWidget>
 #include <QEvent>
 #include <QHBoxLayout>
@@ -182,6 +183,8 @@ namespace ui {
 
     connect(diagramScene, &DiagramScene::modeChanged, this,
             &LogiFlowWindow::updateStatus);
+    connect(diagramScene, &DiagramScene::modeChanged, this,
+            [this] { updateEditActions(); });
     updateStatus();
 
     connect(diagramScene, &DiagramScene::selectionChanged, this,
@@ -200,6 +203,8 @@ namespace ui {
     undoStack = new QUndoStack(this);
 
     createActions();
+    connect(QApplication::clipboard(), &QClipboard::dataChanged, this,
+            &LogiFlowWindow::updateEditActions);
     applyStoredSettings();
     createMenus();
     createToolBar();
