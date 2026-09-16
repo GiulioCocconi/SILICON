@@ -51,8 +51,6 @@ void appendSnapshot(Trace& trace, uint64_t time, std::vector<core::BusValue> val
 
 void appendSnapshots(Trace& trace, std::span<const Sample> samples);
 
-void clearSamples(Trace& trace);
-
 [[nodiscard]] std::size_t signalWidth(const Trace& trace, int signalIndex);
 
 void rebuildEditableTrace(Trace& trace, uint64_t duration);

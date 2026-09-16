@@ -41,9 +41,7 @@ public:
   void clearFileType();
 
   [[nodiscard]] const std::optional<SILICON::project::DocumentType>& fileType() const;
-  [[nodiscard]] QStringList completionCandidates() const;
   [[nodiscard]] QString     completionPrefix() const;
-  [[nodiscard]] bool        isCompletionPopupVisible() const;
 
 protected:
 #ifndef QT_NO_CONTEXTMENU

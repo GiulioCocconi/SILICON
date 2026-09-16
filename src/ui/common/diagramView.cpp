@@ -94,11 +94,6 @@ void DiagramView::updateZoom()
   scale(FACTOR, FACTOR);
 }
 
-int DiagramView::getZoomLevel() const
-{
-  return zoomLevel;
-}
-
 void DiagramView::modeChanged(InteractionMode mode)
 {
   // TODO: Set items flags using this->items()

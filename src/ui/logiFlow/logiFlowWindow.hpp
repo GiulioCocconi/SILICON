@@ -208,8 +208,8 @@ namespace ui {
     void cancelCurrentInteraction();
 
     /**
-     * @brief Enables or disables FST waveform tracing for the current scene.
-     * @param enabled True to write FST traces during simulation
+     * @brief Shows or hides the waveform viewer for the current scene.
+     * @param enabled True to open the waveform viewer and enter simulation mode
      */
     void toggleFstTracing(bool enabled);
 
@@ -479,8 +479,8 @@ namespace ui {
     /** @brief Activates simulation mode. */
     QAction* setSimulationModeAct = nullptr;
 
-    /** @brief Toggles FST trace generation for simulations. */
-    QAction* toggleFstTraceAct = nullptr;
+    /** @brief Toggles the waveform viewer window for the active scene. */
+    QAction* toggleWaveformViewerAct = nullptr;
 
     /** @brief Cancels the active diagram interaction. */
     QAction* cancelInteractionAct = nullptr;

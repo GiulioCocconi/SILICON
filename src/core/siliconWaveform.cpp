@@ -85,11 +85,6 @@ void appendSnapshots(Trace& trace, std::span<const Sample> snapshots)
     appendSnapshot(trace, time, values);
 }
 
-void clearSamples(Trace& trace)
-{
-  trace.samples.clear();
-}
-
 std::size_t signalWidth(const Trace& trace, const int signalIndex)
 {
   if (signalIndex < 0 || signalIndex >= static_cast<int>(trace.signalDefinitions.size()))
