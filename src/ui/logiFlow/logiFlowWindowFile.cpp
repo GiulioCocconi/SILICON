@@ -283,7 +283,7 @@ namespace ui {
 
   void LogiFlowWindow::autoPlace()
   {
-    diagramScene->autoPlaceCircuit(true);
+    diagramScene->autoPlaceCircuit();
   }
 
   void LogiFlowWindow::del()

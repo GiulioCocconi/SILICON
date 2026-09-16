@@ -357,9 +357,10 @@ namespace ui {
      *
      * The scene preserves its authoritative logical circuit when available, computes
      * component positions with OGDF, and replaces WireManager's graphical wire segments
-     * with libavoid-routed paths carrying the original buses.
+     * with libavoid-routed paths carrying the original buses. The complete candidate set
+     * is compared while a cancellable progress dialog is shown.
      */
-    void autoPlaceCircuit(bool interactive = false);
+    void autoPlaceCircuit();
 
     /**
      * @brief Removes items matching a serialized selection payload from the current
