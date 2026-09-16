@@ -242,21 +242,11 @@ public slots:
                   const QList<int>& signalWidths);
 
   /**
-   * @brief Appends or replaces one timestamped snapshot.
-   * @param time Simulation timestamp
-   * @param values Signal values ordered like the configured names
-   */
-  void appendSnapshot(quint64 time, const std::vector<core::BusValue>& values);
-
-  /**
    * @brief Appends a batch of snapshots with a single deferred UI refresh.
    * @param snapshots Ordered timestamp and signal-value snapshots
    */
   void
   appendSnapshots(const QList<QPair<qulonglong, std::vector<core::BusValue>>>& snapshots);
-
-  /** @brief Clears all recorded waveform samples. */
-  void clearTrace();
 
   /**
    * @brief Enables input-waveform editing mode.

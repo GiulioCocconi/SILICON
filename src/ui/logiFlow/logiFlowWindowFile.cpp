@@ -541,8 +541,8 @@ namespace ui {
         && (!type
             || SILICON::project::categoryOf(*type)
                    != SILICON::project::DocumentCategory::Diagram)) {
-      const QSignalBlocker blocker(toggleFstTraceAct);
-      toggleFstTraceAct->setChecked(false);
+      const QSignalBlocker blocker(toggleWaveformViewerAct);
+      toggleWaveformViewerAct->setChecked(false);
       return;
     }
 
