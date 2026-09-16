@@ -52,7 +52,7 @@ struct CircuitAutoplacerOptions {
   int obstaclePadding = 20;
 
   /** @brief Number of deterministic placement candidates to route and compare. */
-  int candidateCount = 1;
+  int candidateCount = 16;
 
   /** @brief Optional cooperative cancellation check, evaluated between candidates. */
   std::function<bool()> isCancelled;

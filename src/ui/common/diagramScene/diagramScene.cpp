@@ -648,7 +648,7 @@ namespace ui {
     addItem(component);
   }
 
-  void DiagramScene::autoPlaceCircuit(const bool interactive)
+  void DiagramScene::autoPlaceCircuit()
   {
     setInteractionMode(InteractionMode::NORMAL_MODE);
 
@@ -670,24 +670,17 @@ namespace ui {
     }
     const Circuit& activeCircuit = *authoritativeCircuit;
 
-    if (!interactive) {
-      applyAutoplacement(*this, activeCircuit, components);
-      return;
-    }
-
-    constexpr int   candidateCount = 16;
+    CircuitAutoplacerOptions options;
     auto*           parent = views().isEmpty() ? nullptr : views().first()->window();
     QProgressDialog progress(tr("Finding a clean circuit layout..."),
-                             tr("Use best so far"), 0, candidateCount, parent);
+                             tr("Use best so far"), 0, options.candidateCount, parent);
     progress.setWindowTitle(tr("Auto place"));
     progress.setWindowModality(Qt::WindowModal);
     progress.setMinimumDuration(300);
     progress.setValue(0);
     QApplication::processEvents();
 
-    CircuitAutoplacerOptions options;
-    options.candidateCount = candidateCount;
-    options.isCancelled    = [&progress]() {
+    options.isCancelled = [&progress]() {
       QApplication::processEvents();
       return progress.wasCanceled();
     };

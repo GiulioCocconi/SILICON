@@ -20,7 +20,9 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <limits>
+#include <tuple>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -66,7 +68,8 @@ GraphLayout::compute(const Circuit&                            circuit,
   const auto& circuitGraph = circuit.getGraph();
   const auto  vertexCount  = boost::num_vertices(circuitGraph);
 
-  std::vector<ogdf::node> vertexToNode(vertexCount, nullptr);
+  std::vector<ogdf::node>               vertexToNode(vertexCount, nullptr);
+  std::vector<GraphicalLogicComponent*> vertexToGraphics(vertexCount, nullptr);
   std::unordered_map<const Component*, GraphicalLogicComponent*> componentToGraphics;
   std::unordered_map<ogdf::node, GraphicalLogicComponent*>       nodeToGraphics;
 
@@ -77,7 +80,9 @@ GraphLayout::compute(const Circuit&                            circuit,
     componentToGraphics.emplace(component->getComponent().get(), component);
   }
 
-  for (auto vertex : boost::make_iterator_range(boost::vertices(circuitGraph))) {
+  std::vector<std::size_t> orderedVertices;
+  orderedVertices.reserve(vertexCount);
+  for (const auto vertex : boost::make_iterator_range(boost::vertices(circuitGraph))) {
     const auto& component = circuitGraph[vertex].component;
     if (!component)
       continue;
@@ -86,27 +91,60 @@ GraphLayout::compute(const Circuit&                            circuit,
     if (graphicsIt == componentToGraphics.end())
       continue;
 
-    ogdf::node node                                = graph.newNode();
-    vertexToNode[static_cast<std::size_t>(vertex)] = node;
-    nodeToGraphics.emplace(node, graphicsIt->second);
+    const auto index        = static_cast<std::size_t>(vertex);
+    vertexToGraphics[index] = graphicsIt->second;
+    orderedVertices.push_back(index);
+  }
+
+  std::ranges::sort(orderedVertices, [&](const std::size_t lhs, const std::size_t rhs) {
+    const auto* lhsGraphics = vertexToGraphics[lhs];
+    const auto* rhsGraphics = vertexToGraphics[rhs];
+    return std::pair{lhsGraphics->getUiId(), lhs}
+           < std::pair{rhsGraphics->getUiId(), rhs};
+  });
+  for (const std::size_t vertex : orderedVertices) {
+    ogdf::node node      = graph.newNode();
+    vertexToNode[vertex] = node;
+    nodeToGraphics.emplace(node, vertexToGraphics[vertex]);
   }
 
   if (graph.numberOfNodes() == 0)
     return {};
 
-  for (auto edge : boost::make_iterator_range(boost::edges(circuitGraph))) {
+  struct OrderedEdge {
+    std::size_t                source;
+    std::size_t                target;
+    std::vector<std::uint64_t> busKey;
+  };
+  std::vector<OrderedEdge> orderedEdges;
+  orderedEdges.reserve(boost::num_edges(circuitGraph));
+  for (const auto edge : boost::make_iterator_range(boost::edges(circuitGraph))) {
     const auto sourceVertex = boost::source(edge, circuitGraph);
     const auto targetVertex = boost::target(edge, circuitGraph);
     if (sourceVertex == targetVertex)
       continue;
 
-    ogdf::node source = vertexToNode[static_cast<std::size_t>(sourceVertex)];
-    ogdf::node target = vertexToNode[static_cast<std::size_t>(targetVertex)];
-    if (!source || !target)
+    const auto source = static_cast<std::size_t>(sourceVertex);
+    const auto target = static_cast<std::size_t>(targetVertex);
+    if (!vertexToNode[source] || !vertexToNode[target])
       continue;
 
-    graph.newEdge(source, target);
+    std::vector<std::uint64_t> busKey;
+    busKey.reserve(circuitGraph[edge].bus.size());
+    for (const auto& wire : circuitGraph[edge].bus)
+      busKey.push_back(wire ? wire->getId() : 0);
+    orderedEdges.push_back(
+        {.source = source, .target = target, .busKey = std::move(busKey)});
   }
+
+  std::ranges::sort(orderedEdges, [&](const OrderedEdge& lhs, const OrderedEdge& rhs) {
+    return std::tuple{vertexToGraphics[lhs.source]->getUiId(),
+                      vertexToGraphics[lhs.target]->getUiId(), lhs.busKey}
+           < std::tuple{vertexToGraphics[rhs.source]->getUiId(),
+                        vertexToGraphics[rhs.target]->getUiId(), rhs.busKey};
+  });
+  for (const OrderedEdge& edge : orderedEdges)
+    graph.newEdge(vertexToNode[edge.source], vertexToNode[edge.target]);
 
   ogdf::GraphAttributes attributes(graph, ogdf::GraphAttributes::nodeGraphics
                                               | ogdf::GraphAttributes::edgeGraphics);
@@ -131,7 +169,10 @@ GraphLayout::compute(const Circuit&                            circuit,
     layout.unitEdgeLength(options.layerDistance);
     layout.minDistCC(options.connectedComponentDistance);
     layout.qualityVersusSpeed(ogdf::FMMMOptions::QualityVsSpeed::GorgeousAndEfficient);
-    layout.newInitialPlacement(true);
+    // FMMM documents newInitialPlacement=true as deliberately varying the coarsest
+    // placement between calls. Keep it disabled so randomSeed identifies a reproducible
+    // candidate and rerunning full autoplacement compares the same search space.
+    layout.newInitialPlacement(false);
     layout.randSeed(options.randomSeed);
     layout.call(attributes);
   } else {
