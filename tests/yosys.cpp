@@ -936,6 +936,59 @@ TEST(YosysTest, ImportsGeneralCombinationalNetlistWithConstants)
             valueFor(outputComponent->inputBuses()[0], 2));
 }
 
+TEST(YosysTest, PreservesLiteralBmuxLanesAsSizedConstants)
+{
+  using SILICON::yosys::Json;
+  using SILICON::yosys::SerializationContext;
+
+  // The packed A port contains two signal lanes followed by the LSB-first encodings
+  // of 4'b0011 and 4'b0100. Each literal lane should become one four-bit constant.
+  const Json design{
+      {"modules",
+       {{"top",
+         {{"attributes", Json::object()},
+          {"ports",
+           {{"first", {{"direction", "input"}, {"bits", Json::array({2, 3, 4, 5})}}},
+            {"second", {{"direction", "input"}, {"bits", Json::array({6, 7, 8, 9})}}},
+            {"select", {{"direction", "input"}, {"bits", Json::array({10, 11})}}},
+            {"y", {{"direction", "output"}, {"bits", Json::array({12, 13, 14, 15})}}}}},
+          {"cells",
+           {{"mux",
+             {{"type", "$bmux"},
+              {"parameters",
+               {{"WIDTH", SerializationContext::parameter(4)},
+                {"S_WIDTH", SerializationContext::parameter(2)}}},
+              {"connections",
+               {{"A", Json::array({2, 3, 4, 5, 6, 7, 8, 9, "1", "1", "0", "0", "0", "0",
+                                   "1", "0"})},
+                {"S", Json::array({10, 11})},
+                {"Y", Json::array({12, 13, 14, 15})}}}}}}},
+          {"netnames", Json::object()}}}}}};
+
+  const Circuit circuit = SILICON::yosys::deserialize(design.dump());
+  EXPECT_EQ(componentTypes(circuit).count("ConstantComponent"), 2);
+  EXPECT_EQ(componentTypes(circuit).count("WireMerger"), 0);
+  EXPECT_EQ(componentTypes(circuit).count("WireSplitter"), 0);
+
+  const auto mux = findComponent<Multiplexer>(circuit);
+  ASSERT_TRUE(mux);
+  ASSERT_EQ(mux->inputBuses().size(), 5);
+
+  std::map<BusValue, std::shared_ptr<ConstantComponent>> constants;
+  for (const auto& component : componentsIn(circuit)) {
+    if (auto constant = std::dynamic_pointer_cast<ConstantComponent>(component)) {
+      ASSERT_EQ(constant->getPropertyValue<int>("size"), 4);
+      constants.emplace(*constant->getPropertyValue<BusValue>("value"), constant);
+    }
+  }
+  ASSERT_TRUE(constants.contains(busValueFromBits("0011")));
+  ASSERT_TRUE(constants.contains(busValueFromBits("0100")));
+  EXPECT_EQ(mux->inputBuses()[2],
+            constants.at(busValueFromBits("0011"))->outputBuses()[0]);
+  EXPECT_EQ(mux->inputBuses()[3],
+            constants.at(busValueFromBits("0100"))->outputBuses()[0]);
+}
+
 TEST(YosysTest, ImportsSubWithYosysWidthAndSignednessSemantics)
 {
   const auto import = [](const std::size_t aWidth, const std::size_t bWidth,
@@ -2001,6 +2054,41 @@ TEST(YosysToolTest, FoldsExhaustiveCaseIntoOneWideMultiplexer)
   EXPECT_EQ(mux->getPropertyValue<int>("selectionSize"), 2);
   EXPECT_EQ(mux->getPropertyValue<int>("busSize"), 4);
   EXPECT_EQ(mux->inputBuses().size(), 5);
+}
+
+TEST(YosysToolTest, ImportsCaseLiteralLanesAsSizedConstants)
+{
+  #ifndef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
+  GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
+  #endif
+  constexpr std::string_view source = R"(
+    module my_mux(input [1:0] a, input [3:0] b, c, output reg [3:0] o);
+      always @(a, b, c) begin
+        case (a)
+          2'b00: o = b;
+          2'b01: o = c;
+          2'b11: o = 4;
+          default: o = 3;
+        endcase
+      end
+    endmodule
+  )";
+
+  const Circuit circuit = importVerilog(source, "my_mux");
+  EXPECT_EQ(componentTypes(circuit).count("Multiplexer"), 1);
+  EXPECT_EQ(componentTypes(circuit).count("ConstantComponent"), 2);
+  EXPECT_EQ(componentTypes(circuit).count("WireMerger"), 0);
+  EXPECT_EQ(componentTypes(circuit).count("WireSplitter"), 0);
+
+  std::set<BusValue> values;
+  for (const auto& component : componentsIn(circuit)) {
+    if (auto constant = std::dynamic_pointer_cast<ConstantComponent>(component)) {
+      EXPECT_EQ(constant->getPropertyValue<int>("size"), 4);
+      values.insert(*constant->getPropertyValue<BusValue>("value"));
+    }
+  }
+  EXPECT_EQ(values,
+            (std::set<BusValue>{busValueFromBits("0011"), busValueFromBits("0100")}));
 }
 
 TEST(YosysTest, ImportsScalarActiveHighNativeDlatch)
