@@ -482,9 +482,10 @@ std::string write(const std::string_view yosysJson, const yosys::ToolOptions& op
   return postprocess(yosys::writeVerilog(yosysJson, options));
 }
 
-std::string write(const core::Circuit& circuit, const yosys::ToolOptions& options)
+std::string write(const core::Circuit& circuit, const std::string_view moduleName,
+                  const yosys::ToolOptions& options)
 {
-  return write(yosys::serialize(circuit), options);
+  return write(yosys::serialize(circuit, moduleName), options);
 }
 
 }  // namespace SILICON::verilog

@@ -245,7 +245,6 @@ std::shared_ptr<Circuit> CircuitElaborator::elaborate(const Circuit& sourceCircu
   appendCircuit(sourceCircuit, context, std::move(rootWireMap), activeSubcircuits);
 
   auto runtimeCircuit = std::make_shared<Circuit>(context.components, false);
-  runtimeCircuit->setName(sourceCircuit.getName());
 
   return runtimeCircuit;
 }

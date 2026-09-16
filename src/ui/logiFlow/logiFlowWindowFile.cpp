@@ -144,7 +144,6 @@ namespace ui {
     editorStack->setCurrentWidget(diagramView);
     diagramScene->clear();
     auto circuit = std::make_shared<Circuit>();
-    circuit->setName("Untitled");
     diagramScene->setDocumentCircuit(std::move(circuit));
     diagramScene->setSubcircuitDocumentMode(false);
     auto document = defaultCircuitDocument();
