@@ -235,11 +235,6 @@ namespace ui {
      */
     void setIoInteractionsEnabled(bool enabled) { ioInteractionsEnabled = enabled; }
 
-    /**
-     * @brief Returns whether simulation-mode IO clicks are currently allowed.
-     */
-    [[nodiscard]] bool areIoInteractionsEnabled() const { return ioInteractionsEnabled; }
-
     /** @brief Enables reusable-circuit boundary I/O editing for the scene. */
     void setSubcircuitDocumentMode(bool enabled) { subcircuitDocumentMode = enabled; }
 
@@ -416,14 +411,6 @@ namespace ui {
     void handleInputToggled(Bus targetBus, BusValue value, Component_weakPtr source);
 
     /**
-     * @brief Refreshes the visual state of all graphical outputs.
-     *
-     * Queries the simulator buses and updates the visual state of
-     * SINGLE_OUTPUT components accordingly.
-     */
-    void refreshGraphicalOutputs();
-
-    /**
      * @brief Calculates wire connections for all components.
      *
      * Computes the logical bus connections between components
@@ -455,11 +442,6 @@ namespace ui {
      */
     void waveformTraceReset(QStringList signalNames, int inputCount,
                             QList<int> signalWidths);
-
-    /**
-     * @brief Emitted when the simulator reaches a new visible waveform state.
-     */
-    void waveformTraceSnapshot(qulonglong time, std::vector<BusValue> values);
 
     /**
      * @brief Emitted when a completed simulation job produced multiple waveform states.

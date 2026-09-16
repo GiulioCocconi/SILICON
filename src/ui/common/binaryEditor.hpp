@@ -35,9 +35,7 @@ public:
   void                            setData(QByteArray data);
   [[nodiscard]] const QByteArray& data() const noexcept;
 
-  [[nodiscard]] std::size_t byteOffset() const noexcept;
-  bool                      setByteOffset(std::size_t offset);
-  bool                      goToByteOffset(std::size_t offset);
+  bool setByteOffset(std::size_t offset);
 
   [[nodiscard]] bool                         canReadValue(std::size_t bitWidth) const;
   [[nodiscard]] std::optional<std::uint64_t> readValue(std::size_t bitWidth) const;

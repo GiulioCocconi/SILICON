@@ -444,11 +444,6 @@ const QByteArray& BinaryEditor::data() const noexcept
   return bytes;
 }
 
-std::size_t BinaryEditor::byteOffset() const noexcept
-{
-  return selectedByte;
-}
-
 bool BinaryEditor::setByteOffset(const std::size_t offset)
 {
   if (offset >= static_cast<std::size_t>(bytes.size()))
@@ -459,11 +454,6 @@ bool BinaryEditor::setByteOffset(const std::size_t offset)
   refreshInspectors();
   refreshOffset();
   return true;
-}
-
-bool BinaryEditor::goToByteOffset(const std::size_t offset)
-{
-  return setByteOffset(offset);
 }
 
 bool BinaryEditor::canReadValue(const std::size_t bitWidth) const

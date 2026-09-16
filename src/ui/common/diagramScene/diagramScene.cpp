@@ -556,11 +556,6 @@ namespace ui {
     simulationController->simulateEditedWaveform(duration, std::move(inputSnapshots));
   }
 
-  void DiagramScene::refreshGraphicalOutputs()
-  {
-    simulationController->refreshGraphicalOutputs();
-  }
-
   bool DiagramScene::calculateWiresForComponents()
   {
     for (const auto& wire : wireManager.wires()) {

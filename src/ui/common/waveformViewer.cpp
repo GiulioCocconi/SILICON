@@ -963,11 +963,6 @@ bool Viewer::eventFilter(QObject* watched, QEvent* event)
   return QWidget::eventFilter(watched, event);
 }
 
-void Viewer::appendSnapshot(quint64 time, const std::vector<BusValue>& values)
-{
-  appendSnapshots({{time, values}});
-}
-
 void Viewer::appendSnapshots(
     const QList<QPair<qulonglong, std::vector<BusValue>>>& snapshots)
 {
@@ -990,15 +985,6 @@ void Viewer::appendSnapshots(
 
   updateDurationField();
   scheduleRefresh();
-}
-
-void Viewer::clearTrace()
-{
-  clearSamples(trace);
-  selectedSampleIndex = -1;
-  selectedSignalIndex = trace.signalDefinitions.empty() ? -1 : 0;
-  updateDurationField();
-  refreshViews();
 }
 
 void Viewer::setEditMode(const bool enabled)

@@ -469,9 +469,9 @@ EM_ASM(
     setPanModeAct          = new QAction(Icon("pan"), "", this);
     setWireCreationModeAct = new QAction(Icon("link"), "", this);
     setSimulationModeAct   = new QAction(Icon("play"), "", this);
-    toggleFstTraceAct =
+    toggleWaveformViewerAct =
         makeAction(this, Icon("chart"), tr("Trace"), tr("Show waveform viewer"));
-    toggleFstTraceAct->setCheckable(true);
+    toggleWaveformViewerAct->setCheckable(true);
     cancelInteractionAct =
         makeAction(this, QString(), tr("Cancel the current interaction"));
 
@@ -587,7 +587,7 @@ EM_ASM(
             &LogiFlowWindow::setComponentPlacingMode);
     connect(cancelInteractionAct, &QAction::triggered, this,
             &LogiFlowWindow::cancelCurrentInteraction);
-    connect(toggleFstTraceAct, &QAction::toggled, this,
+    connect(toggleWaveformViewerAct, &QAction::toggled, this,
             &LogiFlowWindow::toggleFstTracing);
 
     addAction(setComponentPlacingModeAct);
@@ -639,7 +639,7 @@ EM_ASM(
                  tr("Cancel current interaction"), cancelInteractionAct,
                  QKeySequence(Qt::Key_Escape)),
         shortcut(QStringLiteral("keybindings/toggleTrace"), tr("Waveform trace"),
-                 toggleFstTraceAct, QKeySequence()),
+                 toggleWaveformViewerAct, QKeySequence()),
         shortcut(QStringLiteral("keybindings/settings"), tr("Settings"), settingsAct,
                  QKeySequence()),
     };
@@ -681,7 +681,7 @@ EM_ASM(
     fileMenu->addAction(openAct);
     fileMenu->addAction(saveAct);
     fileMenu->addAction(exportImageAct);
-    fileMenu->addAction(toggleFstTraceAct);
+    fileMenu->addAction(toggleWaveformViewerAct);
     fileMenu->addSeparator();
     fileMenu->addAction(exitAct);
 
@@ -718,7 +718,7 @@ EM_ASM(
     toolBar->addAction(setPanModeAct);
     toolBar->addAction(setWireCreationModeAct);
     toolBar->addAction(setSimulationModeAct);
-    toolBar->addAction(toggleFstTraceAct);
+    toolBar->addAction(toggleWaveformViewerAct);
 
     documentToolsSeparator = toolBar->addSeparator();
     toolBar->addAction(openComponentCatalogAct);
@@ -742,14 +742,14 @@ EM_ASM(
     layout->addWidget(waveformViewer);
 
     connect(waveformWindow, &QDialog::finished, this, [this] {
-      const QSignalBlocker blocker(toggleFstTraceAct);
-      toggleFstTraceAct->setChecked(false);
+      const QSignalBlocker blocker(toggleWaveformViewerAct);
+      toggleWaveformViewerAct->setChecked(false);
       waveformViewer->setEditMode(false);
     });
     connect(diagramScene, &DiagramScene::waveformTraceReset, waveformViewer,
             &waveform::Viewer::resetTrace);
-    connect(diagramScene, &DiagramScene::waveformTraceSnapshot, waveformViewer,
-            &waveform::Viewer::appendSnapshot);
+    connect(diagramScene, &DiagramScene::waveformTraceSnapshots, waveformViewer,
+            &waveform::Viewer::appendSnapshots);
     connect(
         waveformViewer, &waveform::Viewer::editModeChanged, this,
         [this](const bool enabled) { diagramScene->setIoInteractionsEnabled(!enabled); });
@@ -803,7 +803,7 @@ EM_ASM(
                               && SILICON::project::categoryOf(*type)
                                      != SILICON::project::DocumentCategory::Diagram;
     setActionsEnabled({setNormalModeAct, setPanModeAct, setWireCreationModeAct,
-                       setSimulationModeAct, toggleFstTraceAct, openComponentCatalogAct,
+                       setSimulationModeAct, toggleWaveformViewerAct, openComponentCatalogAct,
                        setComponentPlacingModeAct, autoPlaceAct},
                       !nonGraphical);
 
@@ -831,14 +831,14 @@ EM_ASM(
     // actions from this toolbar and re-add the active group in its canonical order.
     for (auto* action :
          {diagramToolsSeparator, setNormalModeAct, setPanModeAct, setWireCreationModeAct,
-          setSimulationModeAct, toggleFstTraceAct, documentToolsSeparator,
+          setSimulationModeAct, toggleWaveformViewerAct, documentToolsSeparator,
           openComponentCatalogAct, editSubcircuitShapeAct, codeConversionAct})
       toolBar->removeAction(action);
 
     if (diagram) {
       toolBar->addAction(diagramToolsSeparator);
       for (auto* action : {setNormalModeAct, setPanModeAct, setWireCreationModeAct,
-                           setSimulationModeAct, toggleFstTraceAct}) {
+                           setSimulationModeAct, toggleWaveformViewerAct}) {
         if (action->isEnabled())
           toolBar->addAction(action);
       }

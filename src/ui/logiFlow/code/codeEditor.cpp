@@ -121,16 +121,6 @@ const std::optional<SILICON::project::DocumentType>& CodeEditor::fileType() cons
   return fileTypeValue;
 }
 
-QStringList CodeEditor::completionCandidates() const
-{
-  return completionModel->stringList();
-}
-
-bool CodeEditor::isCompletionPopupVisible() const
-{
-  return completer->popup()->isVisible();
-}
-
 void CodeEditor::refreshTheme()
 {
   syntaxHighlighter->setPalette(palette());
