@@ -22,6 +22,7 @@ Copyright (c) 2026. Giulio Cocconi
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <QMainWindow>
@@ -360,12 +361,14 @@ namespace ui {
     QVector<ShortcutSetting> shortcutSettings() const;
 
     [[nodiscard]] static QString documentTypeName(SILICON::project::DocumentType type);
-    [[nodiscard]] static std::string                defaultMainCircuitPath();
+    [[nodiscard]] static std::string                defaultCircuitPath();
     [[nodiscard]] static SILICON::project::Document defaultCircuitDocument();
     [[nodiscard]] static SILICON::project::ProjectInfo
-                              defaultProjectInfo(const QString& currentFileName);
-    [[nodiscard]] std::string projectMainCircuitPath() const;
-    void                      ensureProjectDocuments();
+    defaultProjectInfo(const QString& currentFileName);
+    [[nodiscard]] std::optional<std::string>
+                firstCircuitPath(std::string_view excludedPath = {}) const;
+    void        ensureProjectDocuments();
+    void        updateEditActions();
     static void setActionsEnabled(std::initializer_list<QAction*> actions, bool enabled);
     void        syncWasmShortcutCapture();
 

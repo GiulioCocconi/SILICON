@@ -136,14 +136,16 @@ namespace ui {
   {
     currentProjectMetadata.reset();
     currentProjectInfo   = defaultProjectInfo(currentFileName);
-    activeDocumentPath   = defaultMainCircuitPath();
+    activeDocumentPath   = defaultCircuitPath();
     codeDocumentsDirty   = false;
     binaryDocumentsDirty = false;
     codeEditor->clearFileType();
     binaryEditor->setData({});
     editorStack->setCurrentWidget(diagramView);
     diagramScene->clear();
-    diagramScene->setCircuit(std::make_shared<Circuit>());
+    auto circuit = std::make_shared<Circuit>();
+    circuit->setName("Untitled");
+    diagramScene->setDocumentCircuit(std::move(circuit));
     diagramScene->setSubcircuitDocumentMode(false);
     auto document = defaultCircuitDocument();
     document.setContents(diagramScene->serialize());
@@ -165,6 +167,7 @@ namespace ui {
       auto* mimeData = new QMimeData();
       mimeData->setData(LogiFlowSelectionMimeType, bytes);
       QApplication::clipboard()->setMimeData(mimeData);
+      updateEditActions();
 
       return true;
     } catch (const std::exception&) {
@@ -331,24 +334,20 @@ namespace ui {
 
       auto projectFile = SILICON::project::readProjectFile(archivePath.toStdString());
 
-      auto       documents        = std::move(projectFile.documents);
-      const auto mainDocumentPath = projectFile.project.mainCircuit;
-      const auto mainDocument     = std::ranges::find(documents, mainDocumentPath,
-                                                      &SILICON::project::Document::getPath);
-      if (mainDocument == documents.end())
-        throw std::runtime_error("Main circuit payload is missing");
-
       currentProjectMetadata = std::move(projectFile.metadata);
       currentProjectInfo     = std::move(projectFile.project);
       codeDocumentsDirty     = false;
       binaryDocumentsDirty   = false;
       binaryEditor->setData({});
-      activeDocumentPath = mainDocumentPath;
-      projectContext.setDocuments(std::move(documents));
+      projectContext.setDocuments(std::move(projectFile.documents));
+      const auto initialCircuit = firstCircuitPath();
+      if (!initialCircuit)
+        throw std::runtime_error("Project has no circuit document");
+      activeDocumentPath = *initialCircuit;
 
       const auto* document = projectContext.documents().find(activeDocumentPath);
       if (!document)
-        throw std::runtime_error("Main circuit payload is missing");
+        throw std::runtime_error("Initial circuit payload is missing");
 
       loadDocumentPayload(*document);
       updateSubcircuitShapeAction();
@@ -411,8 +410,6 @@ namespace ui {
       auto project = currentProjectInfo.value_or(SILICON::project::ProjectInfo{});
       if (project.name.empty())
         project.name = QFileInfo(destinationFileName).baseName().toStdString();
-      if (project.mainCircuit.empty())
-        project.mainCircuit = defaultMainCircuitPath();
       currentProjectInfo = project;
       ensureProjectDocuments();
       const auto                    documents = projectContext.documents().getDocuments();
@@ -568,6 +565,19 @@ namespace ui {
 
   void LogiFlowWindow::selectionChanged()
   {
+    updateEditActions();
+
+    if (!diagramScene->selectedItems().empty() && projectTree)
+      projectTree->clearDocumentSelection();
+
+    updatePropertyDock();
+  }
+
+  void LogiFlowWindow::updateEditActions()
+  {
+    if (!rotateAct || !cutAct || !copyAct || !pasteAct || !deleteAct)
+      return;
+
     const auto type = activeDocumentType();
     if (!type
         || SILICON::project::categoryOf(*type)
@@ -575,7 +585,6 @@ namespace ui {
       rotateAct->setEnabled(false);
       const bool editableText = type == SILICON::project::DocumentType::Verilog;
       setActionsEnabled({cutAct, copyAct, pasteAct, deleteAct}, editableText);
-      updatePropertyDock();
       return;
     }
 
@@ -590,11 +599,9 @@ namespace ui {
     const bool canEditSelection =
         interactionMode == InteractionMode::NORMAL_MODE && hasSelection;
     setActionsEnabled({cutAct, copyAct, deleteAct}, canEditSelection);
-
-    if (hasSelection && projectTree)
-      projectTree->clearDocumentSelection();
-
-    updatePropertyDock();
+    const auto* clipboardData = QApplication::clipboard()->mimeData();
+    pasteAct->setEnabled(interactionMode == InteractionMode::NORMAL_MODE && clipboardData
+                         && clipboardData->hasFormat(LogiFlowSelectionMimeType));
   }
 
   void LogiFlowWindow::projectTreeSelectionChanged()
@@ -651,7 +658,12 @@ namespace ui {
       auto* deleteAction = menu->addAction(
           Icon("delete"), tr("Delete %1").arg(documentTypeName(selection->type)), this,
           &LogiFlowWindow::deleteSelectedDocument);
-      deleteAction->setEnabled(selection->path != projectMainCircuitPath());
+      const auto circuitCount = std::ranges::count_if(
+          projectContext.documents().getDocuments(), [](const auto& document) {
+            return document.getType() == SILICON::project::DocumentType::Circuit;
+          });
+      deleteAction->setEnabled(selection->type != SILICON::project::DocumentType::Circuit
+                               || circuitCount > 1);
     }
 
 #ifdef __EMSCRIPTEN__
@@ -927,8 +939,6 @@ namespace ui {
 
           const auto afterDocuments = renamedProject.documents().getDocuments();
           auto       afterProject   = beforeProject;
-          if (afterProject.mainCircuit == selection.path)
-            afterProject.mainCircuit = newPath;
           const auto afterActivePath =
               beforeActivePath == selection.path ? newPath : beforeActivePath;
 
@@ -962,8 +972,17 @@ namespace ui {
   {
     const auto selection = projectTree ? projectTree->selectedDocument() : std::nullopt;
     auto*      item      = projectTree ? projectTree->selectedProjectItem() : nullptr;
-    if (!selection || !item || selection->path == projectMainCircuitPath())
+    if (!selection || !item)
       return;
+
+    if (selection->type == SILICON::project::DocumentType::Circuit) {
+      const auto circuitCount = std::ranges::count_if(
+          projectContext.documents().getDocuments(), [](const auto& document) {
+            return document.getType() == SILICON::project::DocumentType::Circuit;
+          });
+      if (circuitCount <= 1)
+        return;
+    }
 
     const auto noun  = documentTypeName(selection->type);
     const auto title = tr("Delete %1").arg(noun);
