@@ -474,7 +474,7 @@ std::string elaborateHierarchy(const std::string_view json, const ToolOptions& o
                               "{}"
                               "pmuxtree\n"
                               "delete t:$scopeinfo\n"
-                              "opt\n"
+                              "opt -nosdff\n"
                               // Preserve vector bitwise operations as one native Silicon
                               // gate. Only scalar forms participate in full/half-adder
                               // extraction; otherwise unrelated ALU result lanes such as

@@ -31,8 +31,7 @@ public:
   static constexpr std::string_view Type = "Multiplexer";
 
   enum class Inputs : unsigned int {
-    Data      = 0,
-    Selection = 1,
+    FirstLane = 0,
   };
 
   enum class Outputs : unsigned int {
@@ -42,7 +41,7 @@ public:
   std::string_view  typeName() const override { return Type; }
   ComponentMetadata metadata() const override
   {
-    return {"Multiplexer", "Selects one bit from a data bus using a selection bus.",
+    return {"Multiplexer", "Selects one input bus using a selection bus.",
             ComponentCategory::Multiplexers};
   }
 

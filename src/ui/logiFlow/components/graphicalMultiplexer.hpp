@@ -36,21 +36,12 @@ private:
   int  applyBusSize(int busSize);
 
   [[nodiscard]] Multiplexer* getComponentAsMultiplexer() const;
-  [[nodiscard]] bool splitDataInputs() const;
-
-protected:
-  [[nodiscard]] bool acceptsInputPortCount(size_t portCount,
-                                           const std::vector<Bus>& componentInputs) const override;
-
-  [[nodiscard]] unsigned int inputPortSize(size_t portIndex,
-                                           const std::vector<Bus>& componentInputs) const override;
 
 public:
   explicit GraphicalMultiplexer(QGraphicsItem* parent = nullptr);
 
   int type() const override { return SiliconTypes::MULTIPLEXER; }
 
-  void assignInputPortBus(unsigned int portIndex, const Bus& bus) const override;
   void setComponent(const Component_ptr& component) override;
 };
 

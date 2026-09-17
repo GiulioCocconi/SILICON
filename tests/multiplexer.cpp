@@ -64,6 +64,11 @@ TEST(MultiplexerTest, TwoToOneSelectsInputBit)
   auto output    = std::make_shared<Wire>();
   auto mux       = std::make_shared<Multiplexer>(data, selection, output);
 
+  ASSERT_EQ(mux->inputBuses().size(), 3);
+  EXPECT_EQ(mux->inputBuses()[0], Bus{data[0]});
+  EXPECT_EQ(mux->inputBuses()[1], Bus{data[1]});
+  EXPECT_EQ(mux->inputBuses()[2], selection);
+
   auto      circuit = std::make_shared<Circuit>(Component_set{mux});
   Simulator sim(circuit);
 
@@ -104,11 +109,12 @@ TEST(MultiplexerTest, SelectionSizePropertyReshapesIO)
 
   mux->setProperty("selectionSize", 4);
 
-  ASSERT_EQ(mux->getInputs().size(), 2);
+  ASSERT_EQ(mux->getInputs().size(), 17);
   ASSERT_EQ(mux->getOutputs().size(), 1);
   EXPECT_EQ(mux->getPropertyValue<int>("selectionSize"), 4);
-  EXPECT_EQ(mux->getInputs()[0].size(), 16);
-  EXPECT_EQ(mux->getInputs()[1].size(), 4);
+  for (std::size_t lane = 0; lane < 16; ++lane)
+    EXPECT_EQ(mux->getInputs()[lane].size(), 1);
+  EXPECT_EQ(mux->getInputs()[16].size(), 4);
   EXPECT_EQ(mux->getOutputs()[0].size(), 1);
 }
 
@@ -162,7 +168,7 @@ TEST(MultiplexerTest, BusSizePropertyReshapesToMultipleInputBuses)
   EXPECT_EQ(mux->getOutputs()[0].size(), 4);
 }
 
-TEST(MultiplexerTest, BusSizeOneCollapsesMultiBusInputs)
+TEST(MultiplexerTest, BusSizeOneRetainsSeparateLaneInputs)
 {
   auto mux = std::make_shared<Multiplexer>(Bus(2), Bus(1), std::make_shared<Wire>());
 
@@ -170,12 +176,13 @@ TEST(MultiplexerTest, BusSizeOneCollapsesMultiBusInputs)
   mux->setProperty("selectionSize", 3);
   mux->setProperty("busSize", 1);
 
-  ASSERT_EQ(mux->getInputs().size(), 2);
+  ASSERT_EQ(mux->getInputs().size(), 9);
   ASSERT_EQ(mux->getOutputs().size(), 1);
   EXPECT_EQ(mux->getPropertyValue<int>("busSize"), 1);
   EXPECT_EQ(mux->getPropertyValue<int>("selectionSize"), 3);
-  EXPECT_EQ(mux->getInputs()[0].size(), 8);
-  EXPECT_EQ(mux->getInputs()[1].size(), 3);
+  for (std::size_t lane = 0; lane < 8; ++lane)
+    EXPECT_EQ(mux->getInputs()[lane].size(), 1);
+  EXPECT_EQ(mux->getInputs()[8].size(), 3);
   EXPECT_EQ(mux->getOutputs()[0].size(), 1);
 }
 

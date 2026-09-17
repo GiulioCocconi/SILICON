@@ -993,6 +993,54 @@ TEST(YosysTest, PreservesLiteralBmuxLanesAsSizedConstants)
             constants.at(busValueFromBits("0100"))->outputBuses()[0]);
 }
 
+TEST(YosysTest, ImportsScalarBmuxAsSeparateLiteralLanesAndRoundTrips)
+{
+  using SILICON::yosys::Json;
+  using SILICON::yosys::SerializationContext;
+
+  const Json design{
+      {"modules",
+       {{"top",
+         {{"attributes", Json::object()},
+          {"ports",
+           {{"select", {{"direction", "input"}, {"bits", Json::array({2, 3})}}},
+            {"y", {{"direction", "output"}, {"bits", Json::array({4})}}}}},
+          {"cells",
+           {{"mux",
+             {{"type", "$bmux"},
+              {"parameters",
+               {{"WIDTH", SerializationContext::parameter(1)},
+                {"S_WIDTH", SerializationContext::parameter(2)}}},
+              {"connections",
+               {{"A", Json::array({"0", "1", "x", "0"})},
+                {"S", Json::array({2, 3})},
+                {"Y", Json::array({4})}}}}}}},
+          {"netnames", Json::object()}}}}}};
+
+  const Circuit circuit = SILICON::yosys::deserialize(design.dump());
+  EXPECT_EQ(componentTypes(circuit).count("Multiplexer"), 1);
+  // Identical literal lanes share one constant producer.
+  EXPECT_EQ(componentTypes(circuit).count("ConstantComponent"), 3);
+  EXPECT_EQ(componentTypes(circuit).count("WireMerger"), 0);
+  EXPECT_EQ(componentTypes(circuit).count("WireSplitter"), 0);
+
+  const auto mux = findComponent<Multiplexer>(circuit);
+  ASSERT_TRUE(mux);
+  ASSERT_EQ(mux->inputBuses().size(), 5);
+  for (std::size_t lane = 0; lane < 4; ++lane)
+    EXPECT_EQ(mux->inputBuses()[lane].size(), 1);
+  EXPECT_EQ(mux->inputBuses().back().size(), 2);
+  EXPECT_EQ(mux->outputBuses()[0].size(), 1);
+
+  const Circuit restored =
+      SILICON::yosys::deserialize(SILICON::yosys::serialize(circuit, "top"), "top");
+  const auto restoredMux = findComponent<Multiplexer>(restored);
+  ASSERT_TRUE(restoredMux);
+  ASSERT_EQ(restoredMux->inputBuses().size(), 5);
+  EXPECT_TRUE(std::ranges::all_of(restoredMux->inputBuses() | std::views::take(4),
+                                  [](const Bus& lane) { return lane.size() == 1; }));
+}
+
 TEST(YosysTest, ImportsSubWithYosysWidthAndSignednessSemantics)
 {
   const auto import = [](const std::size_t aWidth, const std::size_t bWidth,
@@ -2106,6 +2154,37 @@ TEST(YosysToolTest, FoldsSparseCaseIntoOneWideMultiplexer)
   EXPECT_EQ(componentTypes(circuit).count("Multiplexer"), 1);
   EXPECT_EQ(componentTypes(circuit).count("Decoder"), 0);
   EXPECT_EQ(componentTypes(circuit).count("OrGate"), 0);
+}
+
+TEST(YosysToolTest, KeepsSynchronousResetAsScalarMuxAndDFlipFlop)
+{
+  constexpr std::string_view source = R"(
+    module sdff_test(
+      input wire clk,
+      input wire rst,
+      input wire d,
+      output reg q
+    );
+      always @(posedge clk) begin
+        if (rst)
+          q <= 1'b0;
+        else
+          q <= d;
+      end
+    endmodule
+  )";
+
+  const Circuit circuit = importVerilog(source, "sdff_test");
+  EXPECT_EQ(componentTypes(circuit).count("Multiplexer"), 1);
+  EXPECT_EQ(componentTypes(circuit).count("DFlipFlop"), 1);
+  EXPECT_EQ(componentTypes(circuit).count("WireMerger"), 0);
+
+  const auto mux = findComponent<Multiplexer>(circuit);
+  ASSERT_TRUE(mux);
+  ASSERT_EQ(mux->inputBuses().size(), 3);
+  EXPECT_EQ(mux->inputBuses()[0].size(), 1);
+  EXPECT_EQ(mux->inputBuses()[1].size(), 1);
+  EXPECT_EQ(mux->inputBuses()[2].size(), 1);
 }
 
 TEST(YosysToolTest, FoldsExhaustiveCaseIntoOneWideMultiplexer)
