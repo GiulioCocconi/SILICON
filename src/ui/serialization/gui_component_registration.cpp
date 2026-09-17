@@ -104,6 +104,8 @@ void registerAllGUIComponents(GUIComponentFactory& factory)
       [](QGraphicsItem* p) { return std::make_unique<GraphicalFullAdder>(p); });
   reg(std::string(AdderNBits::Type),
       [](QGraphicsItem* p) { return std::make_unique<GraphicalAdderNBits>(p); });
+  reg(std::string(Comparator::Type),
+      [](QGraphicsItem* p) { return std::make_unique<GraphicalComparator>(p); });
   reg(std::string(Multiplexer::Type),
       [](QGraphicsItem* p) { return std::make_unique<GraphicalMultiplexer>(p); });
   reg(std::string(Demultiplexer::Type),

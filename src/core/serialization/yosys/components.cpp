@@ -315,6 +315,44 @@ void AdderNBits::serializeYosys(SerializationContext& context) const
            {"COUT", context.bits(carry)}});
 }
 
+void Comparator::serializeYosys(SerializationContext& context) const
+{
+  requireBusCounts(*this, 2, 1);
+
+  const auto width    = getPropertyValue<int>("size");
+  const auto mode     = getPropertyValue<std::string>("mode");
+  const auto isSigned = getPropertyValue<bool>("signed");
+  if (!width || *width < 1 || !mode || !isSigned)
+    throw std::runtime_error("Cannot export malformed 'Comparator': invalid properties");
+
+  static constexpr std::array modes{
+      std::pair<std::string_view, std::string_view>{"==", "$eq"},
+      std::pair<std::string_view, std::string_view>{"<", "$lt"},
+      std::pair<std::string_view, std::string_view>{"<=", "$le"},
+      std::pair<std::string_view, std::string_view>{">", "$gt"},
+      std::pair<std::string_view, std::string_view>{">=", "$ge"},
+  };
+  const auto cellType = std::ranges::find_if(
+      modes, [&mode](const auto& entry) { return entry.first == *mode; });
+  if (cellType == modes.end())
+    throw std::runtime_error("Cannot export malformed 'Comparator': invalid mode");
+
+  const auto  busWidth = static_cast<std::size_t>(*width);
+  const auto& a        = requireBusWidth(*this, true, 0, busWidth);
+  const auto& b        = requireBusWidth(*this, true, 1, busWidth);
+  const auto& y        = requireScalarBus(*this, false, 0);
+
+  context.addCell(
+      "compare", cellType->second,
+      Json{{"A_SIGNED", SerializationContext::parameter(*isSigned, 1)},
+           {"B_SIGNED", SerializationContext::parameter(*isSigned, 1)},
+           {"A_WIDTH", SerializationContext::parameter(*width)},
+           {"B_WIDTH", SerializationContext::parameter(*width)},
+           {"Y_WIDTH", SerializationContext::parameter(1)}},
+      directions({{"A", "input"}, {"B", "input"}, {"Y", "output"}}),
+      Json{{"A", context.bits(a)}, {"B", context.bits(b)}, {"Y", context.bits(y)}});
+}
+
 void Multiplexer::serializeYosys(SerializationContext& context) const
 {
   // $bmux expects all selectable lanes packed consecutively into A and uses S as

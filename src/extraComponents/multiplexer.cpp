@@ -51,22 +51,6 @@ namespace {
                                   + " selectionSize is too large");
   }
 
-  void validateBusSize(const std::string_view componentName, const int busSize)
-  {
-    if (busSize <= 0)
-      throw std::invalid_argument(std::string(componentName)
-                                  + " busSize must be positive");
-    if (busSize > std::numeric_limits<unsigned short>::max())
-      throw std::invalid_argument(std::string(componentName) + " busSize is too large");
-  }
-
-  void validateDelay(const std::string_view componentName, const PropertyValue& value)
-  {
-    if (std::get<int>(value) < 0)
-      throw std::invalid_argument(std::string(componentName)
-                                  + " delay must be non-negative");
-  }
-
   void validateSelectionBus(const std::string_view componentName, const Bus& selection)
   {
     if (selection.size() == 0)
@@ -91,11 +75,13 @@ namespace {
     // candidate value paired with the component's current value for the other axis.
     const int selectionSize = selectionSizeOverride.value_or(
         component.getPropertyValue<int>("selectionSize").value_or(1));
-    const int busSize =
+    const int rawBusSize =
         busSizeOverride.value_or(component.getPropertyValue<int>("busSize").value_or(1));
+    const int busSize = std::get<int>(
+        requireValidSize(std::string(componentName) + " busSize",
+                         PropertyValue{rawBusSize}));
 
     validateSelectionSize(componentName, selectionSize);
-    validateBusSize(componentName, busSize);
     return {selectionSize, busSize};
   }
 
@@ -277,8 +263,7 @@ Multiplexer::Multiplexer()
   });
 
   setPropertyCallback("busSize", [this](const PropertyValue& value) {
-    const int busSize = std::get<int>(value);
-    validateBusSize("Multiplexer", busSize);
+    const int busSize = std::get<int>(requireValidSize("Multiplexer busSize", value));
 
     if (!inputs.empty() && !outputs.empty())
       setBusSize(busSize);
@@ -287,8 +272,7 @@ Multiplexer::Multiplexer()
   });
 
   setPropertyCallback("delay", [](const PropertyValue& value) {
-    validateDelay("Multiplexer", value);
-    return value;
+    return requireNonNegative("Multiplexer delay", value);
   });
 }
 
@@ -398,8 +382,8 @@ Demultiplexer::Demultiplexer()
   });
 
   setPropertyCallback("busSize", [this](const PropertyValue& value) {
-    const int busSize = std::get<int>(value);
-    validateBusSize("Demultiplexer", busSize);
+    const int busSize =
+        std::get<int>(requireValidSize("Demultiplexer busSize", value));
 
     if (!inputs.empty() && !outputs.empty())
       setBusSize(busSize);
@@ -408,8 +392,7 @@ Demultiplexer::Demultiplexer()
   });
 
   setPropertyCallback("delay", [](const PropertyValue& value) {
-    validateDelay("Demultiplexer", value);
-    return value;
+    return requireNonNegative("Demultiplexer delay", value);
   });
 }
 
@@ -555,8 +538,7 @@ Decoder::Decoder()
   });
 
   setPropertyCallback("delay", [](const PropertyValue& value) {
-    validateDelay("Decoder", value);
-    return value;
+    return requireNonNegative("Decoder delay", value);
   });
 }
 
