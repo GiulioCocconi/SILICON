@@ -22,6 +22,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <ranges>
 #include <string>
@@ -190,7 +191,7 @@ namespace ui {
     auto applyProperty = [this, selectedNodes](const std::string&   key,
                                                const PropertyValue& newVal) {
       try {
-        auto* command = new ModifyPropertyCommand(key);
+        auto command = std::make_unique<ModifyPropertyCommand>(key);
 
         for (GraphicalLogicComponent* node : selectedNodes) {
           const auto oldValue = node->getComponent()->getProperty(key);
@@ -198,10 +199,17 @@ namespace ui {
             command->addPropertyChange(node, *oldValue, newVal);
         }
 
-        if (command->isEmpty()) {
-          delete command;
-        } else {
-          undoStack->push(command);
+        if (command->isEmpty())
+          return;
+
+        ModifyPropertyCommand* const submitted = command.release();
+        try {
+          // push() runs redo() before taking ownership of the command, so a
+          // validation exception from applyProperty would otherwise leak it.
+          undoStack->push(submitted);
+        } catch (...) {
+          delete submitted;
+          throw;
         }
       } catch (const std::exception& e) {
         SILICON::ui::inputDialog::warning(this, tr("Invalid Property"), e.what());
