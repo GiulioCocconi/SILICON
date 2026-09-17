@@ -30,6 +30,7 @@
 #include <extraComponents/multiplexer.hpp>
 #include <extraComponents/utils.hpp>
 
+#include <limits>
 #include <optional>
 #include <ranges>
 
@@ -317,30 +318,31 @@ void AdderNBits::serializeYosys(SerializationContext& context) const
 void Multiplexer::serializeYosys(SerializationContext& context) const
 {
   // $bmux expects all selectable lanes packed consecutively into A and uses S as
-  // their zero-based index. A one-bit Silicon mux already stores every lane in one
-  // packed bus; a wider mux exposes one bus per lane, which is packed here.
-  const int         busWidth       = getPropertyValue<int>("busSize").value_or(1);
-  const int         selectionWidth = getPropertyValue<int>("selectionSize").value_or(1);
-  const std::size_t laneCount      = std::size_t{1} << selectionWidth;
-  const std::size_t selectionIndex = busWidth == 1 ? 1 : laneCount;
-
-  std::vector<Json> lanes;
-  if (busWidth == 1) {
-    lanes.push_back(context.bits(requireBus(*this, true, 0)));
-  } else {
-    if (inputBuses().size() != laneCount + 1)
-      throw std::runtime_error("Cannot export malformed multi-bus multiplexer");
-    for (std::size_t lane = 0; lane < laneCount; ++lane)
-      lanes.push_back(context.bits(requireBus(*this, true, lane)));
+  // their zero-based index. Silicon exposes one bus per lane at every width.
+  const int busWidth       = getPropertyValue<int>("busSize").value_or(1);
+  const int selectionWidth = getPropertyValue<int>("selectionSize").value_or(1);
+  if (busWidth < 1 || selectionWidth < 1
+      || selectionWidth >= std::numeric_limits<std::size_t>::digits) {
+    throw std::runtime_error("Cannot export malformed multiplexer properties");
   }
+  const std::size_t laneCount      = std::size_t{1} << selectionWidth;
+  const std::size_t selectionIndex = laneCount;
+
+  requireBusCounts(*this, laneCount + 1, 1);
+  std::vector<Json> lanes;
+  lanes.reserve(laneCount);
+  for (std::size_t lane = 0; lane < laneCount; ++lane)
+    lanes.push_back(context.bits(requireBusWidth(*this, true, lane, busWidth)));
+  const auto& selection = requireBusWidth(*this, true, selectionIndex, selectionWidth);
+  const auto& output    = requireBusWidth(*this, false, 0, busWidth);
 
   context.addCell("mux", "$bmux",
                   Json{{"WIDTH", SerializationContext::parameter(busWidth)},
                        {"S_WIDTH", SerializationContext::parameter(selectionWidth)}},
                   directions({{"A", "input"}, {"S", "input"}, {"Y", "output"}}),
                   Json{{"A", SerializationContext::concatenate(lanes)},
-                       {"S", context.bits(requireBus(*this, true, selectionIndex))},
-                       {"Y", context.bits(requireBus(*this, false, 0))}});
+                       {"S", context.bits(selection)},
+                       {"Y", context.bits(output)}});
 }
 
 void Demultiplexer::serializeYosys(SerializationContext& context) const

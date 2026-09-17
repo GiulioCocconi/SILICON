@@ -144,14 +144,6 @@ namespace {
     return Bus(std::move(wires));
   }
 
-  [[nodiscard]] Bus concatenate(const Bus& lhs, const Bus& rhs)
-  {
-    auto       wires = static_cast<std::vector<Wire_ptr>>(lhs);
-    const auto right = static_cast<std::vector<Wire_ptr>>(rhs);
-    wires.insert(wires.end(), right.begin(), right.end());
-    return Bus(std::move(wires));
-  }
-
   class Importer {
   public:
     explicit Importer(Json design) : design(std::move(design)) {}
@@ -1001,8 +993,7 @@ namespace {
       const Bus  s     = cell.consumer("S", 1);
       const Bus  y     = cell.driver("Y", width);
 
-      std::vector<Bus> inputs =
-          width == 1 ? std::vector<Bus>{concatenate(a, b), s} : std::vector<Bus>{a, b, s};
+      std::vector<Bus> inputs{a, b, s};
       addMuxLike<Multiplexer>(1, width, std::move(inputs), {y});
     }
 
@@ -1017,17 +1008,10 @@ namespace {
       const Bus s = cell.consumer("S", selectionWidth);
       const Bus y = cell.driver("Y", width);
 
-      std::vector<Bus> inputs;
-      if (width == 1) {
-        // A scalar mux intentionally represents every one-bit lane in one packed bus.
-        const Bus a = cell.consumer("A", lanes);
-        inputs      = {a, s};
-      } else {
-        // Read packed data one word at a time so a fully literal lane remains one
-        // sized ConstantComponent instead of being assembled from scalar constants.
-        inputs = cell.consumerLanes("A", width, lanes);
-        inputs.push_back(s);
-      }
+      // Read packed data one lane at a time for scalar and vector muxes alike. This
+      // also preserves a fully literal lane as one correctly-sized constant.
+      std::vector<Bus> inputs = cell.consumerLanes("A", width, lanes);
+      inputs.push_back(s);
       addMuxLike<Multiplexer>(selectionWidth, width, std::move(inputs), {y});
     }
 

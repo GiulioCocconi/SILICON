@@ -50,11 +50,6 @@ std::shared_ptr<Decoder> makeDecoder()
   return std::make_shared<Decoder>(Bus(1), Bus(1), Bus(2));
 }
 
-constexpr unsigned int dataInputIndex =
-    static_cast<unsigned int>(Multiplexer::Inputs::Data);
-constexpr unsigned int selectionInputIndex =
-    static_cast<unsigned int>(Multiplexer::Inputs::Selection);
-
 int getMuxWidth(const int numberOfInputs)
 {
   return std::max(150, 40 + (numberOfInputs - 1) * 40);
@@ -153,7 +148,7 @@ void GraphicalMultiplexer::updateLayout(const int selectionSize, const int busSi
 {
   const int dataBusCount = 1 << selectionSize;
 
-  if (busSize > 1) {
+  if (busSize > 1 || selectionSize > 1) {
     setItemShape(busShape(busSize, selectionSize, false));
     const int width = getMuxWidth(dataBusCount);
 
@@ -168,9 +163,6 @@ void GraphicalMultiplexer::updateLayout(const int selectionSize, const int busSi
     setPorts({PortPair{"d[0]", QPoint(-20, 30)}, PortPair{"d[1]", QPoint(-20, 70)},
               PortPair{"sel", QPoint(60, -10)}},
              {PortPair{"out", QPoint(120, 50)}});
-  } else {
-    setPorts({PortPair{"d", QPoint(-20, 50)}, PortPair{"sel", QPoint(60, -10)}},
-             {PortPair{"o", QPoint(120, 50)}});
   }
 }
 
@@ -188,73 +180,6 @@ int GraphicalMultiplexer::applyBusSize(const int busSize)
   const int appliedSelectionSize = associatedComponent->getPropertyValue<int>("selectionSize").value_or(1);
   updateLayout(appliedSelectionSize, appliedBusSize);
   return appliedBusSize;
-}
-
-bool GraphicalMultiplexer::splitDataInputs() const
-{
-  if (!associatedComponent)
-    return false;
-
-  const auto inputs  = associatedComponent->getInputs();
-  const auto outputs = associatedComponent->getOutputs();
-
-  return inputs.size() == 2 && outputs.size() == 1 && inputs[dataInputIndex].size() == 2
-         && inputs[selectionInputIndex].size() == 1 && outputs[0].size() == 1;
-}
-
-bool GraphicalMultiplexer::acceptsInputPortCount(
-    const size_t portCount, const std::vector<Bus>& componentInputs) const
-{
-  if (splitDataInputs())
-    return componentInputs.size() == 2 && portCount == 3;
-
-  return GraphicalLogicComponent::acceptsInputPortCount(portCount, componentInputs);
-}
-
-unsigned int GraphicalMultiplexer::inputPortSize(
-    const size_t portIndex, const std::vector<Bus>& componentInputs) const
-{
-  if (!splitDataInputs())
-    return GraphicalLogicComponent::inputPortSize(portIndex, componentInputs);
-
-  if (portIndex == 0 || portIndex == 1)
-    return 1;
-  if (portIndex == 2 && componentInputs.size() > 1)
-    return static_cast<unsigned int>(componentInputs[1].size());
-
-  return 1;
-}
-
-void GraphicalMultiplexer::assignInputPortBus(const unsigned int portIndex,
-                                              const Bus&         bus) const
-{
-  if (!associatedComponent)
-    return;
-
-  if (!splitDataInputs()) {
-    GraphicalLogicComponent::assignInputPortBus(portIndex, bus);
-    return;
-  }
-
-  if (portIndex == 2) {
-    associatedComponent->setInput(selectionInputIndex, bus, true);
-    return;
-  }
-
-  if (portIndex > 1)
-    throw std::out_of_range("Multiplexer input port index out of range");
-
-  auto inputs = associatedComponent->getInputs();
-  if (inputs.size() < 2)
-    inputs.resize(2);
-  if (inputs[dataInputIndex].size() != 2)
-    inputs[dataInputIndex].setSize(2);
-
-  if (bus.size() != 1)
-    throw std::runtime_error("2:1 multiplexer data inputs must be single wires");
-
-  inputs[dataInputIndex][portIndex] = bus[0];
-  associatedComponent->setInput(dataInputIndex, inputs[dataInputIndex], true);
 }
 
 void GraphicalMultiplexer::setComponent(const Component_ptr& component)
