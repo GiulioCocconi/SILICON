@@ -105,10 +105,7 @@ void Gate::initializeProperties(const bool enableBitwiseProperties)
 {
   defineProperty("delay", 5);
   setPropertyCallback("delay", [](const PropertyValue& value) {
-    if (std::get<int>(value) >= 0)
-      return value;
-
-    throw std::invalid_argument("Delays must be non-negative!");
+    return requireNonNegative("delay", value);
   });
 
   if (!enableBitwiseProperties)
@@ -127,9 +124,7 @@ void Gate::initializeProperties(const bool enableBitwiseProperties)
   });
 
   setPropertyCallback("size", [this](const PropertyValue& value) {
-    const int size = std::get<int>(value);
-    if (size < 1)
-      throw std::invalid_argument("Gate size must be at least 1");
+    const int size = std::get<int>(requireValidSize("Gate size", value));
 
     if (getPropertyValue<bool>("bitwise").value_or(false) && !inputs.empty()
         && !outputs.empty()) {
@@ -199,9 +194,7 @@ void NotGate::initializeNotProperties()
   setProperty("delay", 2);
   defineProperty("size", 1);
   setPropertyCallback("size", [this](const PropertyValue& value) {
-    const int size = std::get<int>(value);
-    if (size < 1)
-      throw std::invalid_argument("Gate size must be at least 1");
+    const int size = std::get<int>(requireValidSize("Gate size", value));
     if (!inputs.empty() && !outputs.empty())
       setSize(size);
     return value;

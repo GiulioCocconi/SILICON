@@ -35,12 +35,6 @@ namespace {
       throw std::invalid_argument("Register size must be greater than 1");
   }
 
-  void validateDelay(const PropertyValue& value)
-  {
-    if (std::get<int>(value) < 0)
-      throw std::invalid_argument("Register delay must be non-negative");
-  }
-
   State normalizedInputState(const State state)
   {
     return SILICON::wireUtils::normalizeBinaryOrUnknown(state);
@@ -117,8 +111,7 @@ void Register::initializeProperties()
   defineProperty("size", 2);
 
   setPropertyCallback("delay", [](const PropertyValue& value) {
-    validateDelay(value);
-    return value;
+    return requireNonNegative("Register delay", value);
   });
   setPropertyCallback("size", [this](const PropertyValue& value) {
     const int size = std::get<int>(value);

@@ -27,19 +27,6 @@
 
 namespace SILICON::core {
 
-namespace {
-
-  PropertyValue requireNonNegative(const std::string_view name,
-                                   const PropertyValue&   value)
-  {
-    if (std::get<int>(value) < 0) {
-      throw std::invalid_argument(std::format("{} must be non-negative", name));
-    }
-    return value;
-  }
-
-}  // namespace
-
 FlipFlop::FlipFlop(const unsigned int clockIndex, const unsigned int clearIndex,
                    const unsigned int presetIndex)
   : clockIndex(clockIndex), clearIndex(clearIndex), presetIndex(presetIndex)

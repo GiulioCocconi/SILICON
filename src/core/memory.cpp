@@ -19,15 +19,6 @@
 namespace SILICON::core {
 namespace {
 
-  [[nodiscard]] int validateDataWidth(const int width)
-  {
-    if (width < 1)
-      throw std::invalid_argument("ROM dataWidth must be at least 1");
-    if (width > std::numeric_limits<unsigned short>::max())
-      throw std::invalid_argument("ROM dataWidth is too large");
-    return width;
-  }
-
   [[nodiscard]] std::size_t packedWordCount(const std::size_t bytes,
                                             const std::size_t width)
   {
@@ -54,7 +45,7 @@ ROM::ROM()
   defineProperty("binaryContents", std::string());
 
   setPropertyCallback("dataWidth", [this](const PropertyValue& value) {
-    const int width = validateDataWidth(std::get<int>(value));
+    const int width = std::get<int>(requireValidSize("ROM dataWidth", value));
     configure(width, content, true, !initializingProperties);
     return value;
   });
@@ -92,7 +83,7 @@ std::string ROM::configuredBinaryContents() const
 void ROM::configure(const int dataWidth, std::shared_ptr<const std::string> nextContent,
                     const bool rejectInvalid, const bool reshape)
 {
-  const int width = validateDataWidth(dataWidth);
+  const int width = std::get<int>(requireValidSize("ROM dataWidth", PropertyValue{dataWidth}));
 
   bool        nextResolved = false;
   std::size_t nextWords    = 0;

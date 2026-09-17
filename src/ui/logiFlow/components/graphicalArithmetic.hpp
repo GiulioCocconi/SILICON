@@ -66,5 +66,19 @@ public:
   int type() const override { return SiliconTypes::ADDER_N_BITS; }
 };
 
+class GraphicalComparator : public GraphicalLogicComponent {
+  Q_OBJECT
+public:
+  explicit GraphicalComparator(QGraphicsItem* parent = nullptr);
+
+  int type() const override { return SiliconTypes::COMPARATOR; }
+
+  void setComponent(const Component_ptr& component) override;
+
+private:
+  void setupCallbacks();
+  std::string applyMode(std::string mode);
+};
+
 }  // namespace ui
 }  // namespace SILICON

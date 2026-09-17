@@ -196,6 +196,41 @@ private:
                   {"netnames", Json::object()}}}}}};
 }
 
+[[nodiscard]] nlohmann::json comparisonDesign(const std::string_view type,
+                                              const std::size_t      aWidth,
+                                              const std::size_t      bWidth,
+                                              const std::size_t      yWidth,
+                                              const bool aSigned, const bool bSigned)
+{
+  using SILICON::yosys::Json;
+  using SILICON::yosys::SerializationContext;
+
+  int        nextSignal = 2;
+  const Json aBits      = signalBits(nextSignal, aWidth);
+  const Json bBits      = signalBits(nextSignal, bWidth);
+  const Json yBits      = signalBits(nextSignal, yWidth);
+
+  return Json{{"creator", "test"},
+              {"modules",
+               {{"top",
+                 {{"attributes", Json::object()},
+                  {"ports",
+                   {{"a", {{"direction", "input"}, {"bits", aBits}}},
+                    {"b", {{"direction", "input"}, {"bits", bBits}}},
+                    {"y", {{"direction", "output"}, {"bits", yBits}}}}},
+                  {"cells",
+                   {{"compare",
+                     {{"type", type},
+                      {"parameters",
+                       {{"A_SIGNED", SerializationContext::parameter(aSigned, 1)},
+                        {"B_SIGNED", SerializationContext::parameter(bSigned, 1)},
+                        {"A_WIDTH", SerializationContext::parameter(aWidth)},
+                        {"B_WIDTH", SerializationContext::parameter(bWidth)},
+                        {"Y_WIDTH", SerializationContext::parameter(yWidth)}}},
+                      {"connections", {{"A", aBits}, {"B", bBits}, {"Y", yBits}}}}}}},
+                  {"netnames", Json::object()}}}}}};
+}
+
 [[nodiscard]] BusValue evaluateBinaryCircuit(const std::shared_ptr<Circuit>& circuit,
                                              const unsigned int a, const unsigned int b)
 {
@@ -516,6 +551,44 @@ TEST(YosysTest, ComplementerLowersToSubAndRoundTripsWithoutAnAdder)
   EXPECT_EQ(cellTypes(onlyModule(
                 nlohmann::json::parse(SILICON::yosys::serialize(imported, "top")))),
             (std::multiset<std::string>{"$pos", "$sub"}));
+}
+
+TEST(YosysTest, ComparatorLowersToNativeComparisonCellsAndRoundTrips)
+{
+  static constexpr std::array modes{
+      std::pair<std::string_view, std::string_view>{"==", "$eq"},
+      std::pair<std::string_view, std::string_view>{"<", "$lt"},
+      std::pair<std::string_view, std::string_view>{"<=", "$le"},
+      std::pair<std::string_view, std::string_view>{">", "$gt"},
+      std::pair<std::string_view, std::string_view>{">=", "$ge"},
+  };
+
+  for (const auto& [mode, cellType] : modes) {
+    SCOPED_TRACE(mode);
+    auto comparator = std::make_shared<Comparator>(std::array<Bus, 2>{Bus(5), Bus(5)},
+                                                   std::make_shared<Wire>());
+    comparator->setProperty("mode", std::string(mode));
+    comparator->setProperty("signed", true);
+
+    const auto  exported = exportComponent(comparator);
+    const auto& cell     = onlyCell(exported);
+    EXPECT_EQ(cell.at("type"), cellType);
+    EXPECT_EQ(cell.at("parameters").at("A_SIGNED"), "1");
+    EXPECT_EQ(cell.at("parameters").at("B_SIGNED"), "1");
+    EXPECT_EQ(cell.at("parameters").at("A_WIDTH"),
+              SILICON::yosys::SerializationContext::parameter(5));
+    EXPECT_EQ(cell.at("parameters").at("B_WIDTH"),
+              SILICON::yosys::SerializationContext::parameter(5));
+    EXPECT_EQ(cell.at("parameters").at("Y_WIDTH"),
+              SILICON::yosys::SerializationContext::parameter(1));
+
+    const Circuit imported = SILICON::yosys::deserialize(exported.dump());
+    const auto    restored = findComponent<Comparator>(imported);
+    ASSERT_TRUE(restored);
+    EXPECT_EQ(restored->getPropertyValue<int>("size"), 5);
+    EXPECT_EQ(restored->getPropertyValue<std::string>("mode"), mode);
+    EXPECT_EQ(restored->getPropertyValue<bool>("signed"), true);
+  }
 }
 
 TEST(YosysTest, LowersSequentialComponents)
@@ -1096,7 +1169,52 @@ TEST(YosysTest, ImportsSubWithYosysWidthAndSignednessSemantics)
   EXPECT_EQ(evaluateBinaryCircuit(addCircuit, 2, 5), valueFor(4, 7));
 }
 
-TEST(YosysTest, RejectsNonCanonicalEqualityGroups)
+TEST(YosysTest, ImportsComparisonCellsWithYosysWidthAndSignednessSemantics)
+{
+  struct ComparisonCase {
+    std::string_view type;
+    std::string_view mode;
+  };
+  static constexpr std::array cases{
+      ComparisonCase{"$eq", "=="}, ComparisonCase{"$lt", "<"},
+      ComparisonCase{"$le", "<="}, ComparisonCase{"$gt", ">"},
+      ComparisonCase{"$ge", ">="},
+  };
+
+  for (const auto& comparison : cases) {
+    SCOPED_TRACE(comparison.type);
+    auto       circuit    = std::make_shared<Circuit>(SILICON::yosys::deserialize(
+        comparisonDesign(comparison.type, 3, 5, 1, false, false).dump()));
+    const auto comparator = findComponent<Comparator>(*circuit);
+    ASSERT_TRUE(comparator);
+    EXPECT_EQ(comparator->getPropertyValue<int>("size"), 5);
+    EXPECT_EQ(comparator->getPropertyValue<std::string>("mode"), comparison.mode);
+    EXPECT_EQ(comparator->getPropertyValue<bool>("signed"), false);
+    EXPECT_TRUE(findComponent<Extender>(*circuit));
+  }
+
+  // 3'b110 is -2 for a signed comparison, but 6 for an unsigned one.
+  auto signedLess = std::make_shared<Circuit>(
+      SILICON::yosys::deserialize(comparisonDesign("$lt", 3, 5, 1, true, true).dump()));
+  EXPECT_EQ(evaluateBinaryCircuit(signedLess, 6, 3), valueFor(1, 1));
+  ASSERT_TRUE(findComponent<Comparator>(*signedLess));
+  EXPECT_EQ(findComponent<Comparator>(*signedLess)->getPropertyValue<bool>("signed"),
+            true);
+
+  auto mixedLess = std::make_shared<Circuit>(
+      SILICON::yosys::deserialize(comparisonDesign("$lt", 3, 5, 1, true, false).dump()));
+  EXPECT_EQ(evaluateBinaryCircuit(mixedLess, 6, 3), valueFor(1, 0));
+  ASSERT_TRUE(findComponent<Comparator>(*mixedLess));
+  EXPECT_EQ(findComponent<Comparator>(*mixedLess)->getPropertyValue<bool>("signed"),
+            false);
+
+  auto wideOutput = std::make_shared<Circuit>(
+      SILICON::yosys::deserialize(comparisonDesign("$ge", 4, 4, 3, false, false).dump()));
+  EXPECT_EQ(evaluateBinaryCircuit(wideOutput, 9, 3), valueFor(3, 1));
+  EXPECT_TRUE(findComponent<Extender>(*wideOutput));
+}
+
+TEST(YosysTest, ImportsIndependentEqualityCells)
 {
   using SILICON::yosys::Json;
   using SILICON::yosys::SerializationContext;
@@ -1128,7 +1246,8 @@ TEST(YosysTest, RejectsNonCanonicalEqualityGroups)
             {"match_six", eqCell(Json::array({"0", "1", "1"}), 6)}}},
           {"netnames", Json::object()}}}}}};
 
-  EXPECT_THROW((void)SILICON::yosys::deserialize(design.dump()), std::runtime_error);
+  const Circuit circuit = SILICON::yosys::deserialize(design.dump());
+  EXPECT_EQ(componentTypes(circuit).count("Comparator"), 2);
 }
 
 TEST(YosysTest, ConnectionReaderEnforcesRolesWidthsAndDriverOwnership)
@@ -1180,6 +1299,8 @@ TEST(YosysTest, ImportsEveryCellShapeEmittedBySilicon)
   std::vector<Component_ptr> components;
   components.push_back(std::make_shared<Extender>(Bus(3), Bus(5)));
   components.push_back(std::make_shared<Complementer>(Bus(4), Bus(4)));
+  components.push_back(std::make_shared<Comparator>(std::array<Bus, 2>{Bus(4), Bus(4)},
+                                                    std::make_shared<Wire>()));
   components.push_back(std::make_shared<FullAdder>(
       std::array<Wire_ptr, 2>{std::make_shared<Wire>(), std::make_shared<Wire>()},
       std::make_shared<Wire>(), std::make_shared<Wire>(), std::make_shared<Wire>()));
@@ -1470,6 +1591,8 @@ TEST(YosysTest, YosysAcceptsEveryBuiltInLowering)
       std::make_shared<Wire>(), std::make_shared<Wire>(), std::make_shared<Wire>()));
   components.push_back(std::make_shared<AdderNBits>(std::array<Bus, 2>{Bus(4), Bus(4)},
                                                     Bus(4), std::make_shared<Wire>()));
+  components.push_back(std::make_shared<Comparator>(std::array<Bus, 2>{Bus(4), Bus(4)},
+                                                    std::make_shared<Wire>()));
   components.push_back(
       std::make_shared<Multiplexer>(Bus(4), Bus(2), std::make_shared<Wire>()));
   auto busMux = std::make_shared<Multiplexer>(Bus(4), Bus(2), std::make_shared<Wire>());

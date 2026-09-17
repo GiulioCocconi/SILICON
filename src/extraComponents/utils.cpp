@@ -40,8 +40,12 @@ void WireSplitter::initializeProperties()
   defineProperty("size", 2);
   defineProperty("delay", 0);
 
+  setPropertyCallback("delay", [](const PropertyValue& value) {
+    return requireNonNegative("WireSplitter delay", value);
+  });
+
   setPropertyCallback("size", [this](const PropertyValue& value) {
-    int newSize = std::get<int>(value);
+    const int newSize = std::get<int>(requireValidSize("WireSplitter size", value));
     if (!this->inputs.empty())
       this->setSize(newSize);
     return value;
@@ -98,8 +102,12 @@ void WireMerger::initializeProperties()
   defineProperty("size", 2);
   defineProperty("delay", 0);
 
+  setPropertyCallback("delay", [](const PropertyValue& value) {
+    return requireNonNegative("WireMerger delay", value);
+  });
+
   setPropertyCallback("size", [this](const PropertyValue& value) {
-    int newSize = std::get<int>(value);
+    const int newSize = std::get<int>(requireValidSize("WireMerger size", value));
     if (!this->outputs.empty())
       this->setSize(newSize);
     return value;

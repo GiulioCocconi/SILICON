@@ -121,6 +121,9 @@ using BusValue = std::vector<State>;
 BusValue operator+(const BusValue& a, const BusValue& b);
 BusValue twosComplement(const BusValue& n);
 
+std::partial_ordering compare(const BusValue& a, const BusValue& b,
+                              const bool signedComparison = false);
+
 class Bus {
 private:
   std::vector<Wire_ptr> busData;
@@ -153,9 +156,7 @@ public:
   [[nodiscard]] bool     sharesWireWith(const Bus& other) const;
 
   const Wire_ptr& operator[](const unsigned short index) const
-  {
-    return this->busData.at(index);
-  }
+  { return this->busData.at(index); }
 
   Wire_ptr& operator[](const unsigned short index) { return this->busData.at(index); }
 

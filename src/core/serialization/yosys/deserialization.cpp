@@ -984,6 +984,49 @@ namespace {
       addWithZeroDelay(std::move(adder));
     }
 
+    void importComparison(const Cell& cell, const std::string_view mode)
+    {
+      static constexpr auto parameters = std::to_array<std::string_view>(
+          {"A_SIGNED", "B_SIGNED", "A_WIDTH", "B_WIDTH", "Y_WIDTH"});
+      static constexpr auto connections =
+          std::to_array<std::string_view>({"A", "B", "Y"});
+      cell.requireSchema(parameters, connections);
+
+      const bool aSigned = cell.flag("A_SIGNED");
+      const bool bSigned = cell.flag("B_SIGNED");
+      const auto aWidth  = cell.width("A_WIDTH");
+      const auto bWidth  = cell.width("B_WIDTH");
+      const auto yWidth  = cell.width("Y_WIDTH");
+      const Bus  a       = cell.consumer("A", aWidth);
+      const Bus  b       = cell.consumer("B", bWidth);
+      const Bus  y       = cell.driver("Y", yWidth);
+
+      // Yosys uses signed comparison only when both operands are signed. Otherwise
+      // both inputs are zero-extended to the widest operand before comparison.
+      const bool signedComparison = aSigned && bSigned;
+      const auto operandWidth     = std::max(aWidth, bWidth);
+      const Bus  extendedA = resizeArithmeticOperand(a, operandWidth, signedComparison);
+      const Bus  extendedB = resizeArithmeticOperand(b, operandWidth, signedComparison);
+
+      const Bus truth      = yWidth == 1 ? y : Bus(1);
+      auto      comparator = std::make_shared<Comparator>(
+          std::array<Bus, 2>{extendedA, extendedB}, truth[0]);
+      comparator->setProperty("mode", std::string(mode));
+      comparator->setProperty("signed", signedComparison);
+      addWithZeroDelay(std::move(comparator));
+
+      if (yWidth > 1) {
+        components.push_back(
+            std::make_shared<Extender>(truth, y, std::string(Extender::UnsignedMode)));
+      }
+    }
+
+    void importEq(const Cell& cell) { importComparison(cell, "=="); }
+    void importLt(const Cell& cell) { importComparison(cell, "<"); }
+    void importLe(const Cell& cell) { importComparison(cell, "<="); }
+    void importGt(const Cell& cell) { importComparison(cell, ">"); }
+    void importGe(const Cell& cell) { importComparison(cell, ">="); }
+
     void importMux(const Cell& cell)
     {
       cell.requireConnections({"A", "B", "S", "Y"});
@@ -1344,6 +1387,11 @@ namespace {
               {"$pos", &Importer::importPos},
               {"$add", &Importer::importAdd},
               {"$sub", &Importer::importSub},
+              {"$eq", &Importer::importEq},
+              {"$lt", &Importer::importLt},
+              {"$le", &Importer::importLe},
+              {"$gt", &Importer::importGt},
+              {"$ge", &Importer::importGe},
               {"$mux", &Importer::importMux},
               {"$bmux", &Importer::importBmux},
               {"$demux", &Importer::importDemux},

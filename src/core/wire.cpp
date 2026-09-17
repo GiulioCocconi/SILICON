@@ -91,9 +91,7 @@ namespace SILICON::wireUtils {
 using namespace SILICON::core;
 
 bool busValueOverflowsWidth(const BusValue& value, const std::size_t width)
-{
-  return !fitsUnsigned(value, width);
-}
+{ return !fitsUnsigned(value, width); }
 
 bool fitsUnsigned(const BusValue& value, const std::size_t width)
 {
@@ -292,6 +290,87 @@ BusValue twosComplement(const BusValue& n)
   return res;
 }
 
+std::partial_ordering compare(const BusValue& lhs, const BusValue& rhs,
+                                     const bool signedComparison)
+{
+  const auto isError = [](const BusValue& value) {
+    return std::ranges::any_of(
+        value, [](const State state) { return state == State::ERROR; });
+  };
+
+  if (isError(lhs) || isError(rhs) || lhs.empty() || rhs.empty())
+    return std::partial_ordering::unordered;
+
+  // Helper: if the value contains unknowns then the value can express a range of states
+  const auto bounds = [signedComparison](const BusValue& value) {
+    BusValue min = value;
+    BusValue max = value;
+
+    for (std::size_t i = 0; i < value.size(); ++i) {
+      if (value[i] != State::UNKNOWN)
+        continue;
+
+      const bool isSignBit = signedComparison && i == value.size() - 1;
+
+      min[i] = isSignBit ? State::HIGH : State::LOW;
+      max[i] = isSignBit ? State::LOW : State::HIGH;
+    }
+
+    return std::pair{std::move(min), std::move(max)};
+  };
+
+  const auto extend = [signedComparison](BusValue& value, const std::size_t width) {
+    const State extension =
+        signedComparison ? value.back() : State::LOW;
+
+    value.resize(width, extension);
+  };
+
+  // Helper: get the ordering for known values (no unknown state)
+  const auto compareKnown = [signedComparison](const BusValue& lhs,
+                                                const BusValue& rhs) {
+    if (signedComparison && lhs.back() != rhs.back()) {
+      return lhs.back() == State::HIGH
+                 ? std::partial_ordering::less
+                 : std::partial_ordering::greater;
+    }
+
+    for (std::size_t i = lhs.size(); i-- > 0;) {
+      if (lhs[i] == rhs[i])
+        continue;
+
+      return lhs[i] == State::HIGH
+                 ? std::partial_ordering::greater
+                 : std::partial_ordering::less;
+    }
+
+    return std::partial_ordering::equivalent;
+  };
+
+  auto [aMin, aMax] = bounds(lhs);
+  auto [bMin, bMax] = bounds(rhs);
+
+  const auto width = std::max(lhs.size(), rhs.size());
+
+  extend(aMin, width);
+  extend(aMax, width);
+  extend(bMin, width);
+  extend(bMax, width);
+
+  if (compareKnown(aMin, bMax) == std::partial_ordering::greater)
+    return std::partial_ordering::greater;
+
+  if (compareKnown(aMax, bMin) == std::partial_ordering::less)
+    return std::partial_ordering::less;
+
+  if (aMin == aMax && bMin == bMax
+      && compareKnown(aMin, bMin) == std::partial_ordering::equivalent) {
+    return std::partial_ordering::equivalent;
+  }
+
+  return std::partial_ordering::unordered;
+}
+
 Bus::Bus(const unsigned short size)
 {
   this->busData.reserve(size);
@@ -308,9 +387,7 @@ void Bus::setSize(const unsigned short size)
 }
 
 Bus::Bus(std::vector<Wire_ptr> busData)
-{
-  this->busData = std::move(busData);
-}
+{ this->busData = std::move(busData); }
 
 Bus::Bus(std::initializer_list<Wire_ptr> initList)
   : busData(initList.begin(), initList.end())

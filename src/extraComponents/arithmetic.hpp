@@ -264,4 +264,29 @@ public:
   int setSize(int width);
 };
 
+class Comparator : public Component {
+
+public:
+  static constexpr std::string_view Type = "Comparator";
+
+  std::string_view  typeName() const override { return Type; }
+  ComponentMetadata metadata() const override
+  {
+    return {"Comparator", "Returns the result of a comparison between two values",
+            ComponentCategory::Arithmetic};
+  }
+
+  Comparator();
+  Comparator(std::array<Bus, 2> inputBuses, Wire_ptr output);
+
+  void simulate(SILICON::simulation::Simulator& sim) override;
+  void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
+
+  int setSize(int width);
+  std::string setMode(std::string mode);
+
+private:
+  uint64_t propagationDelay = 0;
+};
+
 }  // namespace SILICON::extra
