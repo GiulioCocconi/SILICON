@@ -19,12 +19,33 @@
 #include "component.hpp"
 
 #include <algorithm>
+#include <limits>
 #include <ranges>
 #include <stdexcept>
 
 #include <utils/ranges_wrapper.hpp>
 
 namespace SILICON::core {
+
+PropertyValue requireNonNegative(const std::string_view name,
+                                 const PropertyValue&   value)
+{
+  if (std::get<int>(value) < 0) {
+    throw std::invalid_argument(std::format("{} must be non-negative", name));
+  }
+  return value;
+}
+
+PropertyValue requireValidSize(const std::string_view name,
+                               const PropertyValue&   value)
+{
+  const int size = std::get<int>(value);
+  if (size < 1)
+    throw std::invalid_argument(std::format("{} must be at least 1", name));
+  if (size > std::numeric_limits<unsigned short>::max())
+    throw std::invalid_argument(std::format("{} is too large", name));
+  return value;
+}
 
 Component::Component(std::vector<Bus> inputs, std::vector<Bus> outputs)
   : inputs(std::move(inputs)), outputs(std::move(outputs))
