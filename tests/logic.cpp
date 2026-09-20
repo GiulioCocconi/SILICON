@@ -396,16 +396,22 @@ TEST(SimulatorTest, WaveformDoesNotPropagateWhenNormalizedValueIsUnchanged)
   EXPECT_EQ(input.getCurrentValue(), busValueFromBits("01"));
 }
 
-TEST(SimulatorTest, UpdateBusNormalizesImmediateAndDelayedValues)
+TEST(SimulatorTest, UpdateBusRequiresExactWidthForImmediateAndDelayedValues)
 {
   Bus       bus(3);
   auto      circuit = std::make_shared<Circuit>();
   Simulator simulator(circuit);
 
-  simulator.updateBus(bus, busValueFromBits("1"), 0, {});
+  EXPECT_THROW(simulator.updateBus(bus, busValueFromBits("1"), 0, {}),
+               std::invalid_argument);
+
+  simulator.updateBus(bus, busValueFromBits("001"), 0, {});
   EXPECT_EQ(bus.getCurrentValue(), busValueFromBits("001"));
 
-  simulator.updateBus(bus, busValueFromBits("10"), 3, {});
+  EXPECT_THROW(simulator.updateBus(bus, busValueFromBits("10"), 3, {}),
+               std::invalid_argument);
+
+  simulator.updateBus(bus, busValueFromBits("010"), 3, {});
   EXPECT_EQ(bus.getCurrentValue(), busValueFromBits("001"));
   EXPECT_EQ(simulator.run(2), Simulator::RunResult::Completed);
   EXPECT_EQ(bus.getCurrentValue(), busValueFromBits("001"));

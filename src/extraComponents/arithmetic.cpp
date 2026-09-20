@@ -17,6 +17,7 @@
 
 #include "arithmetic.hpp"
 
+#include <core/wireUtils.hpp>
 #include <core/simulator.hpp>
 
 #include <limits>
@@ -98,7 +99,8 @@ void Extender::simulate(SILICON::simulation::Simulator& sim)
       == SignedMode;
 
   const State extension = signedMode ? value.back() : State::LOW;
-  value.resize(outputs[0].size(), extension);
+  value = wireUtils::normalizeBusValue(value, outputs[0].size(), extension);
+
   sim.updateBus(outputs[0], value, 0, weak_from_this());
 }
 Complementer::Complementer()
@@ -334,8 +336,8 @@ Comparator::Comparator(std::array<Bus, 2> inputBuses, Wire_ptr output) : Compara
 
 void Comparator::simulate(SILICON::simulation::Simulator& sim)
 {
-  BusValue a = inputs[0].getCurrentValue();
-  BusValue b = inputs[1].getCurrentValue();
+  const BusValue a = inputs[0].getCurrentValue();
+  const BusValue b = inputs[1].getCurrentValue();
 
   const auto setOutput = [this, &sim](const State s) {
     sim.updateWire(outputs[0][0], s, propagationDelay, weak_from_this());
@@ -353,7 +355,7 @@ void Comparator::simulate(SILICON::simulation::Simulator& sim)
 
   const auto isSigned = getPropertyValue<bool>("signed").value_or(false);
   const auto compareResult =
-      compare(inputs[0].getCurrentValue(), inputs[1].getCurrentValue(), isSigned);
+      compare(a, b, isSigned);
 
   if (compareResult == std::partial_ordering::unordered) {
     setOutput(State::UNKNOWN);

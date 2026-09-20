@@ -578,9 +578,14 @@ void Simulator::updateWire(const Wire_ptr& target, const State newState,
 void Simulator::updateBus(const Bus& bus, const BusValue& value, const uint64_t delay,
                           const Component_weakPtr& source)
 {
-  const auto normalized = SILICON::wireUtils::normalizeBusValue(value, bus.size());
+  if (value.size() != bus.size()) {
+    throw std::invalid_argument(
+        std::format("Trying to set size {} bus to size {} busValue", bus.size(),
+        value.size()));
+  }
+
   for (auto i = 0uz; i < bus.size(); ++i) {
-    updateWire(bus[i], normalized[i], delay, source);
+    updateWire(bus[i], value[i], delay, source);
   }
 }
 
