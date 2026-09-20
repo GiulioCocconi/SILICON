@@ -121,7 +121,7 @@ using BusValue = std::vector<State>;
 BusValue operator+(const BusValue& a, const BusValue& b);
 BusValue twosComplement(const BusValue& n);
 
-std::partial_ordering compare(const BusValue& a, const BusValue& b,
+std::partial_ordering compare(const BusValue& lhs, const BusValue& rhs,
                               const bool signedComparison = false);
 
 class Bus {

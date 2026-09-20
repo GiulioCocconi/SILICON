@@ -252,13 +252,8 @@ BusValue operator+(const BusValue& a, const BusValue& b)
   // +1 safely accommodates the maximum possible carry-out bit
   const auto width = std::max(a.size(), b.size()) + 1;
 
-  const auto zeroExtend = [width](BusValue value) {
-    value.resize(width, State::LOW);
-    return value;
-  };
-
-  BusValue       res  = zeroExtend(a);
-  const BusValue extB = zeroExtend(b);
+  BusValue       res  = wireUtils::normalizeBusValue(a, width);
+  const BusValue extB = wireUtils::normalizeBusValue(b, width);
 
   auto carry = State::LOW;
 
@@ -319,12 +314,6 @@ std::partial_ordering compare(const BusValue& lhs, const BusValue& rhs,
     return std::pair{std::move(min), std::move(max)};
   };
 
-  const auto extend = [signedComparison](BusValue& value, const std::size_t width) {
-    const State extension =
-        signedComparison ? value.back() : State::LOW;
-
-    value.resize(width, extension);
-  };
 
   // Helper: get the ordering for known values (no unknown state)
   const auto compareKnown = [signedComparison](const BusValue& lhs,
@@ -352,10 +341,17 @@ std::partial_ordering compare(const BusValue& lhs, const BusValue& rhs,
 
   const auto width = std::max(lhs.size(), rhs.size());
 
-  extend(aMin, width);
-  extend(aMax, width);
-  extend(bMin, width);
-  extend(bMax, width);
+  const auto extend = [signedComparison, width](const BusValue& value) {
+    const State extension =
+        signedComparison ? value.back() : State::LOW;
+
+    return wireUtils::normalizeBusValue(value, width, extension);
+  };
+
+  aMin = extend(aMin);
+  aMax = extend(aMax);
+  bMin = extend(bMin);
+  bMax = extend(bMax);
 
   if (compareKnown(aMin, bMax) == std::partial_ordering::greater)
     return std::partial_ordering::greater;
