@@ -355,7 +355,7 @@ void Comparator::simulate(SILICON::simulation::Simulator& sim)
 
   const auto isSigned = getPropertyValue<bool>("signed").value_or(false);
   const auto compareResult =
-      compare(a, b, isSigned);
+      compare(a, b, static_cast<Signedness>(isSigned));
 
   if (compareResult == std::partial_ordering::unordered) {
     setOutput(State::UNKNOWN);
