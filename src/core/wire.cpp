@@ -286,18 +286,18 @@ BusValue twosComplement(const BusValue& n)
 }
 
 std::partial_ordering compare(const BusValue& lhs, const BusValue& rhs,
-                                     const bool signedComparison)
+                              const Signedness signedness)
 {
   const auto isError = [](const BusValue& value) {
-    return std::ranges::any_of(
-        value, [](const State state) { return state == State::ERROR; });
+    return std::ranges::any_of(value,
+                               [](const State state) { return state == State::ERROR; });
   };
 
   if (isError(lhs) || isError(rhs) || lhs.empty() || rhs.empty())
     return std::partial_ordering::unordered;
 
   // Helper: if the value contains unknowns then the value can express a range of states
-  const auto bounds = [signedComparison](const BusValue& value) {
+  const auto bounds = [signedness](const BusValue& value) {
     BusValue min = value;
     BusValue max = value;
 
@@ -305,7 +305,7 @@ std::partial_ordering compare(const BusValue& lhs, const BusValue& rhs,
       if (value[i] != State::UNKNOWN)
         continue;
 
-      const bool isSignBit = signedComparison && i == value.size() - 1;
+      const bool isSignBit = signedness == Signedness::SIGNED && i == value.size() - 1;
 
       min[i] = isSignBit ? State::HIGH : State::LOW;
       max[i] = isSignBit ? State::LOW : State::HIGH;
@@ -314,23 +314,19 @@ std::partial_ordering compare(const BusValue& lhs, const BusValue& rhs,
     return std::pair{std::move(min), std::move(max)};
   };
 
-
   // Helper: get the ordering for known values (no unknown state)
-  const auto compareKnown = [signedComparison](const BusValue& lhs,
-                                                const BusValue& rhs) {
-    if (signedComparison && lhs.back() != rhs.back()) {
-      return lhs.back() == State::HIGH
-                 ? std::partial_ordering::less
-                 : std::partial_ordering::greater;
+  const auto compareKnown = [signedness](const BusValue& lhs, const BusValue& rhs) {
+    if (signedness == Signedness::SIGNED && lhs.back() != rhs.back()) {
+      return lhs.back() == State::HIGH ? std::partial_ordering::less
+                                       : std::partial_ordering::greater;
     }
 
     for (std::size_t i = lhs.size(); i-- > 0;) {
       if (lhs[i] == rhs[i])
         continue;
 
-      return lhs[i] == State::HIGH
-                 ? std::partial_ordering::greater
-                 : std::partial_ordering::less;
+      return lhs[i] == State::HIGH ? std::partial_ordering::greater
+                                   : std::partial_ordering::less;
     }
 
     return std::partial_ordering::equivalent;
@@ -341,9 +337,8 @@ std::partial_ordering compare(const BusValue& lhs, const BusValue& rhs,
 
   const auto width = std::max(lhs.size(), rhs.size());
 
-  const auto extend = [signedComparison, width](const BusValue& value) {
-    const State extension =
-        signedComparison ? value.back() : State::LOW;
+  const auto extend = [signedness, width](const BusValue& value) {
+    const State extension = signedness == Signedness::SIGNED ? value.back() : State::LOW;
 
     return wireUtils::normalizeBusValue(value, width, extension);
   };
@@ -359,12 +354,34 @@ std::partial_ordering compare(const BusValue& lhs, const BusValue& rhs,
   if (compareKnown(aMax, bMin) == std::partial_ordering::less)
     return std::partial_ordering::less;
 
-  if (aMin == aMax && bMin == bMax
-      && compareKnown(aMin, bMin) == std::partial_ordering::equivalent) {
+  // It should not happen but just to be sure...
+  [[unlikely]] if (aMin == aMax && bMin == bMax
+                   && compareKnown(aMin, bMin) == std::partial_ordering::equivalent) {
     return std::partial_ordering::equivalent;
   }
 
   return std::partial_ordering::unordered;
+}
+
+BusValue shift(const BusValue& v, const ptrdiff_t amount, const Signedness signedness)
+{
+  if (v.empty() || amount == 0)
+    return v;
+
+  BusValue res = v;
+
+  const State filler =
+      amount > 0 && signedness == Signedness::SIGNED ? v.back() : State::LOW;
+
+  for (auto&& [index, value] : SILICON::views::enumerate(res)) {
+    const ptrdiff_t source = index + amount;
+
+    const bool sourceInBounds = source >= 0 && source < std::ssize(v);
+
+    value = sourceInBounds ? v[source] : filler;
+  }
+
+  return res;
 }
 
 Bus::Bus(const unsigned short size)
