@@ -111,6 +111,7 @@ enum SiliconTypes {
   ROM_COMPONENT,
   SUBCIRCUIT,
   D_LATCH,
+  SHIFTER,
 
   LOGIFLOW_END,
 };

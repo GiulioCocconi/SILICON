@@ -926,6 +926,30 @@ namespace {
       addWithZeroDelay(std::move(adder));
     }
 
+    void importShift(const Cell& cell, const std::string_view type)
+    {
+      static constexpr auto parameters = std::to_array<std::string_view>(
+          {"A_SIGNED", "B_SIGNED", "A_WIDTH", "B_WIDTH", "Y_WIDTH"});
+      static constexpr auto connections =
+          std::to_array<std::string_view>({"A", "B", "Y"});
+      cell.requireSchema(parameters, connections);
+      const auto aWidth = cell.width("A_WIDTH");
+      const auto bWidth = cell.width("B_WIDTH");
+      const auto yWidth = cell.width("Y_WIDTH");
+      if (cell.flag("B_SIGNED"))
+        fail(cell.where(), "shift amount must be unsigned");
+
+      const bool isSigned = cell.flag("A_SIGNED");
+      const Bus value = resizeArithmeticOperand(cell.consumer("A", aWidth), yWidth,
+                                                isSigned);
+      auto shifter = std::make_shared<Shifter>(value, cell.consumer("B", bWidth),
+                                               cell.driver("Y", yWidth));
+      shifter->setProperty("mode", std::string(type == "$shl" ? Shifter::LeftMode
+                                                               : Shifter::RightMode));
+      shifter->setProperty("signed", type != "$shr" && isSigned);
+      addWithZeroDelay(std::move(shifter));
+    }
+
     [[nodiscard]] Bus resizeArithmeticOperand(const Bus& operand, const std::size_t width,
                                               const bool signExtend)
     {
@@ -1403,6 +1427,9 @@ namespace {
           });
 
       Cell view(*this, cell, std::format("{}.cells.{}", moduleContext(), name));
+      if (view.cellType() == "$shl" || view.cellType() == "$shr"
+          || view.cellType() == "$sshr")
+        return importShift(view, view.cellType());
       for (const auto& [type, handler] : handlers) {
         if (view.cellType() == type)
           return (this->*handler)(view);

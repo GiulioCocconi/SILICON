@@ -32,6 +32,7 @@
 #include <ranges>
 #include <set>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include <core/circuit.hpp>
@@ -697,6 +698,24 @@ TEST(YosysTest, CustomTechnologyCellsRoundTripToNativeComponents)
   const auto importedAdder = roundTrip(adder);
   ASSERT_TRUE(findComponent<AdderNBits>(importedAdder));
   EXPECT_EQ(findComponent<AdderNBits>(importedAdder)->getPropertyValue<int>("size"), 5);
+
+  for (const auto& [mode, isSigned, cellType] :
+       std::array<std::tuple<std::string_view, bool, std::string_view>, 3>{
+           {{Shifter::LeftMode, false, "$shl"},
+            {Shifter::RightMode, false, "$shr"},
+            {Shifter::RightMode, true, "$sshr"}}}) {
+    auto shifter = std::make_shared<Shifter>(Bus(5), Bus(3), Bus(5));
+    shifter->setProperty("mode", std::string(mode));
+    shifter->setProperty("signed", isSigned);
+    const auto design = exportComponent(shifter);
+    EXPECT_EQ(onlyCell(design).at("type"), cellType);
+    const auto imported = findComponent<Shifter>(roundTrip(shifter));
+    ASSERT_TRUE(imported);
+    EXPECT_EQ(imported->getPropertyValue<std::string>("mode"), mode);
+    EXPECT_EQ(imported->getPropertyValue<bool>("signed"), isSigned);
+    EXPECT_EQ(imported->getPropertyValue<int>("size"), 5);
+    EXPECT_EQ(imported->getPropertyValue<int>("amountSize"), 3);
+  }
 
   struct RegisterMode {
     bool             parallelInput;

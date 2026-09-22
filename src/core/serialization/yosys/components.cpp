@@ -315,6 +315,34 @@ void AdderNBits::serializeYosys(SerializationContext& context) const
            {"COUT", context.bits(carry)}});
 }
 
+void Shifter::serializeYosys(SerializationContext& context) const
+{
+  requireBusCounts(*this, 2, 1);
+  const auto width = getPropertyValue<int>("size");
+  const auto amountWidth = getPropertyValue<int>("amountSize");
+  const auto mode = getPropertyValue<std::string>("mode");
+  const auto isSigned = getPropertyValue<bool>("signed");
+  if (!width || *width < 1 || !amountWidth || *amountWidth < 1 || !mode
+      || (*mode != LeftMode && *mode != RightMode) || !isSigned)
+    throw std::runtime_error("Cannot export malformed 'Shifter': invalid properties");
+
+  const auto& value = requireBusWidth(*this, true, 0, *width);
+  const auto& amount = requireBusWidth(*this, true, 1, *amountWidth);
+  const auto& result = requireBusWidth(*this, false, 0, *width);
+  const auto type = *mode == LeftMode ? "$shl" : (*isSigned ? "$sshr" : "$shr");
+  context.addCell(
+      "shifter", type,
+      Json{{"A_SIGNED", SerializationContext::parameter(*isSigned ? 1 : 0, 1)},
+           {"B_SIGNED", SerializationContext::parameter(0, 1)},
+           {"A_WIDTH", SerializationContext::parameter(*width)},
+           {"B_WIDTH", SerializationContext::parameter(*amountWidth)},
+           {"Y_WIDTH", SerializationContext::parameter(*width)}},
+      directions({{"A", "input"}, {"B", "input"}, {"Y", "output"}}),
+      Json{{"A", context.bits(value)},
+           {"B", context.bits(amount)},
+           {"Y", context.bits(result)}});
+}
+
 void Comparator::serializeYosys(SerializationContext& context) const
 {
   requireBusCounts(*this, 2, 1);

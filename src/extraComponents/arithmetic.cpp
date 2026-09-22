@@ -20,7 +20,9 @@
 #include <core/wireUtils.hpp>
 #include <core/simulator.hpp>
 
+#include <algorithm>
 #include <limits>
+#include <ranges>
 #include <stdexcept>
 #include <utility>
 #include <variant>
@@ -298,6 +300,98 @@ void AdderNBits::simulate(SILICON::simulation::Simulator& sim)
                 weak_from_this());
 
   sim.updateWire(outputWire(Outputs::Cout), carry, propagationDelay, weak_from_this());
+}
+
+Shifter::Shifter()
+{
+  defineProperty("delay", 0, [](const PropertyValue& value) {
+    return requireNonNegative("Shifter delay", value);
+  });
+  defineProperty("size", 4, [this](const PropertyValue& value) {
+    const int width = std::get<int>(requireValidSize("Shifter size", value));
+    if (!inputs.empty() && !outputs.empty())
+      setSize(width);
+    return value;
+  });
+  defineProperty("amountSize", 4, [this](const PropertyValue& value) {
+    const int width = std::get<int>(requireValidSize("Shifter amountSize", value));
+    if (inputs.size() == 2)
+      setAmountSize(width);
+    return value;
+  });
+  defineStringListProperty("mode", std::string(RightMode),
+                           {std::string(LeftMode), std::string(RightMode)});
+  defineProperty("signed", false);
+}
+
+Shifter::Shifter(Bus value, Bus amount, Bus result) : Shifter()
+{
+  if (value.size() == 0 || amount.size() == 0 || result.size() != value.size())
+    throw std::invalid_argument(
+        "Shifter: value and result must have the same non-zero width, and amount must be non-empty");
+  inputs  = {std::move(value), std::move(amount)};
+  outputs = {std::move(result)};
+  setProperty("size", static_cast<int>(outputs[0].size()));
+  setProperty("amountSize", static_cast<int>(inputs[1].size()));
+}
+
+int Shifter::setSize(const int width)
+{
+  if (width < 1 || width > std::numeric_limits<unsigned short>::max())
+    return getPropertyValue<int>("size").value_or(4);
+  auto newInputs = getInputs();
+  if (newInputs.size() < 2)
+    newInputs.resize(2);
+  newInputs[0].setSize(static_cast<unsigned short>(width));
+  setInputs(newInputs);
+  auto newOutputs = getOutputs();
+  if (newOutputs.empty())
+    newOutputs.resize(1);
+  newOutputs[0].setSize(static_cast<unsigned short>(width));
+  setOutputs(newOutputs);
+  return width;
+}
+
+int Shifter::setAmountSize(const int width)
+{
+  if (width < 1 || width > std::numeric_limits<unsigned short>::max())
+    return getPropertyValue<int>("amountSize").value_or(4);
+  auto newInputs = getInputs();
+  if (newInputs.size() < 2)
+    newInputs.resize(2);
+  newInputs[1].setSize(static_cast<unsigned short>(width));
+  setInputs(newInputs);
+  return width;
+}
+
+void Shifter::simulate(SILICON::simulation::Simulator& sim)
+{
+  if (inputs.size() != 2 || outputs.size() != 1 || inputs[0].size() == 0
+      || inputs[1].size() == 0 || outputs[0].size() != inputs[0].size())
+    return;
+
+  const BusValue value = inputs[0].getCurrentValue();
+  const BusValue amount = inputs[1].getCurrentValue();
+  BusValue result;
+  if (std::ranges::find(amount, State::ERROR) != amount.end()) {
+    result.assign(value.size(), State::ERROR);
+  } else if (std::ranges::find(amount, State::UNKNOWN) != amount.end()) {
+    result.assign(value.size(), State::UNKNOWN);
+  } else {
+    // Saturate before conversion so even a very wide amount cannot overflow.
+    std::size_t count = 0;
+    for (std::size_t bit = amount.size(); bit-- > 0;) {
+      count = std::min(value.size(), count * 2 + (amount[bit] == State::HIGH));
+    }
+    const bool left =
+        getPropertyValue<std::string>("mode").value_or(std::string(RightMode)) == LeftMode;
+    const auto signedness = getPropertyValue<bool>("signed").value_or(false)
+                                ? Signedness::SIGNED : Signedness::UNSIGNED;
+    result = shift(value, left ? -static_cast<ptrdiff_t>(count)
+                               : static_cast<ptrdiff_t>(count), signedness);
+  }
+  sim.updateBus(outputs[0], result, getPropertyValue<int>("delay").value_or(0),
+                weak_from_this());
 }
 
 Comparator::Comparator()
