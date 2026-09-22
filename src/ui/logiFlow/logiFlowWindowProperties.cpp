@@ -61,11 +61,12 @@ namespace ui {
     const auto itemKind = selectedProjectItem
                               ? std::optional{ProjectTree::itemKind(selectedProjectItem)}
                               : std::nullopt;
-    const auto itemType = selectedProjectItem
-                              ? ProjectTree::itemDocumentType(selectedProjectItem)
-                              : std::nullopt;
+    const auto itemCategory = selectedProjectItem
+                                  ? ProjectTree::itemDocumentCategory(selectedProjectItem)
+                                  : std::nullopt;
 
-    const bool hasProperties = itemKind != ProjectTreeItemKind::Document;
+    const bool hasProperties = itemKind != ProjectTreeItemKind::Document
+                               && itemKind != ProjectTreeItemKind::Architecture;
     propertyDock->setVisible(hasProperties);
     if (!hasProperties)
       return;
@@ -93,9 +94,16 @@ namespace ui {
         return;
       }
 
-      if (itemKind == ProjectTreeItemKind::Section && itemType) {
+      if (itemKind == ProjectTreeItemKind::Section && itemCategory) {
+        const auto noun = *itemCategory == SILICON::project::DocumentCategory::Diagram
+                              ? tr("circuit")
+                              : *itemCategory == SILICON::project::DocumentCategory::Code
+                                    ? tr("code file")
+                                    : *itemCategory == SILICON::project::DocumentCategory::Architecture
+                                          ? tr("architecture")
+                                    : tr("binary file");
         layout->addRow(new QLabel(tr("Select a %1 to view its properties.")
-                                      .arg(documentTypeName(*itemType).toLower())));
+                                      .arg(noun)));
         return;
       }
 

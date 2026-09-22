@@ -22,6 +22,7 @@ struct CodeFilePresentation {
   SILICON::project::DocumentType type;
   std::string_view               displayName;
   const CodeSyntax*              syntax;
+  const char*                    architectureTabName;
 };
 
 [[nodiscard]] std::span<const CodeFilePresentation> codeFilePresentations();

@@ -162,7 +162,7 @@ void ProjectContext::renameDocument(const std::string_view oldPath,
     const bool renamedDocument = document.getPath() == oldPath;
     if (renamedDocument)
       document = Document(std::string(newPath), document.getContents());
-    if (*oldType != DocumentType::Verilog)
+    if (*oldType == DocumentType::Circuit || *oldType == DocumentType::RawBinary)
       rewriteDocumentReferences(document, *oldType, *oldSlug, *newSlug, renamedDocument);
   }
 

@@ -38,6 +38,25 @@
 #include <ui/common/codeFilePresentation.hpp>
 
 namespace SILICON::ui {
+namespace {
+
+  [[nodiscard]] QChar closingDelimiter(const QChar opening)
+  {
+    switch (opening.unicode()) {
+      case '(': return QLatin1Char(')');
+      case '[': return QLatin1Char(']');
+      case '{': return QLatin1Char('}');
+      default: return {};
+    }
+  }
+
+  [[nodiscard]] bool isClosingDelimiter(const QChar character)
+  {
+    return character == QLatin1Char(')') || character == QLatin1Char(']')
+           || character == QLatin1Char('}');
+  }
+
+}  // namespace
 
 class CodeLineNumberArea : public QWidget {
 public:
@@ -93,7 +112,7 @@ CodeEditor::CodeEditor(QWidget* parent)
 
 void CodeEditor::setFileType(const SILICON::project::DocumentType type)
 {
-  if (SILICON::project::categoryOf(type) != SILICON::project::DocumentCategory::Code)
+  if (!SILICON::project::isCodeDocument(type))
     throw std::invalid_argument("Code editor requires a code document type");
 
   const auto* syntax = codeFilePresentation(type).syntax;
@@ -295,6 +314,98 @@ void CodeEditor::insertCompletion(const QString& completion)
   cursor.endEditBlock();
 }
 
+bool CodeEditor::insertAutoPair(const QChar typed)
+{
+  QTextCursor cursor = textCursor();
+  const auto  line   = cursor.block().text();
+  const int   offset = cursor.positionInBlock();
+  const QChar next   = offset < line.size() ? line.at(offset) : QChar{};
+  const QChar close  = closingDelimiter(typed);
+
+  if (!close.isNull()) {
+    if (cursor.hasSelection()) {
+      const int  start = cursor.selectionStart();
+      const auto selection =
+          cursor.selectedText().replace(QChar::ParagraphSeparator, QLatin1Char('\n'));
+      cursor.insertText(QString(typed) + selection + close);
+      cursor.setPosition(start + 1);
+      cursor.setPosition(start + 1 + selection.size(), QTextCursor::KeepAnchor);
+    } else if (next == close) {
+      cursor.insertText(QString(typed));
+    } else if (next.isNull() || next.isSpace() || isClosingDelimiter(next)
+               || next == QLatin1Char(';') || next == QLatin1Char(',')) {
+      const int position = cursor.position();
+      cursor.insertText(QString(typed) + close);
+      cursor.setPosition(position + 1);
+    } else {
+      return false;
+    }
+    setTextCursor(cursor);
+    return true;
+  }
+
+  if (!cursor.hasSelection() && isClosingDelimiter(typed) && next == typed) {
+    cursor.movePosition(QTextCursor::Right);
+    setTextCursor(cursor);
+    return true;
+  }
+
+  return false;
+}
+
+bool CodeEditor::removeEmptyPair()
+{
+  QTextCursor cursor = textCursor();
+  if (cursor.hasSelection())
+    return false;
+
+  const auto line   = cursor.block().text();
+  const int  offset = cursor.positionInBlock();
+  if (offset <= 0 || offset >= line.size()
+      || closingDelimiter(line.at(offset - 1)) != line.at(offset))
+    return false;
+
+  cursor.setPosition(cursor.position() - 1);
+  cursor.setPosition(cursor.position() + 2, QTextCursor::KeepAnchor);
+  cursor.removeSelectedText();
+  setTextCursor(cursor);
+  return true;
+}
+
+bool CodeEditor::expandPairedDelimiters()
+{
+  if (!fileTypeValue)
+    return false;
+  const auto* indentation = codeFilePresentation(*fileTypeValue).syntax->indentation;
+  if (!indentation || !indentation->expandPairsOnNewline)
+    return false;
+
+  QTextCursor cursor = textCursor();
+  if (cursor.hasSelection())
+    return false;
+
+  const auto line   = cursor.block().text();
+  const int  offset = cursor.positionInBlock();
+  if (offset <= 0 || offset >= line.size()
+      || closingDelimiter(line.at(offset - 1)) != line.at(offset))
+    return false;
+
+  qsizetype prefixLength = 0;
+  while (prefixLength < line.size()
+         && (line.at(prefixLength) == QLatin1Char(' ')
+             || line.at(prefixLength) == QLatin1Char('\t')))
+    ++prefixLength;
+
+  const auto baseIndent = line.first(prefixLength);
+  const auto innerIndent =
+      baseIndent + QString(indentation->indentWidth, QLatin1Char(' '));
+  const int position = cursor.position();
+  cursor.insertText(QLatin1Char('\n') + innerIndent + QLatin1Char('\n') + baseIndent);
+  cursor.setPosition(position + 1 + innerIndent.size());
+  setTextCursor(cursor);
+  return true;
+}
+
 void CodeEditor::keyPressEvent(QKeyEvent* event)
 {
   if (completer->popup()->isVisible()) {
@@ -316,6 +427,16 @@ void CodeEditor::keyPressEvent(QKeyEvent* event)
     }
   }
 
+  const bool plainKey =
+      fileTypeValue && !isReadOnly()
+      && !(event->modifiers()
+           & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier));
+  if (plainKey && event->key() == Qt::Key_Backspace && removeEmptyPair()) {
+    completer->popup()->hide();
+    event->accept();
+    return;
+  }
+
   if (event->key() == Qt::Key_Tab || event->key() == Qt::Key_Backtab) {
     if (event->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier)) {
       QPlainTextEdit::keyPressEvent(event);
@@ -334,6 +455,11 @@ void CodeEditor::keyPressEvent(QKeyEvent* event)
   }
 
   if (event->matches(QKeySequence::InsertParagraphSeparator)) {
+    if (plainKey && expandPairedDelimiters()) {
+      completer->popup()->hide();
+      event->accept();
+      return;
+    }
     QTextCursor cursor = textCursor();
     cursor.beginEditBlock();
     QPlainTextEdit::keyPressEvent(event);
@@ -348,6 +474,11 @@ void CodeEditor::keyPressEvent(QKeyEvent* event)
       !event->text().isEmpty()
       && !(event->modifiers()
            & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier));
+  if (plainKey && event->text().size() == 1 && insertAutoPair(event->text().front())) {
+    completer->popup()->hide();
+    event->accept();
+    return;
+  }
   if (!explicitRequest)
     QPlainTextEdit::keyPressEvent(event);
   if (typedText && currentLineMatchesIndentationTrigger())

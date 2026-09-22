@@ -17,6 +17,7 @@
  */
 
 #include "projectDocument.hpp"
+#include "isaArchitecture.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -47,8 +48,11 @@ namespace {
     if (path.size() < info.root.size() + info.suffix.size())
       return false;
 
-    return isValidDocumentSlug(path.substr(
-        info.root.size(), path.size() - info.root.size() - info.suffix.size()));
+    const auto slug = path.substr(
+        info.root.size(), path.size() - info.root.size() - info.suffix.size());
+    return info.category == DocumentCategory::Architecture
+               ? isArchitecturePathSlug(slug)
+               : isValidDocumentSlug(slug);
   }
 
   [[nodiscard]] std::string_view leafFileName(const std::string_view path)
@@ -144,6 +148,8 @@ namespace {
     const auto extension = lowerCaseExtension(fileName);
     if (extension == ".v")
       return DocumentType::Verilog;
+    if (extension == ".sisl")
+      return DocumentType::Sisl;
     if (extension == ".bin")
       return DocumentType::RawBinary;
 
@@ -185,7 +191,9 @@ bool isValidDocumentSlug(const std::string_view slug)
 std::string documentPathForSlug(const DocumentType type, const std::string_view slug)
 {
   const auto& info = documentTypeInfo(type);
-  if (!isValidDocumentSlug(slug))
+  if (info.category == DocumentCategory::Architecture
+          ? !isValidArchitectureName(slug)
+          : !isValidDocumentSlug(slug))
     throw std::invalid_argument("Invalid document slug");
 
   return std::format("{}{}{}", info.root, slug, info.suffix);
@@ -229,8 +237,16 @@ Document importDocument(const std::string_view sourcePath, std::string contents)
   if (!type)
     throw std::invalid_argument(std::format("Unsupported document file: {}", fileName));
 
-  const auto slug =
-      *type == DocumentType::RawBinary ? std::string(fileName) : fileStem(fileName);
+  std::string slug;
+  if (*type == DocumentType::Sisl) {
+    const auto name = declaredArchitectureName(contents);
+    if (!name)
+      throw std::invalid_argument("SISL file must begin with a valid arch declaration");
+    slug = *name;
+  } else {
+    slug = *type == DocumentType::RawBinary ? std::string(fileName)
+                                            : fileStem(fileName);
+  }
   if (!isValidDocumentSlug(slug))
     throw std::invalid_argument("Document file name is invalid");
 
