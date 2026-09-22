@@ -24,7 +24,9 @@
 #include <QGraphicsSvgItem>
 #include <QTextOption>
 
+#include <stdexcept>
 #include <utility>
+#include <variant>
 
 namespace SILICON {
 namespace ui {
@@ -129,6 +131,13 @@ std::shared_ptr<AdderNBits> makeAdderNBits()
       Wire_ptr{});
 }
 
+std::shared_ptr<Shifter> makeShifter()
+{
+  constexpr unsigned short defaultSize = 4;
+  return std::make_shared<Shifter>(Bus(defaultSize), Bus(defaultSize),
+                                   Bus(defaultSize));
+}
+
 }  // namespace
 
 GraphicalExtender::GraphicalExtender(QGraphicsItem* parent)
@@ -174,6 +183,48 @@ GraphicalAdderNBits::GraphicalAdderNBits(QGraphicsItem* parent)
   printPortNames = true;
   setPorts({PortPair{"a", QPoint(20, -20)}, PortPair{"b", QPoint(80, -20)}},
            {PortPair{"sum", QPoint(50, 120)}, PortPair{"of", QPoint(110, 40)}});
+}
+
+GraphicalShifter::GraphicalShifter(QGraphicsItem* parent)
+  : GraphicalLogicComponent(makeShifter(),
+                            new QGraphicsSvgItem(":/other_components/SHIFTR.svg"),
+                            parent, true)
+{
+  setupCallbacks();
+  setPorts({PortPair{"value", QPoint(-20, 20)}, PortPair{"amount", QPoint(40, -20)}},
+           {PortPair{"result", QPoint(90, 20)}});
+}
+
+void GraphicalShifter::setupCallbacks()
+{
+  if (!associatedComponent)
+    return;
+
+  associatedComponent->setPropertyCallback("mode", [this](const PropertyValue& value) {
+    return applyMode(std::get<std::string>(value));
+  });
+}
+
+std::string GraphicalShifter::applyMode(std::string mode)
+{
+  if (mode != Shifter::LeftMode && mode != Shifter::RightMode)
+    throw std::invalid_argument("Shifter mode must be 'left' or 'right'");
+
+  setItemShape(new QGraphicsSvgItem(mode == Shifter::LeftMode
+                                        ? ":/other_components/SHIFTL.svg"
+                                        : ":/other_components/SHIFTR.svg"));
+  return mode;
+}
+
+void GraphicalShifter::setComponent(const Component_ptr& component)
+{
+  GraphicalLogicComponent::setComponent(component);
+  if (!component)
+    return;
+
+  setupCallbacks();
+  applyMode(component->getPropertyValue<std::string>("mode")
+                .value_or(std::string(Shifter::RightMode)));
 }
 
 GraphicalComparator::GraphicalComparator(QGraphicsItem* parent)
