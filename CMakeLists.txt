@@ -76,6 +76,7 @@ set(COMMON_SOURCE_FILES
         ${src_dir}/core/component.cpp
         ${src_dir}/core/circuit.cpp
         ${src_dir}/core/projectDocument.cpp
+        ${src_dir}/core/isaArchitecture.cpp
         ${src_dir}/core/projectContext.cpp
         ${src_dir}/core/simulator.cpp
         ${src_dir}/core/serialization/component_registry.cpp
@@ -143,11 +144,18 @@ set(UI_SOURCE_FILES
         ${src_dir}/ui/logiFlow/code/codeSyntaxHighlighter.cpp
         ${src_dir}/ui/logiFlow/code/indentationUtils.cpp
         ${src_dir}/ui/logiFlow/code/syntax/verilog.cpp
+        ${src_dir}/ui/logiFlow/code/syntax/sisl.cpp
         ${src_dir}/ui/common/binaryEditor.cpp
         ${src_dir}/ui/logiFlow/metadataDescriptionEdit.cpp
         ${src_dir}/ui/logiFlow/projectTree.cpp
         ${src_dir}/ui/logiFlow/logiFlowWindowActions.cpp
+        ${src_dir}/ui/logiFlow/logiFlowWindowSettings.cpp
         ${src_dir}/ui/logiFlow/logiFlowWindowFile.cpp
+        ${src_dir}/ui/logiFlow/logiFlowWindowInteraction.cpp
+        ${src_dir}/ui/logiFlow/logiFlowWindowDocuments.cpp
+        ${src_dir}/ui/logiFlow/logiFlowWindowArchitecture.cpp
+        ${src_dir}/ui/logiFlow/sislVisualizer.cpp
+        ${src_dir}/ui/logiFlow/logiFlowWindowConversion.cpp
         ${src_dir}/ui/logiFlow/logiFlowWindowProject.cpp
         ${src_dir}/ui/logiFlow/logiFlowWindowProperties.cpp
         ${src_dir}/ui/logiFlow/logiFlowWindow.cpp
@@ -209,8 +217,19 @@ endif ()
 # for the regex-heavy translation unit.
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND SILICON_ENABLE_SANITIZERS)
     set_source_files_properties(
+	    ${src_dir}/ui/logiFlow/code/syntax/sisl.cpp
             ${src_dir}/ui/logiFlow/code/syntax/verilog.cpp
             PROPERTIES COMPILE_OPTIONS -Wno-error=maybe-uninitialized)
+endif ()
+
+# GCC 15+ reports false positives in boost::multiprecision headers
+# (aggressive-loop-optimizations and array-bounds) when using -O3.
+# These are triggered by sislVisualizer.cpp which uses SISL's Integer type (cpp_int).
+if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU"
+    AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 15)
+    set_source_files_properties(
+            ${src_dir}/ui/logiFlow/sislVisualizer.cpp
+            PROPERTIES COMPILE_OPTIONS -Wno-error=aggressive-loop-optimizations\;-Wno-error=array-bounds)
 endif ()
 
 if (UNIX AND NOT APPLE AND NOT EMSCRIPTEN AND SILICON_ENABLE_SANITIZERS)
@@ -228,6 +247,7 @@ find_package(nlohmann_json REQUIRED)
 find_package(tomlplusplus REQUIRED)
 find_package(libzip CONFIG REQUIRED)
 find_package(ogdf CONFIG REQUIRED)
+find_package(Sisl 0.1 CONFIG REQUIRED)
 
 if (TARGET libzip::zip)
     set(SILICON_LIBZIP_TARGET libzip::zip)
@@ -332,6 +352,7 @@ target_link_libraries(silicon_core
         fst
         Boost::graph
         silicon_logging
+        Sisl::Sisl
         nlohmann_json
         ${SILICON_LIBZIP_TARGET})
 

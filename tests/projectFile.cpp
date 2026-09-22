@@ -300,23 +300,28 @@ TEST(ProjectFileTest, RoundTripsCodeDocuments)
   FileCleanup       cleanup{path};
   const std::string mainJson = R"({"circuit":{"name":"Main"}})";
   const std::string source = "module adder(input a, output y); assign y = a; endmodule\n";
+  const std::string isaSource = "arch RV32 = { endianness = Little; };\n";
 
   SILICON::project::ProjectFile projectFile{
       .metadata  = SILICON::project::metadataForNewFile(),
       .project   = {.name = "Code", .description = ""},
       .documents = {{std::string(SILICON::project::DEFAULT_CIRCUIT_PATH), mainJson},
                     {"code/adder.v", source},
-                    {"code/control.v", "module control; endmodule\n"}}};
+                    {"code/control.v", "module control; endmodule\n"},
+                    {"isa/rv32/instr_format.sisl", isaSource}}};
 
   SILICON::project::writeProjectFile(path, projectFile);
   EXPECT_EQ(readZipEntry(path, "code/adder.v"), source);
+  EXPECT_EQ(readZipEntry(path, "isa/rv32/instr_format.sisl"), isaSource);
   const auto projectJson = nlohmann::json::parse(readZipEntry(path, "project.json"));
   EXPECT_FALSE(projectJson.contains("codeFiles"));
 
   const auto loaded = SILICON::project::readProjectFile(path);
-  ASSERT_EQ(loaded.documents.size(), 3);
+  ASSERT_EQ(loaded.documents.size(), 4);
   EXPECT_EQ(loaded.documents[1].getType(), SILICON::project::DocumentType::Verilog);
   EXPECT_EQ(loaded.documents[1].getContents(), source);
+  EXPECT_EQ(loaded.documents[3].getType(), SILICON::project::DocumentType::Sisl);
+  EXPECT_EQ(loaded.documents[3].getContents(), isaSource);
 }
 
 TEST(ProjectFileTest, RoundTripsRawBinaryDocumentsByteForByte)
@@ -357,6 +362,15 @@ TEST(ProjectFileTest, RejectsNonDocumentEntries)
                            {std::string(SILICON::project::DEFAULT_CIRCUIT_PATH), "{}"},
                            {"code/adder.sv", "unsupported"}});
   EXPECT_THROW(readProjectFileIgnoringResult(collisionPath), std::runtime_error);
+
+  const auto oldSislPath = tempProjectPath("old_sisl_entry");
+  FileCleanup oldSislCleanup{oldSislPath};
+  writeZip(oldSislPath, {{"mimetype", std::string(SILICON::project::MIME_TYPE)},
+                         {"metadata.json", validMetadata().dump(2)},
+                         {"project.json", validProject().dump(2)},
+                         {std::string(SILICON::project::DEFAULT_CIRCUIT_PATH), "{}"},
+                         {"code/rv32.isa", "arch rv32 = {};"}});
+  EXPECT_THROW(readProjectFileIgnoringResult(oldSislPath), std::runtime_error);
 }
 
 TEST(ProjectFileTest, RejectsInvalidEntriesInsideCodeNamespace)

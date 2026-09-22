@@ -68,6 +68,9 @@ private:
   void                updateIndentationSettings();
   void                showCompletion(bool explicitRequest);
   void                insertCompletion(const QString& completion);
+  [[nodiscard]] bool  insertAutoPair(QChar typed);
+  [[nodiscard]] bool  removeEmptyPair();
+  [[nodiscard]] bool  expandPairedDelimiters();
   void                indentCurrentLine();
   void                dedentSelection();
   [[nodiscard]] bool  currentLineMatchesIndentationTrigger() const;

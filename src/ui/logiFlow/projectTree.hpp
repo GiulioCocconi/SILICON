@@ -21,7 +21,7 @@
 namespace SILICON::ui {
 
 /** @brief Semantic role of an item shown in the project tree. */
-enum class ProjectTreeItemKind { Project, Section, Document };
+enum class ProjectTreeItemKind { Project, Section, Document, Architecture };
 
 struct ProjectTreeDocumentSelection {
   project::DocumentType type;
@@ -48,10 +48,13 @@ public:
   [[nodiscard]] static ProjectTreeItemKind itemKind(const QTreeWidgetItem* item);
   [[nodiscard]] static std::optional<project::DocumentType>
                                    itemDocumentType(const QTreeWidgetItem* item);
+  [[nodiscard]] static std::optional<project::DocumentCategory>
+                                   itemDocumentCategory(const QTreeWidgetItem* item);
   [[nodiscard]] static std::string documentPath(const QTreeWidgetItem* item);
+  [[nodiscard]] static std::string architectureName(const QTreeWidgetItem* item);
 
 private:
-  void addSection(QTreeWidgetItem* projectItem, project::DocumentType type,
+  void addSection(QTreeWidgetItem* projectItem, project::DocumentCategory category,
                   std::span<const project::Document> documents);
   void addDocument(QTreeWidgetItem* parent, const project::Document& document);
 };

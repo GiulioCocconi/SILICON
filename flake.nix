@@ -19,16 +19,21 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    sisl = {
+      url = "github:GiulioCocconi/SISL";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     git-hooks = {
       url = "github:cachix/git-hooks.nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
-outputs = { self, nixpkgs, flake-utils, git-hooks }:
+outputs = { self, nixpkgs, flake-utils, git-hooks, sisl }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
+        sislPackage = sisl.packages.${system}.default;
 
         preCommitCheck = git-hooks.lib.${system}.run {
           src = ./.;
@@ -105,7 +110,7 @@ outputs = { self, nixpkgs, flake-utils, git-hooks }:
 
             nativeBuildInputs = nativeInputs ++ [pkgs.qt6.wrapQtAppsHook];
 
-            buildInputs = libraries ++ [pkgs.range-v3];
+            buildInputs = libraries ++ [pkgs.range-v3 sislPackage];
 
             cmakeFlags = [
               "-DSILICON_USE_VCPKG=OFF"
@@ -130,7 +135,7 @@ outputs = { self, nixpkgs, flake-utils, git-hooks }:
           devShells = {
             default = pkgs.mkShell {
               name = "SILICON-dev";
-              packages = devPackages ++ libraries ++ nativeInputs ++ preCommitCheck.enabledPackages;
+              packages = devPackages ++ libraries ++ nativeInputs ++ [ sislPackage ] ++ preCommitCheck.enabledPackages;
               inherit (preCommitCheck) shellHook;
               hardeningDisable = [ "all" ];
               NIX_LANG_CPP = "TRUE";
@@ -138,7 +143,7 @@ outputs = { self, nixpkgs, flake-utils, git-hooks }:
 
             clang = (pkgs.mkShell.override { stdenv = pkgs.llvmPackages_20.libcxxStdenv; }) {
               name = "SILICON-dev-clang";
-              packages = devPackages ++ libraries ++ nativeInputs ++ [pkgs.range-v3] ++ preCommitCheck.enabledPackages;
+              packages = devPackages ++ libraries ++ nativeInputs ++ [pkgs.range-v3 sislPackage] ++ preCommitCheck.enabledPackages;
               inherit (preCommitCheck) shellHook;
               hardeningDisable = [ "all" ];
             };
