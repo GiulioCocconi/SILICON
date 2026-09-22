@@ -35,30 +35,39 @@ namespace SILICON::project {
 
 class ProjectContext;
 
-enum class DocumentType { Circuit, Verilog, RawBinary };
+enum class DocumentType { Circuit, Verilog, Sisl, RawBinary };
 
-enum class DocumentCategory { Diagram, Code, Binary };
+enum class DocumentCategory { Diagram, Code, Architecture, Binary };
 
 struct DocumentTypeInfo {
   DocumentType     type;
   DocumentCategory category;
   std::string_view root;
   std::string_view suffix;
+  bool             editableText;
 };
 
-inline constexpr std::array<DocumentTypeInfo, 3> DOCUMENT_TYPE_INFO{{
-    {.type     = DocumentType::Circuit,
-     .category = DocumentCategory::Diagram,
-     .root     = "circuits/",
-     .suffix   = ".json"},
-    {.type     = DocumentType::Verilog,
-     .category = DocumentCategory::Code,
-     .root     = "code/",
-     .suffix   = ".v"},
-    {.type     = DocumentType::RawBinary,
-     .category = DocumentCategory::Binary,
-     .root     = "bin/",
-     .suffix   = {}},
+inline constexpr std::array<DocumentTypeInfo, 4> DOCUMENT_TYPE_INFO{{
+    {.type         = DocumentType::Circuit,
+     .category     = DocumentCategory::Diagram,
+     .root         = "circuits/",
+     .suffix       = ".json",
+     .editableText = false},
+    {.type         = DocumentType::Verilog,
+     .category     = DocumentCategory::Code,
+     .root         = "code/",
+     .suffix       = ".v",
+     .editableText = true},
+    {.type         = DocumentType::Sisl,
+     .category     = DocumentCategory::Architecture,
+     .root         = "isa/",
+     .suffix       = "/instr_format.sisl",
+     .editableText = true},
+    {.type         = DocumentType::RawBinary,
+     .category     = DocumentCategory::Binary,
+     .root         = "bin/",
+     .suffix       = {},
+     .editableText = false},
 }};
 
 [[nodiscard]] constexpr const DocumentTypeInfo& documentTypeInfo(const DocumentType type)
@@ -73,6 +82,11 @@ inline constexpr std::array<DocumentTypeInfo, 3> DOCUMENT_TYPE_INFO{{
 [[nodiscard]] constexpr DocumentCategory categoryOf(const DocumentType type)
 {
   return documentTypeInfo(type).category;
+}
+
+[[nodiscard]] constexpr bool isCodeDocument(const DocumentType type)
+{
+  return documentTypeInfo(type).editableText;
 }
 
 enum class DocumentChangeKind { Added, Updated, Removed, Reset };
@@ -112,7 +126,7 @@ private:
  * Creates a project document from an external file name and payload.
  *
  * Definitive extensions are preferred; otherwise the payload is inspected for a
- * Silicon circuit or non-text binary data. Verilog is extension-only.
+ * Silicon circuit or non-text binary data. Code types are extension-only.
  *
  * @throws std::invalid_argument if the name is invalid or the file type is unsupported.
  */

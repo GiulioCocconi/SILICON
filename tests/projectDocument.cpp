@@ -5,15 +5,18 @@
 
 #include <core/projectContext.hpp>
 #include <core/projectDocument.hpp>
+#include <core/isaArchitecture.hpp>
 
 #include <algorithm>
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <vector>
 
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
+#include <sisl/sisl.hpp>
 
 using namespace SILICON::core;
 using namespace SILICON::project;
@@ -22,11 +25,15 @@ using SILICON::project::Document;
 using SILICON::project::DocumentStore;
 using SILICON::project::DocumentType;
 
+static_assert(std::is_class_v<sisl::Isa>);
+
 TEST(ProjectDocumentTest, ClassifiesCanonicalFlatPaths)
 {
   EXPECT_EQ(SILICON::project::documentTypeForPath("circuits/main.json"),
             DocumentType::Circuit);
   EXPECT_EQ(SILICON::project::documentTypeForPath("code/adder.v"), DocumentType::Verilog);
+  EXPECT_EQ(SILICON::project::documentTypeForPath("isa/rv32/instr_format.sisl"), DocumentType::Sisl);
+  EXPECT_FALSE(SILICON::project::documentTypeForPath("code/rv32.isa"));
   EXPECT_EQ(SILICON::project::documentTypeForPath("bin/firmware"),
             DocumentType::RawBinary);
   EXPECT_FALSE(SILICON::project::documentTypeForPath(""));
@@ -45,6 +52,7 @@ TEST(ProjectDocumentTest, ClassifiesConcreteTypesByCategory)
 {
   static_assert(categoryOf(DocumentType::Circuit) == DocumentCategory::Diagram);
   static_assert(categoryOf(DocumentType::Verilog) == DocumentCategory::Code);
+  static_assert(categoryOf(DocumentType::Sisl) == DocumentCategory::Architecture);
   static_assert(categoryOf(DocumentType::RawBinary) == DocumentCategory::Binary);
 }
 
@@ -81,6 +89,9 @@ TEST(ProjectDocumentTest, ValidatesDocumentNamesAndRoundTripsEveryType)
   const auto verilogPath = documentPathForSlug(DocumentType::Verilog, "adder");
   EXPECT_EQ(verilogPath, "code/adder.v");
   EXPECT_EQ(documentSlugForPath(verilogPath), "adder");
+  const auto sislPath = documentPathForSlug(DocumentType::Sisl, "rv32");
+  EXPECT_EQ(sislPath, "isa/rv32/instr_format.sisl");
+  EXPECT_EQ(documentSlugForPath(sislPath), "rv32");
 }
 
 TEST(ProjectDocumentTest, ContentReplacementUpdatesOnlyPersistedContents)
@@ -97,11 +108,33 @@ TEST(ProjectDocumentTest, ImportsDocumentsFromDefinitiveExtensions)
   EXPECT_EQ(verilog.getPath(), "code/Adder.v");
   EXPECT_EQ(verilog.getContents(), "not validated by extension");
 
+  const auto sisl = importDocument("/tmp/format.SISL", "arch RV32 = {};\n");
+  EXPECT_EQ(sisl.getType(), DocumentType::Sisl);
+  EXPECT_EQ(sisl.getPath(), "isa/RV32/instr_format.sisl");
+  EXPECT_EQ(sisl.getContents(), "arch RV32 = {};\n");
+
   const std::string bytes("\0\xfftext", 6);
   const auto        binary = importDocument("firmware.BIN", bytes);
   EXPECT_EQ(binary.getType(), DocumentType::RawBinary);
   EXPECT_EQ(binary.getPath(), "bin/firmware.BIN");
   EXPECT_EQ(binary.getContents(), bytes);
+}
+
+TEST(ProjectDocumentTest, ReadsArchitectureDeclarationWithoutCompilingTheBody)
+{
+  EXPECT_TRUE(isValidArchitectureName("RV32_I"));
+  EXPECT_FALSE(isValidArchitectureName("instr"));
+  EXPECT_FALSE(isValidArchitectureName("bad name"));
+  EXPECT_EQ(declaredArchitectureName("// note\n/* comment */ arch /* gap */ RV32 = {"),
+            "RV32");
+  EXPECT_FALSE(declaredArchitectureName("// arch Wrong\nmodule X;"));
+  EXPECT_NO_THROW(validateArchitectureDeclaration("RV32", "arch RV32 = {};"));
+  EXPECT_THROW(validateArchitectureDeclaration("rv32", "arch RV32 = {};"),
+               std::invalid_argument);
+  EXPECT_EQ(renameArchitectureDeclaration("// note\narch RV32 = {};", "RV32", "RV64"),
+            "// note\narch RV64 = {};");
+  EXPECT_THROW((void)importDocument("broken.sisl", "module X;"),
+               std::invalid_argument);
 }
 
 TEST(ProjectDocumentTest, ImportsDocumentsDetectedFromContents)
@@ -132,18 +165,22 @@ TEST(ProjectDocumentTest, ExportsCanonicalDocumentLeafNames)
 {
   EXPECT_EQ(documentFileName(Document("circuits/adder.json", "{}")), "adder.json");
   EXPECT_EQ(documentFileName(Document("code/adder.v", "")), "adder.v");
+  EXPECT_EQ(documentFileName(Document("isa/rv32/instr_format.sisl", "")), "instr_format.sisl");
   EXPECT_EQ(documentFileName(Document("bin/firmware.bin", "")), "firmware.bin");
 }
 
 TEST(ProjectDocumentTest, DescribesRegisteredDocumentTypes)
 {
-  ASSERT_EQ(DOCUMENT_TYPE_INFO.size(), 3);
+  ASSERT_EQ(DOCUMENT_TYPE_INFO.size(), 4);
   const auto& verilog = documentTypeInfo(DocumentType::Verilog);
   EXPECT_EQ(verilog.category, DocumentCategory::Code);
   EXPECT_EQ(verilog.root, "code/");
   EXPECT_EQ(verilog.suffix, ".v");
   EXPECT_EQ(documentTypeForPath("code/adder.v"), DocumentType::Verilog);
+  EXPECT_EQ(documentTypeForPath("isa/rv32/instr_format.sisl"), DocumentType::Sisl);
   EXPECT_FALSE(documentTypeForPath("code/adder.sv"));
+  EXPECT_FALSE(documentTypeForPath("isa/rv32/other.sisl"));
+  EXPECT_FALSE(documentTypeForPath("isa/../instr_format.sisl"));
   EXPECT_FALSE(documentTypeForPath("code/nested/adder.v"));
   EXPECT_FALSE(documentTypeForPath("code/../adder.v"));
 }
@@ -296,13 +333,17 @@ TEST(ProjectDocumentStoreTest, RenamesBinaryAndRewritesRomReferences)
 TEST(ProjectDocumentStoreTest, RenamesCodeWithoutChangingContents)
 {
   ProjectContext project;
-  project.setDocuments({{"code/old.v", "module old; endmodule"}});
+  project.setDocuments({{"code/old.v", "module old; endmodule"},
+                        {"isa/old/instr_format.sisl", "arch Old = {};"}});
 
   project.renameDocument("code/old.v", "code/new.v");
+  project.renameDocument("isa/old/instr_format.sisl", "isa/new/instr_format.sisl");
 
-  ASSERT_EQ(project.documents().getDocuments().size(), 1);
+  ASSERT_EQ(project.documents().getDocuments().size(), 2);
   EXPECT_EQ(project.documents().getDocuments()[0].getPath(), "code/new.v");
   EXPECT_EQ(project.documents().getDocuments()[0].getContents(), "module old; endmodule");
+  EXPECT_EQ(project.documents().getDocuments()[1].getPath(), "isa/new/instr_format.sisl");
+  EXPECT_EQ(project.documents().getDocuments()[1].getContents(), "arch Old = {};");
 }
 
 TEST(ProjectDocumentStoreTest, RejectsInvalidDocumentRenames)
