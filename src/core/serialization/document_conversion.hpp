@@ -29,13 +29,17 @@ struct VerilogSource {
   std::string contents;
 };
 
+struct BinarySource {
+  std::string contents;
+};
+
 struct ConversionChoice {
   std::string              id;
   std::string              label;
   std::vector<std::string> dependencies;
 };
 
-using SemanticPayload = std::variant<VerilogSource, SILICON::core::Circuit>;
+using SemanticPayload = std::variant<VerilogSource, SILICON::core::Circuit, BinarySource>;
 
 struct SemanticDocument {
   std::string     path;

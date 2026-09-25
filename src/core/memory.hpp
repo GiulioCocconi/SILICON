@@ -44,6 +44,7 @@ public:
   }
 
   void simulate(SILICON::simulation::Simulator& sim) override;
+  void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
 
   /**
    * Sets the document slug and its immutable contents as one operation.
@@ -64,6 +65,7 @@ public:
   /** Returns the immutable binary data currently cached by this ROM. */
   [[nodiscard]] std::shared_ptr<const std::string>
   binaryContentsSnapshot() const noexcept;
+  [[nodiscard]] std::size_t resolvedWordCount() const noexcept { return wordCount; }
 
 private:
   std::shared_ptr<const std::string> content;
@@ -73,7 +75,7 @@ private:
   bool                               settingBinaryDocument  = false;
 
   void              configure(int dataWidth, std::shared_ptr<const std::string> contents,
-                              bool rejectInvalid, bool reshape);
+                              bool rejectInvalid, bool reshape, bool preferAddressDepth = false);
   void              reshapeBuses(int dataWidth, std::size_t words);
   void              driveState(SILICON::simulation::Simulator& sim, State state);
   [[nodiscard]] int configuredDataWidth() const;
