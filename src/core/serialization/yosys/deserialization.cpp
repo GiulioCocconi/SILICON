@@ -22,6 +22,7 @@
 #include "netlist.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <array>
 #include <charconv>
 #include <format>
@@ -43,6 +44,8 @@
 #include <core/flipflops.hpp>
 #include <core/gates.hpp>
 #include <core/io.hpp>
+#include <core/memory.hpp>
+#include <core/projectDocument.hpp>
 #include <core/register.hpp>
 #include <core/subcircuit.hpp>
 #include <extraComponents/arithmetic.hpp>
@@ -339,6 +342,8 @@ namespace {
     std::map<BusValue, Bus>           constantBuses;
     std::set<std::uint64_t>           drivenSignals;
     std::vector<Component_ptr>        components;
+    std::set<std::string>             foldedLatches;
+    const Json*                       moduleCells = nullptr;
 
     using BusKey = std::vector<Wire_ptr>;
 
@@ -705,8 +710,173 @@ namespace {
       if (!cells.is_object())
         fail(std::format("{}.cells", moduleContext()), "expected an object");
 
+      moduleCells = &cells;
       for (const auto& [name, cell] : cells.items())
-        importCell(name, cell);
+        if (cell.is_object() && cell.value("type", std::string()) == "$mem_v2")
+          importMemory(name, Cell(*this, cell, std::format("{}.cells.{}", moduleContext(), name)));
+      for (const auto& [name, cell] : cells.items())
+        if (!foldedLatches.contains(name) && cell.value("type", std::string()) != "$mem_v2")
+          importCell(name, cell);
+    }
+
+    void importMemory(const std::string_view name, const Cell& cell)
+    {
+      const auto width = cell.width("WIDTH");
+      const auto count = static_cast<std::size_t>(parseUnsigned(cell.parameter("SIZE"), cell.where()));
+      const auto abits = cell.width("ABITS");
+      const auto ports = static_cast<std::size_t>(parseUnsigned(cell.parameter("RD_PORTS"), cell.where()));
+      if (!std::has_single_bit(count) || count > std::numeric_limits<int>::max()
+          || abits != std::max<std::size_t>(1, std::bit_width(count - 1)) || ports == 0
+          || !cell.zeroParameter("OFFSET") || !cell.zeroParameter("WR_PORTS"))
+        fail(cell.where(), "unsupported ROM geometry or write ports");
+      for (const auto key : {"RD_CE_OVER_SRST", "RD_TRANSPARENCY_MASK",
+                             "RD_COLLISION_X_MASK", "RD_WIDE_CONTINUATION",
+                             "WR_CLK_ENABLE", "WR_CLK_POLARITY", "WR_PRIORITY_MASK",
+                             "WR_WIDE_CONTINUATION"})
+        if (!cell.zeroParameter(key))
+          fail(cell.where(), "unsupported ROM port controls or write behavior");
+      if (!cell.connection("WR_ADDR").empty() || !cell.connection("WR_DATA").empty()
+          || !cell.connection("WR_EN").empty() || !cell.connection("WR_CLK").empty())
+        fail(cell.where(), "memory write connections are not supported");
+      const auto init = binaryDigits(cell.parameter("INIT"), cell.where());
+      if (init.size() != count * width)
+        fail(cell.where(), "memory initialization must cover every word");
+      std::string bytes((init.size() + 7) / 8, '\0');
+      for (std::size_t bit = 0; bit < init.size(); ++bit)
+        if (init[init.size() - bit - 1] == '1')
+          bytes[bit / 8] = static_cast<char>(static_cast<unsigned char>(bytes[bit / 8]) | (1u << (bit % 8)));
+
+      std::string memoryName(name);
+      if (const auto& id = cell.parameter("MEMID"); id.is_string()) {
+        memoryName = id.get<std::string>();
+        if (!memoryName.empty() && memoryName.front() == '\\')
+          memoryName.erase(0, 1);
+      }
+      for (auto& character : memoryName)
+        if (character == '/' || character == '\\' || static_cast<unsigned char>(character) < 32
+            || static_cast<unsigned char>(character) == 127)
+          character = '_';
+      std::string assetName = std::format("{}_{}", moduleName, memoryName);
+      const auto& rawCell = moduleCells->at(std::string(name));
+      const auto cellAttributes = rawCell.value("attributes", Json::object());
+      if (!cellAttributes.is_object())
+        fail(cell.where(), "memory attributes must be an object");
+      if (const auto attribute = cellAttributes.find(std::string(attributes::BinaryDocument));
+          attribute != cellAttributes.end()) {
+        if (!attribute->is_string())
+          fail(cell.where(), "binary document attribute must be a string");
+        assetName = attribute->get<std::string>();
+        if (!SILICON::project::isValidDocumentSlug(assetName))
+          fail(cell.where(), "binary document attribute is not a valid document name");
+      }
+
+      const auto& allAddress = cell.connection("RD_ADDR");
+      const auto& allData = cell.connection("RD_DATA");
+      const auto& allEnable = cell.connection("RD_EN");
+      const auto& allClocks = cell.connection("RD_CLK");
+      const auto& allAsyncReset = cell.connection("RD_ARST");
+      const auto& allSyncReset = cell.connection("RD_SRST");
+      const auto clockEnable = binaryDigits(cell.parameter("RD_CLK_ENABLE"), cell.where());
+      const auto clockPolarity = binaryDigits(cell.parameter("RD_CLK_POLARITY"), cell.where());
+      const auto& initialReadValue = cell.parameter("RD_INIT_VALUE");
+      if (!allAddress.is_array() || allAddress.size() != ports * abits
+          || !allData.is_array() || allData.size() != ports * width
+          || !allEnable.is_array() || allEnable.size() != ports
+          || !allClocks.is_array() || allClocks.size() != ports
+          || !allAsyncReset.is_array() || allAsyncReset.size() != ports
+          || !allSyncReset.is_array() || allSyncReset.size() != ports
+          || clockEnable.size() != ports || clockPolarity.size() != ports
+          || !initialReadValue.is_string()
+          || initialReadValue.get_ref<const std::string&>().size() != ports * width)
+        fail(cell.where(), "invalid memory read port widths");
+      for (std::size_t port = 0; port < ports; ++port) {
+        const bool synchronous = clockEnable[ports - port - 1] == '1';
+        const bool positiveClock = clockPolarity[ports - port - 1] == '1';
+        if (synchronous) {
+          const auto& initial = initialReadValue.get_ref<const std::string&>();
+          const auto start = (ports - port - 1) * width;
+          if (initial.substr(start, width) != std::string(width, 'x'))
+            fail(cell.where(), "initialized synchronous read registers are not supported");
+        }
+        Json address = Json::array(), data = Json::array();
+        for (std::size_t bit = 0; bit < abits; ++bit)
+          address.push_back(allAddress[port * abits + bit]);
+        for (std::size_t bit = 0; bit < width; ++bit)
+          data.push_back(allData[port * width + bit]);
+        if (!synchronous && allEnable[port] != "1")
+          fail(cell.where(), "read enables other than constant one are not supported");
+        if (synchronous && (allAsyncReset[port] != "0" || allSyncReset[port] != "0"))
+          fail(cell.where(), "synchronous ROM read resets are not supported");
+        if (count == 1 && std::ranges::any_of(address, [](const Json& bit) { return !bit.is_string(); }))
+          fail(cell.where(), "one-word memory with variable address is not supported");
+        Json output = data;
+        Json select = Json::array({"1"});
+        for (const auto& [latchName, latch] : moduleCells->items()) {
+          if (!latch.is_object() || latch.value("type", std::string()) != "$dlatch")
+            continue;
+          const auto& connections = latch.at("connections");
+          if (connections.at("D") == data) {
+            if (foldedLatches.contains(latchName) || connections.at("Q").size() != width
+                || parseUnsigned(latch.at("parameters").at("EN_POLARITY"), cell.where()) != 1)
+              fail(cell.where(), "unsupported ROM output latch");
+            output = connections.at("Q");
+            select = connections.at("EN");
+            foldedLatches.insert(latchName);
+            break;
+          }
+        }
+        auto rom = std::make_shared<ROM>();
+        rom->setProperty("dataWidth", static_cast<int>(width));
+        rom->setProperty("binaryContents", assetName);
+        Bus importedAddress = count == 1
+            ? Bus{Wire_ptr{}}
+            : readBus(address, ConnectionRole::Consumer, cell.where(), abits);
+        Wire_ptr clock, enable;
+        if (synchronous) {
+          clock = readBus(Json::array({allClocks[port]}), ConnectionRole::Consumer,
+                          cell.where(), 1)[0];
+          enable = readBus(Json::array({allEnable[port]}), ConnectionRole::Consumer,
+                           cell.where(), 1)[0];
+          if (!positiveClock) {
+            const auto inverted = std::make_shared<Wire>();
+            addWithZeroDelay(std::make_shared<NotGate>(clock, inverted));
+            clock = inverted;
+          }
+          if (count > 1) {
+            std::vector<Wire_ptr> data(importedAddress.begin(), importedAddress.end());
+            while (data.size() < 2)
+              data.push_back(constantWire("0", cell.where()));
+            Bus registeredAddress(static_cast<unsigned short>(data.size()));
+            auto addressRegister = std::make_shared<Register>(
+                Bus(std::move(data)), clock, enable, nullptr,
+                registeredAddress);
+            addWithZeroDelay(std::move(addressRegister));
+            importedAddress = slice(registeredAddress, 0, abits);
+          }
+        }
+        const Bus romOutput = synchronous && count == 1
+            ? Bus(static_cast<unsigned short>(width))
+            : readBus(output, ConnectionRole::Driver, cell.where(), width);
+        connectAndAdd(rom,
+                      {importedAddress,
+                       readBus(select, ConnectionRole::Consumer, cell.where(), 1),
+                       readBus(Json::array({"1"}), ConnectionRole::Consumer, cell.where(), 1)},
+                      {romOutput});
+        rom->refreshBinaryContents(std::make_shared<const std::string>(bytes));
+        if (synchronous && count == 1) {
+          const Bus registeredData = readBus(output, ConnectionRole::Driver, cell.where(), width);
+          std::vector<Wire_ptr> data(romOutput.begin(), romOutput.end());
+          std::vector<Wire_ptr> outputs(registeredData.begin(), registeredData.end());
+          while (data.size() < 2) {
+            data.push_back(constantWire("0", cell.where()));
+            outputs.push_back(std::make_shared<Wire>());
+          }
+          auto dataRegister = std::make_shared<Register>(
+              Bus(std::move(data)), clock, enable, nullptr,
+              Bus(std::move(outputs)));
+          addWithZeroDelay(std::move(dataRegister));
+        }
+      }
     }
 
     [[nodiscard]] static std::vector<Bus>

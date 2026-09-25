@@ -40,6 +40,7 @@ class Component;
 
 namespace SILICON::yosys {
 
+
 using Json = nlohmann::ordered_json;
 
 /**
@@ -193,9 +194,12 @@ public:
   /** @brief Encode an unsigned Yosys parameter as a fixed-width binary string. */
   [[nodiscard]] static std::string parameter(std::uint64_t value, std::size_t width = 32);
 
+  /** @brief Stable name of the component being serialized within its module. */
+  [[nodiscard]] std::string componentIdentifier() const;
+
   /** @brief Emit one native Yosys cell for the current Silicon component. */
   void addCell(std::string_view suffix, std::string_view type, Json parameters,
-               Json portDirections, Json connections);
+               Json portDirections, Json connections, Json attributes = Json::object());
 
   /** @brief Register a named top-level input or output port. */
   void addPort(std::string name, std::string_view direction, const core::Bus& bus);

@@ -69,6 +69,17 @@ TEST(ROMTest, ValidatesPropertiesAndShapesBusesFromPackedWordCount)
   EXPECT_EQ(rom.getPropertyValue<int>("dataWidth"), 10);
 }
 
+TEST(ROMTest, RehydrationUsesSavedAddressWidthForPaddedWords)
+{
+  ROM rom;
+  rom.setProperty("dataWidth", 10);
+  rom.setProperty("binaryContents", std::string("packed"));
+  rom.setInputs({Bus(1), Bus(1), Bus(1)});
+  rom.refreshBinaryContents(binarySnapshot(std::string("\xA5\x3C\x0F", 3)));
+  EXPECT_EQ(rom.inputBuses()[0].size(), 1);
+  EXPECT_EQ(rom.resolvedWordCount(), 2);
+}
+
 TEST(ROMTest, ReadsPackedLittleEndianWordsAcrossByteBoundaries)
 {
   auto      rom     = configuredRom(std::string("\xA5\x3C\xF0\xC1", 4), 10);

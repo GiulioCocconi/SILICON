@@ -81,14 +81,26 @@ std::string ROM::configuredBinaryContents() const
 }
 
 void ROM::configure(const int dataWidth, std::shared_ptr<const std::string> nextContent,
-                    const bool rejectInvalid, const bool reshape)
+                    const bool rejectInvalid, const bool reshape,
+                    const bool preferAddressDepth)
 {
   const int width = std::get<int>(requireValidSize("ROM dataWidth", PropertyValue{dataWidth}));
 
   bool        nextResolved = false;
   std::size_t nextWords    = 0;
   if (nextContent) {
-    nextWords    = packedWordCount(nextContent->size(), static_cast<std::size_t>(width));
+    nextWords = packedWordCount(nextContent->size(), static_cast<std::size_t>(width));
+    if (preferAddressDepth && !nextContent->empty() && !inputs.empty()) {
+      const auto& address = inputs[busIndex(Inputs::Address)];
+      const bool oneWordMarker = address.size() == 1 && address[0] == nullptr;
+      const auto addressBits = address.size();
+      if (addressBits < std::numeric_limits<std::size_t>::digits) {
+        const auto candidate = oneWordMarker ? std::size_t{1} : std::size_t{1} << addressBits;
+        if (candidate <= std::numeric_limits<std::size_t>::max() / static_cast<std::size_t>(width)
+            && nextContent->size() == (candidate * static_cast<std::size_t>(width) + 7) / 8)
+          nextWords = candidate;
+      }
+    }
     nextResolved = nextWords != 0 && std::has_single_bit(nextWords);
     if (nextWords != 0 && !nextResolved && rejectInvalid)
       throw std::invalid_argument(
@@ -144,7 +156,7 @@ void ROM::setBinaryDocument(std::string slug, std::shared_ptr<const std::string>
 
 void ROM::refreshBinaryContents(std::shared_ptr<const std::string> contents)
 {
-  configure(configuredDataWidth(), std::move(contents), false, true);
+  configure(configuredDataWidth(), std::move(contents), false, true, true);
 }
 
 std::shared_ptr<const std::string> ROM::binaryContentsSnapshot() const noexcept
