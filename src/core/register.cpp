@@ -103,6 +103,7 @@ bool Register::parallelOutput() const
 
 void Register::initializeProperties()
 {
+  defineUnconnectedInputDefault(busIndex(Inputs::Clear), State::LOW);
   defineProperty("delay", 0);
   defineStringListProperty("inputType", std::string(ParallelType),
                            {std::string(ParallelType), std::string(SerialType)});

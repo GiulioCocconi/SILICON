@@ -36,6 +36,8 @@ namespace {
   {
     if (auto* source = std::get_if<SILICON::conversion::VerilogSource>(&document.payload))
       return {std::move(document.path), std::move(source->contents)};
+    if (auto* source = std::get_if<SILICON::conversion::BinarySource>(&document.payload))
+      return {std::move(document.path), std::move(source->contents)};
 
     auto circuit =
         std::make_shared<Circuit>(std::get<Circuit>(std::move(document.payload)));

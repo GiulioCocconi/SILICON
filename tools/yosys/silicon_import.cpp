@@ -308,4 +308,79 @@ struct SiliconEqDecoderPass : public Pass {
   }
 } SiliconEqDecoderPass;
 
+struct SiliconMemrdAddressPass : public Pass {
+  SiliconMemrdAddressPass()
+    : Pass("silicon_memrd_address", "remove redundant ROM address feedback after memory_dff")
+  {
+  }
+
+  void help() override
+  {
+    log("\n    silicon_memrd_address [selection]\n\n");
+    log("Fold an enabled address register and its feedback mux into the read\n");
+    log("enable of a synchronous, read-only memory port. Run after memory_dff.\n\n");
+  }
+
+  void execute(std::vector<std::string> args, RTLIL::Design* design) override
+  {
+    log_header(design, "Executing SILICON_MEMRD_ADDRESS pass.\n");
+    extra_args(args, 1, design);
+
+    for (auto* module : design->selected_modules()) {
+      SigMap      sigmap(module);
+      SignalUsers users(module, sigmap);
+      const auto  cells = allCells(module);
+      pool<RTLIL::Cell*> selected;
+      pool<RTLIL::Cell*> removed;
+      collectSelectedCells(selected, module);
+
+      for (auto* mem : cells) {
+        if (removed.count(mem) || !selected.count(mem) || mem->type != ID($mem_v2)
+            || mem->getParam(ID::WR_PORTS).as_int() != 0
+            || mem->getParam(ID::RD_PORTS).as_int() != 1
+            || mem->getParam(ID::RD_CLK_ENABLE).as_int() != 1
+            || mem->getPort(ID::RD_EN) != RTLIL::SigSpec(RTLIL::State::S1))
+          continue;
+
+        const auto address = sigmap(mem->getPort(ID::RD_ADDR));
+        bool folded = false;
+        for (auto* mux : cells) {
+          if (removed.count(mux) || !selected.count(mux) || mux->type != ID($mux)
+              || sigmap(mux->getPort(ID::Y)) != address
+              || mux->getParam(ID::WIDTH).as_int() != GetSize(address)
+              || users.count(address) != 2)
+            continue;
+
+          for (auto* reg : cells) {
+            if (removed.count(reg) || !selected.count(reg) || reg->type != ID($dffe)
+                || reg->getParam(ID::WIDTH).as_int() != GetSize(address)
+                || reg->getParam(ID::EN_POLARITY).as_int() != 1
+                || reg->getParam(ID::CLK_POLARITY).as_int()
+                       != mem->getParam(ID::RD_CLK_POLARITY).as_int()
+                || sigmap(reg->getPort(ID::Q)) != sigmap(mux->getPort(ID::A))
+                || sigmap(reg->getPort(ID::D)) != sigmap(mux->getPort(ID::B))
+                || sigmap(reg->getPort(ID::EN)) != sigmap(mux->getPort(ID::S))
+                || sigmap(reg->getPort(ID::CLK)) != sigmap(mem->getPort(ID::RD_CLK))
+                || users.count(reg->getPort(ID::Q)) != 2)
+              continue;
+
+            mem->setPort(ID::RD_ADDR, reg->getPort(ID::D));
+            mem->setPort(ID::RD_EN, reg->getPort(ID::EN));
+            log("Folded ROM address register %s and mux %s into %s.\n",
+                log_id(reg), log_id(mux), log_id(mem));
+            removed.insert(mux);
+            removed.insert(reg);
+            module->remove(mux);
+            module->remove(reg);
+            folded = true;
+            break;
+          }
+          if (folded)
+            break;
+        }
+      }
+    }
+  }
+} SiliconMemrdAddressPass;
+
 PRIVATE_NAMESPACE_END

@@ -37,3 +37,10 @@ inline constexpr std::string_view Sipo      = "SILICON_SIPO";
 inline constexpr std::string_view Siso      = "SILICON_SISO";
 
 }  // namespace SILICON::yosys::cells
+
+namespace SILICON::yosys::attributes {
+
+/** Verilog memory attribute naming the project binary document used by a ROM. */
+inline constexpr std::string_view BinaryDocument = "silicon_mem_slug";
+
+}  // namespace SILICON::yosys::attributes
