@@ -67,15 +67,27 @@ bool endsWithWord(const std::string_view value, const std::string_view word)
               || trimmed[start - 1] == '_');
 }
 
-void addIndentLevel(std::string& indentation)
+void addIndentLevel(std::string& indentation, const int indentWidth)
 {
-  indentation.push_back('\t');
+  indentation.append(static_cast<std::size_t>(std::max(1, indentWidth)), ' ');
 }
 
-void removeIndentLevel(std::string& indentation)
+void removeIndentLevel(std::string& indentation, const int indentWidth)
 {
-  if (const auto tab = indentation.rfind('\t'); tab != std::string::npos)
-    indentation.erase(tab, 1);
+  // Strip the trailing indentation level regardless of tab/space mix.
+  int remaining = std::max(1, indentWidth);
+  while (remaining > 0 && !indentation.empty()) {
+    const char back = indentation.back();
+    if (back == '\t') {
+      indentation.pop_back();
+      remaining = 0;
+    } else if (back == ' ') {
+      indentation.pop_back();
+      --remaining;
+    } else {
+      break;
+    }
+  }
 }
 
 }  // namespace SILICON::ui::indentation

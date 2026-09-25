@@ -396,16 +396,22 @@ TEST(SimulatorTest, WaveformDoesNotPropagateWhenNormalizedValueIsUnchanged)
   EXPECT_EQ(input.getCurrentValue(), busValueFromBits("01"));
 }
 
-TEST(SimulatorTest, UpdateBusNormalizesImmediateAndDelayedValues)
+TEST(SimulatorTest, UpdateBusRequiresExactWidthForImmediateAndDelayedValues)
 {
   Bus       bus(3);
   auto      circuit = std::make_shared<Circuit>();
   Simulator simulator(circuit);
 
-  simulator.updateBus(bus, busValueFromBits("1"), 0, {});
+  EXPECT_THROW(simulator.updateBus(bus, busValueFromBits("1"), 0, {}),
+               std::invalid_argument);
+
+  simulator.updateBus(bus, busValueFromBits("001"), 0, {});
   EXPECT_EQ(bus.getCurrentValue(), busValueFromBits("001"));
 
-  simulator.updateBus(bus, busValueFromBits("10"), 3, {});
+  EXPECT_THROW(simulator.updateBus(bus, busValueFromBits("10"), 3, {}),
+               std::invalid_argument);
+
+  simulator.updateBus(bus, busValueFromBits("010"), 3, {});
   EXPECT_EQ(bus.getCurrentValue(), busValueFromBits("001"));
   EXPECT_EQ(simulator.run(2), Simulator::RunResult::Completed);
   EXPECT_EQ(bus.getCurrentValue(), busValueFromBits("001"));
@@ -1557,7 +1563,13 @@ TEST(LogicTest, GateBitwiseDefaultsAndValidation)
 
   auto notGate = std::make_shared<NotGate>(a, o);
   EXPECT_FALSE(notGate->getProperty("bitwise").has_value());
-  EXPECT_FALSE(notGate->getProperty("size").has_value());
+  EXPECT_EQ(notGate->getPropertyValue<int>("size"), 1);
+  EXPECT_THROW(notGate->setProperty("size", 0), std::invalid_argument);
+  EXPECT_THROW(notGate->setProperty("size", -2), std::invalid_argument);
+
+  notGate->setProperty("size", 4);
+  EXPECT_EQ(notGate->inputBuses()[0].size(), 4);
+  EXPECT_EQ(notGate->outputBuses()[0].size(), 4);
 }
 
 TEST(LogicTest, GateBitwiseReshapesIO)
@@ -1687,6 +1699,40 @@ TEST(LogicTest, XorBitwiseSimulationPreservesUnknownAndErrorPerBit)
 
   expectBusStates(gate->getOutputs()[0],
                   {State::HIGH, State::LOW, State::UNKNOWN, State::ERROR});
+}
+
+TEST(LogicTest, NotGateSimulatesVectorAndLogicalInputs)
+{
+  auto vectorNot =
+      std::make_shared<NotGate>(std::make_shared<Wire>(), std::make_shared<Wire>());
+  vectorNot->setProperty("size", 4);
+  vectorNot->inputBuses()[0][0]->forceSetCurrentState(State::LOW);
+  vectorNot->inputBuses()[0][1]->forceSetCurrentState(State::HIGH);
+  vectorNot->inputBuses()[0][2]->forceSetCurrentState(State::UNKNOWN);
+  vectorNot->inputBuses()[0][3]->forceSetCurrentState(State::ERROR);
+
+  auto logicalNot =
+      std::make_shared<NotGate>(std::make_shared<Wire>(), std::make_shared<Wire>());
+  logicalNot->setInputs({Bus(3)});
+  logicalNot->inputBuses()[0][0]->forceSetCurrentState(State::LOW);
+  logicalNot->inputBuses()[0][1]->forceSetCurrentState(State::LOW);
+  logicalNot->inputBuses()[0][2]->forceSetCurrentState(State::LOW);
+
+  auto unknownLogicalNot =
+      std::make_shared<NotGate>(std::make_shared<Wire>(), std::make_shared<Wire>());
+  unknownLogicalNot->setInputs({Bus(2)});
+  unknownLogicalNot->inputBuses()[0][0]->forceSetCurrentState(State::LOW);
+  unknownLogicalNot->inputBuses()[0][1]->forceSetCurrentState(State::UNKNOWN);
+
+  auto circuit = std::make_shared<Circuit>(
+      Component_set{vectorNot, logicalNot, unknownLogicalNot}, false);
+  Simulator simulator(circuit);
+  ASSERT_EQ(simulator.runUntilIdle(), Simulator::RunResult::Completed);
+
+  expectBusStates(vectorNot->outputBuses()[0],
+                  {State::HIGH, State::LOW, State::UNKNOWN, State::ERROR});
+  expectBusStates(logicalNot->outputBuses()[0], {State::HIGH});
+  expectBusStates(unknownLogicalNot->outputBuses()[0], {State::UNKNOWN});
 }
 
 // --- Component Property Tests --------------------------------------------------------

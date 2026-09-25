@@ -29,10 +29,12 @@ namespace SILICON::core {
 /**
  * @brief Base class for combinational logic gates.
  *
- * All gates expose a `delay` property. Gates other than `NotGate` also support
- * optional bitwise operation through the `bitwise` and `size` properties:
- * when `bitwise` is enabled, every input and the single output are resized to
- * `size` bits and the gate logic is applied independently on each bit.
+ * All gates expose `delay` and `size` properties. Multi-input gates additionally
+ * expose `bitwise`: when enabled, every input and the single output are resized to
+ * `size` bits and the gate logic is applied independently on each bit. `NotGate`
+ * is inherently bitwise whenever its size is greater than one. In non-bitwise
+ * mode, a bus-valued input is interpreted using logical truth-value semantics
+ * before the gate operation is applied.
  */
 class Gate : public Component {
 private:
@@ -54,7 +56,7 @@ public:
 protected:
   /**
    * @brief Constructs an empty gate and optionally enables bitwise properties.
-   * @param enableBitwiseProperties False for scalar-only gates such as `NotGate`
+   * @param enableBitwiseProperties Whether to expose configurable bitwise properties
    */
   explicit Gate(bool enableBitwiseProperties);
 
@@ -62,7 +64,7 @@ protected:
    * @brief Constructs a gate with I/O and optional bitwise property support.
    * @param inputs Input wires, one per input port
    * @param output Output wire
-   * @param enableBitwiseProperties False for scalar-only gates such as `NotGate`
+   * @param enableBitwiseProperties Whether to expose configurable bitwise properties
    */
   Gate(const std::vector<Wire_ptr>& inputs, Wire_ptr output,
        bool enableBitwiseProperties);
@@ -107,15 +109,18 @@ public:
 };
 
 class NotGate : public Gate {
+private:
+  void initializeNotProperties();
+
 public:
   static constexpr std::string_view Type = "NotGate";
   std::string_view                  typeName() const override { return Type; }
   ComponentMetadata                 metadata() const override
   {
-    return {"NOT Gate", "Inverts a single input signal.", ComponentCategory::Gates};
+    return {"NOT Gate", "Inverts an input signal or bus.", ComponentCategory::Gates};
   }
 
-  NotGate() = default;
+  NotGate();
   NotGate(Wire_ptr input, Wire_ptr output);
   void simulate(SILICON::simulation::Simulator& sim) override;
   void serializeYosys(SILICON::yosys::SerializationContext& context) const override;

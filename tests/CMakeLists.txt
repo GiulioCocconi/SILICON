@@ -16,6 +16,7 @@
 enable_testing()
 add_executable(logic_tests logic.cpp)
 add_executable(register_tests register.cpp)
+add_executable(memory_tests memory.cpp)
 add_executable(arithmetic_tests arithmetic.cpp)
 add_executable(multiplexer_tests multiplexer.cpp)
 add_executable(utils_tests utils.cpp)
@@ -35,7 +36,7 @@ add_executable(libavoid_tests libavoid.cpp boundaryIoPlacement.cpp
         ${CMAKE_SOURCE_DIR}/src/ui/common/boundaryIoPlacement.cpp
         ${CMAKE_SOURCE_DIR}/src/ui/common/wireRouting.cpp)
 
-foreach (target logic_tests register_tests arithmetic_tests multiplexer_tests utils_tests num_formatting_tests libfst_tests fstwrapper_tests silicon_waveform_tests project_file_tests project_document_tests project_dependency_graph_tests circuit_tests factory_tests subcircuit_tests logger_tests yosys_tests)
+foreach (target logic_tests register_tests memory_tests arithmetic_tests multiplexer_tests utils_tests num_formatting_tests libfst_tests fstwrapper_tests silicon_waveform_tests project_file_tests project_document_tests project_dependency_graph_tests circuit_tests factory_tests subcircuit_tests logger_tests yosys_tests)
     set_target_properties(${target} PROPERTIES
             AUTOMOC OFF
             AUTOUIC OFF

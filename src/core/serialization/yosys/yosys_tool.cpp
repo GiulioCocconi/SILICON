@@ -17,6 +17,7 @@
  */
 
 #include "yosys_tool.hpp"
+#include "cells.hpp"
 
 #include <algorithm>
 #include <array>
@@ -440,11 +441,12 @@ std::string readVerilog(const std::span<const SILICON::core::SourceFile> sources
   const auto sourcePath = workspace.path() / std::filesystem::path(entryPath);
   const auto jsonPath   = workspace.path() / "design.json";
 
-  (void)runScript(std::format("read_verilog {}\n"
+  (void)runScript(std::format("read_verilog -noautowire {}\n"
                               // `proc` converts processes ($dff/$mux cells) so the JSON
                               // backend can emit them; it is required before write_json
                               // even though readVerilog performs no further elaboration.
                               "proc\n"
+                              "memory_collect\n"
                               "write_json {}\n",
                               quotePath(sourcePath), quotePath(jsonPath)),
                   options);
@@ -460,10 +462,10 @@ std::string elaborateHierarchy(const std::string_view json, const ToolOptions& o
 
   const auto library = technologyLibrary(options);
   const auto plugin  = verilogPlugin();
-  const auto pluginLoad =
-      plugin ? std::format("plugin -i {}\n", quotePath(*plugin)) : std::string();
-  const auto muxImport =
-      plugin ? std::string("silicon_pmux_bmux\nsilicon_eq_decoder\n") : std::string();
+  const std::string pluginLoad =
+      plugin ? std::format("plugin -i {}\n", quotePath(*plugin)) : "";
+  const std::string muxImport = plugin ? "silicon_pmux_bmux\nsilicon_eq_decoder\n" : "";
+  const std::string memrd = plugin ? "silicon_memrd_address\n" : "";
 
   (void)runScript(std::format("read_verilog -lib -D SILICON_BLACKBOX {}\n"
                               "read_json {}\n"
@@ -474,7 +476,9 @@ std::string elaborateHierarchy(const std::string_view json, const ToolOptions& o
                               "{}"
                               "pmuxtree\n"
                               "delete t:$scopeinfo\n"
-                              "opt\n"
+                              "opt -nosdff\n"
+                              "memory_dff\n"
+                              "{}"
                               // Preserve vector bitwise operations as one native Silicon
                               // gate. Only scalar forms participate in full/half-adder
                               // extraction; otherwise unrelated ALU result lanes such as
@@ -484,14 +488,15 @@ std::string elaborateHierarchy(const std::string_view json, const ToolOptions& o
                               "t:$or r:Y_WIDTH=1 %i "
                               "t:$xor r:Y_WIDTH=1 %i "
                               "t:$not r:Y_WIDTH=1 %i "
-                              "t:$logic_not t:$logic_and t:$logic_or "
                               "t:$reduce_and t:$reduce_or t:$reduce_xor\n"
                               "extract_fa\n"
                               "techmap -map {}\n"
                               "opt_clean\n"
                               "write_json {}\n",
                               quotePath(library.cells), quotePath(inputPath), pluginLoad,
-                              muxImport, quotePath(library.technologyMap),
+                              muxImport,
+                              memrd,
+                              quotePath(library.technologyMap),
                               quotePath(outputPath)),
                   options);
   return readFile(outputPath, "Yosys-elaboration output-reading phase");
@@ -509,6 +514,10 @@ std::string writeVerilog(std::string_view json, const ToolOptions& options)
   const auto muxExport =
       plugin ? std::format("plugin -i {}\nsilicon_bmux_case\n", quotePath(*plugin))
              : std::string();
+  // Emit attributes only when a ROM document name must survive Verilog export.
+  const std::string_view backendOptions =
+      json.find(attributes::BinaryDocument) != std::string_view::npos
+          ? "-norename -decimal" : "-noattr -norename -decimal";
 
   (void)runScript(std::format("read_verilog -lib -D SILICON_BLACKBOX {}\n"
                               "read_json {}\n"
@@ -520,10 +529,10 @@ std::string writeVerilog(std::string_view json, const ToolOptions& options)
                               "opt\n"
                               "{}"
                               "rename -enumerate\n"
-                              "write_verilog -noattr -norename -decimal {}\n",
+                              "write_verilog {} {}\n",
                               quotePath(library.cells), quotePath(jsonPath),
                               quotePath(library.cells), muxExport,
-                              quotePath(verilogPath)),
+                              backendOptions, quotePath(verilogPath)),
                   options);
   return readFile(verilogPath, "Verilog-export output-reading phase");
 }

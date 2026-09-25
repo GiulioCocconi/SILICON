@@ -15,58 +15,53 @@
 #include <QSignalBlocker>
 #include <QTreeWidgetItemIterator>
 
-#include <nlohmann/json.hpp>
-
 #include <ui/common/icons.hpp>
 
 namespace SILICON::ui {
 namespace {
 
-  constexpr int ItemKindRole     = Qt::UserRole;
-  constexpr int DocumentTypeRole = Qt::UserRole + 1;
-  constexpr int PathRole         = Qt::UserRole + 2;
+  constexpr int ItemKindRole         = Qt::UserRole;
+  constexpr int DocumentTypeRole     = Qt::UserRole + 1;
+  constexpr int PathRole             = Qt::UserRole + 2;
+  constexpr int DocumentCategoryRole = Qt::UserRole + 3;
 
   [[nodiscard]] QString circuitDisplayName(const project::Document& document)
   {
-    try {
-      const auto scene = nlohmann::json::parse(document.getContents());
-      if (scene.contains("circuit") && scene["circuit"].is_object()) {
-        const auto name = scene["circuit"].value("name", "");
-        if (!name.empty())
-          return QString::fromStdString(name);
-      }
-    } catch (const nlohmann::json::exception&) {
-    }
-
-    return QFileInfo(QString::fromStdString(document.getPath())).baseName();
+    return QString::fromStdString(
+        project::documentSlugForPath(document.getPath()).value_or(document.getPath()));
   }
 
-  [[nodiscard]] QString sectionTitle(const project::DocumentType type)
+  [[nodiscard]] QString sectionTitle(const project::DocumentCategory category)
   {
-    switch (type) {
-      case project::DocumentType::Circuit: return ProjectTree::tr("Circuits");
-      case project::DocumentType::Verilog: return ProjectTree::tr("Code");
-      case project::DocumentType::RawBinary: return ProjectTree::tr("Binaries");
+    switch (category) {
+      case project::DocumentCategory::Diagram: return ProjectTree::tr("Circuits");
+      case project::DocumentCategory::Code: return ProjectTree::tr("Code");
+      case project::DocumentCategory::Architecture:
+        return ProjectTree::tr("ISA Architectures");
+      case project::DocumentCategory::Binary: return ProjectTree::tr("Binaries");
     }
     return {};
   }
 
   [[nodiscard]] QString documentLabel(const project::Document& document)
   {
+    const auto category = project::categoryOf(document.getType());
+    if (category == project::DocumentCategory::Code
+        || category == project::DocumentCategory::Architecture)
+      return QFileInfo(QString::fromStdString(document.getPath())).fileName();
     switch (document.getType()) {
       case project::DocumentType::Circuit: return circuitDisplayName(document);
-      case project::DocumentType::Verilog:
-        return QFileInfo(QString::fromStdString(document.getPath())).fileName();
       case project::DocumentType::RawBinary:
         return QString::fromStdString(project::documentSlugForPath(document.getPath())
                                           .value_or(document.getPath()));
+      default: break;
     }
     return {};
   }
 
   [[nodiscard]] const char* documentIcon(const project::DocumentType type)
   {
-    if (type == project::DocumentType::Verilog)
+    if (project::categoryOf(type) == project::DocumentCategory::Code)
       return "code";
     if (type == project::DocumentType::RawBinary)
       return "file";
@@ -81,6 +76,12 @@ namespace {
   void setDocumentType(QTreeWidgetItem* item, const project::DocumentType type)
   {
     item->setData(0, DocumentTypeRole, static_cast<int>(type));
+  }
+
+  void setDocumentCategory(QTreeWidgetItem* item,
+                           const project::DocumentCategory category)
+  {
+    item->setData(0, DocumentCategoryRole, static_cast<int>(category));
   }
 
 }  // namespace
@@ -105,8 +106,11 @@ void ProjectTree::rebuild(const project::ProjectInfo&              projectInfo,
   setKind(projectItem, ProjectTreeItemKind::Project);
   projectItem->setExpanded(true);
 
-  for (const auto& info : project::DOCUMENT_TYPE_INFO)
-    addSection(projectItem, info.type, documents);
+  for (const auto category : {project::DocumentCategory::Diagram,
+                              project::DocumentCategory::Code,
+                              project::DocumentCategory::Architecture,
+                              project::DocumentCategory::Binary})
+    addSection(projectItem, category, documents);
 
   expandAll();
 
@@ -129,6 +133,21 @@ void ProjectTree::selectDocument(const std::string_view path)
     setCurrentItem(*it);
     return;
   }
+
+  if (path.starts_with("isa/")) {
+    const auto separator = path.find('/', 4);
+    if (separator != std::string_view::npos) {
+      const auto name = QString::fromUtf8(path.substr(4, separator - 4));
+      for (QTreeWidgetItemIterator it(this); *it; ++it) {
+        if (itemKind(*it) != ProjectTreeItemKind::Architecture
+            || (*it)->text(0) != name)
+          continue;
+        (*it)->setSelected(true);
+        setCurrentItem(*it);
+        return;
+      }
+    }
+  }
 }
 
 void ProjectTree::clearDocumentSelection()
@@ -146,7 +165,8 @@ QTreeWidgetItem* ProjectTree::selectedProjectItem() const
 std::optional<ProjectTreeDocumentSelection> ProjectTree::selectedDocument() const
 {
   const auto* item = selectedProjectItem();
-  if (!item || itemKind(item) != ProjectTreeItemKind::Document)
+  if (!item || (itemKind(item) != ProjectTreeItemKind::Document
+                && itemKind(item) != ProjectTreeItemKind::Architecture))
     return std::nullopt;
 
   const auto type = itemDocumentType(item);
@@ -173,18 +193,34 @@ ProjectTree::itemDocumentType(const QTreeWidgetItem* item)
   return static_cast<project::DocumentType>(value.toInt());
 }
 
+std::optional<project::DocumentCategory>
+ProjectTree::itemDocumentCategory(const QTreeWidgetItem* item)
+{
+  const auto value = item->data(0, DocumentCategoryRole);
+  if (!value.isValid())
+    return std::nullopt;
+  return static_cast<project::DocumentCategory>(value.toInt());
+}
+
 std::string ProjectTree::documentPath(const QTreeWidgetItem* item)
 {
   return item->data(0, PathRole).toString().toStdString();
 }
 
+std::string ProjectTree::architectureName(const QTreeWidgetItem* item)
+{
+  if (!item || itemKind(item) != ProjectTreeItemKind::Architecture)
+    return {};
+  return item->text(0).toStdString();
+}
+
 void ProjectTree::addSection(QTreeWidgetItem*                         projectItem,
-                             const project::DocumentType              type,
+                             const project::DocumentCategory          category,
                              const std::span<const project::Document> documents)
 {
   bool hasDocuments = false;
   for (const auto& document : documents) {
-    if (document.getType() == type) {
+    if (project::categoryOf(document.getType()) == category) {
       hasDocuments = true;
       break;
     }
@@ -194,14 +230,32 @@ void ProjectTree::addSection(QTreeWidgetItem*                         projectIte
     return;
 
   auto* section = new QTreeWidgetItem(projectItem);
-  section->setText(0, sectionTitle(type));
+  section->setText(0, sectionTitle(category));
   setKind(section, ProjectTreeItemKind::Section);
-  setDocumentType(section, type);
+  setDocumentCategory(section, category);
   section->setExpanded(true);
 
   for (const auto& document : documents) {
-    if (document.getType() == type)
+    if (project::categoryOf(document.getType()) != category)
+      continue;
+    if (category == project::DocumentCategory::Architecture) {
+      const auto name = project::documentSlugForPath(document.getPath());
+      if (!name)
+        continue;
+      bool found = false;
+      for (int i = 0; i < section->childCount(); ++i)
+        found |= section->child(i)->text(0) == QString::fromStdString(*name);
+      if (found)
+        continue;
+      auto* item = new QTreeWidgetItem(section);
+      item->setText(0, QString::fromStdString(*name));
+      item->setIcon(0, Icon("cpu"));
+      setKind(item, ProjectTreeItemKind::Architecture);
+      setDocumentType(item, document.getType());
+      item->setData(0, PathRole, QString::fromStdString(document.getPath()));
+    } else {
       addDocument(section, document);
+    }
   }
 }
 

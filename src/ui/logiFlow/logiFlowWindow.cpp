@@ -18,15 +18,22 @@ Copyright (c) 2026. Giulio Cocconi
 
 #include "logiFlowWindow.hpp"
 
+#include <algorithm>
 #include <cstring>
+#include <ranges>
 
 #include <QApplication>
+#include <QClipboard>
+#include <QCloseEvent>
+#include <QContextMenuEvent>
 #include <QDockWidget>
 #include <QEvent>
 #include <QHBoxLayout>
+#include <QMenu>
 #include <QMouseEvent>
 #include <QObject>
 #include <QPointF>
+#include <QResizeEvent>
 #include <QStackedWidget>
 #include <QTextDocument>
 #include <QToolBar>
@@ -79,6 +86,17 @@ namespace ui {
       QMouseEvent releaseEvent(QEvent::MouseButtonRelease, QPointF(), QPointF(),
                                Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
       QApplication::sendEvent(toolBar, &releaseEvent);
+    }
+
+    // QObject children are normally deleted by QMainWindow's base destructor, which
+    // runs after this class's members have been destroyed. The scene's graphical
+    // components unsubscribe from projectContext during teardown, so destroy the scene
+    // explicitly while projectContext and circuitResolver are still alive.
+    if (diagramScene) {
+      if (diagramView)
+        diagramView->setScene(nullptr);
+      delete diagramScene;
+      diagramScene = nullptr;
     }
   }
 
@@ -155,6 +173,7 @@ namespace ui {
                 codeDocumentsDirty = true;
             });
     binaryEditor = new BinaryEditor(this);
+    initializeArchitectureEditor();
     connect(binaryEditor->history(), &QUndoStack::cleanChanged, this,
             [this](const bool clean) {
               const auto type = activeDocumentType();
@@ -166,11 +185,14 @@ namespace ui {
     editorStack = new QStackedWidget(this);
     editorStack->addWidget(diagramView);
     editorStack->addWidget(codeEditor);
+    editorStack->addWidget(architectureTabs);
     editorStack->addWidget(binaryEditor);
     editorStack->setCurrentWidget(diagramView);
 
     connect(diagramScene, &DiagramScene::modeChanged, this,
             &LogiFlowWindow::updateStatus);
+    connect(diagramScene, &DiagramScene::modeChanged, this,
+            [this] { updateEditActions(); });
     updateStatus();
 
     connect(diagramScene, &DiagramScene::selectionChanged, this,
@@ -189,6 +211,8 @@ namespace ui {
     undoStack = new QUndoStack(this);
 
     createActions();
+    connect(QApplication::clipboard(), &QClipboard::dataChanged, this,
+            &LogiFlowWindow::updateEditActions);
     applyStoredSettings();
     createMenus();
     createToolBar();
@@ -221,6 +245,104 @@ namespace ui {
 
     uiLog.info("Qt logging sideview initialized");
   }
+
+#ifndef QT_NO_CONTEXTMENU
+  void LogiFlowWindow::contextMenuEvent(QContextMenuEvent* event)
+  {
+  #ifdef __EMSCRIPTEN__
+    auto* menu = new QMenu(this);
+    menu->setAttribute(Qt::WA_DeleteOnClose);
+    menu->addAction(cutAct);
+    menu->addAction(copyAct);
+    menu->addAction(pasteAct);
+    menu->addAction(rotateAct);
+    menu->addAction(deleteAct);
+    menu->popup(event->globalPos());
+  #else
+    QMenu menu(this);
+    menu.addAction(cutAct);
+    menu.addAction(copyAct);
+    menu.addAction(pasteAct);
+    menu.addAction(rotateAct);
+    menu.addAction(deleteAct);
+    menu.exec(event->globalPos());
+  #endif
+    event->accept();
+  }
+#endif  // QT_NO_CONTEXTMENU
+
+  bool LogiFlowWindow::eventFilter(QObject* watched, QEvent* event)
+  {
+    if (diagramView && watched == diagramView->viewport()
+        && event->type() == QEvent::Resize) {
+      updateComponentCatalogGeometry();
+    }
+
+    return QMainWindow::eventFilter(watched, event);
+  }
+
+  void LogiFlowWindow::resizeEvent(QResizeEvent* event)
+  {
+    QMainWindow::resizeEvent(event);
+    updateComponentCatalogGeometry();
+
+    const int currentWidth  = event->size().width();
+    const int currentHeight = event->size().height();
+
+    const int minWidth = currentWidth / 10;
+    const int maxWidth = currentWidth / 2;
+
+    const int minHeight = currentHeight / 3;
+
+    auto configureSizeConstraints = [minWidth, maxWidth, minHeight](QDockWidget* widget) {
+      widget->setMinimumWidth(minWidth);
+      widget->setMaximumWidth(maxWidth);
+      widget->setMinimumHeight(minHeight);
+    };
+
+    configureSizeConstraints(componentsDock);
+    configureSizeConstraints(propertyDock);
+
+    logDock->setMinimumWidth(160);
+    logDock->setMaximumWidth(QWIDGETSIZE_MAX);
+    logDock->setMinimumHeight(120);
+    logDock->setMaximumHeight(std::max(160, currentHeight / 3));
+  }
+
+  bool LogiFlowWindow::hasUnsavedChanges() const
+  {
+    const bool architectureModified = std::ranges::any_of(
+        architectureEditors, [](const auto& entry) {
+          return entry.second->document()->isModified();
+        });
+    return (undoStack && !undoStack->isClean()) || codeDocumentsDirty
+           || binaryDocumentsDirty || (codeEditor && codeEditor->document()->isModified())
+           || architectureModified || (binaryEditor && binaryEditor->isModified());
+  }
+
+  void LogiFlowWindow::closeEvent(QCloseEvent* event)
+  {
+    if (hasUnsavedChanges() && !closeAfterSaveConfirmation) {
+      event->ignore();
+      confirmSaveIfDirty([this] {
+        closeAfterSaveConfirmation = true;
+        close();
+      });
+      return;
+    }
+
+    closeAfterSaveConfirmation = false;
+    QMainWindow::closeEvent(event);
+  }
+
+  void LogiFlowWindow::updateComponentCatalogGeometry()
+  {
+    if (!componentCatalogOverlay || !diagramView)
+      return;
+
+    componentCatalogOverlay->setGeometry(diagramView->viewport()->rect());
+  }
+
 
 }  // namespace ui
 }  // namespace SILICON

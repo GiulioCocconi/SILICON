@@ -9,6 +9,7 @@
 #include <stdexcept>
 
 #include <core/activeKeyGuard.hpp>
+#include <core/memory.hpp>
 #include <core/projectContext.hpp>
 #include <core/serialization/component_registry.hpp>
 
@@ -31,7 +32,19 @@ ProjectCircuitResolver::resolve(const std::string_view slug) const
   if (!document)
     throw std::runtime_error(std::format("Unknown subcircuit slug '{}'", slug));
 
-  return SILICON::core::parseCircuitDocument(document->getContents(), registry, this);
+  auto definition =
+      SILICON::core::parseCircuitDocument(document->getContents(), registry, this);
+  for (const auto& [_component, vertex] : definition.circuit.getComponentToVertex()) {
+    const auto rom = std::dynamic_pointer_cast<SILICON::core::ROM>(
+        definition.circuit.getComponentByVertexId(vertex));
+    if (!rom)
+      continue;
+
+    const auto binarySlug = rom->getPropertyValue<std::string>("binaryContents");
+    rom->refreshBinaryContents(
+        binarySlug ? binaryContentsSnapshot(project.documents(), *binarySlug) : nullptr);
+  }
+  return definition;
 }
 
 }  // namespace SILICON::project

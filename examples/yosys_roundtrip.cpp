@@ -91,8 +91,6 @@ void writeFile(const std::filesystem::path& path, const std::string_view content
   };
 
   Circuit circuit(components, false);
-  circuit.setName(TopModule);
-  circuit.setDescription("4-bit counter: next_count = count + 1, sampled by clk.");
   return circuit;
 }
 
@@ -116,7 +114,7 @@ int main()
     };
 
     const Circuit     counter = makeCounterCircuit();
-    const std::string verilog = SILICON::verilog::write(counter, options);
+    const std::string verilog = SILICON::verilog::write(counter, TopModule, options);
 
     const auto verilogPath =
         std::filesystem::current_path() / "yosys_roundtrip_counter.v";
@@ -135,7 +133,7 @@ int main()
               << '\n';
     std::cout << "Original circuit: " << componentCount(counter) << " components\n";
     std::cout << "Restored circuit: " << componentCount(restored) << " components\n";
-    std::cout << "Roundtrip completed for top module '" << restored.getName() << "'\n";
+    std::cout << "Roundtrip completed for top module '" << TopModule << "'\n";
   } catch (const std::exception& error) {
     std::cerr << "yosys_roundtrip failed: " << error.what() << '\n';
     return EXIT_FAILURE;

@@ -17,32 +17,18 @@
 
 #include "arithmetic.hpp"
 
+#include <core/wireUtils.hpp>
 #include <core/simulator.hpp>
 
-#include <format>
+#include <algorithm>
 #include <limits>
+#include <ranges>
 #include <stdexcept>
 #include <utility>
 #include <variant>
 
 namespace SILICON::extra {
 using namespace SILICON::core;
-
-namespace {
-
-  [[nodiscard]] int validateExtenderWidth(const PropertyValue&   value,
-                                          const std::string_view property)
-  {
-    const int width = std::get<int>(value);
-    if (width < 1)
-      throw std::invalid_argument(
-          std::format("Extender {} must be at least 1", property));
-    if (width > std::numeric_limits<unsigned short>::max())
-      throw std::invalid_argument(std::format("Extender {} is too large", property));
-    return width;
-  }
-
-}  // namespace
 
 Extender::Extender()
 {
@@ -52,13 +38,13 @@ Extender::Extender()
                            {std::string(UnsignedMode), std::string(SignedMode)});
 
   setPropertyCallback("inSize", [this](const PropertyValue& value) {
-    const int width = validateExtenderWidth(value, "inSize");
+    const int width = std::get<int>(requireValidSize("Extender inSize", value));
     if (!inputs.empty())
       setInputSize(width);
     return value;
   });
   setPropertyCallback("outSize", [this](const PropertyValue& value) {
-    const int width = validateExtenderWidth(value, "outSize");
+    const int width = std::get<int>(requireValidSize("Extender outSize", value));
     if (!outputs.empty())
       setOutputSize(width);
     return value;
@@ -115,7 +101,8 @@ void Extender::simulate(SILICON::simulation::Simulator& sim)
       == SignedMode;
 
   const State extension = signedMode ? value.back() : State::LOW;
-  value.resize(outputs[0].size(), extension);
+  value = wireUtils::normalizeBusValue(value, outputs[0].size(), extension);
+
   sim.updateBus(outputs[0], value, 0, weak_from_this());
 }
 Complementer::Complementer()
@@ -124,18 +111,11 @@ Complementer::Complementer()
   defineProperty("size", 4);
 
   setPropertyCallback("delay", [](const PropertyValue& value) {
-    if (std::get<int>(value) < 0)
-      throw std::invalid_argument("Complementer delay must be non-negative");
-
-    return value;
+    return requireNonNegative("Complementer delay", value);
   });
 
   setPropertyCallback("size", [this](const PropertyValue& value) {
-    const int size = std::get<int>(value);
-    if (size < 1)
-      throw std::invalid_argument("Complementer size must be at least 1");
-    if (size > std::numeric_limits<unsigned short>::max())
-      throw std::invalid_argument("Complementer size is too large");
+    const int size = std::get<int>(requireValidSize("Complementer size", value));
 
     if (!inputs.empty() && !outputs.empty())
       setSize(size);
@@ -189,10 +169,7 @@ HalfAdder::HalfAdder()
 {
   defineProperty("delay", 2);
   setPropertyCallback("delay", [](const PropertyValue& value) {
-    if (std::get<int>(value) < 0)
-      throw std::invalid_argument("HalfAdder delay must be non-negative");
-
-    return value;
+    return requireNonNegative("HalfAdder delay", value);
   });
 }
 
@@ -221,10 +198,7 @@ FullAdder::FullAdder()
 {
   defineProperty("delay", 3);
   setPropertyCallback("delay", [](const PropertyValue& value) {
-    if (std::get<int>(value) < 0)
-      throw std::invalid_argument("FullAdder delay must be non-negative");
-
-    return value;
+    return requireNonNegative("FullAdder delay", value);
   });
 }
 
@@ -260,17 +234,10 @@ AdderNBits::AdderNBits()
   defineProperty("size", 4);
 
   setPropertyCallback("delay", [](const PropertyValue& value) {
-    if (std::get<int>(value) < 0)
-      throw std::invalid_argument("AdderNBits delay must be non-negative");
-
-    return value;
+    return requireNonNegative("AdderNBits delay", value);
   });
   setPropertyCallback("size", [this](const PropertyValue& value) {
-    const int size = std::get<int>(value);
-    if (size < 1)
-      throw std::invalid_argument("AdderNBits size must be at least 1");
-    if (size > std::numeric_limits<unsigned short>::max())
-      throw std::invalid_argument("AdderNBits size is too large");
+    const int size = std::get<int>(requireValidSize("AdderNBits size", value));
 
     if (!inputs.empty() && !outputs.empty())
       setSize(size);
@@ -334,4 +301,195 @@ void AdderNBits::simulate(SILICON::simulation::Simulator& sim)
 
   sim.updateWire(outputWire(Outputs::Cout), carry, propagationDelay, weak_from_this());
 }
+
+Shifter::Shifter()
+{
+  defineProperty("delay", 0, [](const PropertyValue& value) {
+    return requireNonNegative("Shifter delay", value);
+  });
+  defineProperty("size", 4, [this](const PropertyValue& value) {
+    const int width = std::get<int>(requireValidSize("Shifter size", value));
+    if (!inputs.empty() && !outputs.empty())
+      setSize(width);
+    return value;
+  });
+  defineProperty("amountSize", 4, [this](const PropertyValue& value) {
+    const int width = std::get<int>(requireValidSize("Shifter amountSize", value));
+    if (inputs.size() == 2)
+      setAmountSize(width);
+    return value;
+  });
+  defineStringListProperty("mode", std::string(RightMode),
+                           {std::string(LeftMode), std::string(RightMode)});
+  defineProperty("signed", false);
+}
+
+Shifter::Shifter(Bus value, Bus amount, Bus result) : Shifter()
+{
+  if (value.size() == 0 || amount.size() == 0 || result.size() != value.size())
+    throw std::invalid_argument(
+        "Shifter: value and result must have the same non-zero width, and amount must be non-empty");
+  inputs  = {std::move(value), std::move(amount)};
+  outputs = {std::move(result)};
+  setProperty("size", static_cast<int>(outputs[0].size()));
+  setProperty("amountSize", static_cast<int>(inputs[1].size()));
+}
+
+int Shifter::setSize(const int width)
+{
+  if (width < 1 || width > std::numeric_limits<unsigned short>::max())
+    return getPropertyValue<int>("size").value_or(4);
+  auto newInputs = getInputs();
+  if (newInputs.size() < 2)
+    newInputs.resize(2);
+  newInputs[0].setSize(static_cast<unsigned short>(width));
+  setInputs(newInputs);
+  auto newOutputs = getOutputs();
+  if (newOutputs.empty())
+    newOutputs.resize(1);
+  newOutputs[0].setSize(static_cast<unsigned short>(width));
+  setOutputs(newOutputs);
+  return width;
+}
+
+int Shifter::setAmountSize(const int width)
+{
+  if (width < 1 || width > std::numeric_limits<unsigned short>::max())
+    return getPropertyValue<int>("amountSize").value_or(4);
+  auto newInputs = getInputs();
+  if (newInputs.size() < 2)
+    newInputs.resize(2);
+  newInputs[1].setSize(static_cast<unsigned short>(width));
+  setInputs(newInputs);
+  return width;
+}
+
+void Shifter::simulate(SILICON::simulation::Simulator& sim)
+{
+  if (inputs.size() != 2 || outputs.size() != 1 || inputs[0].size() == 0
+      || inputs[1].size() == 0 || outputs[0].size() != inputs[0].size())
+    return;
+
+  const BusValue value = inputs[0].getCurrentValue();
+  const BusValue amount = inputs[1].getCurrentValue();
+  BusValue result;
+  if (std::ranges::find(amount, State::ERROR) != amount.end()) {
+    result.assign(value.size(), State::ERROR);
+  } else if (std::ranges::find(amount, State::UNKNOWN) != amount.end()) {
+    result.assign(value.size(), State::UNKNOWN);
+  } else {
+    // Saturate before conversion so even a very wide amount cannot overflow.
+    std::size_t count = 0;
+    for (std::size_t bit = amount.size(); bit-- > 0;) {
+      count = std::min(value.size(), count * 2 + (amount[bit] == State::HIGH));
+    }
+    const bool left =
+        getPropertyValue<std::string>("mode").value_or(std::string(RightMode)) == LeftMode;
+    const auto signedness = getPropertyValue<bool>("signed").value_or(false)
+                                ? Signedness::SIGNED : Signedness::UNSIGNED;
+    result = shift(value, left ? -static_cast<ptrdiff_t>(count)
+                               : static_cast<ptrdiff_t>(count), signedness);
+  }
+  sim.updateBus(outputs[0], result, getPropertyValue<int>("delay").value_or(0),
+                weak_from_this());
+}
+
+Comparator::Comparator()
+{
+  defineProperty("delay", 0, [this](const PropertyValue& value) {
+    const auto validated   = requireNonNegative("Comparator delay", value);
+    this->propagationDelay = static_cast<uint64_t>(std::get<int>(value));
+    return validated;
+  });
+
+  defineProperty("size", 4, [this](const PropertyValue& value) {
+    const int size = std::get<int>(requireValidSize("Comparator size", value));
+
+    if (!inputs.empty() && !outputs.empty())
+      setSize(size);
+
+    return value;
+  });
+
+  defineStringListProperty("mode", "==", {"==", "<", "<=", ">", ">="});
+  defineProperty("signed", false);
+}
+
+Comparator::Comparator(std::array<Bus, 2> inputBuses, Wire_ptr output) : Comparator()
+{
+  if (inputBuses[0].size() == 0 || inputBuses[0].size() != inputBuses[1].size())
+    throw std::invalid_argument(
+        "Comparator: input buses must have the same non-zero width");
+
+  this->inputs  = {std::move(inputBuses[0]), std::move(inputBuses[1])};
+  this->outputs = {{std::move(output)}};
+
+  const int size = static_cast<int>(inputs[0].size());
+  setProperty("size", size);
+}
+
+void Comparator::simulate(SILICON::simulation::Simulator& sim)
+{
+  const BusValue a = inputs[0].getCurrentValue();
+  const BusValue b = inputs[1].getCurrentValue();
+
+  const auto setOutput = [this, &sim](const State s) {
+    sim.updateWire(outputs[0][0], s, propagationDelay, weak_from_this());
+  };
+
+  const auto isError = [](const BusValue& value) {
+    return std::ranges::any_of(value,
+                               [](const State state) { return state == State::ERROR; });
+  };
+
+  if (isError(a) || isError(b)) {
+    setOutput(State::ERROR);
+    return;
+  }
+
+  const auto isSigned = getPropertyValue<bool>("signed").value_or(false);
+  const auto compareResult =
+      compare(a, b, static_cast<Signedness>(isSigned));
+
+  if (compareResult == std::partial_ordering::unordered) {
+    setOutput(State::UNKNOWN);
+    return;
+  }
+
+  const auto checkForOrdering = [compareResult](std::string_view mode) {
+    const auto modeWantEquivalent = {"==", "<=", ">="};
+    const auto modeWantLess       = {"<", "<="};
+    const auto modeWantGreat      = {">", ">="};
+
+    // clang-format off
+    if ((std::ranges::contains(modeWantEquivalent, mode) && compareResult == std::partial_ordering::equivalent) ||
+      (std::ranges::contains(modeWantLess, mode) && compareResult == std::partial_ordering::less) ||
+      (std::ranges::contains(modeWantGreat, mode) && compareResult == std::partial_ordering::greater))
+      return State::HIGH;
+
+    return State::LOW;
+  };
+  // clang-format on
+
+  const auto mode = getPropertyValue<std::string>("mode").value_or("==");
+  setOutput(checkForOrdering(mode));
+}
+
+int Comparator::setSize(const int width)
+{
+  if (width < 1)
+    return getPropertyValue<int>("size").value_or(4);
+
+  auto newInputs = inputs;
+  if (inputs.size() < 2)
+    newInputs.resize(2);
+
+  newInputs[0].setSize(width);
+  newInputs[1].setSize(width);
+
+  this->inputs = newInputs;
+
+  return width;
+}
+
 }  // namespace SILICON::extra

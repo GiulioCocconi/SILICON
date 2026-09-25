@@ -74,6 +74,47 @@ TEST(ArithmeticTest, ExtenderSupportsUnsignedSignedAndNarrowingModes)
   EXPECT_EQ(evaluate(5, 3, std::string(Extender::SignedMode), 29), valueFor(3, 5));
 }
 
+TEST(ArithmeticTest, ShifterUsesBusValueShiftSemantics)
+{
+  Bus value(4), amount(8), output(4);
+  auto shifter = std::make_shared<Shifter>(value, amount, output);
+  Simulator sim(std::make_shared<Circuit>(Component_set{shifter}));
+  sim.setBus(value, valueFor(value, 9));
+  sim.setBus(amount, valueFor(amount, 1));
+  ASSERT_EQ(sim.runUntilIdle(), Simulator::RunResult::Completed);
+  EXPECT_EQ(output.getCurrentValue(), valueFor(output, 4));
+
+  shifter->setProperty("signed", true);
+  sim.setBus(amount, valueFor(amount, 2));
+  ASSERT_EQ(sim.runUntilIdle(), Simulator::RunResult::Completed);
+  EXPECT_EQ(output.getCurrentValue(), valueFor(output, 14));
+
+  shifter->setProperty("mode", std::string(Shifter::LeftMode));
+  sim.setBus(amount, valueFor(amount, 1));
+  ASSERT_EQ(sim.runUntilIdle(), Simulator::RunResult::Completed);
+  EXPECT_EQ(output.getCurrentValue(), valueFor(output, 2));
+
+  sim.setBus(amount, valueFor(amount, 255));
+  ASSERT_EQ(sim.runUntilIdle(), Simulator::RunResult::Completed);
+  EXPECT_EQ(output.getCurrentValue(), valueFor(output, 0));
+}
+
+TEST(ArithmeticTest, ShifterValidatesAndResizesBuses)
+{
+  auto shifter = std::make_shared<Shifter>(Bus(4), Bus(3), Bus(4));
+  EXPECT_EQ(shifter->getPropertyValue<bool>("signed"), false);
+  EXPECT_EQ(shifter->getPropertyValue<int>("amountSize"), 3);
+  shifter->setProperty("size", 6);
+  shifter->setProperty("amountSize", 5);
+  EXPECT_EQ(shifter->inputBuses()[0].size(), 6);
+  EXPECT_EQ(shifter->inputBuses()[1].size(), 5);
+  EXPECT_EQ(shifter->outputBuses()[0].size(), 6);
+  EXPECT_THROW(shifter->setProperty("size", 0), std::invalid_argument);
+  EXPECT_THROW(shifter->setProperty("amountSize", 0), std::invalid_argument);
+  EXPECT_THROW(shifter->setProperty("mode", std::string("invalid")), std::invalid_argument);
+  EXPECT_THROW((void)Shifter(Bus(4), Bus(2), Bus(3)), std::invalid_argument);
+}
+
 TEST(ArithmeticTest, ExtenderPropertiesValidateAndReshapeBuses)
 {
   auto extender = std::make_shared<Extender>();

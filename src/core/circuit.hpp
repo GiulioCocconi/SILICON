@@ -130,12 +130,6 @@ private:
   /** @brief The Boost graph representing the circuit topology */
   CircuitGraph graph;
 
-  /** @brief Name of the circuit */
-  std::string name = "main";
-
-  /** @brief Human-readable description of the circuit */
-  std::string description;
-
   /** @brief Maps components to their vertex descriptors in the graph */
   std::unordered_map<const Component*, VertexDescriptor> componentToVertex;
 
@@ -217,30 +211,6 @@ public:
    * @param explore If true, recursively explore and add connected components
    */
   explicit Circuit(const Component_ptr& component, bool explore = true);
-
-  /**
-   * @brief Gets the name of the circuit
-   * @return Reference to the circuit name
-   */
-  [[nodiscard]] const std::string& getName() const { return name; }
-
-  /**
-   * @brief Sets the human-readable circuit name.
-   */
-  void setName(std::string newName) { name = std::move(newName); }
-
-  /**
-   * @brief Gets the human-readable circuit description.
-   */
-  [[nodiscard]] const std::string& getDescription() const { return description; }
-
-  /**
-   * @brief Sets the human-readable circuit description.
-   */
-  void setDescription(std::string newDescription)
-  {
-    description = std::move(newDescription);
-  }
 
   /**
    * @brief Enables interactive mode for live circuit editing.
@@ -439,7 +409,7 @@ public:
    * component graph, not the editor layout.
    *
    * The payload contains:
-   * - `version` and `name`
+   * - `version`
    * - `components[]`
    * - for each component: its serialized graph `id`, registered `type`,
    *   `properties`, and `inputs` / `outputs` bus wiring

@@ -1,0 +1,22 @@
+{
+  "name": "sisl",
+  "version": "0.1.1",
+  "description": "SISL instruction-set description library",
+  "homepage": "https://github.com/GiulioCocconi/SISL",
+  "license": "MIT",
+  "dependencies": [
+    "boost-headers",
+    {
+      "name": "foonathan-lexy",
+      "version>=": "2025.5.0"
+    },
+    {
+      "name": "vcpkg-cmake",
+      "host": true
+    },
+    {
+      "name": "vcpkg-cmake-config",
+      "host": true
+    }
+  ]
+}

@@ -91,9 +91,7 @@ namespace SILICON::wireUtils {
 using namespace SILICON::core;
 
 bool busValueOverflowsWidth(const BusValue& value, const std::size_t width)
-{
-  return !fitsUnsigned(value, width);
-}
+{ return !fitsUnsigned(value, width); }
 
 bool fitsUnsigned(const BusValue& value, const std::size_t width)
 {
@@ -254,13 +252,8 @@ BusValue operator+(const BusValue& a, const BusValue& b)
   // +1 safely accommodates the maximum possible carry-out bit
   const auto width = std::max(a.size(), b.size()) + 1;
 
-  const auto zeroExtend = [width](BusValue value) {
-    value.resize(width, State::LOW);
-    return value;
-  };
-
-  BusValue       res  = zeroExtend(a);
-  const BusValue extB = zeroExtend(b);
+  BusValue       res  = wireUtils::normalizeBusValue(a, width);
+  const BusValue extB = wireUtils::normalizeBusValue(b, width);
 
   auto carry = State::LOW;
 
@@ -292,6 +285,105 @@ BusValue twosComplement(const BusValue& n)
   return res;
 }
 
+std::partial_ordering compare(const BusValue& lhs, const BusValue& rhs,
+                              const Signedness signedness)
+{
+  const auto isError = [](const BusValue& value) {
+    return std::ranges::any_of(value,
+                               [](const State state) { return state == State::ERROR; });
+  };
+
+  if (isError(lhs) || isError(rhs) || lhs.empty() || rhs.empty())
+    return std::partial_ordering::unordered;
+
+  // Helper: if the value contains unknowns then the value can express a range of states
+  const auto bounds = [signedness](const BusValue& value) {
+    BusValue min = value;
+    BusValue max = value;
+
+    for (std::size_t i = 0; i < value.size(); ++i) {
+      if (value[i] != State::UNKNOWN)
+        continue;
+
+      const bool isSignBit = signedness == Signedness::SIGNED && i == value.size() - 1;
+
+      min[i] = isSignBit ? State::HIGH : State::LOW;
+      max[i] = isSignBit ? State::LOW : State::HIGH;
+    }
+
+    return std::pair{std::move(min), std::move(max)};
+  };
+
+  // Helper: get the ordering for known values (no unknown state)
+  const auto compareKnown = [signedness](const BusValue& lhs, const BusValue& rhs) {
+    if (signedness == Signedness::SIGNED && lhs.back() != rhs.back()) {
+      return lhs.back() == State::HIGH ? std::partial_ordering::less
+                                       : std::partial_ordering::greater;
+    }
+
+    for (std::size_t i = lhs.size(); i-- > 0;) {
+      if (lhs[i] == rhs[i])
+        continue;
+
+      return lhs[i] == State::HIGH ? std::partial_ordering::greater
+                                   : std::partial_ordering::less;
+    }
+
+    return std::partial_ordering::equivalent;
+  };
+
+  auto [aMin, aMax] = bounds(lhs);
+  auto [bMin, bMax] = bounds(rhs);
+
+  const auto width = std::max(lhs.size(), rhs.size());
+
+  const auto extend = [signedness, width](const BusValue& value) {
+    const State extension = signedness == Signedness::SIGNED ? value.back() : State::LOW;
+
+    return wireUtils::normalizeBusValue(value, width, extension);
+  };
+
+  aMin = extend(aMin);
+  aMax = extend(aMax);
+  bMin = extend(bMin);
+  bMax = extend(bMax);
+
+  if (compareKnown(aMin, bMax) == std::partial_ordering::greater)
+    return std::partial_ordering::greater;
+
+  if (compareKnown(aMax, bMin) == std::partial_ordering::less)
+    return std::partial_ordering::less;
+
+  // It should not happen but just to be sure...
+  [[unlikely]] if (aMin == aMax && bMin == bMax
+                   && compareKnown(aMin, bMin) == std::partial_ordering::equivalent) {
+    return std::partial_ordering::equivalent;
+  }
+
+  return std::partial_ordering::unordered;
+}
+
+BusValue shift(const BusValue& v, const ptrdiff_t amount, const Signedness signedness)
+{
+  if (v.empty() || amount == 0)
+    return v;
+
+  BusValue res = v;
+
+  const State filler =
+      amount > 0 && signedness == Signedness::SIGNED ? v.back() : State::LOW;
+
+  for (auto&& [index, value] : SILICON::views::enumerate(res)) {
+    const ptrdiff_t source = index + amount;
+
+    const bool sourceInBounds = source >= 0 && source < std::ssize(v);
+
+    value = sourceInBounds ? v[source] : filler;
+  }
+
+  return res;
+}
+
 Bus::Bus(const unsigned short size)
 {
   this->busData.reserve(size);
@@ -308,9 +400,7 @@ void Bus::setSize(const unsigned short size)
 }
 
 Bus::Bus(std::vector<Wire_ptr> busData)
-{
-  this->busData = std::move(busData);
-}
+{ this->busData = std::move(busData); }
 
 Bus::Bus(std::initializer_list<Wire_ptr> initList)
   : busData(initList.begin(), initList.end())

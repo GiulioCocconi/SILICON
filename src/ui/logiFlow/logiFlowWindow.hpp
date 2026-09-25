@@ -19,9 +19,11 @@ Copyright (c) 2026. Giulio Cocconi
 #pragma once
 
 #include <initializer_list>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <QMainWindow>
@@ -40,6 +42,7 @@ class QObject;
 class QPoint;
 class QResizeEvent;
 class QStackedWidget;
+class QTabWidget;
 class QToolBar;
 class QUndoStack;
 
@@ -71,6 +74,7 @@ namespace ui {
   class GraphicalLogStream;
   class LogSideView;
   class ProjectTree;
+  class SislVisualizer;
   namespace waveform {
     class Viewer;
   }
@@ -207,8 +211,8 @@ namespace ui {
     void cancelCurrentInteraction();
 
     /**
-     * @brief Enables or disables FST waveform tracing for the current scene.
-     * @param enabled True to write FST traces during simulation
+     * @brief Shows or hides the waveform viewer for the current scene.
+     * @param enabled True to open the waveform viewer and enter simulation mode
      */
     void toggleFstTracing(bool enabled);
 
@@ -231,6 +235,7 @@ namespace ui {
     void createCircuit();
 
     void createCodeFile();
+    void createArchitecture();
     void createBinaryFile();
 
     /** @brief Rebuilds the property dock for the current selection or active circuit. */
@@ -257,11 +262,13 @@ namespace ui {
     void updateSubcircuitShapeAction();
     /** @brief Updates the contextual conversion action for the active document. */
     void updateCodeAction();
+    /** @brief Hides toolbar controls that are unavailable for the active document. */
+    void updateDocumentActionVisibility();
     void convertActiveDocumentTo(SILICON::project::DocumentType target);
-    void commitConvertedDocuments(std::vector<SILICON::project::Document> documents,
-                                  const std::string&                      sourcePath,
-                                  const std::string&                      activatePath,
-                                  const QString&                          commandText);
+    void commitDocumentChanges(std::vector<SILICON::project::Document> documents,
+                               const std::string&                      sourcePath,
+                               const std::string&                      activatePath,
+                               const QString& commandText, const QString& errorTitle);
     [[nodiscard]] std::optional<SILICON::project::DocumentType>
     activeDocumentType() const noexcept;
 
@@ -287,6 +294,8 @@ namespace ui {
     /** @brief Serializes the active editor into the shared project document store. */
     void saveActiveDocumentPayload();
     void loadDocumentPayload(const SILICON::project::Document& document);
+    void restoreProjectDocuments(const std::vector<SILICON::project::Document>& documents,
+                                 const std::string& activePath);
 
     /**
      * @brief Prompts to save when the project undo stack contains unsaved edits.
@@ -322,7 +331,29 @@ namespace ui {
     void createDocument(SILICON::project::DocumentType type);
     void pushCreateDocumentCommand(SILICON::project::Document document,
                                    const QString&             commandText);
+    void importProjectDocument();
+    void exportSelectedDocument();
+    void renameSelectedDocument();
     void deleteSelectedDocument();
+    void deleteArchitectureComponent(const std::string& path);
+    void renameArchitecture(const std::string& name);
+    void deleteArchitecture(const std::string& name);
+    void removeProjectDocuments(const std::vector<std::string>& paths,
+                                const QString&                  commandText);
+    void pushDocumentSnapshotCommand(QString                                 commandText,
+                                     std::vector<SILICON::project::Document> before,
+                                     std::string                             beforeActive,
+                                     std::vector<SILICON::project::Document> after,
+                                     std::string                             afterActive);
+    void showArchitectureTabContextMenu(const QPoint& position);
+    void buildActiveArchitecture();
+    void initializeArchitectureEditor();
+    void visualizeActiveArchitecture();
+    [[nodiscard]] bool isVisualizerActive() const noexcept;
+    void loadArchitectureDocument(const SILICON::project::Document& document);
+    [[nodiscard]] CodeEditor*
+    architectureEditor(SILICON::project::DocumentType type) const noexcept;
+    [[nodiscard]] CodeEditor* activeCodeEditor() const noexcept;
     /** @brief Returns the logical circuit currently owned by the diagram scene. */
     [[nodiscard]] std::shared_ptr<SILICON::core::Circuit> activeCircuit();
 
@@ -355,12 +386,15 @@ namespace ui {
     QVector<ShortcutSetting> shortcutSettings() const;
 
     [[nodiscard]] static QString documentTypeName(SILICON::project::DocumentType type);
-    [[nodiscard]] static std::string                defaultMainCircuitPath();
+    [[nodiscard]] static std::string                defaultCircuitPath();
     [[nodiscard]] static SILICON::project::Document defaultCircuitDocument();
     [[nodiscard]] static SILICON::project::ProjectInfo
-                              defaultProjectInfo(const QString& currentFileName);
-    [[nodiscard]] std::string projectMainCircuitPath() const;
-    void                      ensureProjectDocuments();
+    defaultProjectInfo(const QString& currentFileName);
+    [[nodiscard]] std::optional<std::string>
+                firstCircuitPath(std::string_view excludedPath = {}) const;
+    void        ensureProjectDocuments();
+    void        updateEditActions();
+    void        updateHistoryActions();
     static void setActionsEnabled(std::initializer_list<QAction*> actions, bool enabled);
     void        syncWasmShortcutCapture();
 
@@ -401,7 +435,11 @@ namespace ui {
     /** @brief Selects between the graphical circuit view and the source editor. */
     QStackedWidget* editorStack = nullptr;
     /** @brief Metadata-driven, line-numbered source editor. */
-    CodeEditor* codeEditor = nullptr;
+    CodeEditor*                                           codeEditor       = nullptr;
+    QTabWidget*                                           architectureTabs = nullptr;
+    SislVisualizer*                                       sislVisualizer = nullptr;
+    std::map<SILICON::project::DocumentType, CodeEditor*> architectureEditors;
+    std::string                                           loadedArchitectureName;
     /** @brief Fixed-size, nibble-oriented binary editor. */
     BinaryEditor* binaryEditor = nullptr;
 
@@ -418,10 +456,11 @@ namespace ui {
     QMenu* helpMenu = nullptr;
 
     /** @brief Creates a new project. */
-    QAction* newAct           = nullptr;
-    QAction* newCircuitAct    = nullptr;
-    QAction* newCodeFileAct   = nullptr;
-    QAction* newBinaryFileAct = nullptr;
+    QAction* newAct             = nullptr;
+    QAction* newCircuitAct      = nullptr;
+    QAction* newCodeFileAct     = nullptr;
+    QAction* newArchitectureAct = nullptr;
+    QAction* newBinaryFileAct   = nullptr;
 
     /** @brief Opens an existing project. */
     QAction* openAct = nullptr;
@@ -471,8 +510,8 @@ namespace ui {
     /** @brief Activates simulation mode. */
     QAction* setSimulationModeAct = nullptr;
 
-    /** @brief Toggles FST trace generation for simulations. */
-    QAction* toggleFstTraceAct = nullptr;
+    /** @brief Toggles the waveform viewer window for the active scene. */
+    QAction* toggleWaveformViewerAct = nullptr;
 
     /** @brief Cancels the active diagram interaction. */
     QAction* cancelInteractionAct = nullptr;
@@ -481,6 +520,8 @@ namespace ui {
     QAction* openComponentCatalogAct = nullptr;
     QAction* editSubcircuitShapeAct  = nullptr;
     QAction* codeConversionAct       = nullptr;
+    QAction* buildArchitectureAct    = nullptr;
+    QAction* visualizeArchitectureAct = nullptr;
 
     /** @brief Activates component placing mode. */
     QAction* setComponentPlacingModeAct = nullptr;

@@ -31,6 +31,10 @@
       "name": "libzip"
     },
     {
+      "name": "sisl",
+      "version>=": "0.1.0"
+    },
+    {
       "name": "boost-graph"
     },
     {

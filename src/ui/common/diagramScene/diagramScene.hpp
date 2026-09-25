@@ -216,7 +216,15 @@ namespace ui {
     [[nodiscard]] WireManager&             getWireManager() { return wireManager; }
     [[nodiscard]] const WireManager&       getWireManager() const { return wireManager; }
     [[nodiscard]] std::shared_ptr<Circuit> getCircuit() const { return circuit; }
-    void                                   setCircuit(std::shared_ptr<Circuit> newCircuit)
+
+    /** @brief Replaces the derived topology cache. */
+    void setCircuit(std::shared_ptr<Circuit> newCircuit)
+    {
+      circuit = std::move(newCircuit);
+    }
+
+    /** @brief Installs an authoritative circuit. */
+    void setDocumentCircuit(std::shared_ptr<Circuit> newCircuit)
     {
       circuit = std::move(newCircuit);
     }
@@ -226,11 +234,6 @@ namespace ui {
      * @param enabled True to allow clicks on interactive IO components
      */
     void setIoInteractionsEnabled(bool enabled) { ioInteractionsEnabled = enabled; }
-
-    /**
-     * @brief Returns whether simulation-mode IO clicks are currently allowed.
-     */
-    [[nodiscard]] bool areIoInteractionsEnabled() const { return ioInteractionsEnabled; }
 
     /** @brief Enables reusable-circuit boundary I/O editing for the scene. */
     void setSubcircuitDocumentMode(bool enabled) { subcircuitDocumentMode = enabled; }
@@ -354,9 +357,10 @@ namespace ui {
      *
      * The scene preserves its authoritative logical circuit when available, computes
      * component positions with OGDF, and replaces WireManager's graphical wire segments
-     * with libavoid-routed paths carrying the original buses.
+     * with libavoid-routed paths carrying the original buses. The complete candidate set
+     * is compared while a cancellable progress dialog is shown.
      */
-    void autoPlaceCircuit(bool interactive = false);
+    void autoPlaceCircuit();
 
     /**
      * @brief Removes items matching a serialized selection payload from the current
@@ -408,14 +412,6 @@ namespace ui {
     void handleInputToggled(Bus targetBus, BusValue value, Component_weakPtr source);
 
     /**
-     * @brief Refreshes the visual state of all graphical outputs.
-     *
-     * Queries the simulator buses and updates the visual state of
-     * SINGLE_OUTPUT components accordingly.
-     */
-    void refreshGraphicalOutputs();
-
-    /**
      * @brief Calculates wire connections for all components.
      *
      * Computes the logical bus connections between components
@@ -447,11 +443,6 @@ namespace ui {
      */
     void waveformTraceReset(QStringList signalNames, int inputCount,
                             QList<int> signalWidths);
-
-    /**
-     * @brief Emitted when the simulator reaches a new visible waveform state.
-     */
-    void waveformTraceSnapshot(qulonglong time, std::vector<BusValue> values);
 
     /**
      * @brief Emitted when a completed simulation job produced multiple waveform states.

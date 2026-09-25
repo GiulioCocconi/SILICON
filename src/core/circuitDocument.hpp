@@ -36,6 +36,14 @@ public:
 };
 
 /**
+ * Parses persisted Circuit document contents while preserving every component,
+ * including the boundary I/O components used by document-level serializers.
+ */
+[[nodiscard]] Circuit
+deserializeCircuitDocument(std::string_view contents, const ComponentRegistry& registry,
+                           const CircuitResolver* resolver = nullptr);
+
+/**
  * Parses persisted Circuit document contents without constructing graphical objects.
  * Boundary I/O components define the reusable interface and are removed from the
  * returned implementation circuit.

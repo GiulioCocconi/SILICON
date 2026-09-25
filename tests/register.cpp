@@ -139,6 +139,42 @@ TEST(RegisterTest, ParallelInParallelOutCapturesOnRisingEdge)
   expectBusStates(out, {State::LOW, State::HIGH, State::LOW, State::HIGH});
 }
 
+TEST(RegisterTest, UnconnectedClearAllowsClockedCapture)
+{
+  Bus data(2), output(2);
+  auto clock = std::make_shared<Wire>(State::LOW);
+  auto enable = std::make_shared<Wire>(State::HIGH);
+  auto reg = std::make_shared<Register>(data, clock, enable, nullptr, output);
+  auto circuit = std::make_shared<Circuit>(Component_set{reg});
+  Simulator simulator(circuit);
+
+  ASSERT_EQ(simulator.setBus(data, valueFor(data, 2)), Simulator::RunResult::Completed);
+  clockCycle(simulator, clock);
+  EXPECT_EQ(output.getCurrentValue(), valueFor(output, 2));
+
+  ComponentRegistry registry;
+  registerAllComponents(registry);
+  auto restoredCircuit = std::make_shared<Circuit>(
+      Circuit::deserialize(circuit->serialize(), registry));
+  auto restored = std::dynamic_pointer_cast<Register>(restoredCircuit->getComponentByVertexId(0));
+  ASSERT_TRUE(restored);
+  EXPECT_EQ(restored->inputBuses()[static_cast<unsigned int>(Register::Inputs::Clear)][0], nullptr);
+  Simulator restoredSimulator(restoredCircuit);
+  const auto restoredData = restored->inputBuses()[static_cast<unsigned int>(Register::Inputs::Data)];
+  const auto restoredClock = restored->inputBuses()[static_cast<unsigned int>(Register::Inputs::Clock)];
+  const auto restoredEnable = restored->inputBuses()[static_cast<unsigned int>(Register::Inputs::Enable)];
+  ASSERT_EQ(restoredSimulator.setBus(restoredEnable, valueFor(restoredEnable, 1)),
+            Simulator::RunResult::Completed);
+  ASSERT_EQ(restoredSimulator.setBus(restoredData, valueFor(restoredData, 1)),
+            Simulator::RunResult::Completed);
+  ASSERT_EQ(restoredSimulator.setBus(restoredClock, valueFor(restoredClock, 0)),
+            Simulator::RunResult::Completed);
+  ASSERT_EQ(restoredSimulator.setBus(restoredClock, valueFor(restoredClock, 1)),
+            Simulator::RunResult::Completed);
+  EXPECT_EQ(restored->outputBuses()[0].getCurrentValue(),
+            valueFor(restored->outputBuses()[0], 1));
+}
+
 TEST(RegisterTest, ClearIsActiveHighAndAsynchronous)
 {
   Bus  data(3);

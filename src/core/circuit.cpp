@@ -761,8 +761,6 @@ Circuit::LevelMap Circuit::getLevelMap() const
 std::string Circuit::serialize() const
 {
   nlohmann::ordered_json j = {{"version", SILICON_VERSION},
-                              {"name", name},
-                              {"description", description},
                               {"components", nlohmann::ordered_json::array()}};
 
   auto serializeBusList = [](const std::vector<Bus>& buses) -> nlohmann::ordered_json {
@@ -950,13 +948,6 @@ Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry
   }
 
   result.ownedWires = wireMap | std::views::values | std::ranges::to<std::vector>();
-
-  if (const auto it = j.find("name"); it != j.end() && it->is_string())
-    result.name = it->get<std::string>();
-
-  if (const auto it = j.find("description"); it != j.end() && it->is_string()) {
-    result.description = it->get<std::string>();
-  }
 
   result.buildTopologyMap();
   return result;

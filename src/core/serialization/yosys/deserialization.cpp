@@ -22,6 +22,7 @@
 #include "netlist.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <array>
 #include <charconv>
 #include <format>
@@ -43,6 +44,8 @@
 #include <core/flipflops.hpp>
 #include <core/gates.hpp>
 #include <core/io.hpp>
+#include <core/memory.hpp>
+#include <core/projectDocument.hpp>
 #include <core/register.hpp>
 #include <core/subcircuit.hpp>
 #include <extraComponents/arithmetic.hpp>
@@ -144,14 +147,6 @@ namespace {
     return Bus(std::move(wires));
   }
 
-  [[nodiscard]] Bus concatenate(const Bus& lhs, const Bus& rhs)
-  {
-    auto       wires = static_cast<std::vector<Wire_ptr>>(lhs);
-    const auto right = static_cast<std::vector<Wire_ptr>>(rhs);
-    wires.insert(wires.end(), right.begin(), right.end());
-    return Bus(std::move(wires));
-  }
-
   class Importer {
   public:
     explicit Importer(Json design) : design(std::move(design)) {}
@@ -169,7 +164,6 @@ namespace {
 
       Component_set componentSet(components.begin(), components.end());
       Circuit       result(componentSet, false);
-      result.setName(moduleName);
       return result;
     }
 
@@ -266,6 +260,31 @@ namespace {
         return bus(port, ConnectionRole::Consumer, expectedWidth);
       }
 
+      [[nodiscard]] std::vector<Bus> consumerLanes(const std::string_view port,
+                                                   const std::size_t      laneWidth,
+                                                   const std::size_t      laneCount) const
+      {
+        // Yosys flattens word lanes into one LSB-first JSON array. Decode each lane
+        // separately so readBus() can recognize an all-literal word as a constant bus.
+        const auto& bits          = requireObjectMember(connectionsJson, port, context);
+        const auto  expectedWidth = laneWidth * laneCount;
+        if (!bits.is_array() || bits.size() != expectedWidth) {
+          fail(context, std::format("'{}' must be {} bits wide", port, expectedWidth));
+        }
+
+        std::vector<Bus> lanes;
+        lanes.reserve(laneCount);
+        for (std::size_t lane = 0; lane < laneCount; ++lane) {
+          Json laneBits = Json::array();
+          for (std::size_t bit = 0; bit < laneWidth; ++bit)
+            laneBits.push_back(bits[lane * laneWidth + bit]);
+          lanes.push_back(importer.readBus(
+              laneBits, ConnectionRole::Consumer,
+              std::format("{}.{} lane {}", context, port, lane), laneWidth));
+        }
+        return lanes;
+      }
+
       [[nodiscard]] Bus
       driver(const std::string_view           port,
              const std::optional<std::size_t> expectedWidth = std::nullopt) const
@@ -323,6 +342,8 @@ namespace {
     std::map<BusValue, Bus>           constantBuses;
     std::set<std::uint64_t>           drivenSignals;
     std::vector<Component_ptr>        components;
+    std::set<std::string>             foldedLatches;
+    const Json*                       moduleCells = nullptr;
 
     using BusKey = std::vector<Wire_ptr>;
 
@@ -657,7 +678,8 @@ namespace {
           const bool isUnsignedExtension =
               inputWidth > 0 && inputWidth < bitsJson.size()
               && std::ranges::all_of(
-                  bitsJson.begin(), bitsJson.begin() + inputWidth, [](const Json& bit) {
+                  bitsJson.begin(), bitsJson.begin() + inputWidth,
+                  [](const Json& bit) {
                     return bit.is_number_integer() || bit.is_number_unsigned();
                   });
           if (isUnsignedExtension) {
@@ -688,8 +710,173 @@ namespace {
       if (!cells.is_object())
         fail(std::format("{}.cells", moduleContext()), "expected an object");
 
+      moduleCells = &cells;
       for (const auto& [name, cell] : cells.items())
-        importCell(name, cell);
+        if (cell.is_object() && cell.value("type", std::string()) == "$mem_v2")
+          importMemory(name, Cell(*this, cell, std::format("{}.cells.{}", moduleContext(), name)));
+      for (const auto& [name, cell] : cells.items())
+        if (!foldedLatches.contains(name) && cell.value("type", std::string()) != "$mem_v2")
+          importCell(name, cell);
+    }
+
+    void importMemory(const std::string_view name, const Cell& cell)
+    {
+      const auto width = cell.width("WIDTH");
+      const auto count = static_cast<std::size_t>(parseUnsigned(cell.parameter("SIZE"), cell.where()));
+      const auto abits = cell.width("ABITS");
+      const auto ports = static_cast<std::size_t>(parseUnsigned(cell.parameter("RD_PORTS"), cell.where()));
+      if (!std::has_single_bit(count) || count > std::numeric_limits<int>::max()
+          || abits != std::max<std::size_t>(1, std::bit_width(count - 1)) || ports == 0
+          || !cell.zeroParameter("OFFSET") || !cell.zeroParameter("WR_PORTS"))
+        fail(cell.where(), "unsupported ROM geometry or write ports");
+      for (const auto key : {"RD_CE_OVER_SRST", "RD_TRANSPARENCY_MASK",
+                             "RD_COLLISION_X_MASK", "RD_WIDE_CONTINUATION",
+                             "WR_CLK_ENABLE", "WR_CLK_POLARITY", "WR_PRIORITY_MASK",
+                             "WR_WIDE_CONTINUATION"})
+        if (!cell.zeroParameter(key))
+          fail(cell.where(), "unsupported ROM port controls or write behavior");
+      if (!cell.connection("WR_ADDR").empty() || !cell.connection("WR_DATA").empty()
+          || !cell.connection("WR_EN").empty() || !cell.connection("WR_CLK").empty())
+        fail(cell.where(), "memory write connections are not supported");
+      const auto init = binaryDigits(cell.parameter("INIT"), cell.where());
+      if (init.size() != count * width)
+        fail(cell.where(), "memory initialization must cover every word");
+      std::string bytes((init.size() + 7) / 8, '\0');
+      for (std::size_t bit = 0; bit < init.size(); ++bit)
+        if (init[init.size() - bit - 1] == '1')
+          bytes[bit / 8] = static_cast<char>(static_cast<unsigned char>(bytes[bit / 8]) | (1u << (bit % 8)));
+
+      std::string memoryName(name);
+      if (const auto& id = cell.parameter("MEMID"); id.is_string()) {
+        memoryName = id.get<std::string>();
+        if (!memoryName.empty() && memoryName.front() == '\\')
+          memoryName.erase(0, 1);
+      }
+      for (auto& character : memoryName)
+        if (character == '/' || character == '\\' || static_cast<unsigned char>(character) < 32
+            || static_cast<unsigned char>(character) == 127)
+          character = '_';
+      std::string assetName = std::format("{}_{}", moduleName, memoryName);
+      const auto& rawCell = moduleCells->at(std::string(name));
+      const auto cellAttributes = rawCell.value("attributes", Json::object());
+      if (!cellAttributes.is_object())
+        fail(cell.where(), "memory attributes must be an object");
+      if (const auto attribute = cellAttributes.find(std::string(attributes::BinaryDocument));
+          attribute != cellAttributes.end()) {
+        if (!attribute->is_string())
+          fail(cell.where(), "binary document attribute must be a string");
+        assetName = attribute->get<std::string>();
+        if (!SILICON::project::isValidDocumentSlug(assetName))
+          fail(cell.where(), "binary document attribute is not a valid document name");
+      }
+
+      const auto& allAddress = cell.connection("RD_ADDR");
+      const auto& allData = cell.connection("RD_DATA");
+      const auto& allEnable = cell.connection("RD_EN");
+      const auto& allClocks = cell.connection("RD_CLK");
+      const auto& allAsyncReset = cell.connection("RD_ARST");
+      const auto& allSyncReset = cell.connection("RD_SRST");
+      const auto clockEnable = binaryDigits(cell.parameter("RD_CLK_ENABLE"), cell.where());
+      const auto clockPolarity = binaryDigits(cell.parameter("RD_CLK_POLARITY"), cell.where());
+      const auto& initialReadValue = cell.parameter("RD_INIT_VALUE");
+      if (!allAddress.is_array() || allAddress.size() != ports * abits
+          || !allData.is_array() || allData.size() != ports * width
+          || !allEnable.is_array() || allEnable.size() != ports
+          || !allClocks.is_array() || allClocks.size() != ports
+          || !allAsyncReset.is_array() || allAsyncReset.size() != ports
+          || !allSyncReset.is_array() || allSyncReset.size() != ports
+          || clockEnable.size() != ports || clockPolarity.size() != ports
+          || !initialReadValue.is_string()
+          || initialReadValue.get_ref<const std::string&>().size() != ports * width)
+        fail(cell.where(), "invalid memory read port widths");
+      for (std::size_t port = 0; port < ports; ++port) {
+        const bool synchronous = clockEnable[ports - port - 1] == '1';
+        const bool positiveClock = clockPolarity[ports - port - 1] == '1';
+        if (synchronous) {
+          const auto& initial = initialReadValue.get_ref<const std::string&>();
+          const auto start = (ports - port - 1) * width;
+          if (initial.substr(start, width) != std::string(width, 'x'))
+            fail(cell.where(), "initialized synchronous read registers are not supported");
+        }
+        Json address = Json::array(), data = Json::array();
+        for (std::size_t bit = 0; bit < abits; ++bit)
+          address.push_back(allAddress[port * abits + bit]);
+        for (std::size_t bit = 0; bit < width; ++bit)
+          data.push_back(allData[port * width + bit]);
+        if (!synchronous && allEnable[port] != "1")
+          fail(cell.where(), "read enables other than constant one are not supported");
+        if (synchronous && (allAsyncReset[port] != "0" || allSyncReset[port] != "0"))
+          fail(cell.where(), "synchronous ROM read resets are not supported");
+        if (count == 1 && std::ranges::any_of(address, [](const Json& bit) { return !bit.is_string(); }))
+          fail(cell.where(), "one-word memory with variable address is not supported");
+        Json output = data;
+        Json select = Json::array({"1"});
+        for (const auto& [latchName, latch] : moduleCells->items()) {
+          if (!latch.is_object() || latch.value("type", std::string()) != "$dlatch")
+            continue;
+          const auto& connections = latch.at("connections");
+          if (connections.at("D") == data) {
+            if (foldedLatches.contains(latchName) || connections.at("Q").size() != width
+                || parseUnsigned(latch.at("parameters").at("EN_POLARITY"), cell.where()) != 1)
+              fail(cell.where(), "unsupported ROM output latch");
+            output = connections.at("Q");
+            select = connections.at("EN");
+            foldedLatches.insert(latchName);
+            break;
+          }
+        }
+        auto rom = std::make_shared<ROM>();
+        rom->setProperty("dataWidth", static_cast<int>(width));
+        rom->setProperty("binaryContents", assetName);
+        Bus importedAddress = count == 1
+            ? Bus{Wire_ptr{}}
+            : readBus(address, ConnectionRole::Consumer, cell.where(), abits);
+        Wire_ptr clock, enable;
+        if (synchronous) {
+          clock = readBus(Json::array({allClocks[port]}), ConnectionRole::Consumer,
+                          cell.where(), 1)[0];
+          enable = readBus(Json::array({allEnable[port]}), ConnectionRole::Consumer,
+                           cell.where(), 1)[0];
+          if (!positiveClock) {
+            const auto inverted = std::make_shared<Wire>();
+            addWithZeroDelay(std::make_shared<NotGate>(clock, inverted));
+            clock = inverted;
+          }
+          if (count > 1) {
+            std::vector<Wire_ptr> data(importedAddress.begin(), importedAddress.end());
+            while (data.size() < 2)
+              data.push_back(constantWire("0", cell.where()));
+            Bus registeredAddress(static_cast<unsigned short>(data.size()));
+            auto addressRegister = std::make_shared<Register>(
+                Bus(std::move(data)), clock, enable, nullptr,
+                registeredAddress);
+            addWithZeroDelay(std::move(addressRegister));
+            importedAddress = slice(registeredAddress, 0, abits);
+          }
+        }
+        const Bus romOutput = synchronous && count == 1
+            ? Bus(static_cast<unsigned short>(width))
+            : readBus(output, ConnectionRole::Driver, cell.where(), width);
+        connectAndAdd(rom,
+                      {importedAddress,
+                       readBus(select, ConnectionRole::Consumer, cell.where(), 1),
+                       readBus(Json::array({"1"}), ConnectionRole::Consumer, cell.where(), 1)},
+                      {romOutput});
+        rom->refreshBinaryContents(std::make_shared<const std::string>(bytes));
+        if (synchronous && count == 1) {
+          const Bus registeredData = readBus(output, ConnectionRole::Driver, cell.where(), width);
+          std::vector<Wire_ptr> data(romOutput.begin(), romOutput.end());
+          std::vector<Wire_ptr> outputs(registeredData.begin(), registeredData.end());
+          while (data.size() < 2) {
+            data.push_back(constantWire("0", cell.where()));
+            outputs.push_back(std::make_shared<Wire>());
+          }
+          auto dataRegister = std::make_shared<Register>(
+              Bus(std::move(data)), clock, enable, nullptr,
+              Bus(std::move(outputs)));
+          addWithZeroDelay(std::move(dataRegister));
+        }
+      }
     }
 
     [[nodiscard]] static std::vector<Bus>
@@ -793,10 +980,63 @@ namespace {
     void importNot(const Cell& cell)
     {
       const auto [a, y] = equalWidthUnary(cell, "$not");
-      for (std::size_t bit = 0; bit < y.size(); ++bit) {
-        auto gate = std::make_shared<NotGate>(a[static_cast<unsigned short>(bit)],
-                                              y[static_cast<unsigned short>(bit)]);
-        addWithZeroDelay(std::move(gate));
+      auto gate         = std::make_shared<NotGate>(a[0], y[0]);
+      gate->setProperty("size", static_cast<int>(y.size()));
+      gate->setInputs({a});
+      gate->setOutputs({y});
+      addWithZeroDelay(std::move(gate));
+    }
+
+    template <typename GateType> void importLogicalBinary(const Cell& cell)
+    {
+      static constexpr auto parameters = std::to_array<std::string_view>(
+          {"A_SIGNED", "B_SIGNED", "A_WIDTH", "B_WIDTH", "Y_WIDTH"});
+      static constexpr auto connections =
+          std::to_array<std::string_view>({"A", "B", "Y"});
+      cell.requireSchema(parameters, connections);
+
+      (void)cell.flag("A_SIGNED");
+      (void)cell.flag("B_SIGNED");
+      const auto aWidth = cell.width("A_WIDTH");
+      const auto bWidth = cell.width("B_WIDTH");
+      const auto yWidth = cell.width("Y_WIDTH");
+      const Bus  a      = cell.consumer("A", aWidth);
+      const Bus  b      = cell.consumer("B", bWidth);
+      const Bus  y      = cell.driver("Y", yWidth);
+
+      const Bus truth = yWidth == 1 ? y : Bus(1);
+      auto      gate  = std::make_shared<GateType>();
+      gate->setProperty("delay", 0);
+      connectAndAdd(std::move(gate), {a, b}, {truth});
+
+      if (yWidth > 1) {
+        components.push_back(
+            std::make_shared<Extender>(truth, y, std::string(Extender::UnsignedMode)));
+      }
+    }
+
+    void importLogicNot(const Cell& cell)
+    {
+      static constexpr auto parameters =
+          std::to_array<std::string_view>({"A_SIGNED", "A_WIDTH", "Y_WIDTH"});
+      static constexpr auto connections = std::to_array<std::string_view>({"A", "Y"});
+      cell.requireSchema(parameters, connections);
+
+      (void)cell.flag("A_SIGNED");
+      const auto aWidth = cell.width("A_WIDTH");
+      const auto yWidth = cell.width("Y_WIDTH");
+      const Bus  a      = cell.consumer("A", aWidth);
+      const Bus  y      = cell.driver("Y", yWidth);
+
+      const Bus truth = yWidth == 1 ? y : Bus(1);
+      auto      gate  = std::make_shared<NotGate>(a[0], truth[0]);
+      gate->setInputs({a});
+      gate->setOutputs({truth});
+      addWithZeroDelay(std::move(gate));
+
+      if (yWidth > 1) {
+        components.push_back(
+            std::make_shared<Extender>(truth, y, std::string(Extender::UnsignedMode)));
       }
     }
 
@@ -854,6 +1094,30 @@ namespace {
                                                 Bus(std::move(sumWires)),
                                                 std::make_shared<Wire>(State::UNKNOWN));
       addWithZeroDelay(std::move(adder));
+    }
+
+    void importShift(const Cell& cell, const std::string_view type)
+    {
+      static constexpr auto parameters = std::to_array<std::string_view>(
+          {"A_SIGNED", "B_SIGNED", "A_WIDTH", "B_WIDTH", "Y_WIDTH"});
+      static constexpr auto connections =
+          std::to_array<std::string_view>({"A", "B", "Y"});
+      cell.requireSchema(parameters, connections);
+      const auto aWidth = cell.width("A_WIDTH");
+      const auto bWidth = cell.width("B_WIDTH");
+      const auto yWidth = cell.width("Y_WIDTH");
+      if (cell.flag("B_SIGNED"))
+        fail(cell.where(), "shift amount must be unsigned");
+
+      const bool isSigned = cell.flag("A_SIGNED");
+      const Bus value = resizeArithmeticOperand(cell.consumer("A", aWidth), yWidth,
+                                                isSigned);
+      auto shifter = std::make_shared<Shifter>(value, cell.consumer("B", bWidth),
+                                               cell.driver("Y", yWidth));
+      shifter->setProperty("mode", std::string(type == "$shl" ? Shifter::LeftMode
+                                                               : Shifter::RightMode));
+      shifter->setProperty("signed", type != "$shr" && isSigned);
+      addWithZeroDelay(std::move(shifter));
     }
 
     [[nodiscard]] Bus resizeArithmeticOperand(const Bus& operand, const std::size_t width,
@@ -914,6 +1178,49 @@ namespace {
       addWithZeroDelay(std::move(adder));
     }
 
+    void importComparison(const Cell& cell, const std::string_view mode)
+    {
+      static constexpr auto parameters = std::to_array<std::string_view>(
+          {"A_SIGNED", "B_SIGNED", "A_WIDTH", "B_WIDTH", "Y_WIDTH"});
+      static constexpr auto connections =
+          std::to_array<std::string_view>({"A", "B", "Y"});
+      cell.requireSchema(parameters, connections);
+
+      const bool aSigned = cell.flag("A_SIGNED");
+      const bool bSigned = cell.flag("B_SIGNED");
+      const auto aWidth  = cell.width("A_WIDTH");
+      const auto bWidth  = cell.width("B_WIDTH");
+      const auto yWidth  = cell.width("Y_WIDTH");
+      const Bus  a       = cell.consumer("A", aWidth);
+      const Bus  b       = cell.consumer("B", bWidth);
+      const Bus  y       = cell.driver("Y", yWidth);
+
+      // Yosys uses signed comparison only when both operands are signed. Otherwise
+      // both inputs are zero-extended to the widest operand before comparison.
+      const bool signedComparison = aSigned && bSigned;
+      const auto operandWidth     = std::max(aWidth, bWidth);
+      const Bus  extendedA = resizeArithmeticOperand(a, operandWidth, signedComparison);
+      const Bus  extendedB = resizeArithmeticOperand(b, operandWidth, signedComparison);
+
+      const Bus truth      = yWidth == 1 ? y : Bus(1);
+      auto      comparator = std::make_shared<Comparator>(
+          std::array<Bus, 2>{extendedA, extendedB}, truth[0]);
+      comparator->setProperty("mode", std::string(mode));
+      comparator->setProperty("signed", signedComparison);
+      addWithZeroDelay(std::move(comparator));
+
+      if (yWidth > 1) {
+        components.push_back(
+            std::make_shared<Extender>(truth, y, std::string(Extender::UnsignedMode)));
+      }
+    }
+
+    void importEq(const Cell& cell) { importComparison(cell, "=="); }
+    void importLt(const Cell& cell) { importComparison(cell, "<"); }
+    void importLe(const Cell& cell) { importComparison(cell, "<="); }
+    void importGt(const Cell& cell) { importComparison(cell, ">"); }
+    void importGe(const Cell& cell) { importComparison(cell, ">="); }
+
     void importMux(const Cell& cell)
     {
       cell.requireConnections({"A", "B", "S", "Y"});
@@ -923,8 +1230,7 @@ namespace {
       const Bus  s     = cell.consumer("S", 1);
       const Bus  y     = cell.driver("Y", width);
 
-      std::vector<Bus> inputs =
-          width == 1 ? std::vector<Bus>{concatenate(a, b), s} : std::vector<Bus>{a, b, s};
+      std::vector<Bus> inputs{a, b, s};
       addMuxLike<Multiplexer>(1, width, std::move(inputs), {y});
     }
 
@@ -936,17 +1242,13 @@ namespace {
       const auto lanes          = laneCount(selectionWidth, "$bmux", cell.where());
       if (lanes > std::numeric_limits<std::size_t>::max() / width)
         fail(cell.where(), "$bmux packed input width is too large");
-      const Bus a = cell.consumer("A", width * lanes);
       const Bus s = cell.consumer("S", selectionWidth);
       const Bus y = cell.driver("Y", width);
 
-      std::vector<Bus> inputs;
-      if (width == 1) {
-        inputs = {a, s};
-      } else {
-        inputs = split(a, width, lanes);
-        inputs.push_back(s);
-      }
+      // Read packed data one lane at a time for scalar and vector muxes alike. This
+      // also preserves a fully literal lane as one correctly-sized constant.
+      std::vector<Bus> inputs = cell.consumerLanes("A", width, lanes);
+      inputs.push_back(s);
       addMuxLike<Multiplexer>(selectionWidth, width, std::move(inputs), {y});
     }
 
@@ -1271,11 +1573,19 @@ namespace {
               {"$or", &Importer::importBinaryGate<OrGate>},
               {"$xor", &Importer::importBinaryGate<XorGate>},
               {"$not", &Importer::importNot},
+              {"$logic_and", &Importer::importLogicalBinary<AndGate>},
+              {"$logic_or", &Importer::importLogicalBinary<OrGate>},
+              {"$logic_not", &Importer::importLogicNot},
               {"$_NAND_", &Importer::importFineBinaryGate<NandGate>},
               {"$_NOR_", &Importer::importFineBinaryGate<NorGate>},
               {"$pos", &Importer::importPos},
               {"$add", &Importer::importAdd},
               {"$sub", &Importer::importSub},
+              {"$eq", &Importer::importEq},
+              {"$lt", &Importer::importLt},
+              {"$le", &Importer::importLe},
+              {"$gt", &Importer::importGt},
+              {"$ge", &Importer::importGe},
               {"$mux", &Importer::importMux},
               {"$bmux", &Importer::importBmux},
               {"$demux", &Importer::importDemux},
@@ -1287,6 +1597,9 @@ namespace {
           });
 
       Cell view(*this, cell, std::format("{}.cells.{}", moduleContext(), name));
+      if (view.cellType() == "$shl" || view.cellType() == "$shr"
+          || view.cellType() == "$sshr")
+        return importShift(view, view.cellType());
       for (const auto& [type, handler] : handlers) {
         if (view.cellType() == type)
           return (this->*handler)(view);

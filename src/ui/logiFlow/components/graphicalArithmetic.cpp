@@ -20,9 +20,13 @@
 #include <ui/common/icons.hpp>
 #include <ui/common/theme.hpp>
 
+#include <QFont>
 #include <QGraphicsSvgItem>
+#include <QTextOption>
 
+#include <stdexcept>
 #include <utility>
+#include <variant>
 
 namespace SILICON {
 namespace ui {
@@ -63,6 +67,35 @@ namespace {
     QString iconName;
   };
 
+  class ComparatorShape : public QGraphicsSvgItem {
+  public:
+    explicit ComparatorShape(QString mode, QGraphicsItem* parent = nullptr)
+      : QGraphicsSvgItem(":/other_components/COMPARATOR.svg", parent), mode(std::move(mode))
+    {
+    }
+
+    void setMode(QString mode)
+    {
+      this->mode = std::move(mode);
+      update();
+    }
+
+    void paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
+               QWidget* widget) override
+    {
+      QGraphicsSvgItem::paint(painter, option, widget);
+
+      painter->save();
+      painter->setPen(QPen(ThemeEngine::getColor("SILICON_INK")));
+      painter->setFont(QFont("Quicksand", 12, QFont::Bold));
+      painter->drawText(QRect(QPoint(40, 30), QPoint(60, 40)), mode, QTextOption(Qt::AlignCenter));
+      painter->restore();
+    }
+
+  private:
+    QString mode;
+  };
+
   std::shared_ptr<Extender> makeExtender()
   {
     return std::make_shared<Extender>(Bus(4), Bus(8));
@@ -85,12 +118,24 @@ std::shared_ptr<FullAdder> makeFullAdder()
                                      Wire_ptr{}, Wire_ptr{}, Wire_ptr{});
 }
 
+std::shared_ptr<Comparator> makeComparator()
+{
+  return std::make_shared<Comparator>(std::array<Bus, 2>{Bus(4), Bus(4)}, Wire_ptr{});
+}
+
 std::shared_ptr<AdderNBits> makeAdderNBits()
 {
   constexpr unsigned short defaultSize = 4;
   return std::make_shared<AdderNBits>(
       std::array<Bus, 2>{Bus(defaultSize), Bus(defaultSize)}, Bus(defaultSize),
       Wire_ptr{});
+}
+
+std::shared_ptr<Shifter> makeShifter()
+{
+  constexpr unsigned short defaultSize = 4;
+  return std::make_shared<Shifter>(Bus(defaultSize), Bus(defaultSize),
+                                   Bus(defaultSize));
 }
 
 }  // namespace
@@ -138,6 +183,85 @@ GraphicalAdderNBits::GraphicalAdderNBits(QGraphicsItem* parent)
   printPortNames = true;
   setPorts({PortPair{"a", QPoint(20, -20)}, PortPair{"b", QPoint(80, -20)}},
            {PortPair{"sum", QPoint(50, 120)}, PortPair{"of", QPoint(110, 40)}});
+}
+
+GraphicalShifter::GraphicalShifter(QGraphicsItem* parent)
+  : GraphicalLogicComponent(makeShifter(),
+                            new QGraphicsSvgItem(":/other_components/SHIFTR.svg"),
+                            parent, true)
+{
+  setupCallbacks();
+  setPorts({PortPair{"value", QPoint(-20, 20)}, PortPair{"amount", QPoint(40, -20)}},
+           {PortPair{"result", QPoint(90, 20)}});
+}
+
+void GraphicalShifter::setupCallbacks()
+{
+  if (!associatedComponent)
+    return;
+
+  associatedComponent->setPropertyCallback("mode", [this](const PropertyValue& value) {
+    return applyMode(std::get<std::string>(value));
+  });
+}
+
+std::string GraphicalShifter::applyMode(std::string mode)
+{
+  if (mode != Shifter::LeftMode && mode != Shifter::RightMode)
+    throw std::invalid_argument("Shifter mode must be 'left' or 'right'");
+
+  setItemShape(new QGraphicsSvgItem(mode == Shifter::LeftMode
+                                        ? ":/other_components/SHIFTL.svg"
+                                        : ":/other_components/SHIFTR.svg"));
+  return mode;
+}
+
+void GraphicalShifter::setComponent(const Component_ptr& component)
+{
+  GraphicalLogicComponent::setComponent(component);
+  if (!component)
+    return;
+
+  setupCallbacks();
+  applyMode(component->getPropertyValue<std::string>("mode")
+                .value_or(std::string(Shifter::RightMode)));
+}
+
+GraphicalComparator::GraphicalComparator(QGraphicsItem* parent)
+  : GraphicalLogicComponent(makeComparator(), new ComparatorShape("==", parent), parent,
+                            true)
+{
+  printPortNames = true;
+  setupCallbacks();
+  setPorts({PortPair{"a", QPoint(20, -20)}, PortPair{"b", QPoint(80, -20)}},
+           {PortPair{"", QPoint(50, 70)}});
+}
+
+void GraphicalComparator::setupCallbacks()
+{
+  if (!associatedComponent)
+    return;
+
+  associatedComponent->setPropertyCallback("mode", [this](const PropertyValue& value) {
+    return applyMode(std::get<std::string>(value));
+  });
+}
+
+std::string GraphicalComparator::applyMode(std::string mode)
+{
+  if (auto* shape = dynamic_cast<ComparatorShape*>(getItemShape()))
+    shape->setMode(QString::fromStdString(mode));
+  return mode;
+}
+
+void GraphicalComparator::setComponent(const Component_ptr& component)
+{
+  GraphicalLogicComponent::setComponent(component);
+  if (!component)
+    return;
+
+  setupCallbacks();
+  applyMode(component->getPropertyValue<std::string>("mode").value_or("=="));
 }
 
 }  // namespace ui

@@ -339,9 +339,14 @@ std::string SerializationContext::parameter(const std::uint64_t value,
   return formatValue(busValueFromInteger(value, width), BusValueFormat::Raw);
 }
 
+std::string SerializationContext::componentIdentifier() const
+{
+  return std::format("{}_{}", identifierPart(impl.componentType), impl.vertex);
+}
+
 void SerializationContext::addCell(const std::string_view suffix,
                                    const std::string_view type, Json parameters,
-                                   Json portDirections, Json connections)
+                                   Json portDirections, Json connections, Json attributes)
 {
   const bool isConstant =
       type == "$pos" && connections.contains("A")
@@ -390,7 +395,7 @@ void SerializationContext::addCell(const std::string_view suffix,
   (*impl.module)["cells"][name] = Json{{"hide_name", isConstant ? 1 : 0},
                                        {"type", type},
                                        {"parameters", std::move(parameters)},
-                                       {"attributes", Json::object()},
+                                       {"attributes", std::move(attributes)},
                                        {"port_directions", std::move(portDirections)},
                                        {"connections", std::move(connections)}};
 }
@@ -436,11 +441,10 @@ void SerializationContext::addSubcircuitInstance(
           std::move(connections));
 }
 
-std::string serialize(const Circuit& circuit)
+std::string serialize(const Circuit& circuit, const std::string_view moduleName)
 {
-  DesignBuilder     builder;
-  const std::string moduleName = circuit.getName().empty() ? "main" : circuit.getName();
-  builder.serializeModule(circuit, moduleName);
+  DesignBuilder builder;
+  builder.serializeModule(circuit, std::string(moduleName));
   Json design = Json{{"creator", std::format("Silicon {}", SILICON_VERSION)},
                      {"modules", std::move(builder.modules)}};
   return design.dump(2);

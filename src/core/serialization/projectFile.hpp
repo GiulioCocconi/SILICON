@@ -51,15 +51,15 @@ inline constexpr int FORMAT_VERSION = 1;
  * @code
  * mimetype            application/vnd.silicon.project+zip, stored uncompressed
  * metadata.json       archive/schema metadata
- * project.json        project-level information and main circuit reference
- * circuits/main.json  serialized LogiFlow circuit JSON
+ * project.json        project-level information
+ * circuits/untitled.json  serialized LogiFlow circuit JSON
  * @endcode
  *
- * `project.json.mainCircuit` must point to one of the document entries whose
- * type is @ref DocumentType::Circuit.
+ * Every project contains at least one document whose type is
+ * @ref DocumentType::Circuit. No circuit has project-level priority.
  */
-inline const std::string DEFAULT_MAIN_CIRCUIT_PATH =
-    documentPathForSlug(DocumentType::Circuit, "main");
+inline const std::string DEFAULT_CIRCUIT_PATH =
+    documentPathForSlug(DocumentType::Circuit, "untitled");
 
 /**
  * @brief Metadata stored in `metadata.json`.
@@ -81,8 +81,6 @@ struct ProjectMetadata {
 struct ProjectInfo {
   /// Human-readable project name.
   std::string name;
-  /// ZIP entry containing the main circuit JSON.
-  std::string mainCircuit{DEFAULT_MAIN_CIRCUIT_PATH};
   /// Optional human-readable project description.
   std::string description;
 };
@@ -116,8 +114,8 @@ struct ProjectFile {
  *
  * The writer emits every document listed by @p projectFile.
  *
- * @throws std::runtime_error if the project references an invalid/missing circuit
- * path or the archive cannot be created/finalized.
+ * @throws std::runtime_error if the project has no circuit document or the archive
+ * cannot be created/finalized.
  */
 void writeProjectFile(const std::filesystem::path& path, const ProjectFile& projectFile);
 

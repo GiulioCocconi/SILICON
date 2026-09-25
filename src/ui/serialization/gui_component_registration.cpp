@@ -21,6 +21,7 @@
 #include <core/flipflops.hpp>
 #include <core/gates.hpp>
 #include <core/io.hpp>
+#include <core/memory.hpp>
 #include <core/register.hpp>
 #include <extraComponents/arithmetic.hpp>
 #include <extraComponents/multiplexer.hpp>
@@ -29,6 +30,7 @@
 #include <ui/logiFlow/components/graphicalFlipFlops.hpp>
 #include <ui/logiFlow/components/graphicalGates.hpp>
 #include <ui/logiFlow/components/graphicalIO.hpp>
+#include <ui/logiFlow/components/graphicalMemory.hpp>
 #include <ui/logiFlow/components/graphicalMultiplexer.hpp>
 #include <ui/logiFlow/components/graphicalRegister.hpp>
 #include <ui/logiFlow/components/graphicalUtils.hpp>
@@ -102,6 +104,10 @@ void registerAllGUIComponents(GUIComponentFactory& factory)
       [](QGraphicsItem* p) { return std::make_unique<GraphicalFullAdder>(p); });
   reg(std::string(AdderNBits::Type),
       [](QGraphicsItem* p) { return std::make_unique<GraphicalAdderNBits>(p); });
+  reg(std::string(Shifter::Type),
+      [](QGraphicsItem* p) { return std::make_unique<GraphicalShifter>(p); });
+  reg(std::string(Comparator::Type),
+      [](QGraphicsItem* p) { return std::make_unique<GraphicalComparator>(p); });
   reg(std::string(Multiplexer::Type),
       [](QGraphicsItem* p) { return std::make_unique<GraphicalMultiplexer>(p); });
   reg(std::string(Demultiplexer::Type),
@@ -110,6 +116,8 @@ void registerAllGUIComponents(GUIComponentFactory& factory)
       [](QGraphicsItem* p) { return std::make_unique<GraphicalDecoder>(p); });
   reg(std::string(Register::Type),
       [](QGraphicsItem* p) { return std::make_unique<GraphicalRegister>(p); });
+  reg(std::string(ROM::Type),
+      [](QGraphicsItem* p) { return std::make_unique<GraphicalROM>(p); });
   reg(std::string(SubcircuitComponent::Type),
       [](QGraphicsItem* p) { return std::make_unique<GraphicalSubcircuitComponent>(p); });
 }

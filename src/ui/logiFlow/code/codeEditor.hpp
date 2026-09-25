@@ -18,10 +18,13 @@
 #include <core/projectDocument.hpp>
 
 class QCompleter;
+class QContextMenuEvent;
 class QEvent;
+class QFont;
 class QKeyEvent;
 class QPaintEvent;
 class QResizeEvent;
+class QWheelEvent;
 class QStringListModel;
 class QWidget;
 
@@ -39,29 +42,39 @@ public:
   void clearFileType();
 
   [[nodiscard]] const std::optional<SILICON::project::DocumentType>& fileType() const;
-  [[nodiscard]] QStringList completionCandidates() const;
-  [[nodiscard]] QString     completionPrefix() const;
-  [[nodiscard]] bool        isCompletionPopupVisible() const;
+  [[nodiscard]] QString completionPrefix() const;
 
 protected:
+#ifndef QT_NO_CONTEXTMENU
+  void contextMenuEvent(QContextMenuEvent* event) override;
+#endif
   void resizeEvent(QResizeEvent* event) override;
   void changeEvent(QEvent* event) override;
   void keyPressEvent(QKeyEvent* event) override;
+  void wheelEvent(QWheelEvent* event) override;
 
 private:
   friend class CodeLineNumberArea;
 
-  [[nodiscard]] int  lineNumberAreaWidth() const;
-  void               paintLineNumberArea(QPaintEvent* event);
-  void               updateLineNumberAreaWidth();
-  void               refreshTheme();
-  void               rebuildCompletionCandidates();
-  void               rebuildIndentationTriggers();
-  void               showCompletion(bool explicitRequest);
-  void               insertCompletion(const QString& completion);
-  void               indentCurrentLine();
-  [[nodiscard]] bool currentLineMatchesIndentationTrigger() const;
-  [[nodiscard]] bool isWordDelimiter(QChar character) const;
+  [[nodiscard]] int   lineNumberAreaWidth() const;
+  void                paintLineNumberArea(QPaintEvent* event);
+  [[nodiscard]] QFont lineNumberFont() const;
+  void                updateLineNumberAreaWidth();
+  void                updateLineNumberAreaGeometry();
+  void                refreshTheme();
+  void                rebuildCompletionCandidates();
+  void                rebuildIndentationTriggers();
+  [[nodiscard]] int   currentIndentWidth() const;
+  void                updateIndentationSettings();
+  void                showCompletion(bool explicitRequest);
+  void                insertCompletion(const QString& completion);
+  [[nodiscard]] bool  insertAutoPair(QChar typed);
+  [[nodiscard]] bool  removeEmptyPair();
+  [[nodiscard]] bool  expandPairedDelimiters();
+  void                indentCurrentLine();
+  void                dedentSelection();
+  [[nodiscard]] bool  currentLineMatchesIndentationTrigger() const;
+  [[nodiscard]] bool  isWordDelimiter(QChar character) const;
 
   CodeLineNumberArea*                           lineNumberArea;
   CodeSyntaxHighlighter*                        syntaxHighlighter;
@@ -69,6 +82,7 @@ private:
   QStringListModel*                             completionModel;
   std::vector<QRegularExpression>               indentationTriggers;
   std::optional<SILICON::project::DocumentType> fileTypeValue;
+  qreal                                         zoomFontPointSize = 0.0;
 };
 
 }  // namespace SILICON::ui

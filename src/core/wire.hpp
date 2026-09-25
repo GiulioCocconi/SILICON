@@ -116,12 +116,20 @@ public:
 
 using Wire_ptr = std::shared_ptr<Wire>;
 
+enum class Signedness : bool { UNSIGNED = false, SIGNED = true };
+
 using BusValue = std::vector<State>;
 
-BusValue operator+(const BusValue& a, const BusValue& b);
-BusValue twosComplement(const BusValue& n);
+BusValue               operator+(const BusValue& a, const BusValue& b);
+[[nodiscard]] BusValue twosComplement(const BusValue& n);
 
-class Bus {
+[[nodiscard]] std::partial_ordering compare(const BusValue& lhs, const BusValue& rhs,
+                                            Signedness signedness = Signedness::UNSIGNED);
+
+[[nodiscard]] BusValue shift(const BusValue& v, ptrdiff_t amount,
+                             Signedness signedness = Signedness::UNSIGNED);
+
+    class Bus {
 private:
   std::vector<Wire_ptr> busData;
 
@@ -153,9 +161,7 @@ public:
   [[nodiscard]] bool     sharesWireWith(const Bus& other) const;
 
   const Wire_ptr& operator[](const unsigned short index) const
-  {
-    return this->busData.at(index);
-  }
+  { return this->busData.at(index); }
 
   Wire_ptr& operator[](const unsigned short index) { return this->busData.at(index); }
 

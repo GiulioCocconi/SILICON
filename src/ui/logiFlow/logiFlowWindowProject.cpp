@@ -27,13 +27,8 @@ Copyright (c) 2026. Giulio Cocconi
 #include <utility>
 
 #include <QByteArray>
-#include <QCloseEvent>
-#include <QContextMenuEvent>
 #include <QDockWidget>
-#include <QEvent>
 #include <QFileInfo>
-#include <QMenu>
-#include <QResizeEvent>
 #include <QStackedWidget>
 #include <QTreeWidget>
 
@@ -41,14 +36,9 @@ Copyright (c) 2026. Giulio Cocconi
 
 #include <core/circuitDocument.hpp>
 #include <core/serialization/component_registry.hpp>
-#include <core/serialization/projectFile.hpp>
-#include <core/simulator.hpp>
-#include <logging/logger.hpp>
-#include <ui/common/aboutDialog.hpp>
 #include <ui/common/binaryEditor.hpp>
 #include <ui/common/diagramScene/diagramScene.hpp>
 #include <ui/common/diagramView.hpp>
-#include <ui/common/icons.hpp>
 #include <ui/common/inputDialogUtils.hpp>
 #include <ui/logiFlow/code/codeEditor.hpp>
 #include <ui/logiFlow/componentCatalogOverlay.hpp>
@@ -73,45 +63,65 @@ namespace ui {
 
   QString LogiFlowWindow::documentTypeName(const SILICON::project::DocumentType type)
   {
+    if (SILICON::project::categoryOf(type)
+        == SILICON::project::DocumentCategory::Architecture)
+      return tr("Architecture File");
     switch (type) {
       case SILICON::project::DocumentType::Circuit: return tr("Circuit");
       case SILICON::project::DocumentType::Verilog: return tr("Verilog File");
       case SILICON::project::DocumentType::RawBinary: return tr("Binary File");
+      default: break;
     }
     return {};
   }
 
-  std::string LogiFlowWindow::defaultMainCircuitPath()
+  std::string LogiFlowWindow::defaultCircuitPath()
   {
-    return std::string(SILICON::project::DEFAULT_MAIN_CIRCUIT_PATH);
+    return std::string(SILICON::project::DEFAULT_CIRCUIT_PATH);
+  }
+
+  CodeEditor* LogiFlowWindow::activeCodeEditor() const noexcept
+  {
+    const auto type = activeDocumentType();
+    return type && SILICON::project::categoryOf(*type)
+                       == SILICON::project::DocumentCategory::Architecture
+               ? architectureEditor(*type)
+               : codeEditor;
   }
 
   SILICON::project::Document LogiFlowWindow::defaultCircuitDocument()
   {
-    return {defaultMainCircuitPath(), ""};
+    return {defaultCircuitPath(), ""};
   }
 
   SILICON::project::ProjectInfo
   LogiFlowWindow::defaultProjectInfo(const QString& currentFileName)
   {
-    return {.name        = defaultProjectName(currentFileName).toStdString(),
-            .mainCircuit = defaultMainCircuitPath(),
-            .description = ""};
+    return {.name = defaultProjectName(currentFileName).toStdString(), .description = ""};
   }
 
-  std::string LogiFlowWindow::projectMainCircuitPath() const
+  std::optional<std::string>
+  LogiFlowWindow::firstCircuitPath(const std::string_view excludedPath) const
   {
-    if (currentProjectInfo && !currentProjectInfo->mainCircuit.empty())
-      return currentProjectInfo->mainCircuit;
-
-    return defaultMainCircuitPath();
+    const auto& documents = projectContext.documents().getDocuments();
+    const auto  circuit = std::ranges::find_if(documents, [excludedPath](const auto& d) {
+      return d.getType() == SILICON::project::DocumentType::Circuit
+             && d.getPath() != excludedPath;
+    });
+    if (circuit == documents.end())
+      return std::nullopt;
+    return circuit->getPath();
   }
 
   void LogiFlowWindow::ensureProjectDocuments()
   {
     const auto& store = projectContext.documents();
-    if (!store.contains(SILICON::project::DocumentType::Circuit))
-      projectContext.upsertDocument(defaultCircuitDocument());
+    if (!store.contains(SILICON::project::DocumentType::Circuit)) {
+      projectContext.upsertDocument(
+          {defaultCircuitPath(),
+           emptyGraphicalDocumentJson(SILICON::project::DocumentType::Circuit,
+                                      "Untitled")});
+    }
   }
 
   void LogiFlowWindow::initializeProjectTree()
@@ -146,16 +156,11 @@ namespace ui {
 
   std::string
   LogiFlowWindow::emptyGraphicalDocumentJson(const SILICON::project::DocumentType type,
-                                             const std::string& name) const
+                                             const std::string& /*name*/) const
   {
-    const auto circuitName = name.empty() ? documentTypeName(type).toStdString() : name;
-
     nlohmann::ordered_json scene;
-    scene["circuit"] =
-        nlohmann::ordered_json{{"version", SILICON_VERSION},
-                               {"name", circuitName},
-                               {"description", ""},
-                               {"components", nlohmann::ordered_json::array()}};
+    scene["circuit"] = nlohmann::ordered_json{
+        {"version", SILICON_VERSION}, {"components", nlohmann::ordered_json::array()}};
     scene["visual"]["components"] = nlohmann::ordered_json::array();
     scene["visual"]["wires"]      = nlohmann::ordered_json::array();
 
@@ -211,8 +216,12 @@ namespace ui {
 
   void LogiFlowWindow::saveActiveDocumentPayload()
   {
-    if (activeDocumentPath.empty())
-      activeDocumentPath = projectMainCircuitPath();
+    if (activeDocumentPath.empty()) {
+      const auto fallback = firstCircuitPath();
+      if (!fallback)
+        throw std::runtime_error("Project has no circuit document");
+      activeDocumentPath = *fallback;
+    }
 
     const auto& store          = projectContext.documents();
     const auto* activeDocument = store.find(activeDocumentPath);
@@ -220,6 +229,16 @@ namespace ui {
       throw std::runtime_error("Active project document is missing");
 
     const auto type = activeDocument->getType();
+    if (SILICON::project::categoryOf(type)
+        == SILICON::project::DocumentCategory::Architecture) {
+      auto* editor = architectureEditor(type);
+      if (!editor)
+        throw std::invalid_argument("Architecture component has no editor");
+      projectContext.upsertDocument(
+          {activeDocumentPath, editor->toPlainText().toStdString()});
+      editor->document()->setModified(false);
+      return;
+    }
     switch (type) {
       case SILICON::project::DocumentType::Verilog:
         projectContext.upsertDocument(
@@ -237,6 +256,7 @@ namespace ui {
       }
 
       case SILICON::project::DocumentType::Circuit: break;
+      default: throw std::logic_error("Unsupported project document type");
     }
 
     auto serializedScene = diagramScene->serialize();
@@ -264,8 +284,15 @@ namespace ui {
     const auto  type    = document.getType();
     const auto& payload = document.getContents();
 
+    if (SILICON::project::categoryOf(type)
+        == SILICON::project::DocumentCategory::Architecture) {
+      loadArchitectureDocument(document);
+      return;
+    }
+
     switch (type) {
-      case SILICON::project::DocumentType::Verilog: {
+      case SILICON::project::DocumentType::Verilog:
+      {
         codeEditor->setFileType(type);
         codeEditor->setPlainText(QString::fromStdString(payload));
         codeEditor->document()->setModified(false);
@@ -290,7 +317,28 @@ namespace ui {
         editorStack->setCurrentWidget(diagramView);
         break;
       }
+      default: throw std::logic_error("Unsupported project document type");
     }
+  }
+
+  void LogiFlowWindow::restoreProjectDocuments(
+      const std::vector<SILICON::project::Document>& documents,
+      const std::string&                             activePath)
+  {
+    const auto active = std::ranges::find(documents, activePath,
+                                          &SILICON::project::Document::getPath);
+    if (active == documents.end())
+      throw std::runtime_error("Project-state command has no active document");
+
+    projectContext.setDocuments(documents);
+    activeDocumentPath = activePath;
+    loadDocumentPayload(*projectContext.documents().find(activePath));
+    rebuildProjectTree();
+    selectProjectTreeDocument(activePath);
+    updateSubcircuitShapeAction();
+    updateEditActions();
+    updateHistoryActions();
+    updatePropertyDock();
   }
 
   void LogiFlowWindow::selectProjectTreeDocument(const std::string& path)
@@ -311,6 +359,8 @@ namespace ui {
       if (selectInTree)
         selectProjectTreeDocument(path);
       updateSubcircuitShapeAction();
+      updateEditActions();
+      updateHistoryActions();
       updatePropertyDock();
       return true;
     }
@@ -350,10 +400,8 @@ namespace ui {
     if (selectInTree)
       selectProjectTreeDocument(path);
 
-    const bool code =
-        SILICON::project::categoryOf(type) == SILICON::project::DocumentCategory::Code;
-    setActionsEnabled({cutAct, copyAct, pasteAct, deleteAct}, code);
-    rotateAct->setEnabled(false);
+    updateEditActions();
+    updateHistoryActions();
     updatePropertyDock();
     return true;
   }
@@ -365,8 +413,11 @@ namespace ui {
     if (!document)
       return;
 
-    if (activeDocumentPath == path && !switchToDocument(projectMainCircuitPath(), true))
-      return;
+    if (activeDocumentPath == path) {
+      const auto fallback = firstCircuitPath(path);
+      if (!fallback || !switchToDocument(*fallback, true))
+        return;
+    }
 
     projectContext.removeDocument(path);
     rebuildProjectTree();
@@ -417,100 +468,20 @@ namespace ui {
       setWindowTitle("SILICON LogiFlow");
   }
 
-#ifndef QT_NO_CONTEXTMENU
-  void LogiFlowWindow::contextMenuEvent(QContextMenuEvent* event)
+  void LogiFlowWindow::projectTreeSelectionChanged()
   {
-  #ifdef __EMSCRIPTEN__
-    auto* menu = new QMenu(this);
-    menu->setAttribute(Qt::WA_DeleteOnClose);
-    menu->addAction(cutAct);
-    menu->addAction(copyAct);
-    menu->addAction(pasteAct);
-    menu->addAction(rotateAct);
-    menu->addAction(deleteAct);
-    menu->popup(event->globalPos());
-  #else
-    QMenu menu(this);
-    menu.addAction(cutAct);
-    menu.addAction(copyAct);
-    menu.addAction(pasteAct);
-    menu.addAction(rotateAct);
-    menu.addAction(deleteAct);
-    menu.exec(event->globalPos());
-  #endif
-    event->accept();
-  }
-#endif  // QT_NO_CONTEXTMENU
+    const QSignalBlocker blocker(diagramScene);
+    diagramScene->clearSelection();
 
-  bool LogiFlowWindow::eventFilter(QObject* watched, QEvent* event)
-  {
-    if (diagramView && watched == diagramView->viewport()
-        && event->type() == QEvent::Resize) {
-      updateComponentCatalogGeometry();
-    }
-
-    return QMainWindow::eventFilter(watched, event);
-  }
-
-  void LogiFlowWindow::resizeEvent(QResizeEvent* event)
-  {
-    QMainWindow::resizeEvent(event);
-    updateComponentCatalogGeometry();
-
-    const int currentWidth  = event->size().width();
-    const int currentHeight = event->size().height();
-
-    const int minWidth = currentWidth / 10;
-    const int maxWidth = currentWidth / 2;
-
-    const int minHeight = currentHeight / 3;
-
-    auto configureSizeConstraints = [minWidth, maxWidth, minHeight](QDockWidget* widget) {
-      widget->setMinimumWidth(minWidth);
-      widget->setMaximumWidth(maxWidth);
-      widget->setMinimumHeight(minHeight);
-    };
-
-    configureSizeConstraints(componentsDock);
-    configureSizeConstraints(propertyDock);
-
-    logDock->setMinimumWidth(160);
-    logDock->setMaximumWidth(QWIDGETSIZE_MAX);
-    logDock->setMinimumHeight(120);
-    logDock->setMaximumHeight(std::max(160, currentHeight / 3));
-  }
-
-  bool LogiFlowWindow::hasUnsavedChanges() const
-  {
-    return (undoStack && !undoStack->isClean()) || codeDocumentsDirty
-           || binaryDocumentsDirty || (codeEditor && codeEditor->document()->isModified())
-           || (binaryEditor && binaryEditor->isModified());
-  }
-
-  void LogiFlowWindow::closeEvent(QCloseEvent* event)
-  {
-    if (hasUnsavedChanges() && !closeAfterSaveConfirmation) {
-      event->ignore();
-      confirmSaveIfDirty([this] {
-        closeAfterSaveConfirmation = true;
-        close();
-      });
+    if (const auto selection =
+            projectTree ? projectTree->selectedDocument() : std::nullopt) {
+      switchToDocument(selection->path, false);
       return;
     }
 
-    closeAfterSaveConfirmation = false;
-    QMainWindow::closeEvent(event);
+    setActionsEnabled({rotateAct, cutAct, copyAct, deleteAct}, false);
+    updatePropertyDock();
   }
-
-  void LogiFlowWindow::updateComponentCatalogGeometry()
-  {
-    if (!componentCatalogOverlay || !diagramView)
-      return;
-
-    componentCatalogOverlay->setGeometry(diagramView->viewport()->rect());
-  }
-
-  /* ACTIONS IMPLEMENTATION */
 
 }  // namespace ui
 }  // namespace SILICON

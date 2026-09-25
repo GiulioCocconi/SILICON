@@ -24,12 +24,15 @@
 #include <core/flipflops.hpp>
 #include <core/gates.hpp>
 #include <core/io.hpp>
+#include <core/memory.hpp>
 #include <core/register.hpp>
 #include <core/subcircuit.hpp>
 #include <extraComponents/arithmetic.hpp>
 #include <extraComponents/multiplexer.hpp>
 #include <extraComponents/utils.hpp>
 
+#include <limits>
+#include <bit>
 #include <optional>
 #include <ranges>
 
@@ -86,6 +89,66 @@ void Component::serializeYosys(SerializationContext&) const
       "Component type '{}' does not support Yosys serialization", typeName()));
 }
 
+void ROM::serializeYosys(SerializationContext& context) const
+{
+  const auto snapshot = binaryContentsSnapshot();
+  const auto width = static_cast<std::size_t>(getPropertyValue<int>("dataWidth").value_or(8));
+  if (!snapshot || snapshot->empty() || width == 0)
+    throw std::runtime_error("Cannot export ROM without resolved binary contents");
+  const auto count = resolvedWordCount();
+  const auto derivedCount = (snapshot->size() * 8 + width - 1) / width;
+  if (!std::has_single_bit(count)
+      || (snapshot->size() != (count * width + 7) / 8 && derivedCount != count))
+    throw std::runtime_error("Cannot export ROM with invalid packed word count");
+  const auto addressWidth = std::max<std::size_t>(1, std::bit_width(count - 1));
+  if (inputBuses().size() != 3 || outputBuses().size() != 1
+      || inputBuses()[0].size() != addressWidth || outputBuses()[0].size() != width)
+    throw std::runtime_error("Cannot export malformed ROM buses");
+
+  std::string init(count * width, '0');
+  for (std::size_t bit = 0; bit < init.size(); ++bit) {
+    const auto byte = bit / 8 < snapshot->size()
+                          ? static_cast<unsigned char>((*snapshot)[bit / 8]) : 0;
+    init[init.size() - bit - 1] = (byte & (1u << (bit % 8))) ? '1' : '0';
+  }
+  const auto p = [](std::uint64_t value) { return SerializationContext::parameter(value); };
+  const auto readData = context.allocateBits(width);
+  Json address = count == 1 ? Json::array({"0"})
+                            : context.inputBits(*this,0, addressWidth);
+  Json attributes = Json::object();
+  const auto binaryDocument = getPropertyValue<std::string>("binaryContents");
+  if (binaryDocument && !binaryDocument->empty())
+    attributes[std::string(SILICON::yosys::attributes::BinaryDocument)] = *binaryDocument;
+  context.addCell(
+      "memory", "$mem_v2",
+      Json{{"ABITS", p(addressWidth)}, {"INIT", init},
+           {"MEMID", std::format("\\{}", context.componentIdentifier())},
+           {"OFFSET", p(0)}, {"RD_ARST_VALUE", std::string(width, 'x')},
+           {"RD_CE_OVER_SRST", "0"}, {"RD_CLK_ENABLE", "0"},
+           {"RD_CLK_POLARITY", "0"}, {"RD_COLLISION_X_MASK", "0"},
+           {"RD_INIT_VALUE", std::string(width, 'x')}, {"RD_PORTS", p(1)},
+           {"RD_SRST_VALUE", std::string(width, 'x')},
+           {"RD_TRANSPARENCY_MASK", "0"}, {"RD_WIDE_CONTINUATION", "0"},
+           {"SIZE", p(count)}, {"WIDTH", p(width)}, {"WR_CLK_ENABLE", "0"},
+           {"WR_CLK_POLARITY", "0"}, {"WR_PORTS", p(0)},
+           {"WR_PRIORITY_MASK", "0"}, {"WR_WIDE_CONTINUATION", "0"}},
+      Json{{"RD_ADDR", "input"}, {"RD_ARST", "input"}, {"RD_CLK", "input"},
+           {"RD_DATA", "output"}, {"RD_EN", "input"}, {"RD_SRST", "input"},
+           {"WR_ADDR", "input"}, {"WR_CLK", "input"}, {"WR_DATA", "input"},
+           {"WR_EN", "input"}},
+      Json{{"RD_ADDR", address}, {"RD_ARST", Json::array({"0"})},
+           {"RD_CLK", Json::array({"x"})}, {"RD_DATA", readData},
+           {"RD_EN", Json::array({"1"})}, {"RD_SRST", Json::array({"0"})},
+           {"WR_ADDR", Json::array()}, {"WR_CLK", Json::array()},
+           {"WR_DATA", Json::array()}, {"WR_EN", Json::array()}},
+      std::move(attributes));
+  context.addCell("hold", "$dlatch",
+                  Json{{"EN_POLARITY", p(1)}, {"WIDTH", p(width)}},
+                  Json{{"D", "input"}, {"EN", "input"}, {"Q", "output"}},
+                  Json{{"D", readData}, {"EN", context.inputBits(*this, 1, 1)},
+                       {"Q", context.bits(outputBuses()[0])}});
+}
+
 void ConstantComponent::serializeYosys(SerializationContext& context) const
 {
   if (outputBuses().empty())
@@ -122,6 +185,15 @@ void BoundaryIoComponent::serializeYosys(SerializationContext& context) const
 
 void AndGate::serializeYosys(SerializationContext& context) const
 {
+  const bool logical =
+      !getPropertyValue<bool>("bitwise").value_or(false) && outputBuses().size() == 1
+      && outputBuses()[0].size() == 1
+      && std::ranges::any_of(inputBuses(), [](const Bus& bus) { return bus.size() > 1; });
+  if (logical) {
+    emitLogicalGateFold(context, *this, "$logic_and");
+    return;
+  }
+
   // Yosys $and cells have exactly two vector inputs. Fold Silicon's arbitrary
   // number of equally sized inputs from left to right, writing the final value to Y.
   emitGateFold(context, *this, "$and", false);
@@ -129,6 +201,15 @@ void AndGate::serializeYosys(SerializationContext& context) const
 
 void OrGate::serializeYosys(SerializationContext& context) const
 {
+  const bool logical =
+      !getPropertyValue<bool>("bitwise").value_or(false) && outputBuses().size() == 1
+      && outputBuses()[0].size() == 1
+      && std::ranges::any_of(inputBuses(), [](const Bus& bus) { return bus.size() > 1; });
+  if (logical) {
+    emitLogicalGateFold(context, *this, "$logic_or");
+    return;
+  }
+
   // Build a chain of binary $or cells so multi-input and bitwise Silicon OR gates
   // retain their original input count and bus width.
   emitGateFold(context, *this, "$or", false);
@@ -136,9 +217,15 @@ void OrGate::serializeYosys(SerializationContext& context) const
 
 void NotGate::serializeYosys(SerializationContext& context) const
 {
-  // A Silicon NOT maps directly to an unsigned, width-preserving Yosys $not cell.
-  emitUnary(context, "not", "$not", context.bits(requireBus(*this, true, 0)),
-            context.bits(requireBus(*this, false, 0)));
+  const auto& input  = requireBus(*this, true, 0);
+  const auto& output = requireBus(*this, false, 0);
+  if (input.size() != output.size() && output.size() != 1) {
+    throw std::runtime_error(
+        "Cannot export 'NotGate': output must be scalar or match the input width");
+  }
+
+  emitUnary(context, "not", input.size() == output.size() ? "$not" : "$logic_not",
+            context.bits(input), context.bits(output));
 }
 
 void NandGate::serializeYosys(SerializationContext& context) const
@@ -290,33 +377,100 @@ void AdderNBits::serializeYosys(SerializationContext& context) const
            {"COUT", context.bits(carry)}});
 }
 
+void Shifter::serializeYosys(SerializationContext& context) const
+{
+  requireBusCounts(*this, 2, 1);
+  const auto width = getPropertyValue<int>("size");
+  const auto amountWidth = getPropertyValue<int>("amountSize");
+  const auto mode = getPropertyValue<std::string>("mode");
+  const auto isSigned = getPropertyValue<bool>("signed");
+  if (!width || *width < 1 || !amountWidth || *amountWidth < 1 || !mode
+      || (*mode != LeftMode && *mode != RightMode) || !isSigned)
+    throw std::runtime_error("Cannot export malformed 'Shifter': invalid properties");
+
+  const auto& value = requireBusWidth(*this, true, 0, *width);
+  const auto& amount = requireBusWidth(*this, true, 1, *amountWidth);
+  const auto& result = requireBusWidth(*this, false, 0, *width);
+  const auto type = *mode == LeftMode ? "$shl" : (*isSigned ? "$sshr" : "$shr");
+  context.addCell(
+      "shifter", type,
+      Json{{"A_SIGNED", SerializationContext::parameter(*isSigned ? 1 : 0, 1)},
+           {"B_SIGNED", SerializationContext::parameter(0, 1)},
+           {"A_WIDTH", SerializationContext::parameter(*width)},
+           {"B_WIDTH", SerializationContext::parameter(*amountWidth)},
+           {"Y_WIDTH", SerializationContext::parameter(*width)}},
+      directions({{"A", "input"}, {"B", "input"}, {"Y", "output"}}),
+      Json{{"A", context.bits(value)},
+           {"B", context.bits(amount)},
+           {"Y", context.bits(result)}});
+}
+
+void Comparator::serializeYosys(SerializationContext& context) const
+{
+  requireBusCounts(*this, 2, 1);
+
+  const auto width    = getPropertyValue<int>("size");
+  const auto mode     = getPropertyValue<std::string>("mode");
+  const auto isSigned = getPropertyValue<bool>("signed");
+  if (!width || *width < 1 || !mode || !isSigned)
+    throw std::runtime_error("Cannot export malformed 'Comparator': invalid properties");
+
+  static constexpr std::array modes{
+      std::pair<std::string_view, std::string_view>{"==", "$eq"},
+      std::pair<std::string_view, std::string_view>{"<", "$lt"},
+      std::pair<std::string_view, std::string_view>{"<=", "$le"},
+      std::pair<std::string_view, std::string_view>{">", "$gt"},
+      std::pair<std::string_view, std::string_view>{">=", "$ge"},
+  };
+  const auto cellType = std::ranges::find_if(
+      modes, [&mode](const auto& entry) { return entry.first == *mode; });
+  if (cellType == modes.end())
+    throw std::runtime_error("Cannot export malformed 'Comparator': invalid mode");
+
+  const auto  busWidth = static_cast<std::size_t>(*width);
+  const auto& a        = requireBusWidth(*this, true, 0, busWidth);
+  const auto& b        = requireBusWidth(*this, true, 1, busWidth);
+  const auto& y        = requireScalarBus(*this, false, 0);
+
+  context.addCell(
+      "compare", cellType->second,
+      Json{{"A_SIGNED", SerializationContext::parameter(*isSigned, 1)},
+           {"B_SIGNED", SerializationContext::parameter(*isSigned, 1)},
+           {"A_WIDTH", SerializationContext::parameter(*width)},
+           {"B_WIDTH", SerializationContext::parameter(*width)},
+           {"Y_WIDTH", SerializationContext::parameter(1)}},
+      directions({{"A", "input"}, {"B", "input"}, {"Y", "output"}}),
+      Json{{"A", context.bits(a)}, {"B", context.bits(b)}, {"Y", context.bits(y)}});
+}
+
 void Multiplexer::serializeYosys(SerializationContext& context) const
 {
   // $bmux expects all selectable lanes packed consecutively into A and uses S as
-  // their zero-based index. A one-bit Silicon mux already stores every lane in one
-  // packed bus; a wider mux exposes one bus per lane, which is packed here.
-  const int         busWidth       = getPropertyValue<int>("busSize").value_or(1);
-  const int         selectionWidth = getPropertyValue<int>("selectionSize").value_or(1);
-  const std::size_t laneCount      = std::size_t{1} << selectionWidth;
-  const std::size_t selectionIndex = busWidth == 1 ? 1 : laneCount;
-
-  std::vector<Json> lanes;
-  if (busWidth == 1) {
-    lanes.push_back(context.bits(requireBus(*this, true, 0)));
-  } else {
-    if (inputBuses().size() != laneCount + 1)
-      throw std::runtime_error("Cannot export malformed multi-bus multiplexer");
-    for (std::size_t lane = 0; lane < laneCount; ++lane)
-      lanes.push_back(context.bits(requireBus(*this, true, lane)));
+  // their zero-based index. Silicon exposes one bus per lane at every width.
+  const int busWidth       = getPropertyValue<int>("busSize").value_or(1);
+  const int selectionWidth = getPropertyValue<int>("selectionSize").value_or(1);
+  if (busWidth < 1 || selectionWidth < 1
+      || selectionWidth >= std::numeric_limits<std::size_t>::digits) {
+    throw std::runtime_error("Cannot export malformed multiplexer properties");
   }
+  const std::size_t laneCount      = std::size_t{1} << selectionWidth;
+  const std::size_t selectionIndex = laneCount;
+
+  requireBusCounts(*this, laneCount + 1, 1);
+  std::vector<Json> lanes;
+  lanes.reserve(laneCount);
+  for (std::size_t lane = 0; lane < laneCount; ++lane)
+    lanes.push_back(context.bits(requireBusWidth(*this, true, lane, busWidth)));
+  const auto& selection = requireBusWidth(*this, true, selectionIndex, selectionWidth);
+  const auto& output    = requireBusWidth(*this, false, 0, busWidth);
 
   context.addCell("mux", "$bmux",
                   Json{{"WIDTH", SerializationContext::parameter(busWidth)},
                        {"S_WIDTH", SerializationContext::parameter(selectionWidth)}},
                   directions({{"A", "input"}, {"S", "input"}, {"Y", "output"}}),
                   Json{{"A", SerializationContext::concatenate(lanes)},
-                       {"S", context.bits(requireBus(*this, true, selectionIndex))},
-                       {"Y", context.bits(requireBus(*this, false, 0))}});
+                       {"S", context.bits(selection)},
+                       {"Y", context.bits(output)}});
 }
 
 void Demultiplexer::serializeYosys(SerializationContext& context) const
@@ -513,7 +667,9 @@ void Register::serializeYosys(SerializationContext& context) const
   const auto& data                = requireBusWidth(*this, true, 0, expectedDataWidth);
   const auto& clock               = requireScalarBus(*this, true, 1);
   const auto& enable              = requireScalarBus(*this, true, 2);
-  const auto& clear               = requireScalarBus(*this, true, 3);
+  const auto& clear               = requireBus(*this, true, 3);
+  if (clear.size() != 1)
+    throw std::runtime_error("Cannot export malformed 'Register': clear must be one bit");
   const auto& output              = requireBusWidth(*this, false, 0, expectedOutputWidth);
   Json        parameters{{"WIDTH", SerializationContext::parameter(width)},
                          {"CLK_POLARITY", SerializationContext::parameter(1, 1)},
@@ -522,7 +678,7 @@ void Register::serializeYosys(SerializationContext& context) const
   Json        connections{{"DATA", context.bits(data)},
                           {"CLK", context.bits(clock)},
                           {"EN", context.bits(enable)},
-                          {"CLR", context.bits(clear)},
+                          {"CLR", context.inputBits(*this, 3, 1)},
                           {"OUT", context.bits(output)}};
 
   if (parallelIn && !parallelOut) {

@@ -47,585 +47,605 @@
 #include <ui/common/graphicalWire.hpp>
 #include <ui/logiFlow/components/graphicalIO.hpp>
 #include <ui/logiFlow/components/graphicalLogicComponent.hpp>
+#include <ui/logiFlow/components/graphicalMemory.hpp>
 #include <ui/logiFlow/components/graphicalUtils.hpp>
 #include <ui/logiFlow/components/subcircuit/graphicalSubcircuit.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
 
 namespace SILICON {
 namespace ui {
-using namespace SILICON::core;
+  using namespace SILICON::core;
 
-namespace {
+  namespace {
 
-const SILICON::logging::Logger uiLogger("ui scene");
+    const SILICON::logging::Logger uiLogger("ui scene");
 
-struct PendingWireSegment {
-  uint64_t             wireId;
-  uint64_t             uiId;
-  std::vector<QPointF> points;
-};
+    struct PendingWireSegment {
+      uint64_t             wireId;
+      uint64_t             uiId;
+      std::vector<QPointF> points;
+    };
 
-std::shared_ptr<Circuit> deserializeCircuitPayload(const nlohmann::json&    payload,
-                                                   const ComponentRegistry& coreRegistry,
-                                                   const CircuitResolver*   resolver)
-{
-  if (!payload.contains("circuit"))
-    return nullptr;
+    std::shared_ptr<Circuit>
+    deserializeCircuitPayload(const nlohmann::json&    payload,
+                              const ComponentRegistry& coreRegistry,
+                              const CircuitResolver*   resolver)
+    {
+      if (!payload.contains("circuit"))
+        return nullptr;
 
-  return std::make_shared<Circuit>(
-      Circuit::deserialize(payload["circuit"].dump(), coreRegistry, resolver));
-}
+      return std::make_shared<Circuit>(
+          Circuit::deserialize(payload["circuit"].dump(), coreRegistry, resolver));
+    }
 
-void attachCoreComponent(GraphicalComponent* component, const nlohmann::json& compJson,
-                         const std::shared_ptr<Circuit>& coreCircuit)
-{
-  if (!component || !coreCircuit)
-    return;
+    void attachProjectContext(GraphicalComponent* component, DiagramScene& scene)
+    {
+      if (auto* subcircuit = dynamic_cast<GraphicalSubcircuitComponent*>(component)) {
+        subcircuit->setDocumentStore(scene.documentStore());
+        subcircuit->setCircuitResolver(scene.circuitResolver());
+      }
+      if (auto* rom = dynamic_cast<GraphicalROM*>(component))
+        rom->setDocumentStore(scene.documentStore());
+    }
 
-  auto* logicComp =
-      category_cast<GraphicalLogicComponent>(component, ItemCategory::LogicComponent);
-  if (!logicComp || !compJson.contains("vertexId"))
-    return;
+    void attachCoreComponent(GraphicalComponent*             component,
+                             const nlohmann::json&           compJson,
+                             const std::shared_ptr<Circuit>& coreCircuit)
+    {
+      if (!component || !coreCircuit)
+        return;
 
-  const int vertexId = compJson["vertexId"].get<int>();
-  auto      coreComp = coreCircuit->getComponentByVertexId(vertexId);
-  if (!coreComp)
-    return;
+      auto* logicComp =
+          category_cast<GraphicalLogicComponent>(component, ItemCategory::LogicComponent);
+      if (!logicComp || !compJson.contains("vertexId"))
+        return;
 
-  logicComp->setComponent(coreComp);
+      const int vertexId = compJson["vertexId"].get<int>();
+      auto      coreComp = coreCircuit->getComponentByVertexId(vertexId);
+      if (!coreComp)
+        return;
 
-  auto* io = category_cast<GraphicalIO>(logicComp, ItemCategory::IO);
+      logicComp->setComponent(coreComp);
 
-  // Output backends remain UI-independent; their graphical state is refreshed by the
-  // simulation controller on the GUI thread after each worker job.
-  if (auto* gIn = dynamic_cast<GraphicalInput*>(io)) {
-    QPointer<GraphicalInput> safeGIn(gIn);
-    coreComp->setPropertyCallback("name", [safeGIn](const PropertyValue& value) {
-      if (!safeGIn)
-        return value;
-      safeGIn->triggerGeometryChange();
-      return value;
-    });
-  }
-}
+      auto* io = category_cast<GraphicalIO>(logicComp, ItemCategory::IO);
 
-nlohmann::json componentJsonWithOffset(const nlohmann::json& compJson,
-                                       const QPointF&        offset)
-{
-  auto result = compJson;
-  if (result.contains("position")) {
-    result["position"]["x"] = result["position"].value("x", 0.0) + offset.x();
-    result["position"]["y"] = result["position"].value("y", 0.0) + offset.y();
-  }
-  return result;
-}
+      // Output backends remain UI-independent; their graphical state is refreshed by the
+      // simulation controller on the GUI thread after each worker job.
+      if (auto* gIn = dynamic_cast<GraphicalInput*>(io)) {
+        QPointer<GraphicalInput> safeGIn(gIn);
+        coreComp->setPropertyCallback("name", [safeGIn](const PropertyValue& value) {
+          if (!safeGIn)
+            return value;
+          safeGIn->triggerGeometryChange();
+          return value;
+        });
+      }
+    }
 
-QPointF payloadOrigin(const nlohmann::json& payload)
-{
-  if (!payload.contains("origin") || !payload["origin"].is_object())
-    return {};
+    nlohmann::json componentJsonWithOffset(const nlohmann::json& compJson,
+                                           const QPointF&        offset)
+    {
+      auto result = compJson;
+      if (result.contains("position")) {
+        result["position"]["x"] = result["position"].value("x", 0.0) + offset.x();
+        result["position"]["y"] = result["position"].value("y", 0.0) + offset.y();
+      }
+      return result;
+    }
 
-  return {payload["origin"].value("x", 0.0), payload["origin"].value("y", 0.0)};
-}
+    QPointF payloadOrigin(const nlohmann::json& payload)
+    {
+      if (!payload.contains("origin") || !payload["origin"].is_object())
+        return {};
 
-uint64_t requiredUiId(const nlohmann::json& itemJson)
-{
-  if (!itemJson.contains("uiId"))
-    throw std::runtime_error("Selection payload item missing uiId");
+      return {payload["origin"].value("x", 0.0), payload["origin"].value("y", 0.0)};
+    }
 
-  return itemJson["uiId"].get<uint64_t>();
-}
-
-void remapPayloadUiIds(nlohmann::json& payload)
-{
-  if (!payload.contains("visual") || !payload["visual"].is_object())
-    return;
-
-  std::unordered_map<uint64_t, uint64_t> uiIdRemap;
-  std::unordered_map<uint64_t, uint64_t> wireIdRemap;
-
-  // Clipboard paste must get fresh runtime IDs while preserving references shared by
-  // multiple serialized items within the same payload.
-  auto remapItemIds = [&uiIdRemap](nlohmann::json& itemsJson) {
-    if (!itemsJson.is_array())
-      return;
-
-    for (auto& itemJson : itemsJson) {
+    uint64_t requiredUiId(const nlohmann::json& itemJson)
+    {
       if (!itemJson.contains("uiId"))
+        throw std::runtime_error("Selection payload item missing uiId");
+
+      return itemJson["uiId"].get<uint64_t>();
+    }
+
+    void remapPayloadUiIds(nlohmann::json& payload)
+    {
+      if (!payload.contains("visual") || !payload["visual"].is_object())
+        return;
+
+      std::unordered_map<uint64_t, uint64_t> uiIdRemap;
+      std::unordered_map<uint64_t, uint64_t> wireIdRemap;
+
+      // Clipboard paste must get fresh runtime IDs while preserving references shared by
+      // multiple serialized items within the same payload.
+      auto remapItemIds = [&uiIdRemap](nlohmann::json& itemsJson) {
+        if (!itemsJson.is_array())
+          return;
+
+        for (auto& itemJson : itemsJson) {
+          if (!itemJson.contains("uiId"))
+            continue;
+
+          const auto oldUiId = itemJson["uiId"].get<uint64_t>();
+          auto&      newUiId = uiIdRemap[oldUiId];
+
+          if (newUiId == 0)
+            newUiId = GraphicalItem::generateUiId();
+
+          itemJson["uiId"] = newUiId;
+        }
+      };
+
+      remapItemIds(payload["visual"]["components"]);
+      remapItemIds(payload["visual"]["wires"]);
+
+      auto& wiresJson = payload["visual"]["wires"];
+      if (!wiresJson.is_array())
+        return;
+
+      for (auto& wireJson : wiresJson) {
+        if (!wireJson.contains("wireId"))
+          continue;
+
+        const auto oldWireId = wireJson["wireId"].get<uint64_t>();
+        auto&      newWireId = wireIdRemap[oldWireId];
+
+        if (newWireId == 0)
+          newWireId = GraphicalItem::generateUiId();
+
+        // Distinct pasted wire groups must not reuse the source bus identity, otherwise
+        // separate copies can be re-merged electrically by later topology reconstruction.
+        wireJson["wireId"] = newWireId;
+      }
+    }
+
+    std::vector<std::unique_ptr<GraphicalComponent>>
+    deserializeVisualComponents(const nlohmann::json&           visual,
+                                GUIComponentFactory&            guiFactory,
+                                const std::shared_ptr<Circuit>& coreCircuit,
+                                const QPointF& offset, DiagramScene& scene)
+    {
+      // Builds graphical components without adding them to the scene, so callers can
+      // decide whether insertion should select the new items.
+      std::vector<std::unique_ptr<GraphicalComponent>> components;
+
+      const auto visualComponents = visual.find("components");
+      if (visualComponents == visual.end() || !visualComponents->is_array())
+        return components;
+
+      components.reserve(visualComponents->size());
+      for (const auto& sourceCompJson : *visualComponents) {
+        auto compJson  = componentJsonWithOffset(sourceCompJson, offset);
+        auto component = GraphicalComponent::deserialize(compJson, guiFactory);
+        if (!component)
+          continue;
+
+        attachCoreComponent(component.get(), compJson, coreCircuit);
+        attachProjectContext(component.get(), scene);
+        components.push_back(std::move(component));
+      }
+
+      return components;
+    }
+
+    std::vector<PendingWireSegment> deserializeVisualWires(const nlohmann::json& visual,
+                                                           const QPointF&        offset,
+                                                           const bool requireWireId)
+    {
+      // Parses visual wire geometry while preserving shared wire IDs within the payload.
+      std::vector<PendingWireSegment> wires;
+
+      const auto visualWires = visual.find("wires");
+      if (visualWires == visual.end() || !visualWires->is_array())
+        return wires;
+
+      wires.reserve(visualWires->size());
+      uint64_t fallbackWireId = 1;
+
+      for (const auto& wireJson : *visualWires) {
+        if (!wireJson.contains("wireId") && requireWireId)
+          throw std::runtime_error("Wire segment missing wireId");
+
+        if (!wireJson.contains("points") || !wireJson["points"].is_array())
+          continue;
+
+        std::vector<QPointF> segmentPoints;
+        segmentPoints.reserve(wireJson["points"].size());
+
+        for (const auto& pointJson : wireJson["points"]) {
+          segmentPoints.emplace_back(pointJson.value("x", 0.0) + offset.x(),
+                                     pointJson.value("y", 0.0) + offset.y());
+        }
+
+        if (segmentPoints.size() < 2)
+          continue;
+
+        const uint64_t wireId = wireJson.contains("wireId")
+                                    ? wireJson["wireId"].get<uint64_t>()
+                                    : fallbackWireId++;
+        wires.push_back({wireId, wireJson.value("uiId", GraphicalItem::generateUiId()),
+                         std::move(segmentPoints)});
+      }
+
+      return wires;
+    }
+
+    void addVisualComponents(QGraphicsScene&                                  scene,
+                             std::vector<std::unique_ptr<GraphicalComponent>> components,
+                             const bool selectInserted)
+    {
+      // Transfers ownership of graphical components to the target scene.
+      for (auto& component : components) {
+        auto* item = component.release();
+        scene.addItem(item);
+        item->setSelected(selectInserted);
+      }
+    }
+
+    void addVisualWires(QGraphicsScene& scene, WireManager& wireManager,
+                        std::vector<PendingWireSegment> wires, const bool selectInserted)
+    {
+      // Recreates wire objects lazily so segments with the same serialized ID share a
+      // bus.
+      std::map<uint64_t, std::shared_ptr<GraphicalWire>> wireIdToWire;
+
+      for (auto& pending : wires) {
+        auto* segment = new GraphicalWireSegment(pending.points.front());
+        segment->setUiId(pending.uiId);
+        segment->setPoints(std::move(pending.points));
+
+        // Rebuild each serialized wire group exactly once so all of its segments share
+        // the same GraphicalWire and therefore the same logical bus.
+        auto& wire = wireIdToWire[pending.wireId];
+        if (!wire)
+          wire = wireManager.createWire(1);
+
+        scene.addItem(segment);
+        segment->setGraphicalWire(wire.get(), false);
+        wireManager.addSegment(segment, false);
+        segment->setSelected(selectInserted);
+      }
+    }
+
+    std::vector<std::unique_ptr<GraphicalComponent>>
+    createAutoplacedVisualComponents(const std::shared_ptr<Circuit>& coreCircuit,
+                                     GUIComponentFactory&            guiFactory)
+    {
+      std::vector<std::unique_ptr<GraphicalComponent>> components;
+      if (!coreCircuit)
+        return components;
+
+      const auto& graph = coreCircuit->getGraph();
+      components.reserve(boost::num_vertices(graph));
+
+      for (const auto vertex : boost::make_iterator_range(boost::vertices(graph))) {
+        const auto& coreComponent = graph[vertex].component;
+        if (!coreComponent)
+          continue;
+
+        auto  component      = guiFactory.createForCoreType(coreComponent->typeName());
+        auto* logicComponent = category_cast<GraphicalLogicComponent>(
+            component.get(), ItemCategory::LogicComponent);
+        if (!logicComponent) {
+          throw std::runtime_error(
+              std::format("Autoplacement visual creation: '{}' is not a logic component",
+                          component->getTypeName()));
+        }
+
+        nlohmann::json componentJson;
+        componentJson["vertexId"] = static_cast<int>(vertex);
+        attachCoreComponent(component.get(), componentJson, coreCircuit);
+        components.push_back(std::move(component));
+      }
+
+      return components;
+    }
+
+  }  // namespace
+
+  DiagramSceneSerializer::DiagramSceneSerializer(DiagramScene& scene) : scene(scene) {}
+
+  std::string DiagramSceneSerializer::serialize() const
+  {
+    uiLogger.info("Serializing the scene...");
+    nlohmann::ordered_json   j;
+    std::shared_ptr<Circuit> activeCircuit = scene.getCircuit();
+
+    if (!activeCircuit) {
+      const bool successfullWireCalculation = scene.calculateWiresForComponents();
+
+      if (!successfullWireCalculation)
+        throw std::runtime_error("Cannot serialize!\n Unable to calculate wires!");
+
+      Component_set coreComps;
+      for (auto* item : scene.items()) {
+        auto* comp =
+            category_cast<GraphicalLogicComponent>(item, ItemCategory::LogicComponent);
+        if (comp && comp->getComponent())
+          coreComps.insert(comp->getComponent());
+      }
+      activeCircuit = std::make_shared<Circuit>(coreComps, false);
+    }
+
+    j["circuit"] = nlohmann::json::parse(activeCircuit->serialize());
+
+    nlohmann::ordered_json visualComponents = nlohmann::ordered_json::array();
+    const auto&            compToVertexMap  = activeCircuit->getComponentToVertex();
+
+    for (auto* item : scene.items()) {
+      if (auto* comp = category_cast<GraphicalComponent>(item, ItemCategory::Component)) {
+        auto compJson = comp->serialize();
+        compJson.erase("uiId");
+        compJson["type"] = comp->getTypeName();
+
+        if (auto* logicComp = category_cast<GraphicalLogicComponent>(
+                comp, ItemCategory::LogicComponent)) {
+          if (auto component = logicComp->getComponent()) {
+            if (auto it = compToVertexMap.find(component.get());
+                it != compToVertexMap.end()) {
+              compJson["vertexId"] = static_cast<int>(it->second);
+            }
+          }
+        }
+        visualComponents.push_back(std::move(compJson));
+      }
+    }
+    j["visual"]["components"] = std::move(visualComponents);
+
+    auto wiresJson = scene.getWireManager().getSegments()
+                     | std::views::transform([](const auto& seg) {
+                         auto wireJson = seg->serialize();
+                         wireJson.erase("uiId");
+                         return wireJson;
+                       })
+                     | std::ranges::to<std::vector>();
+
+    j["visual"]["wires"] = wiresJson;
+    return j.dump(2);
+  }
+
+  nlohmann::ordered_json DiagramSceneSerializer::serializeSelection() const
+  {
+    return serializeItems(scene.selectedItems() | std::ranges::to<std::vector>());
+  }
+
+  nlohmann::ordered_json DiagramSceneSerializer::serializeItems(
+      const std::vector<QGraphicsItem*>& sceneItems) const
+  {
+    nlohmann::ordered_json payload;
+    payload["format"]  = "silicon.logiflow.selection";
+    payload["version"] = 1;
+
+    nlohmann::ordered_json visualComponents = nlohmann::ordered_json::array();
+    nlohmann::ordered_json visualWires      = nlohmann::ordered_json::array();
+
+    Component_set selectedCoreComponents;
+    for (auto* item : sceneItems) {
+      if (const auto* comp = category_cast<GraphicalLogicComponent>(
+              item, ItemCategory::LogicComponent)) {
+        if (comp->getComponent())
+          selectedCoreComponents.insert(comp->getComponent());
+      }
+    }
+
+    std::shared_ptr<Circuit> selectedCircuit;
+    if (!selectedCoreComponents.empty()) {
+      selectedCircuit    = std::make_shared<Circuit>(selectedCoreComponents, false);
+      payload["circuit"] = nlohmann::json::parse(selectedCircuit->serialize());
+    }
+
+    bool  hasOrigin = false;
+    qreal minX      = std::numeric_limits<qreal>::max();
+    qreal minY      = std::numeric_limits<qreal>::max();
+
+    auto includePoint = [&](const QPointF& point) {
+      hasOrigin = true;
+      minX      = std::min(minX, point.x());
+      minY      = std::min(minY, point.y());
+    };
+
+    for (auto* item : sceneItems) {
+      auto* comp = category_cast<GraphicalComponent>(item, ItemCategory::Component);
+      if (!comp)
         continue;
 
-      const auto oldUiId = itemJson["uiId"].get<uint64_t>();
-      auto&      newUiId = uiIdRemap[oldUiId];
-
-      if (newUiId == 0)
-        newUiId = GraphicalItem::generateUiId();
-
-      itemJson["uiId"] = newUiId;
-    }
-  };
-
-  remapItemIds(payload["visual"]["components"]);
-  remapItemIds(payload["visual"]["wires"]);
-
-  auto& wiresJson = payload["visual"]["wires"];
-  if (!wiresJson.is_array())
-    return;
-
-  for (auto& wireJson : wiresJson) {
-    if (!wireJson.contains("wireId"))
-      continue;
-
-    const auto oldWireId = wireJson["wireId"].get<uint64_t>();
-    auto&      newWireId = wireIdRemap[oldWireId];
-
-    if (newWireId == 0)
-      newWireId = GraphicalItem::generateUiId();
-
-    // Distinct pasted wire groups must not reuse the source bus identity, otherwise
-    // separate copies can be re-merged electrically by later topology reconstruction.
-    wireJson["wireId"] = newWireId;
-  }
-}
-
-std::vector<std::unique_ptr<GraphicalComponent>>
-deserializeVisualComponents(const nlohmann::json& visual, GUIComponentFactory& guiFactory,
-                            const std::shared_ptr<Circuit>& coreCircuit,
-                            const QPointF&                  offset)
-{
-  // Builds graphical components without adding them to the scene, so callers can decide
-  // whether insertion should select the new items.
-  std::vector<std::unique_ptr<GraphicalComponent>> components;
-
-  const auto visualComponents = visual.find("components");
-  if (visualComponents == visual.end() || !visualComponents->is_array())
-    return components;
-
-  components.reserve(visualComponents->size());
-  for (const auto& sourceCompJson : *visualComponents) {
-    auto compJson  = componentJsonWithOffset(sourceCompJson, offset);
-    auto component = GraphicalComponent::deserialize(compJson, guiFactory);
-    if (!component)
-      continue;
-
-    attachCoreComponent(component.get(), compJson, coreCircuit);
-    components.push_back(std::move(component));
-  }
-
-  return components;
-}
-
-std::vector<PendingWireSegment> deserializeVisualWires(const nlohmann::json& visual,
-                                                       const QPointF&        offset,
-                                                       const bool requireWireId)
-{
-  // Parses visual wire geometry while preserving shared wire IDs within the payload.
-  std::vector<PendingWireSegment> wires;
-
-  const auto visualWires = visual.find("wires");
-  if (visualWires == visual.end() || !visualWires->is_array())
-    return wires;
-
-  wires.reserve(visualWires->size());
-  uint64_t fallbackWireId = 1;
-
-  for (const auto& wireJson : *visualWires) {
-    if (!wireJson.contains("wireId") && requireWireId)
-      throw std::runtime_error("Wire segment missing wireId");
-
-    if (!wireJson.contains("points") || !wireJson["points"].is_array())
-      continue;
-
-    std::vector<QPointF> segmentPoints;
-    segmentPoints.reserve(wireJson["points"].size());
-
-    for (const auto& pointJson : wireJson["points"]) {
-      segmentPoints.emplace_back(pointJson.value("x", 0.0) + offset.x(),
-                                 pointJson.value("y", 0.0) + offset.y());
-    }
-
-    if (segmentPoints.size() < 2)
-      continue;
-
-    const uint64_t wireId = wireJson.contains("wireId")
-                                ? wireJson["wireId"].get<uint64_t>()
-                                : fallbackWireId++;
-    wires.push_back({wireId, wireJson.value("uiId", GraphicalItem::generateUiId()),
-                     std::move(segmentPoints)});
-  }
-
-  return wires;
-}
-
-void addVisualComponents(QGraphicsScene&                                  scene,
-                         std::vector<std::unique_ptr<GraphicalComponent>> components,
-                         const bool                                       selectInserted)
-{
-  // Transfers ownership of graphical components to the target scene.
-  for (auto& component : components) {
-    auto* item = component.release();
-    scene.addItem(item);
-    item->setSelected(selectInserted);
-  }
-}
-
-void addVisualWires(QGraphicsScene& scene, WireManager& wireManager,
-                    std::vector<PendingWireSegment> wires, const bool selectInserted)
-{
-  // Recreates wire objects lazily so segments with the same serialized ID share a
-  // bus.
-  std::map<uint64_t, std::shared_ptr<GraphicalWire>> wireIdToWire;
-
-  for (auto& pending : wires) {
-    auto* segment = new GraphicalWireSegment(pending.points.front());
-    segment->setUiId(pending.uiId);
-    segment->setPoints(std::move(pending.points));
-
-    // Rebuild each serialized wire group exactly once so all of its segments share
-    // the same GraphicalWire and therefore the same logical bus.
-    auto& wire = wireIdToWire[pending.wireId];
-    if (!wire)
-      wire = wireManager.createWire(1);
-
-    scene.addItem(segment);
-    segment->setGraphicalWire(wire.get(), false);
-    wireManager.addSegment(segment, false);
-    segment->setSelected(selectInserted);
-  }
-}
-
-std::vector<std::unique_ptr<GraphicalComponent>>
-createAutoplacedVisualComponents(const std::shared_ptr<Circuit>& coreCircuit,
-                                 GUIComponentFactory&            guiFactory)
-{
-  std::vector<std::unique_ptr<GraphicalComponent>> components;
-  if (!coreCircuit)
-    return components;
-
-  const auto& graph = coreCircuit->getGraph();
-  components.reserve(boost::num_vertices(graph));
-
-  for (const auto vertex : boost::make_iterator_range(boost::vertices(graph))) {
-    const auto& coreComponent = graph[vertex].component;
-    if (!coreComponent)
-      continue;
-
-    auto  component      = guiFactory.createForCoreType(coreComponent->typeName());
-    auto* logicComponent = category_cast<GraphicalLogicComponent>(
-        component.get(), ItemCategory::LogicComponent);
-    if (!logicComponent) {
-      throw std::runtime_error(
-          std::format("Autoplacement visual creation: '{}' is not a logic component",
-                      component->getTypeName()));
-    }
-
-    nlohmann::json componentJson;
-    componentJson["vertexId"] = static_cast<int>(vertex);
-    attachCoreComponent(component.get(), componentJson, coreCircuit);
-    components.push_back(std::move(component));
-  }
-
-  return components;
-}
-
-}  // namespace
-
-DiagramSceneSerializer::DiagramSceneSerializer(DiagramScene& scene) : scene(scene) {}
-
-std::string DiagramSceneSerializer::serialize() const
-{
-  uiLogger.info("Serializing the scene...");
-  nlohmann::ordered_json   j;
-  std::shared_ptr<Circuit> activeCircuit = scene.getCircuit();
-
-  if (!activeCircuit) {
-    const bool successfullWireCalculation = scene.calculateWiresForComponents();
-
-    if (!successfullWireCalculation)
-      throw std::runtime_error("Cannot serialize!\n Unable to calculate wires!");
-
-    Component_set coreComps;
-    for (auto* item : scene.items()) {
-      auto* comp =
-          category_cast<GraphicalLogicComponent>(item, ItemCategory::LogicComponent);
-      if (comp && comp->getComponent())
-        coreComps.insert(comp->getComponent());
-    }
-    activeCircuit = std::make_shared<Circuit>(coreComps, false);
-  }
-
-  j["circuit"] = nlohmann::json::parse(activeCircuit->serialize());
-
-  nlohmann::ordered_json visualComponents = nlohmann::ordered_json::array();
-  const auto&            compToVertexMap  = activeCircuit->getComponentToVertex();
-
-  for (auto* item : scene.items()) {
-    if (auto* comp = category_cast<GraphicalComponent>(item, ItemCategory::Component)) {
-      auto compJson = comp->serialize();
-      compJson.erase("uiId");
+      auto compJson    = comp->serialize();
       compJson["type"] = comp->getTypeName();
 
       if (auto* logicComp = category_cast<GraphicalLogicComponent>(
               comp, ItemCategory::LogicComponent)) {
-        if (auto component = logicComp->getComponent()) {
-          if (auto it = compToVertexMap.find(component.get());
+        if (selectedCircuit && logicComp->getComponent()) {
+          const auto& compToVertexMap = selectedCircuit->getComponentToVertex();
+          if (auto it = compToVertexMap.find(logicComp->getComponent().get());
               it != compToVertexMap.end()) {
             compJson["vertexId"] = static_cast<int>(it->second);
           }
         }
       }
+
+      if (compJson.contains("position")) {
+        includePoint(QPointF(compJson["position"].value("x", comp->pos().x()),
+                             compJson["position"].value("y", comp->pos().y())));
+      }
       visualComponents.push_back(std::move(compJson));
     }
-  }
-  j["visual"]["components"] = std::move(visualComponents);
 
-  auto wiresJson = scene.getWireManager().getSegments()
-                   | std::views::transform([](const auto& seg) {
-                       auto wireJson = seg->serialize();
-                       wireJson.erase("uiId");
-                       return wireJson;
-                     })
-                   | std::ranges::to<std::vector>();
+    for (auto* item : sceneItems) {
+      const auto* segment =
+          category_cast<GraphicalWireSegment>(item, ItemCategory::WireSegment);
+      if (!segment)
+        continue;
 
-  j["visual"]["wires"] = wiresJson;
-  return j.dump(2);
-}
-
-nlohmann::ordered_json DiagramSceneSerializer::serializeSelection() const
-{
-  return serializeItems(scene.selectedItems() | std::ranges::to<std::vector>());
-}
-
-nlohmann::ordered_json DiagramSceneSerializer::serializeItems(
-    const std::vector<QGraphicsItem*>& sceneItems) const
-{
-  nlohmann::ordered_json payload;
-  payload["format"]  = "silicon.logiflow.selection";
-  payload["version"] = 1;
-
-  nlohmann::ordered_json visualComponents = nlohmann::ordered_json::array();
-  nlohmann::ordered_json visualWires      = nlohmann::ordered_json::array();
-
-  Component_set selectedCoreComponents;
-  for (auto* item : sceneItems) {
-    if (const auto* comp =
-            category_cast<GraphicalLogicComponent>(item, ItemCategory::LogicComponent)) {
-      if (comp->getComponent())
-        selectedCoreComponents.insert(comp->getComponent());
-    }
-  }
-
-  std::shared_ptr<Circuit> selectedCircuit;
-  if (!selectedCoreComponents.empty()) {
-    selectedCircuit    = std::make_shared<Circuit>(selectedCoreComponents, false);
-    payload["circuit"] = nlohmann::json::parse(selectedCircuit->serialize());
-  }
-
-  bool  hasOrigin = false;
-  qreal minX      = std::numeric_limits<qreal>::max();
-  qreal minY      = std::numeric_limits<qreal>::max();
-
-  auto includePoint = [&](const QPointF& point) {
-    hasOrigin = true;
-    minX      = std::min(minX, point.x());
-    minY      = std::min(minY, point.y());
-  };
-
-  for (auto* item : sceneItems) {
-    auto* comp = category_cast<GraphicalComponent>(item, ItemCategory::Component);
-    if (!comp)
-      continue;
-
-    auto compJson    = comp->serialize();
-    compJson["type"] = comp->getTypeName();
-
-    if (auto* logicComp =
-            category_cast<GraphicalLogicComponent>(comp, ItemCategory::LogicComponent)) {
-      if (selectedCircuit && logicComp->getComponent()) {
-        const auto& compToVertexMap = selectedCircuit->getComponentToVertex();
-        if (auto it = compToVertexMap.find(logicComp->getComponent().get());
-            it != compToVertexMap.end()) {
-          compJson["vertexId"] = static_cast<int>(it->second);
+      auto wireJson = segment->serialize();
+      if (wireJson.contains("points") && wireJson["points"].is_array()) {
+        for (const auto& pointJson : wireJson["points"]) {
+          includePoint(QPointF(pointJson.value("x", 0.0), pointJson.value("y", 0.0)));
         }
       }
+      visualWires.push_back(std::move(wireJson));
     }
 
-    if (compJson.contains("position")) {
-      includePoint(QPointF(compJson["position"].value("x", comp->pos().x()),
-                           compJson["position"].value("y", comp->pos().y())));
+    payload["origin"] = hasOrigin ? nlohmann::ordered_json{{"x", minX}, {"y", minY}}
+                                  : nlohmann::ordered_json{{"x", 0.0}, {"y", 0.0}};
+    payload["visual"]["components"] = std::move(visualComponents);
+    payload["visual"]["wires"]      = std::move(visualWires);
+
+    return payload;
+  }
+
+  void DiagramSceneSerializer::deserialize(const std::string&       jsonStr,
+                                           GUIComponentFactory&     guiFactory,
+                                           const ComponentRegistry& coreRegistry)
+  {
+    auto j = nlohmann::json::parse(jsonStr);
+
+    const bool hasCircuitPart = j.contains("circuit");
+    const bool hasVisualPart  = j.contains("visual");
+
+    if (!hasCircuitPart && !hasVisualPart)
+      throw std::runtime_error("Cannot read the file: it has no circuit or visual data");
+
+    std::shared_ptr<Circuit> authoritativeCircuit;
+    if (hasCircuitPart) {
+      authoritativeCircuit =
+          deserializeCircuitPayload(j, coreRegistry, scene.circuitResolver());
+      scene.setDocumentCircuit(authoritativeCircuit);
+    } else {
+      scene.setDocumentCircuit(nullptr);
+      QMessageBox::warning(QApplication::activeWindow(),
+                           QObject::tr("Visual circuit warning"),
+                           QObject::tr("Simulation properties are not present in the "
+                                       "deserialized file; defaults will be used"));
     }
-    visualComponents.push_back(std::move(compJson));
-  }
 
-  for (auto* item : sceneItems) {
-    const auto* segment =
-        category_cast<GraphicalWireSegment>(item, ItemCategory::WireSegment);
-    if (!segment)
-      continue;
-
-    auto wireJson = segment->serialize();
-    if (wireJson.contains("points") && wireJson["points"].is_array()) {
-      for (const auto& pointJson : wireJson["points"]) {
-        includePoint(QPointF(pointJson.value("x", 0.0), pointJson.value("y", 0.0)));
-      }
+    if (!hasVisualPart) {
+      loadCircuit(std::move(authoritativeCircuit), guiFactory);
+      return;
     }
-    visualWires.push_back(std::move(wireJson));
+
+    addVisualWires(scene, scene.getWireManager(),
+                   deserializeVisualWires(j["visual"], QPointF(), true), false);
+    addVisualComponents(scene,
+                        deserializeVisualComponents(j["visual"], guiFactory,
+                                                    authoritativeCircuit, QPointF(),
+                                                    scene),
+                        false);
+
+    // Once a visual scene exists, its grouped wires define the editable topology. Rebuild
+    // component connections immediately so bus widths and wire identities agree before
+    // the first simulation or export.
+    scene.getWireManager().calculateJunctions();
+    scene.updateSceneAfterEdit();
+
+    scene.setInteractionMode(InteractionMode::NORMAL_MODE);
   }
 
-  payload["origin"] = hasOrigin ? nlohmann::ordered_json{{"x", minX}, {"y", minY}}
-                                : nlohmann::ordered_json{{"x", 0.0}, {"y", 0.0}};
-  payload["visual"]["components"] = std::move(visualComponents);
-  payload["visual"]["wires"]      = std::move(visualWires);
-
-  return payload;
-}
-
-void DiagramSceneSerializer::deserialize(const std::string&       jsonStr,
-                                         GUIComponentFactory&     guiFactory,
-                                         const ComponentRegistry& coreRegistry)
-{
-  auto j = nlohmann::json::parse(jsonStr);
-
-  const bool hasCircuitPart = j.contains("circuit");
-  const bool hasVisualPart  = j.contains("visual");
-
-  if (!hasCircuitPart && !hasVisualPart)
-    throw std::runtime_error("Cannot read the file: it has no circuit or visual data");
-
-  std::shared_ptr<Circuit> authoritativeCircuit;
-  if (hasCircuitPart) {
-    authoritativeCircuit =
-        deserializeCircuitPayload(j, coreRegistry, scene.circuitResolver());
-    scene.setCircuit(authoritativeCircuit);
-  } else {
-    QMessageBox::warning(QApplication::activeWindow(),
-                         QObject::tr("Visual circuit warning"),
-                         QObject::tr("Simulation properties are not present in the "
-                                     "deserialized file; defaults will be used"));
-  }
-
-  if (!hasVisualPart) {
-    loadCircuit(std::move(authoritativeCircuit), guiFactory);
-    return;
-  }
-
-  addVisualWires(scene, scene.getWireManager(),
-                 deserializeVisualWires(j["visual"], QPointF(), true), false);
-  addVisualComponents(scene,
-                      deserializeVisualComponents(j["visual"], guiFactory,
-                                                  authoritativeCircuit, QPointF()),
-                      false);
-
-  // Once a visual scene exists, its grouped wires define the editable topology. Rebuild
-  // component connections immediately so bus widths and wire identities agree before
-  // the first simulation or export.
-  scene.getWireManager().calculateJunctions();
-  scene.updateSceneAfterEdit();
-
-  scene.setInteractionMode(InteractionMode::NORMAL_MODE);
-}
-
-void DiagramSceneSerializer::loadCircuit(std::shared_ptr<Circuit> circuit,
-                                         GUIComponentFactory&     guiFactory,
-                                         const bool resolveSubcircuitMetadata)
-{
-  scene.clear(false, false);
-  scene.setCircuit(std::move(circuit));
-  auto components = createAutoplacedVisualComponents(scene.getCircuit(), guiFactory);
-  if (!resolveSubcircuitMetadata) {
+  void DiagramSceneSerializer::loadCircuit(std::shared_ptr<Circuit> circuit,
+                                           GUIComponentFactory&     guiFactory,
+                                           const bool resolveSubcircuitMetadata)
+  {
+    scene.clear(false, false);
+    scene.setDocumentCircuit(std::move(circuit));
+    auto components = createAutoplacedVisualComponents(scene.getCircuit(), guiFactory);
     for (auto& component : components)
-      if (auto* subcircuit = dynamic_cast<GraphicalSubcircuitComponent*>(component.get()))
-        subcircuit->useAttachedInterfaceMetadata();
-  }
-  addVisualComponents(scene, std::move(components), false);
+      attachProjectContext(component.get(), scene);
+    if (!resolveSubcircuitMetadata) {
+      for (auto& component : components)
+        if (auto* subcircuit =
+                dynamic_cast<GraphicalSubcircuitComponent*>(component.get()))
+          subcircuit->useAttachedInterfaceMetadata();
+    }
+    addVisualComponents(scene, std::move(components), false);
 
-  const bool hasLogicComponents = std::ranges::any_of(scene.items(), [](auto* item) {
-    return category_cast<GraphicalLogicComponent>(item, ItemCategory::LogicComponent)
-           != nullptr;
-  });
-  if (hasLogicComponents && scene.getCircuit())
-    scene.autoPlaceCircuit();
-  scene.setInteractionMode(InteractionMode::NORMAL_MODE);
-}
-
-bool DiagramSceneSerializer::insertSelection(const nlohmann::json&    payload,
-                                             GUIComponentFactory&     guiFactory,
-                                             const ComponentRegistry& coreRegistry,
-                                             QPointF targetOrigin, const bool isPaste)
-{
-  if (!payload.is_object() || !payload.contains("visual")
-      || !payload["visual"].is_object()) {
-    return false;
+    const bool hasLogicComponents = std::ranges::any_of(scene.items(), [](auto* item) {
+      return category_cast<GraphicalLogicComponent>(item, ItemCategory::LogicComponent)
+             != nullptr;
+    });
+    if (hasLogicComponents && scene.getCircuit())
+      scene.autoPlaceCircuit();
+    scene.setInteractionMode(InteractionMode::NORMAL_MODE);
   }
 
-  auto remappedPayload = payload;
-  if (isPaste)
-    remapPayloadUiIds(remappedPayload);
+  bool DiagramSceneSerializer::insertSelection(const nlohmann::json&    payload,
+                                               GUIComponentFactory&     guiFactory,
+                                               const ComponentRegistry& coreRegistry,
+                                               QPointF targetOrigin, const bool isPaste)
+  {
+    if (!payload.is_object() || !payload.contains("visual")
+        || !payload["visual"].is_object()) {
+      return false;
+    }
 
-  const QPointF pasteOffset =
-      DiagramScene::snapToGrid(targetOrigin - payloadOrigin(remappedPayload));
-  auto pastedCircuit =
-      deserializeCircuitPayload(remappedPayload, coreRegistry, scene.circuitResolver());
-  auto pendingComponents = deserializeVisualComponents(
-      remappedPayload["visual"], guiFactory, pastedCircuit, pasteOffset);
-  auto pendingWires =
-      deserializeVisualWires(remappedPayload["visual"], pasteOffset, true);
+    auto remappedPayload = payload;
+    if (isPaste)
+      remapPayloadUiIds(remappedPayload);
 
-  if (pendingComponents.empty() && pendingWires.empty())
-    return false;
+    const QPointF pasteOffset =
+        DiagramScene::snapToGrid(targetOrigin - payloadOrigin(remappedPayload));
+    auto pastedCircuit =
+        deserializeCircuitPayload(remappedPayload, coreRegistry, scene.circuitResolver());
+    auto pendingComponents = deserializeVisualComponents(
+        remappedPayload["visual"], guiFactory, pastedCircuit, pasteOffset, scene);
+    auto pendingWires =
+        deserializeVisualWires(remappedPayload["visual"], pasteOffset, true);
 
-  scene.clearSelection();
-
-  addVisualComponents(scene, std::move(pendingComponents), true);
-  addVisualWires(scene, scene.getWireManager(), std::move(pendingWires), true);
-
-  scene.getWireManager().calculateJunctions();
-  scene.updateSceneAfterEdit();
-  return true;
-}
-
-bool DiagramSceneSerializer::removeSelection(const nlohmann::json& payload)
-{
-  if (!payload.is_object() || !payload.contains("visual")
-      || !payload["visual"].is_object()) {
-    return false;
-  }
-
-  std::vector<QGraphicsItem*>        itemsToDelete;
-  std::unordered_set<QGraphicsItem*> queuedItems;
-
-  auto queueItem = [&](const nlohmann::json& itemJson,
-                       const ItemCategory    expectedCategory) {
-    auto* item = scene.findGraphicalItemByUiId(requiredUiId(itemJson));
-    if (!item || !category_cast<GraphicalItem>(item, expectedCategory))
+    if (pendingComponents.empty() && pendingWires.empty())
       return false;
 
-    if (queuedItems.insert(item).second)
-      itemsToDelete.push_back(item);
+    scene.clearSelection();
+
+    addVisualComponents(scene, std::move(pendingComponents), true);
+    addVisualWires(scene, scene.getWireManager(), std::move(pendingWires), true);
+
+    scene.getWireManager().calculateJunctions();
+    scene.updateSceneAfterEdit();
     return true;
-  };
-
-  if (const auto visualComponents = payload["visual"].find("components");
-      visualComponents != payload["visual"].end() && visualComponents->is_array()) {
-    for (const auto& compJson : *visualComponents) {
-      if (!queueItem(compJson, ItemCategory::Component))
-        return false;
-    }
   }
 
-  if (const auto visualWires = payload["visual"].find("wires");
-      visualWires != payload["visual"].end() && visualWires->is_array()) {
-    for (const auto& wireJson : *visualWires) {
-      if (!queueItem(wireJson, ItemCategory::WireSegment))
-        return false;
+  bool DiagramSceneSerializer::removeSelection(const nlohmann::json& payload)
+  {
+    if (!payload.is_object() || !payload.contains("visual")
+        || !payload["visual"].is_object()) {
+      return false;
     }
+
+    std::vector<QGraphicsItem*>        itemsToDelete;
+    std::unordered_set<QGraphicsItem*> queuedItems;
+
+    auto queueItem = [&](const nlohmann::json& itemJson,
+                         const ItemCategory    expectedCategory) {
+      auto* item = scene.findGraphicalItemByUiId(requiredUiId(itemJson));
+      if (!item || !category_cast<GraphicalItem>(item, expectedCategory))
+        return false;
+
+      if (queuedItems.insert(item).second)
+        itemsToDelete.push_back(item);
+      return true;
+    };
+
+    if (const auto visualComponents = payload["visual"].find("components");
+        visualComponents != payload["visual"].end() && visualComponents->is_array()) {
+      for (const auto& compJson : *visualComponents) {
+        if (!queueItem(compJson, ItemCategory::Component))
+          return false;
+      }
+    }
+
+    if (const auto visualWires = payload["visual"].find("wires");
+        visualWires != payload["visual"].end() && visualWires->is_array()) {
+      for (const auto& wireJson : *visualWires) {
+        if (!queueItem(wireJson, ItemCategory::WireSegment))
+          return false;
+      }
+    }
+
+    if (itemsToDelete.empty())
+      return false;
+
+    scene.removeItems(itemsToDelete);
+    return true;
   }
-
-  if (itemsToDelete.empty())
-    return false;
-
-  scene.removeItems(itemsToDelete);
-  return true;
-}
 
 }  // namespace ui
 }  // namespace SILICON

@@ -59,13 +59,17 @@ struct CodeSyntaxRegionRule {
 struct CodeIndentationContext {
   std::string_view                  currentLine;
   std::span<const std::string_view> previousNonBlankLines;
+  int                               indentWidth;
 };
 
 using CodeIndentationFunction = std::string (*)(const CodeIndentationContext&);
 
+/** Number of spaces per indentation level. */
 struct CodeIndentation {
   CodeIndentationFunction           indentationFor;
   std::span<const std::string_view> triggerPatterns;
+  int                               indentWidth;
+  bool                              expandPairsOnNewline = false;
 };
 
 /** Qt-independent description consumed by code-editor features. */
@@ -78,5 +82,6 @@ struct CodeSyntax {
 };
 
 extern const CodeSyntax VERILOG_CODE_SYNTAX;
+extern const CodeSyntax SISL_CODE_SYNTAX;
 
 }  // namespace SILICON::ui

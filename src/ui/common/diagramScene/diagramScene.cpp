@@ -44,6 +44,7 @@
 #include <ui/common/undoCommands.hpp>
 #include <ui/common/wireRouting.hpp>
 #include <ui/logiFlow/components/graphicalIO.hpp>
+#include <ui/logiFlow/components/graphicalMemory.hpp>
 #include <ui/logiFlow/components/subcircuit/graphicalSubcircuit.hpp>
 #include <ui/logiFlow/logiFlowWindow.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
@@ -158,12 +159,10 @@ namespace ui {
       // Recalculating component buses from geometry here is both redundant and unsafe:
       // coincident route portions near a port can make a later graphical wire overwrite
       // that port's original assignment. Keep the logical topology authoritative and only
-      // refresh the cached circuit after applying the new geometry. Rebuilding from the
-      // components resets circuit-level metadata, so carry it across explicitly.
+      // refresh the cached circuit after applying the new geometry. DiagramScene applies
+      // the document name when accepting the replacement cache.
       auto refreshedCircuit =
           std::make_shared<Circuit>(coreComponentsFor(components), false);
-      refreshedCircuit->setName(activeCircuit.getName());
-      refreshedCircuit->setDescription(activeCircuit.getDescription());
       scene.setCircuit(std::move(refreshedCircuit));
       scene.update();
     }
@@ -557,11 +556,6 @@ namespace ui {
     simulationController->simulateEditedWaveform(duration, std::move(inputSnapshots));
   }
 
-  void DiagramScene::refreshGraphicalOutputs()
-  {
-    simulationController->refreshGraphicalOutputs();
-  }
-
   bool DiagramScene::calculateWiresForComponents()
   {
     for (const auto& wire : wireManager.wires()) {
@@ -654,7 +648,7 @@ namespace ui {
     addItem(component);
   }
 
-  void DiagramScene::autoPlaceCircuit(const bool interactive)
+  void DiagramScene::autoPlaceCircuit()
   {
     setInteractionMode(InteractionMode::NORMAL_MODE);
 
@@ -676,24 +670,17 @@ namespace ui {
     }
     const Circuit& activeCircuit = *authoritativeCircuit;
 
-    if (!interactive) {
-      applyAutoplacement(*this, activeCircuit, components);
-      return;
-    }
-
-    constexpr int   candidateCount = 16;
+    CircuitAutoplacerOptions options;
     auto*           parent = views().isEmpty() ? nullptr : views().first()->window();
     QProgressDialog progress(tr("Finding a clean circuit layout..."),
-                             tr("Use best so far"), 0, candidateCount, parent);
+                             tr("Use best so far"), 0, options.candidateCount, parent);
     progress.setWindowTitle(tr("Auto place"));
     progress.setWindowModality(Qt::WindowModal);
     progress.setMinimumDuration(300);
     progress.setValue(0);
     QApplication::processEvents();
 
-    CircuitAutoplacerOptions options;
-    options.candidateCount = candidateCount;
-    options.isCancelled    = [&progress]() {
+    options.isCancelled = [&progress]() {
       QApplication::processEvents();
       return progress.wasCanceled();
     };
@@ -727,6 +714,8 @@ namespace ui {
       subcircuit->setDocumentStore(documents);
       subcircuit->setCircuitResolver(resolver);
     }
+    if (auto* rom = dynamic_cast<GraphicalROM*>(componentToBeDrawn))
+      rom->setDocumentStore(documents);
     lastPlacedComponentType       = typeName;
     lastPlacedComponentProperties = initialProperties;
     suppressNextComponentSearch   = !showSearchBox;

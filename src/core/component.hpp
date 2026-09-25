@@ -51,6 +51,7 @@ enum class ComponentCategory {
   Arithmetic,
   FlipFlops,
   Register,
+  Memory,
   Subcircuits,
   Inputs,
   Outputs,
@@ -160,6 +161,27 @@ using StringPropertyOptions = std::vector<std::string>;
 using StringPropertyOptionsMap =
     std::unordered_map<std::string, StringPropertyOptions, TransparentStringHash,
                        TransparentStringEqual>;
+
+/**
+ * @brief Validates that an integer property value is non-negative.
+ * @param name Property name or descriptive prefix used in the error message
+ * @param value The property value to validate
+ * @return The validated value unchanged
+ * @throws std::invalid_argument When the value is negative
+ */
+[[nodiscard]] PropertyValue requireNonNegative(std::string_view    name,
+                                               const PropertyValue& value);
+
+/**
+ * @brief Validates that an integer property value is a valid bus size.
+ * @param name Property name or descriptive prefix used in the error message
+ * @param value The property value to validate
+ * @return The validated value unchanged
+ * @throws std::invalid_argument When the value is below 1 or exceeds the maximum
+ * supported bus width
+ */
+[[nodiscard]] PropertyValue requireValidSize(std::string_view    name,
+                                             const PropertyValue& value);
 
 /**
  * @class Component

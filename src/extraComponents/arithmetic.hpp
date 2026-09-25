@@ -264,4 +264,55 @@ public:
   int setSize(int width);
 };
 
+/** Shifts a value by an unsigned amount, preserving its width. */
+class Shifter : public Component {
+public:
+  static constexpr std::string_view Type = "Shifter";
+  static constexpr std::string_view LeftMode = "left";
+  static constexpr std::string_view RightMode = "right";
+
+  enum class Inputs : unsigned int { Value = 0, Amount = 1 };
+  enum class Outputs : unsigned int { Result = 0 };
+
+  std::string_view typeName() const override { return Type; }
+  ComponentMetadata metadata() const override
+  {
+    return {"Shifter", "Shifts a bus left or right by a variable amount.",
+            ComponentCategory::Arithmetic};
+  }
+
+  Shifter();
+  Shifter(Bus value, Bus amount, Bus result);
+
+  int setSize(int width);
+  int setAmountSize(int width);
+  void simulate(SILICON::simulation::Simulator& sim) override;
+  void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
+};
+
+class Comparator : public Component {
+
+public:
+  static constexpr std::string_view Type = "Comparator";
+
+  std::string_view  typeName() const override { return Type; }
+  ComponentMetadata metadata() const override
+  {
+    return {"Comparator", "Returns the result of a comparison between two values",
+            ComponentCategory::Arithmetic};
+  }
+
+  Comparator();
+  Comparator(std::array<Bus, 2> inputBuses, Wire_ptr output);
+
+  void simulate(SILICON::simulation::Simulator& sim) override;
+  void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
+
+  int setSize(int width);
+  std::string setMode(std::string mode);
+
+private:
+  uint64_t propagationDelay = 0;
+};
+
 }  // namespace SILICON::extra

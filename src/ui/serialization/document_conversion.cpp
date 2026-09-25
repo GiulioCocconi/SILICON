@@ -36,9 +36,14 @@ namespace {
   {
     if (auto* source = std::get_if<SILICON::conversion::VerilogSource>(&document.payload))
       return {std::move(document.path), std::move(source->contents)};
+    if (auto* source = std::get_if<SILICON::conversion::BinarySource>(&document.payload))
+      return {std::move(document.path), std::move(source->contents)};
 
     auto circuit =
         std::make_shared<Circuit>(std::get<Circuit>(std::move(document.payload)));
+    const auto slug = SILICON::project::documentSlugForPath(document.path);
+    if (!slug)
+      throw std::invalid_argument("Converted circuit has an invalid document path");
     DiagramScene scene;
     scene.setSubcircuitDocumentMode(true);
     scene.loadCircuit(std::move(circuit), GUIComponentFactory::instance(), false);

@@ -51,22 +51,6 @@ namespace {
                                   + " selectionSize is too large");
   }
 
-  void validateBusSize(const std::string_view componentName, const int busSize)
-  {
-    if (busSize <= 0)
-      throw std::invalid_argument(std::string(componentName)
-                                  + " busSize must be positive");
-    if (busSize > std::numeric_limits<unsigned short>::max())
-      throw std::invalid_argument(std::string(componentName) + " busSize is too large");
-  }
-
-  void validateDelay(const std::string_view componentName, const PropertyValue& value)
-  {
-    if (std::get<int>(value) < 0)
-      throw std::invalid_argument(std::string(componentName)
-                                  + " delay must be non-negative");
-  }
-
   void validateSelectionBus(const std::string_view componentName, const Bus& selection)
   {
     if (selection.size() == 0)
@@ -91,11 +75,13 @@ namespace {
     // candidate value paired with the component's current value for the other axis.
     const int selectionSize = selectionSizeOverride.value_or(
         component.getPropertyValue<int>("selectionSize").value_or(1));
-    const int busSize =
+    const int rawBusSize =
         busSizeOverride.value_or(component.getPropertyValue<int>("busSize").value_or(1));
+    const int busSize = std::get<int>(
+        requireValidSize(std::string(componentName) + " busSize",
+                         PropertyValue{rawBusSize}));
 
     validateSelectionSize(componentName, selectionSize);
-    validateBusSize(componentName, busSize);
     return {selectionSize, busSize};
   }
 
@@ -158,14 +144,10 @@ namespace {
     return state == State::ERROR || state == State::UNKNOWN;
   }
 
-  std::size_t multiplexerSelectionInputIndex(const int selectionSize, const int busSize)
+  std::size_t multiplexerSelectionInputIndex(const std::vector<Bus>& inputs)
   {
-    // Packed one-bit muxes keep Selection at enum index 1; multi-bus muxes append
-    // Selection after all selectable data buses.
-    if (busSize == 1)
-      return std::to_underlying(Multiplexer::Inputs::Selection);
-
-    return dataBusCountForSelectionSize(selectionSize);
+    // Every mux stores one bus per selectable lane and appends the selector.
+    return inputs.empty() ? 0 : inputs.size() - 1;
   }
 
   std::size_t demultiplexerSelectionInputIndex(const int busSize)
@@ -193,43 +175,17 @@ namespace {
   std::vector<Bus> shapedMultiplexerInputs(const std::vector<Bus>& currentInputs,
                                            const int selectionSize, const int busSize)
   {
-    std::vector<Bus> newInputs;
-
-    // 1. Identify and safely isolate the selection bus to prevent accidental
-    // data-lane duplication during up-sizing.
+    // The canonical shape is one equally-sized bus per lane followed by the
+    // selector. Preserve existing lane wires and the final selector where possible.
     Bus selectionBus;
-    if (currentInputs.size() > 2) {
+    if (!currentInputs.empty())
       selectionBus = currentInputs.back();
-    } else if (currentInputs.size()
-               > std::to_underlying(Multiplexer::Inputs::Selection)) {
-      selectionBus = currentInputs[std::to_underlying(Multiplexer::Inputs::Selection)];
-    }
-
-    // 2. Handle packed mode (busSize == 1)
-    if (busSize == 1) {
-      newInputs.resize(2);
-      if (!currentInputs.empty()) {
-        newInputs[std::to_underlying(Multiplexer::Inputs::Data)] = currentInputs[0];
-      }
-
-      newInputs[std::to_underlying(Multiplexer::Inputs::Selection)] =
-          std::move(selectionBus);
-      newInputs[std::to_underlying(Multiplexer::Inputs::Data)].setSize(
-          dataWidthForSelectionSize(selectionSize));
-      newInputs[std::to_underlying(Multiplexer::Inputs::Selection)].setSize(
-          static_cast<unsigned short>(selectionSize));
-      return newInputs;
-    }
-
-    // 3. Handle multi-bus mode (busSize > 1)
     const std::size_t dataBusCount = dataBusCountForSelectionSize(selectionSize);
-    newInputs.resize(dataBusCount + 1);
+    std::vector<Bus>  newInputs(dataBusCount + 1);
 
-    // Copy only the old data lanes (avoid copying the old selection bus into a data lane)
-    const std::size_t oldDataBusCount = currentInputs.size() > 2
-                                            ? currentInputs.size() - 1
-                                            : (currentInputs.size() == 2 ? 1 : 0);
-    const std::size_t lanesToCopy     = std::min(dataBusCount, oldDataBusCount);
+    const std::size_t oldDataBusCount =
+        currentInputs.empty() ? 0 : currentInputs.size() - 1;
+    const std::size_t lanesToCopy = std::min(dataBusCount, oldDataBusCount);
 
     for (std::size_t i = 0; i < lanesToCopy; ++i) {
       newInputs[i] = currentInputs[i];
@@ -238,7 +194,6 @@ namespace {
       newInputs[i].setSize(static_cast<unsigned short>(busSize));
     }
 
-    // Place the selection bus safely at the final index
     newInputs[dataBusCount] = std::move(selectionBus);
     newInputs[dataBusCount].setSize(static_cast<unsigned short>(selectionSize));
 
@@ -308,8 +263,7 @@ Multiplexer::Multiplexer()
   });
 
   setPropertyCallback("busSize", [this](const PropertyValue& value) {
-    const int busSize = std::get<int>(value);
-    validateBusSize("Multiplexer", busSize);
+    const int busSize = std::get<int>(requireValidSize("Multiplexer busSize", value));
 
     if (!inputs.empty() && !outputs.empty())
       setBusSize(busSize);
@@ -318,8 +272,7 @@ Multiplexer::Multiplexer()
   });
 
   setPropertyCallback("delay", [](const PropertyValue& value) {
-    validateDelay("Multiplexer", value);
-    return value;
+    return requireNonNegative("Multiplexer delay", value);
   });
 }
 
@@ -332,10 +285,12 @@ Multiplexer::Multiplexer(Bus data, Bus selection, Wire_ptr output) : Multiplexer
   if (data.size() != expectedDataWidth)
     throw std::invalid_argument("Multiplexer data bus width must be 2^selection width");
 
-  inputs  = {std::move(data), std::move(selection)};
+  inputs.reserve(static_cast<std::size_t>(expectedDataWidth) + 1);
+  for (unsigned short lane = 0; lane < expectedDataWidth; ++lane)
+    inputs.emplace_back(Bus{data[lane]});
+  inputs.emplace_back(std::move(selection));
   outputs = {{std::move(output)}};
-  setProperty("selectionSize",
-              static_cast<int>(inputs[busIndex(Inputs::Selection)].size()));
+  setProperty("selectionSize", static_cast<int>(inputs.back().size()));
   setProperty("busSize", 1);
 }
 
@@ -366,18 +321,13 @@ void Multiplexer::simulate(SILICON::simulation::Simulator& sim)
 
   // Note: Consider caching delay, busSize, and selectionSize in class members via
   // setPropertyCallback to avoid hash map lookups on the simulation hot path.
-  const int         busSize         = getPropertyValue<int>("busSize").value_or(1);
-  const int         propertySelSize = getPropertyValue<int>("selectionSize").value_or(1);
-  const std::size_t selectionIndex =
-      multiplexerSelectionInputIndex(propertySelSize, busSize);
-  const auto selectionSize =
+  const std::size_t selectionIndex = multiplexerSelectionInputIndex(inputBuses());
+  const auto        selectionSize =
       inputBuses().size() > selectionIndex ? inputBuses()[selectionIndex].size() : 0;
-  const auto dataSize = inputBuses().size() > busIndex(Inputs::Data)
-                            ? inputBuses()[busIndex(Inputs::Data)].size()
-                            : 0;
-  const int  delay    = getPropertyValue<int>("delay").value_or(0);
+  const std::size_t laneCount = selectionIndex;
+  const int         delay     = getPropertyValue<int>("delay").value_or(0);
 
-  if (selectionSize == 0 || dataSize == 0) {
+  if (selectionSize == 0 || laneCount == 0) {
     updateAllOutputs(
         outputBusSize(Outputs::Out),
         [this, &sim, delay](const unsigned short bit, const State state) {
@@ -406,20 +356,9 @@ void Multiplexer::simulate(SILICON::simulation::Simulator& sim)
     return;
   }
 
-  if (busSize == 1) {
-    // Packed mode selects a bit from the data bus. Multi-bus mode below selects
-    // an entire input bus and copies it to the output bus.
-    const State selectedState =
-        selectedIndex < dataSize
-            ? inputState(Inputs::Data, static_cast<unsigned short>(selectedIndex))
-            : State::ERROR;
-    sim.updateWire(outputWire(Outputs::Out), selectedState, delay, weak_from_this());
-    return;
-  }
-
   for (unsigned short bit = 0; bit < outputBusSize(Outputs::Out); ++bit) {
     const State selectedState =
-        selectedIndex < inputBuses().size() && bit < inputBuses()[selectedIndex].size()
+        selectedIndex < laneCount && bit < inputBuses()[selectedIndex].size()
             ? inputState(static_cast<unsigned int>(selectedIndex), bit)
             : State::ERROR;
     sim.updateWire(outputWire(Outputs::Out, bit), selectedState, delay, weak_from_this());
@@ -443,8 +382,8 @@ Demultiplexer::Demultiplexer()
   });
 
   setPropertyCallback("busSize", [this](const PropertyValue& value) {
-    const int busSize = std::get<int>(value);
-    validateBusSize("Demultiplexer", busSize);
+    const int busSize =
+        std::get<int>(requireValidSize("Demultiplexer busSize", value));
 
     if (!inputs.empty() && !outputs.empty())
       setBusSize(busSize);
@@ -453,8 +392,7 @@ Demultiplexer::Demultiplexer()
   });
 
   setPropertyCallback("delay", [](const PropertyValue& value) {
-    validateDelay("Demultiplexer", value);
-    return value;
+    return requireNonNegative("Demultiplexer delay", value);
   });
 }
 
@@ -600,8 +538,7 @@ Decoder::Decoder()
   });
 
   setPropertyCallback("delay", [](const PropertyValue& value) {
-    validateDelay("Decoder", value);
-    return value;
+    return requireNonNegative("Decoder delay", value);
   });
 }
 

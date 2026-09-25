@@ -153,4 +153,30 @@ inline void emitGateFold(SerializationContext& context, const Component& compone
     emitUnary(context, "invert", "$not", accumulator, context.bits(output));
 }
 
+/**
+ * Fold bus-valued operands through Yosys logical cells. Each operand is first
+ * interpreted by Verilog truth-value semantics, while every intermediate and the
+ * final result remain scalar.
+ */
+inline void emitLogicalGateFold(SerializationContext& context, const Component& component,
+                                const std::string_view operation)
+{
+  const auto& inputs = component.inputBuses();
+  const auto& output = requireBus(component, false, 0);
+  if (inputs.size() < 2 || output.size() != 1) {
+    throw std::runtime_error(std::format(
+        "Cannot export logical '{}': expected at least two inputs and one output bit",
+        component.typeName()));
+  }
+
+  Json accumulator = context.bits(requireBus(component, true, 0));
+  for (std::size_t index = 1; index < inputs.size(); ++index) {
+    const bool writesOutput = index + 1 == inputs.size();
+    Json       next = writesOutput ? context.bits(output) : context.allocateBits(1);
+    emitBinary(context, std::format("logical_fold_{}", index), operation, accumulator,
+               context.bits(requireBus(component, true, index)), next);
+    accumulator = std::move(next);
+  }
+}
+
 }  // namespace SILICON::yosys::detail
