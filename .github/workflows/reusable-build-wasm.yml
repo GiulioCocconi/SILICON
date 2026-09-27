@@ -61,7 +61,8 @@ jobs:
         run: bash ./ci/wasm_remove_deps.sh
 
       - name: Restore vcpkg cache
-        uses: actions/cache@v6
+        id: vcpkg-cache
+        uses: actions/cache/restore@v6
         with:
           path: |
             build/vcpkg_installed
@@ -83,6 +84,15 @@ jobs:
         run: |
           # Replace this section if the project's real Qt for WASM build command changes.
           ninja -C build
+
+      - name: Save vcpkg cache
+        if: always()
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            build/vcpkg_installed
+            build/_deps
+          key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
 
       - name: Package WASM artifact
         shell: bash

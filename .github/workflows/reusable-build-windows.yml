@@ -47,7 +47,8 @@ jobs:
         run: choco install ninja --no-progress -y
 
       - name: Restore vcpkg cache
-        uses: actions/cache@v6
+        id: vcpkg-cache
+        uses: actions/cache/restore@v6
         with:
           path: |
             build/vcpkg_installed
@@ -74,6 +75,15 @@ jobs:
       - name: Test
         shell: powershell
         run: ctest --test-dir build --output-on-failure
+
+      - name: Save vcpkg cache
+        if: always()
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            build/vcpkg_installed
+            build/_deps
+          key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
 
       - name: Package Windows artifact
         shell: powershell
