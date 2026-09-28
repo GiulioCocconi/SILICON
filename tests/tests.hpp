@@ -35,7 +35,7 @@ inline void __tsan_on_report()
 }
 }  // extern "C"
 
-void PrintTo(const State& s, std::ostream* os)
+inline void PrintTo(const State& s, std::ostream* os)
 {
   switch (s) {
     case State::HIGH: *os << "HIGH"; break;
