@@ -461,6 +461,35 @@ TEST(YosysToolTest, RaisesSharedConstantEqualityComparisonsToDecoder)
   #endif
 }
 
+TEST(YosysToolTest, LegalizationAcceptsTechnologyMapPathWithSpaces)
+{
+#ifndef SILICON_TEST_YOSYS_PLUGIN_PATH
+  GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
+#else
+  const auto directory = std::filesystem::temp_directory_path()
+      / std::format("silicon technology map {}",
+                    std::chrono::steady_clock::now().time_since_epoch().count());
+  std::filesystem::create_directories(directory);
+  try {
+    // This design needs no technology cells, but the pipeline must still load
+    // the map through the nested techmap invocation.
+    { std::ofstream file(directory / "silicon_cells.v"); file << "// empty library\n"; }
+    { std::ofstream file(directory / "silicon_techmap.v"); file << "// empty map\n"; }
+    const SILICON::yosys::ToolOptions options{
+        .executable = std::nullopt,
+        .technologyLibraryDirectory = directory};
+    const auto raw = SILICON::yosys::readVerilog(
+        "module top(input a, output y); assign y = a; endmodule", options);
+    const auto legalized = SILICON::yosys::elaborateHierarchy(raw, options);
+    EXPECT_NO_THROW((void)SILICON::yosys::deserialize(legalized, "top"));
+  } catch (...) {
+    std::filesystem::remove_all(directory);
+    throw;
+  }
+  std::filesystem::remove_all(directory);
+#endif
+}
+
 TEST(YosysToolTest, PmgenMatchesSelectedPmuxWithUnselectedPredicates)
 {
   #ifndef SILICON_TEST_YOSYS_PLUGIN_PATH

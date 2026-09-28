@@ -82,7 +82,7 @@ std::string ROM::configuredBinaryContents() const
 
 void ROM::configure(const int dataWidth, std::shared_ptr<const std::string> nextContent,
                     const bool rejectInvalid, const bool reshape,
-                    const bool preferAddressDepth)
+                    const bool preferAddressDepth, const std::size_t explicitWords)
 {
   const int width = std::get<int>(requireValidSize("ROM dataWidth", PropertyValue{dataWidth}));
 
@@ -90,12 +90,17 @@ void ROM::configure(const int dataWidth, std::shared_ptr<const std::string> next
   std::size_t nextWords    = 0;
   if (nextContent) {
     nextWords = packedWordCount(nextContent->size(), static_cast<std::size_t>(width));
-    if (preferAddressDepth && !nextContent->empty() && !inputs.empty()) {
+    if (explicitWords != 0) {
+      if (!std::has_single_bit(explicitWords)
+          || explicitWords > std::numeric_limits<std::size_t>::max() / static_cast<std::size_t>(width)
+          || nextContent->size() != (explicitWords * static_cast<std::size_t>(width) + 7) / 8)
+        throw std::invalid_argument("ROM image does not match its explicit word count");
+      nextWords = explicitWords;
+    } else if (preferAddressDepth && !nextContent->empty() && !inputs.empty()) {
       const auto& address = inputs[busIndex(Inputs::Address)];
-      const bool oneWordMarker = address.size() == 1 && address[0] == nullptr;
       const auto addressBits = address.size();
       if (addressBits < std::numeric_limits<std::size_t>::digits) {
-        const auto candidate = oneWordMarker ? std::size_t{1} : std::size_t{1} << addressBits;
+        const auto candidate = std::size_t{1} << addressBits;
         if (candidate <= std::numeric_limits<std::size_t>::max() / static_cast<std::size_t>(width)
             && nextContent->size() == (candidate * static_cast<std::size_t>(width) + 7) / 8)
           nextWords = candidate;
@@ -157,6 +162,12 @@ void ROM::setBinaryDocument(std::string slug, std::shared_ptr<const std::string>
 void ROM::refreshBinaryContents(std::shared_ptr<const std::string> contents)
 {
   configure(configuredDataWidth(), std::move(contents), false, true, true);
+}
+
+void ROM::refreshBinaryContents(std::shared_ptr<const std::string> contents,
+                                const std::size_t words)
+{
+  configure(configuredDataWidth(), std::move(contents), true, true, false, words);
 }
 
 std::shared_ptr<const std::string> ROM::binaryContentsSnapshot() const noexcept

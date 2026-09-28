@@ -482,4 +482,23 @@ endmodule
 `endif
 endmodule
 
+// Port-direction declaration for the canonical import cell. The plugin emits
+// this cell only after all memory optimization passes have finished.
+`ifdef SILICON_BLACKBOX
+(* blackbox *) module SILICON_ROM #(
+    parameter WIDTH = 8,
+    parameter SIZE = 2,
+    parameter ABITS = 1,
+    parameter [WIDTH*SIZE-1:0] INIT = 0,
+    parameter ID = "",
+    parameter SYNC = 0,
+    parameter CLK_POLARITY = 1
+) (
+    input [ABITS-1:0] ADDR,
+    output [WIDTH-1:0] DATA,
+    input SELECT, CLK, EN
+);
+endmodule
+`endif
+
 `undef SILICON_CELL

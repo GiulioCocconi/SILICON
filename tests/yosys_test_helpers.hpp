@@ -151,6 +151,35 @@ private:
       topModule);
 }
 
+// Exercise the expression passes without unrelated synthesis or technology mapping.
+[[nodiscard]] inline std::string legalizeExpressions(std::string_view rawJson,
+                                                      std::string_view passes = "silicon_logic\nsilicon_compare\nsilicon_shift")
+{
+#ifdef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
+  const auto directory = std::filesystem::temp_directory_path()
+      / std::format("silicon_expression_{}",
+                    std::chrono::steady_clock::now().time_since_epoch().count());
+  std::filesystem::create_directories(directory);
+  const auto input = directory / "input.json";
+  const auto output = directory / "output.json";
+  try {
+    { std::ofstream file(input); file << rawJson; }
+    (void)SILICON::yosys::runScript(std::format(
+        "plugin -i \"{}\"\nread_json \"{}\"\n{}\nwrite_json \"{}\"",
+        SILICON_TEST_YOSYS_PLUGIN_PATH, input.string(), passes, output.string()));
+    std::ifstream file(output);
+    std::string result((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    std::filesystem::remove_all(directory);
+    return result;
+  } catch (...) {
+    std::filesystem::remove_all(directory);
+    throw;
+  }
+#else
+  return std::string(rawJson);
+#endif
+}
+
 [[nodiscard]] inline nlohmann::json exportComponent(const Component_ptr& component)
 {
   Circuit circuit(component, false);

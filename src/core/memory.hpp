@@ -62,6 +62,10 @@ public:
    */
   void refreshBinaryContents(std::shared_ptr<const std::string> contents);
 
+  /** Cache a canonical ROM image with an explicit depth, including a single word. */
+  void refreshBinaryContents(std::shared_ptr<const std::string> contents,
+                             std::size_t words);
+
   /** Returns the immutable binary data currently cached by this ROM. */
   [[nodiscard]] std::shared_ptr<const std::string>
   binaryContentsSnapshot() const noexcept;
@@ -75,7 +79,8 @@ private:
   bool                               settingBinaryDocument  = false;
 
   void              configure(int dataWidth, std::shared_ptr<const std::string> contents,
-                              bool rejectInvalid, bool reshape, bool preferAddressDepth = false);
+                              bool rejectInvalid, bool reshape, bool preferAddressDepth = false,
+                              std::size_t explicitWords = 0);
   void              reshapeBuses(int dataWidth, std::size_t words);
   void              driveState(SILICON::simulation::Simulator& sim, State state);
   [[nodiscard]] int configuredDataWidth() const;

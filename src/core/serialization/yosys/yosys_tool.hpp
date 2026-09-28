@@ -39,7 +39,7 @@ struct ScriptResult {
                                       std::string_view   entryPath,
                                       const ToolOptions& options = {});
 
-/** Apply SILICON's language-independent Yosys JSON import lowering. */
+/** Legalize raw Yosys JSON into the canonical subset accepted by deserialize. */
 [[nodiscard]] std::string elaborateHierarchy(std::string_view   json,
                                              const ToolOptions& options = {});
 

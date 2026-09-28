@@ -173,6 +173,11 @@ TEST(YosysTest, ComplementerLowersToSubAndRoundTripsWithoutAnAdder)
 
 TEST(YosysTest, ComparatorLowersToNativeComparisonCellsAndRoundTrips)
 {
+  // Re-importing an exported comparator needs the plugin to legalize $eq, $lt, ...
+#ifndef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
+  GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
+#endif
+
   static constexpr std::array modes{
       std::pair<std::string_view, std::string_view>{"==", "$eq"},
       std::pair<std::string_view, std::string_view>{"<", "$lt"},
@@ -200,7 +205,7 @@ TEST(YosysTest, ComparatorLowersToNativeComparisonCellsAndRoundTrips)
     EXPECT_EQ(cell.at("parameters").at("Y_WIDTH"),
               SILICON::yosys::SerializationContext::parameter(1));
 
-    const Circuit imported = SILICON::yosys::deserialize(exported.dump());
+    const Circuit imported = SILICON::yosys::deserialize(legalizeExpressions(exported.dump()));
     const auto    restored = findComponent<Comparator>(imported);
     ASSERT_TRUE(restored);
     EXPECT_EQ(restored->getPropertyValue<int>("size"), 5);
@@ -241,8 +246,14 @@ TEST(YosysTest, LowersSequentialComponents)
 
 TEST(YosysTest, CustomTechnologyCellsRoundTripToNativeComponents)
 {
+  // The shifter cases export raw $shl, $shr and $sshr cells that only the
+  // plugin legalizes, so the round trip needs the plugin.
+#ifndef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
+  GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
+#endif
+
   const auto roundTrip = [](const Component_ptr& component) {
-    return SILICON::yosys::deserialize(exportComponent(component).dump());
+    return SILICON::yosys::deserialize(legalizeExpressions(exportComponent(component).dump()));
   };
 
   auto latch =

@@ -103,7 +103,7 @@ TEST(YosysTest, YosysAcceptsEveryBuiltInLowering)
     const auto circuit = circuitWithBoundaryPorts(components[index]);
     EXPECT_EQ(validateWithYosys(circuit, std::format("component_{}", index)), 0);
     EXPECT_NO_THROW(
-        (void)SILICON::yosys::deserialize(SILICON::yosys::serialize(circuit, "top")));
+        (void)SILICON::yosys::deserialize(legalizeExpressions(SILICON::yosys::serialize(circuit, "top"))));
     const auto verilog = SILICON::verilog::write(circuit, "top");
     EXPECT_EQ(verilog.find("SILICON_"), std::string::npos);
     EXPECT_NO_THROW((void)importVerilog(verilog, "top"));

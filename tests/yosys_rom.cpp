@@ -19,6 +19,28 @@
 #include "yosys_test_helpers.hpp"
 
 #if !defined(__EMSCRIPTEN__) && defined(SILICON_TEST_YOSYS_EXECUTABLE)
+TEST(YosysRomTest, NormalizesMemoryBeforeJsonExport)
+{
+  const auto json = nlohmann::json::parse(SILICON::yosys::elaborateHierarchy(
+      SILICON::verilog::read(
+          "module rom(input a, output [7:0] q); reg [7:0] mem [0:1]; "
+          "initial begin mem[0]=8'h12; mem[1]=8'h34; end "
+          "assign q=mem[a]; endmodule")));
+  const auto& cells = json.at("modules").at("rom").at("cells");
+  std::size_t canonical = 0;
+  for (const auto& [name, cell] : cells.items()) {
+    (void)name;
+    EXPECT_NE(cell.at("type"), "$mem_v2");
+    if (cell.at("type") == "SILICON_ROM") {
+      ++canonical;
+      EXPECT_TRUE(cell.at("parameters").contains("SIZE"));
+      EXPECT_TRUE(cell.at("parameters").contains("INIT"));
+      EXPECT_TRUE(cell.at("connections").contains("SELECT"));
+    }
+  }
+  EXPECT_EQ(canonical, 1);
+}
+
 TEST(YosysRomTest, ImportsInitializedArrayAndCreatesBinaryDocument)
 {
   const SILICON::project::Document source{
@@ -51,6 +73,7 @@ TEST(YosysRomTest, ImportsInitializedArrayAndCreatesBinaryDocument)
   const auto& imported = std::get<Circuit>(circuit->payload);
   std::size_t roms = 0;
   for (const auto& [component, vertex] : imported.getComponentToVertex()) {
+    EXPECT_FALSE(std::dynamic_pointer_cast<DLatch>(imported.getComponentByVertexId(vertex)));
     const auto rom = std::dynamic_pointer_cast<ROM>(imported.getComponentByVertexId(vertex));
     if (!rom) continue;
     ++roms;
