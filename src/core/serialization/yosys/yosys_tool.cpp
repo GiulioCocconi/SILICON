@@ -462,10 +462,13 @@ std::string elaborateHierarchy(const std::string_view json, const ToolOptions& o
 
   const auto library = technologyLibrary(options);
   const auto plugin  = verilogPlugin();
+  if (!plugin)
+    throw std::runtime_error(
+        "SILICON Yosys legalization requires the SILICON Yosys plugin");
   const std::string pluginLoad =
-      plugin ? std::format("plugin -i {}\n", quotePath(*plugin)) : "";
-  const std::string muxImport = plugin ? "silicon_pmux_bmux\nsilicon_eq_decoder\n" : "";
-  const std::string memrd = plugin ? "silicon_memrd_address\n" : "";
+      std::format("plugin -i {}\n", quotePath(*plugin));
+  const std::string legalization =
+      std::format("silicon_legalize {}\n", quotePath(library.technologyMap));
 
   (void)runScript(std::format("read_verilog -lib -D SILICON_BLACKBOX {}\n"
                               "read_json {}\n"
@@ -474,29 +477,9 @@ std::string elaborateHierarchy(const std::string_view json, const ToolOptions& o
                               "proc\n"
                               "muxpack\n"
                               "{}"
-                              "pmuxtree\n"
-                              "delete t:$scopeinfo\n"
-                              "opt -nosdff\n"
-                              "memory_dff\n"
-                              "{}"
-                              // Preserve vector bitwise operations as one native Silicon
-                              // gate. Only scalar forms participate in full/half-adder
-                              // extraction; otherwise unrelated ALU result lanes such as
-                              // A&B and A^B are incorrectly expanded into many adder
-                              // primitives merely because they share operands.
-                              "simplemap t:$and r:Y_WIDTH=1 %i "
-                              "t:$or r:Y_WIDTH=1 %i "
-                              "t:$xor r:Y_WIDTH=1 %i "
-                              "t:$not r:Y_WIDTH=1 %i "
-                              "t:$reduce_and t:$reduce_or t:$reduce_xor\n"
-                              "extract_fa\n"
-                              "techmap -map {}\n"
-                              "opt_clean\n"
                               "write_json {}\n",
                               quotePath(library.cells), quotePath(inputPath), pluginLoad,
-                              muxImport,
-                              memrd,
-                              quotePath(library.technologyMap),
+                              legalization,
                               quotePath(outputPath)),
                   options);
   return readFile(outputPath, "Yosys-elaboration output-reading phase");

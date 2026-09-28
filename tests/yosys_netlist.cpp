@@ -176,6 +176,12 @@ TEST(YosysTest, ImportsSubWithYosysWidthAndSignednessSemantics)
 
 TEST(YosysTest, ImportsComparisonCellsWithYosysWidthAndSignednessSemantics)
 {
+  // legalizeExpressions is a pass-through without the plugin, and the importer
+  // only accepts canonical cells, so these designs cannot be built without it.
+#ifndef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
+  GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
+#endif
+
   struct ComparisonCase {
     std::string_view type;
     std::string_view mode;
@@ -189,32 +195,32 @@ TEST(YosysTest, ImportsComparisonCellsWithYosysWidthAndSignednessSemantics)
   for (const auto& comparison : cases) {
     SCOPED_TRACE(comparison.type);
     auto       circuit    = std::make_shared<Circuit>(SILICON::yosys::deserialize(
-        comparisonDesign(comparison.type, 3, 5, 1, false, false).dump()));
+        legalizeExpressions(comparisonDesign(comparison.type, 3, 5, 1, false, false).dump())));
     const auto comparator = findComponent<Comparator>(*circuit);
     ASSERT_TRUE(comparator);
     EXPECT_EQ(comparator->getPropertyValue<int>("size"), 5);
     EXPECT_EQ(comparator->getPropertyValue<std::string>("mode"), comparison.mode);
     EXPECT_EQ(comparator->getPropertyValue<bool>("signed"), false);
-    EXPECT_TRUE(findComponent<Extender>(*circuit));
+    EXPECT_FALSE(findComponent<Extender>(*circuit));
   }
 
   // 3'b110 is -2 for a signed comparison, but 6 for an unsigned one.
   auto signedLess = std::make_shared<Circuit>(
-      SILICON::yosys::deserialize(comparisonDesign("$lt", 3, 5, 1, true, true).dump()));
+      SILICON::yosys::deserialize(legalizeExpressions(comparisonDesign("$lt", 3, 5, 1, true, true).dump())));
   EXPECT_EQ(evaluateBinaryCircuit(signedLess, 6, 3), valueFor(1, 1));
   ASSERT_TRUE(findComponent<Comparator>(*signedLess));
   EXPECT_EQ(findComponent<Comparator>(*signedLess)->getPropertyValue<bool>("signed"),
             true);
 
   auto mixedLess = std::make_shared<Circuit>(
-      SILICON::yosys::deserialize(comparisonDesign("$lt", 3, 5, 1, true, false).dump()));
+      SILICON::yosys::deserialize(legalizeExpressions(comparisonDesign("$lt", 3, 5, 1, true, false).dump())));
   EXPECT_EQ(evaluateBinaryCircuit(mixedLess, 6, 3), valueFor(1, 0));
   ASSERT_TRUE(findComponent<Comparator>(*mixedLess));
   EXPECT_EQ(findComponent<Comparator>(*mixedLess)->getPropertyValue<bool>("signed"),
             false);
 
   auto wideOutput = std::make_shared<Circuit>(
-      SILICON::yosys::deserialize(comparisonDesign("$ge", 4, 4, 3, false, false).dump()));
+      SILICON::yosys::deserialize(legalizeExpressions(comparisonDesign("$ge", 4, 4, 3, false, false).dump())));
   EXPECT_EQ(evaluateBinaryCircuit(wideOutput, 9, 3), valueFor(3, 1));
   EXPECT_TRUE(findComponent<Extender>(*wideOutput));
 }
@@ -223,6 +229,10 @@ TEST(YosysTest, ImportsIndependentEqualityCells)
 {
   using SILICON::yosys::Json;
   using SILICON::yosys::SerializationContext;
+
+#ifndef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
+  GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
+#endif
 
   const Json eqParameters{
       {"A_SIGNED", SerializationContext::parameter(0, 1)},
@@ -251,7 +261,7 @@ TEST(YosysTest, ImportsIndependentEqualityCells)
             {"match_six", eqCell(Json::array({"0", "1", "1"}), 6)}}},
           {"netnames", Json::object()}}}}}};
 
-  const Circuit circuit = SILICON::yosys::deserialize(design.dump());
+  const Circuit circuit = SILICON::yosys::deserialize(legalizeExpressions(design.dump()));
   EXPECT_EQ(componentTypes(circuit).count("Comparator"), 2);
 }
 
@@ -301,6 +311,12 @@ TEST(YosysTest, ConnectionReaderEnforcesRolesWidthsAndDriverOwnership)
 
 TEST(YosysTest, ImportsEveryCellShapeEmittedBySilicon)
 {
+  // Comparator and Shifter export raw Yosys operators that only the plugin
+  // legalizes, so the whole shape sweep needs the plugin.
+#ifndef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
+  GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
+#endif
+
   std::vector<Component_ptr> components;
   components.push_back(std::make_shared<Extender>(Bus(3), Bus(5)));
   components.push_back(std::make_shared<Complementer>(Bus(4), Bus(4)));
@@ -340,7 +356,7 @@ TEST(YosysTest, ImportsEveryCellShapeEmittedBySilicon)
     SCOPED_TRACE(std::format("component {} ({})", index, components[index]->typeName()));
     const auto exported = exportComponent(components[index]).dump();
     EXPECT_NO_THROW({
-      const auto imported = SILICON::yosys::deserialize(exported);
+      const auto imported = SILICON::yosys::deserialize(legalizeExpressions(exported));
       const auto reparsed =
           nlohmann::json::parse(SILICON::yosys::serialize(imported, "top"));
       EXPECT_TRUE(reparsed.is_object());

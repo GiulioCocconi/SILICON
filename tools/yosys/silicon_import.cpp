@@ -21,6 +21,8 @@
 #include "kernel/yosys.h"
 
 #include <algorithm>
+#include <bit>
+#include <limits>
 #include <optional>
 #include <vector>
 
@@ -382,5 +384,142 @@ struct SiliconMemrdAddressPass : public Pass {
     }
   }
 } SiliconMemrdAddressPass;
+
+// JSON contract for SILICON_ROM (one cell per read port): WIDTH, SIZE, ABITS,
+// INIT (LSB-first packed bits), ID (unescaped memory identifier), SYNC and
+// CLK_POLARITY are parameters. ADDR, DATA, SELECT, CLK and EN are ports. ADDR
+// has ABITS bits even for SIZE=1; for that case it must be constant zero.
+// SELECT is an optional output latch enable (otherwise one). CLK/EN are zero
+// and one for asynchronous reads. SYNC means the importer places an enabled
+// address register before the ROM (or a data register for SIZE=1). The
+// silicon_mem_slug attribute, when present, is a document *identifier*; the
+// importer alone chooses the project path and creates the binary document.
+struct SiliconMemoryLowerPass : public Pass {
+  SiliconMemoryLowerPass()
+    : Pass("silicon_memory_lower", "lower supported Yosys memories to SILICON_ROM") {}
+
+  void help() override
+  {
+    log("\n    silicon_memory_lower [selection]\n\n");
+    log("Validate read-only $mem_v2 cells and emit one SILICON_ROM per read port.\n");
+    log("Run after memory_dff and silicon_memrd_address.\n\n");
+  }
+
+  void execute(std::vector<std::string> args, RTLIL::Design* design) override
+  {
+    log_header(design, "Executing SILICON_MEMORY_LOWER pass.\n");
+    extra_args(args, 1, design);
+    for (auto* module : design->selected_modules()) {
+      const auto cells = allCells(module);
+      pool<RTLIL::Cell*> selected, removed;
+      collectSelectedCells(selected, module);
+      for (auto* mem : cells) {
+        if (!selected.count(mem) || mem->type != ID($mem_v2)) continue;
+        const auto reject = [&](const char* reason) {
+          log_error("Unsupported ROM %s.%s: %s.\n", log_id(module), log_id(mem), reason);
+        };
+        const int width = mem->getParam(ID::WIDTH).as_int();
+        const int size = mem->getParam(ID::SIZE).as_int();
+        const int abits = mem->getParam(ID::ABITS).as_int();
+        const int ports = mem->getParam(ID::RD_PORTS).as_int();
+        const auto isZero = [](const RTLIL::Const& value) {
+          for (int bit = 0; bit < GetSize(value); ++bit)
+            if (value[bit] != RTLIL::State::S0) return false;
+          return true;
+        };
+        if (width <= 0 || width > std::numeric_limits<unsigned short>::max()
+            || size <= 0 || size > std::numeric_limits<int>::max() / width
+            || (size & (size - 1)) != 0
+            || abits != std::max(1, static_cast<int>(std::bit_width(static_cast<unsigned>(size - 1))))
+            || ports <= 0 || ports > std::numeric_limits<int>::max() / width
+            || ports > std::numeric_limits<int>::max() / std::max(1, abits)
+            || !isZero(mem->getParam(ID::OFFSET))
+            || !isZero(mem->getParam(ID::WR_PORTS)))
+          reject("unsupported geometry or write ports");
+        for (auto key : {ID::RD_CE_OVER_SRST, ID::RD_TRANSPARENCY_MASK,
+                         ID::RD_COLLISION_X_MASK, ID::RD_WIDE_CONTINUATION,
+                         ID::WR_CLK_ENABLE, ID::WR_CLK_POLARITY,
+                         ID::WR_PRIORITY_MASK, ID::WR_WIDE_CONTINUATION})
+          if (!isZero(mem->getParam(key)))
+            reject("unsupported read controls or write behavior");
+        for (auto key : {ID::WR_ADDR, ID::WR_DATA, ID::WR_EN, ID::WR_CLK})
+          if (GetSize(mem->getPort(key)) != 0)
+            reject("memory write connections are not supported");
+        const auto init = mem->getParam(ID::INIT);
+        if (GetSize(init) != size * width || !init.is_fully_def())
+          reject("initialization must fully define every word");
+        const auto addr = mem->getPort(ID::RD_ADDR);
+        const auto data = mem->getPort(ID::RD_DATA);
+        const auto enable = mem->getPort(ID::RD_EN);
+        const auto clock = mem->getPort(ID::RD_CLK);
+        const auto arst = mem->getPort(ID::RD_ARST);
+        const auto srst = mem->getPort(ID::RD_SRST);
+        const auto clkEnable = mem->getParam(ID::RD_CLK_ENABLE);
+        const auto clkPolarity = mem->getParam(ID::RD_CLK_POLARITY);
+        const auto initial = mem->getParam(ID::RD_INIT_VALUE);
+        if (GetSize(addr) != ports * abits || GetSize(data) != ports * width
+            || GetSize(enable) != ports || GetSize(clock) != ports
+            || GetSize(arst) != ports || GetSize(srst) != ports
+            || GetSize(clkEnable) != ports || GetSize(clkPolarity) != ports
+            || GetSize(initial) != ports * width)
+          reject("invalid read port widths");
+
+        for (int port = 0; port < ports; ++port) {
+          const bool sync = clkEnable[port] == RTLIL::State::S1;
+          const bool positive = clkPolarity[port] == RTLIL::State::S1;
+          if ((clkEnable[port] != RTLIL::State::S0 && !sync)
+              || (clkPolarity[port] != RTLIL::State::S0 && !positive))
+            reject("undefined read clock control");
+          if (sync) {
+            for (int bit = 0; bit < width; ++bit)
+              if (initial[port * width + bit] != RTLIL::State::Sx)
+                reject("initialized synchronous read register is unsupported");
+            if (arst[port] != RTLIL::State::S0 || srst[port] != RTLIL::State::S0)
+              reject("synchronous read reset is unsupported");
+          } else if (enable[port] != RTLIL::State::S1) {
+            reject("asynchronous read enable must be constant one");
+          }
+          const auto readAddr = addr.extract(port * abits, abits);
+          const auto readData = data.extract(port * width, width);
+          if (size == 1 && readAddr != RTLIL::SigSpec(RTLIL::State::S0, abits))
+            reject("one-word memory address must be constant zero");
+
+          RTLIL::SigSpec output = readData;
+          RTLIL::SigSpec select(RTLIL::State::S1);
+          for (auto* latch : cells) {
+            if (removed.count(latch) || !selected.count(latch) || latch->type != ID($dlatch)
+                || latch->getPort(ID::D) != readData) continue;
+            if (latch->getParam(ID::EN_POLARITY).as_int() != 1
+                || GetSize(latch->getPort(ID::Q)) != width
+                || GetSize(latch->getPort(ID::EN)) != 1)
+              reject("unsupported ROM output latch");
+            output = latch->getPort(ID::Q);
+            select = latch->getPort(ID::EN);
+            removed.insert(latch);
+            break;
+          }
+
+          auto* rom = module->addCell(NEW_ID, RTLIL::escape_id("SILICON_ROM"));
+          rom->setParam(ID::WIDTH, width);
+          rom->setParam(ID::SIZE, size);
+          rom->setParam(ID::ABITS, abits);
+          rom->setParam(ID::INIT, init);
+          rom->setParam(RTLIL::escape_id("ID"), mem->getParam(ID::MEMID));
+          rom->setParam(RTLIL::escape_id("SYNC"), sync ? 1 : 0);
+          rom->setParam(ID::CLK_POLARITY, positive ? 1 : 0);
+          rom->setPort(ID::ADDR, readAddr);
+          rom->setPort(ID::DATA, output);
+          rom->setPort(RTLIL::escape_id("SELECT"), select);
+          rom->setPort(ID::CLK, sync ? clock.extract(port, 1) : RTLIL::SigSpec(RTLIL::State::S0));
+          rom->setPort(ID::EN, sync ? enable.extract(port, 1) : RTLIL::SigSpec(RTLIL::State::S1));
+          rom->attributes = mem->attributes;
+        }
+        module->remove(mem);
+      }
+      for (auto* latch : removed)
+        module->remove(latch);
+    }
+  }
+} SiliconMemoryLowerPass;
 
 PRIVATE_NAMESPACE_END
