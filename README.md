@@ -10,14 +10,8 @@ _Currently sponsored by UniGe_
 
 ## TODOs
 
-Since it's a pre-alpha product, there are quite a lot of things to be done:
-
 A roadmap (+ various diagrams/ideas) is available [here](https://www.canva.com/design/DAGqb7QaA-w/_ld_l41b__KKIG6wlUhFLg/view)![Canva](https://img.shields.io/badge/Canva-%2300C4CC.svg?style=for-the-badge&logo=Canva&logoColor=white), written partly in Italian.
-_Common_
 
-- [X] GUI with QT6:
-    * [X] Implement logic for moving graphicalWires,
-    * [X] Use [QSettings](https://doc.qt.io/qt-6/qsettings.html) to save user preferences
 - [ ] MacOS support
 - [X] Documentation
     * [ ] User docs
@@ -26,8 +20,6 @@ _Common_
     * [X] Multi-OS support (_kinda done: windows builds are now supported_)
         * [ ] Deployment (setup packages for Win & Mac). See [here](https://www.qt.io/blog/cmake-deployment-api).
 
-_Logic circuits (Silicon LogiFlow)_
-
 - [X] Multiplexers & demultiplexers
 - [X] Timed simulation
 - [X] Flip flops & synchronous components
@@ -35,10 +27,9 @@ _Logic circuits (Silicon LogiFlow)_
 - [X] INPUTS & OUTPUTS!!!!
 - [X] Bus display
 - [ ] 7-segment display
-- [ ] Memories
-- [ ] Counters
+- [X] Memories
 - [ ] Waveform input & automated testing
-- [ ] Subcircuits
+- [X] Subcircuits
 - [X] Verilog support
     * Yosys integration (JSON netlist)
 - [X] File format
