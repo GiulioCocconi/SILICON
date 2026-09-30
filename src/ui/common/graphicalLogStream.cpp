@@ -16,8 +16,7 @@
 #include <boost/make_shared.hpp>
 
 
-namespace SILICON {
-namespace ui {
+namespace SILICON::ui {
 
 namespace logging = boost::log;
 namespace expr    = boost::log::expressions;
@@ -104,5 +103,4 @@ void GraphicalLogStream::detachFromBoostLog()
   sink.reset();
 }
 
-}  // namespace ui
-}  // namespace SILICON
+}  // namespace SILICON::ui

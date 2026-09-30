@@ -5,8 +5,7 @@
 class QTextEdit;
 
 
-namespace SILICON {
-namespace ui {
+namespace SILICON::ui {
 
 class LogSideView : public QWidget {
   Q_OBJECT
@@ -29,5 +28,4 @@ private:
   QTextEdit* logOutput;
 };
 
-}  // namespace ui
-}  // namespace SILICON
+}  // namespace SILICON::ui

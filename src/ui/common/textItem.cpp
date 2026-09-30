@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2025 Giulio Cocconi
+  Copyright (c) 2025. Giulio Cocconi
 
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -13,13 +13,12 @@
 
   You should have received a copy of the GNU General Public License
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ */
 
 #include "textItem.hpp"
 
 
-namespace SILICON {
-namespace ui {
+namespace SILICON::ui {
 using namespace SILICON::core;
 
 TextItem::TextItem(std::string_view text, QGraphicsItem* parent) : QGraphicsItem(parent)
@@ -35,5 +34,4 @@ void TextItem::setText(std::string_view text)
   this->text = qText;
 }
 
-}  // namespace ui
-}  // namespace SILICON
+}  // namespace SILICON::ui

@@ -4,8 +4,7 @@
 #include <QMap>
 #include <QString>
 
-namespace SILICON {
-namespace ui {
+namespace SILICON::ui {
 
 namespace theme {
 
@@ -53,5 +52,4 @@ private:
   static SILICON::ui::theme::ColorMap currentMap;
 };
 
-}  // namespace ui
-}  // namespace SILICON
+}  // namespace SILICON::ui

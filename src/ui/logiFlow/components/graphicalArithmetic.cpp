@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2026 Giulio Cocconi
+  Copyright (c) 2026. Giulio Cocconi
 
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -13,7 +13,7 @@
 
   You should have received a copy of the GNU General Public License
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ */
 
 #include "graphicalArithmetic.hpp"
 
@@ -28,8 +28,7 @@
 #include <utility>
 #include <variant>
 
-namespace SILICON {
-namespace ui {
+namespace SILICON::ui {
 using namespace SILICON::core;
 using namespace SILICON::extra;
 
@@ -264,5 +263,4 @@ void GraphicalComparator::setComponent(const Component_ptr& component)
   applyMode(component->getPropertyValue<std::string>("mode").value_or("=="));
 }
 
-}  // namespace ui
-}  // namespace SILICON
+}  // namespace SILICON::ui

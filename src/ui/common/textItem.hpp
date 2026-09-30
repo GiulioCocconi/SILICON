@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2025 Giulio Cocconi
+  Copyright (c) 2025. Giulio Cocconi
 
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -13,7 +13,7 @@
 
   You should have received a copy of the GNU General Public License
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ */
 
 #pragma once
 
@@ -28,8 +28,7 @@
 #include <QRectF>
 
 
-namespace SILICON {
-namespace ui {
+namespace SILICON::ui {
 class TextItem : public QGraphicsItem {
 public:
   explicit TextItem(std::string_view text, QGraphicsItem* parent = nullptr);
@@ -47,5 +46,4 @@ private:
   QString text;
 };
 
-}  // namespace ui
-}  // namespace SILICON
+}  // namespace SILICON::ui

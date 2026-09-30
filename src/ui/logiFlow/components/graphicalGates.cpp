@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2025 Giulio Cocconi
+  Copyright (c) 2025. Giulio Cocconi
 
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -13,15 +13,14 @@
 
   You should have received a copy of the GNU General Public License
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ */
 
 #include "graphicalGates.hpp"
 
 #include <stdexcept>
 
 
-namespace SILICON {
-namespace ui {
+namespace SILICON::ui {
 using namespace SILICON::core;
 
 GraphicalGate::GraphicalGate(const std::shared_ptr<Gate> gate, QGraphicsItem* shape,
@@ -55,5 +54,4 @@ GraphicalNot::GraphicalNot(QGraphicsItem* parent)
   setPorts({PortPair{"i", QPoint(-20, 20)}}, {PortPair{"o", QPoint(80, 20)}});
 }
 
-}  // namespace ui
-}  // namespace SILICON
+}  // namespace SILICON::ui

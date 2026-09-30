@@ -15,8 +15,7 @@
 #include <ui/common/theme.hpp>
 
 
-namespace SILICON {
-namespace ui {
+namespace SILICON::ui {
 
 namespace {
 
@@ -143,5 +142,4 @@ void LogSideView::repaintLogText()
   logOutput->viewport()->update();
 }
 
-}  // namespace ui
-}  // namespace SILICON
+}  // namespace SILICON::ui

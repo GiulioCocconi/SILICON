@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2025 Giulio Cocconi
+  Copyright (c) 2025. Giulio Cocconi
 
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -13,7 +13,7 @@
 
   You should have received a copy of the GNU General Public License
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ */
 
 #include "icons.hpp"
 
@@ -24,8 +24,7 @@
 #include <ui/common/theme.hpp>
 
 
-namespace SILICON {
-namespace ui {
+namespace SILICON::ui {
 
 namespace {
 
@@ -149,5 +148,4 @@ QString Icon::getPathFromCommonName(const QString& commonName)
   return path;
 }
 
-}  // namespace ui
-}  // namespace SILICON
+}  // namespace SILICON::ui

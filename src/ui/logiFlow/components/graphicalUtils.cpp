@@ -3,8 +3,7 @@
 #include <ui/common/theme.hpp>
 
 
-namespace SILICON {
-namespace ui {
+namespace SILICON::ui {
 using namespace SILICON::core;
 using namespace SILICON::extra;
 
@@ -119,5 +118,4 @@ int GraphicalWireMerger::setSize(const int newSize)
   return newSize;
 }
 
-}  // namespace ui
-}  // namespace SILICON
+}  // namespace SILICON::ui

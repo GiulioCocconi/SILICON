@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2026 Giulio Cocconi
+  Copyright (c) 2026. Giulio Cocconi
 
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -13,7 +13,7 @@
 
   You should have received a copy of the GNU General Public License
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ */
 
 #include "graphicalFlipFlops.hpp"
 
@@ -24,8 +24,7 @@
 #include <QTextOption>
 
 
-namespace SILICON {
-namespace ui {
+namespace SILICON::ui {
 using namespace SILICON::core;
 
 namespace {
@@ -120,5 +119,4 @@ GraphicalJKFlipFlop::GraphicalJKFlipFlop(QGraphicsItem* parent)
            {PortPair{"q", QPoint(100, 20)}, PortPair{"!q", QPoint(100, 60)}});
 }
 
-}  // namespace ui
-}  // namespace SILICON
+}  // namespace SILICON::ui

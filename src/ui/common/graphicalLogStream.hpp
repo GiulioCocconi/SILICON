@@ -6,8 +6,7 @@
 #include <boost/shared_ptr.hpp>
 
 
-namespace SILICON {
-namespace ui {
+namespace SILICON::ui {
 
 class GraphicalLogStream : public QObject {
   Q_OBJECT
@@ -26,5 +25,4 @@ private:
   boost::shared_ptr<boost::log::sinks::sink> sink;
 };
 
-}  // namespace ui
-}  // namespace SILICON
+}  // namespace SILICON::ui
