@@ -30,7 +30,7 @@ export default defineConfig({
     nav: [
       { text: "home", link: "/../", target: "_self" },
       { text: "getting started", link: "/" },
-      { text: "logiflow", link: "/guide/logiflow" },
+      { text: "silicon", link: "/guide/silicon" },
       { text: "showcase", link: "/guide/lorem-ipsum" },
     ],
     sidebar: {
@@ -53,7 +53,7 @@ export default defineConfig({
           text: "User Documentation",
           items: [
             { text: "Getting Started", link: "/" },
-            { text: "LogiFlow Basics", link: "/guide/logiflow" },
+            { text: "SILICON Basics", link: "/guide/silicon" },
             { text: "Silicon Internals", link: "/guide/internals" },
             { text: "Troubleshooting", link: "/guide/troubleshooting" },
             { text: "Formatting Showcase", link: "/guide/lorem-ipsum" },

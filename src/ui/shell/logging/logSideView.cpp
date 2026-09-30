@@ -1,0 +1,145 @@
+#include "logSideView.hpp"
+
+#include <QEvent>
+#include <QFont>
+#include <QFrame>
+#include <QRegularExpression>
+#include <QSignalBlocker>
+#include <QSizePolicy>
+#include <QTextBlock>
+#include <QTextCharFormat>
+#include <QTextCursor>
+#include <QTextEdit>
+#include <QVBoxLayout>
+
+#include <ui/shell/theme.hpp>
+
+
+namespace SILICON::ui {
+
+namespace {
+
+QString getLevel(const QString& line)
+{
+  static const QRegularExpression levelPattern(R"(^\[[^\]]+\]\s+\[([^\]]+)\])",
+                                               QRegularExpression::CaseInsensitiveOption);
+
+  const auto match = levelPattern.match(line);
+
+  if (match.hasMatch())
+    return match.captured(1).toUpper();
+
+  return "INFO";
+}
+
+bool isBold(const QString& level)
+{
+  return (level != "TRACE") && (level != "DEBUG") && (level != "INFO");
+}
+
+QColor levelColor(const QString& level)
+{
+  if (level == "TRACE")
+    return ThemeEngine::getColor("SILICON_BACKGROUND").darker(160);
+  if (level == "DEBUG")
+    return ThemeEngine::getColor("SILICON_BLUE");
+  if (level == "INFO")
+    return ThemeEngine::getColor("SILICON_INK").lighter(145);
+  if (level == "WARNING")
+    return ThemeEngine::getColor("SILICON_ORANGE");
+  if (level == "ERROR")
+    return ThemeEngine::getColor("SILICON_VIOLET");
+  if (level == "FATAL" || level == "CRITICAL")
+    return ThemeEngine::getColor("SILICON_VIOLET").darker(150);
+
+  return ThemeEngine::getColor("SILICON_INK");
+}
+
+QTextCharFormat formatForLine(const QString& line)
+{
+  QTextCharFormat format;
+  const QString   level = getLevel(line);
+
+  format.setForeground(levelColor(level));
+
+  if (isBold(level))
+    format.setFontWeight(QFont::Bold);
+
+  return format;
+}
+
+}  // namespace
+
+LogSideView::LogSideView(QWidget* parent) : QWidget(parent)
+{
+  auto* layout = new QVBoxLayout(this);
+  layout->setContentsMargins(10, 10, 10, 0);
+
+  logOutput = new QTextEdit(this);
+  logOutput->setReadOnly(true);
+  logOutput->setUndoRedoEnabled(false);
+  logOutput->setFrameStyle(QFrame::NoFrame);
+  logOutput->document()->setMaximumBlockCount(5000);
+  logOutput->document()->setDocumentMargin(6);
+  logOutput->setProperty("class", "mono");
+  logOutput->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+  layout->addWidget(logOutput);
+}
+
+QSize LogSideView::sizeHint() const
+{
+  return {260, 220};
+}
+
+QSize LogSideView::minimumSizeHint() const
+{
+  return {180, 120};
+}
+
+void LogSideView::appendLine(const QString& line)
+{
+  QTextCursor cursor(logOutput->document());
+  cursor.movePosition(QTextCursor::End);
+  cursor.insertText(line, formatForLine(line));
+  cursor.insertBlock();
+
+  logOutput->setTextCursor(cursor);
+  logOutput->ensureCursorVisible();
+}
+
+void LogSideView::clear()
+{
+  logOutput->clear();
+}
+
+void LogSideView::changeEvent(QEvent* event)
+{
+  QWidget::changeEvent(event);
+
+  if (event->type() == QEvent::PaletteChange
+      || event->type() == QEvent::ApplicationPaletteChange
+      || event->type() == QEvent::StyleChange) {
+    repaintLogText();
+  }
+}
+
+void LogSideView::repaintLogText()
+{
+  const QSignalBlocker blocker(logOutput);
+  QTextCursor          cursor(logOutput->document());
+
+  for (QTextBlock block = logOutput->document()->begin(); block.isValid();
+       block            = block.next()) {
+    const QString line = block.text();
+    if (line.isEmpty())
+      continue;
+
+    cursor.setPosition(block.position());
+    cursor.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
+    cursor.setCharFormat(formatForLine(line));
+  }
+
+  logOutput->viewport()->update();
+}
+
+}  // namespace SILICON::ui

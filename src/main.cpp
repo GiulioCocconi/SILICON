@@ -36,9 +36,9 @@
 #include <core/serialization/component_registration.hpp>
 #include <logging/logger.hpp>
 
-#include <ui/common/icons.hpp>
-#include <ui/common/theme.hpp>
-#include <ui/logiFlow/logiFlowWindow.hpp>
+#include <ui/shell/icons.hpp>
+#include <ui/shell/theme.hpp>
+#include <ui/shell/siliconWindow.hpp>
 #include <ui/serialization/gui_component_registration.hpp>
 
 using namespace SILICON::logging;
@@ -111,18 +111,18 @@ int siliconMain(int argc, char** argv)
     registerAllGUIComponents(guiFactory);
 
     {
-      LogiFlowWindow lfWin{};
-      lfWin.resize(QGuiApplication::primaryScreen()->size() * 0.6);
-      lfWin.show();
+      SiliconWindow mainWindow{};
+      mainWindow.resize(QGuiApplication::primaryScreen()->size() * 0.6);
+      mainWindow.show();
 
       Logger::setMinimumLevel(LogLevel::Debug);
 
       Logger uiLog("ui");
       uiLog.info("SILICON UI started");
 
-      splashScreen.finish(&lfWin);
+      splashScreen.finish(&mainWindow);
       exitCode = QApplication::exec();
-      lfWin.close();
+      mainWindow.close();
     }
 
     QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);

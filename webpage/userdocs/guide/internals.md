@@ -182,7 +182,7 @@ and treat undocumented entries as implementation details.
 
 Relevant source: the [project archive contract](https://github.com/GiulioCocconi/SILICON/blob/main/src/core/serialization/projectFile.hpp),
 [core topology serializer](https://github.com/GiulioCocconi/SILICON/blob/main/src/core/circuit.cpp),
-and [scene serializer](https://github.com/GiulioCocconi/SILICON/blob/main/src/ui/common/diagramScene/diagramSceneSerializer.cpp).
+and [scene serializer](https://github.com/GiulioCocconi/SILICON/blob/main/src/ui/circuit/diagram/scene/diagramSceneSerializer.cpp).
 
 ## Waveform management
 
@@ -220,7 +220,7 @@ export its already-collected snapshots to an FST file; FST is an interchange/out
 format, not the in-memory editing model.
 
 Relevant source: the [waveform data model](https://github.com/GiulioCocconi/SILICON/blob/main/src/core/siliconWaveform.hpp),
-[simulation/UI bridge](https://github.com/GiulioCocconi/SILICON/blob/main/src/ui/common/diagramScene/diagramSceneSimulationController.cpp),
+[simulation/UI bridge](https://github.com/GiulioCocconi/SILICON/blob/main/src/ui/circuit/diagram/scene/diagramSceneSimulationController.cpp),
 and [FST adapter](https://github.com/GiulioCocconi/SILICON/blob/main/src/core/siliconFst.hpp).
 
 ## Yosys interoperability and the SILICON technology library
@@ -493,7 +493,7 @@ data, so renaming it requires an explicit compatibility strategy.
 ### 3. Implement and register the graphical component
 
 Create a `GraphicalLogicComponent` subclass under
-`src/ui/logiFlow/components/` and register its `.cpp` file in `UI_SOURCE_FILES`. Its
+`src/ui/circuit/components/` and register its `.cpp` file in `UI_SOURCE_FILES`. Its
 constructor should create the core component, install a shape (an existing Qt resource,
 SVG, or programmatic `QGraphicsItem`), and declare input/output `PortPair`s that match the
 core buses. Override `type()` with a distinct value from `SiliconTypes` for Qt item

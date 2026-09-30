@@ -25,15 +25,15 @@
 #include <extraComponents/arithmetic.hpp>
 #include <extraComponents/multiplexer.hpp>
 #include <extraComponents/utils.hpp>
-#include <ui/logiFlow/components/graphicalArithmetic.hpp>
-#include <ui/logiFlow/components/graphicalFlipFlops.hpp>
-#include <ui/logiFlow/components/graphicalGates.hpp>
-#include <ui/logiFlow/components/graphicalIO.hpp>
-#include <ui/logiFlow/components/graphicalMemory.hpp>
-#include <ui/logiFlow/components/graphicalMultiplexer.hpp>
-#include <ui/logiFlow/components/graphicalRegister.hpp>
-#include <ui/logiFlow/components/graphicalUtils.hpp>
-#include <ui/logiFlow/components/subcircuit/graphicalSubcircuit.hpp>
+#include <ui/circuit/components/graphicalArithmetic.hpp>
+#include <ui/circuit/components/graphicalFlipFlops.hpp>
+#include <ui/circuit/components/graphicalGates.hpp>
+#include <ui/circuit/components/graphicalIO.hpp>
+#include <ui/circuit/components/graphicalMemory.hpp>
+#include <ui/circuit/components/graphicalMultiplexer.hpp>
+#include <ui/circuit/components/graphicalRegister.hpp>
+#include <ui/circuit/components/graphicalUtils.hpp>
+#include <ui/circuit/components/subcircuit/graphicalSubcircuit.hpp>
 
 #include <utility>
 

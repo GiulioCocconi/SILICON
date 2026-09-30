@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "ui/common/boundaryIoPlacement.hpp"
+#include "ui/circuit/diagram/boundaryIoPlacement.hpp"
 
 #include <QPointF>
 #include <QRectF>
