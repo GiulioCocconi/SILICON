@@ -22,7 +22,7 @@
 #include <core/serialization/component_registry.hpp>
 
 #include <memory>
-#include <ui/common/graphicalComponent.hpp>
+#include <ui/circuit/diagram/graphicalComponent.hpp>
 
 #include <functional>
 #include <map>

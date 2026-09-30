@@ -1,0 +1,95 @@
+/*
+  Copyright (c) 2026. Giulio Cocconi
+
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+#pragma once
+
+#include <extraComponents/arithmetic.hpp>
+
+#include <ui/circuit/components/graphicalLogicComponent.hpp>
+
+namespace SILICON::ui {
+using namespace SILICON::core;
+using namespace SILICON::extra;
+
+class GraphicalExtender : public GraphicalLogicComponent {
+  Q_OBJECT
+public:
+  GraphicalExtender(QGraphicsItem* parent = nullptr);
+
+  int type() const override { return SiliconTypes::EXTENDER; }
+};
+
+class GraphicalComplementer : public GraphicalLogicComponent {
+  Q_OBJECT
+public:
+  GraphicalComplementer(QGraphicsItem* parent = nullptr);
+
+  int type() const override { return SiliconTypes::COMPLEMENTER; }
+};
+
+class GraphicalHalfAdder : public GraphicalLogicComponent {
+  Q_OBJECT
+public:
+  explicit GraphicalHalfAdder(QGraphicsItem* parent = nullptr);
+
+  int type() const override { return SiliconTypes::HALF_ADDER; }
+};
+
+class GraphicalFullAdder : public GraphicalLogicComponent {
+  Q_OBJECT
+public:
+  explicit GraphicalFullAdder(QGraphicsItem* parent = nullptr);
+
+  int type() const override { return SiliconTypes::FULL_ADDER; }
+};
+
+class GraphicalAdderNBits : public GraphicalLogicComponent {
+  Q_OBJECT
+public:
+  explicit GraphicalAdderNBits(QGraphicsItem* parent = nullptr);
+
+  int type() const override { return SiliconTypes::ADDER_N_BITS; }
+};
+
+class GraphicalShifter : public GraphicalLogicComponent {
+  Q_OBJECT
+public:
+  explicit GraphicalShifter(QGraphicsItem* parent = nullptr);
+
+  int type() const override { return SiliconTypes::SHIFTER; }
+  void setComponent(const Component_ptr& component) override;
+
+private:
+  void setupCallbacks();
+  std::string applyMode(std::string mode);
+};
+
+class GraphicalComparator : public GraphicalLogicComponent {
+  Q_OBJECT
+public:
+  explicit GraphicalComparator(QGraphicsItem* parent = nullptr);
+
+  int type() const override { return SiliconTypes::COMPARATOR; }
+
+  void setComponent(const Component_ptr& component) override;
+
+private:
+  void setupCallbacks();
+  std::string applyMode(std::string mode);
+};
+
+}  // namespace SILICON::ui

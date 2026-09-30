@@ -27,9 +27,9 @@
 #include <nlohmann/json.hpp>
 
 #include <core/circuit.hpp>
-#include <ui/common/diagramScene/diagramScene.hpp>
-#include <ui/logiFlow/components/subcircuit/metadata.hpp>
-#include <ui/logiFlow/components/subcircuit/utils.hpp>
+#include <ui/circuit/diagram/scene/diagramScene.hpp>
+#include <ui/circuit/components/subcircuit/metadata.hpp>
+#include <ui/circuit/components/subcircuit/utils.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
 
 namespace SILICON::ui {

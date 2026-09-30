@@ -2,7 +2,7 @@
 
 #include "libavoid/libavoid.h"
 #include "libavoid/qtgeomtypes.h"
-#include "ui/common/wireRouting.hpp"
+#include "ui/circuit/diagram/wireRouting.hpp"
 
 #include <QPointF>
 #include <QPolygonF>

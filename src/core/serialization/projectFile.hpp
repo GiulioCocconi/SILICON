@@ -51,7 +51,7 @@ inline constexpr int FORMAT_VERSION = 1;
  * mimetype            application/vnd.silicon.project+zip, stored uncompressed
  * metadata.json       archive/schema metadata
  * project.json        project-level information
- * circuits/untitled.json  serialized LogiFlow circuit JSON
+ * circuits/untitled.json  serialized circuit document JSON
  * @endcode
  *
  * Every project contains at least one document whose type is

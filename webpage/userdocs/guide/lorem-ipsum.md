@@ -10,12 +10,12 @@ Use this page when changing theme styles. It deliberately mixes headings, lists,
 
 ## Status Badges
 
-LogiFlow <Badge type="tip" text="ready" /> FSM Suite <Badge type="warning" text="planned" /> Microcontrollers <Badge type="danger" text="experimental" />
+SILICON <Badge type="tip" text="ready" /> Finite state machines <Badge type="warning" text="planned" /> Microcontrollers <Badge type="danger" text="experimental" />
 
 ## Quick Links
 
 - [Getting Started](./getting-started.md) covers the first user workflow.
-- [LogiFlow Basics](./logiflow.md) explains editor concepts.
+- [SILICON Basics](./silicon.md) explains editor concepts.
 - [Troubleshooting](./troubleshooting.md) collects common failure checks.
 - [GitHub](https://github.com/GiulioCocconi/SILICON) is the source repository.
 - <ParentLink to="">Parent Link Test</ParentLink>
@@ -68,7 +68,7 @@ Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aenean latch output rem
 
 ## Code
 
-Inline code like `Circuit`, `Wire`, `Component`, and `LogiFlow` should remain legible inside paragraphs.
+Inline code like `Circuit`, `Wire`, `Component`, and `SILICON` should remain legible inside paragraphs.
 
 ```cpp{4-7}
 class ExampleGate {

@@ -99,65 +99,73 @@ set(EXTRA_COMPONENTS_SOURCE_FILES
         ${src_dir}/extraComponents/utils.cpp)
 
 set(UI_SOURCE_FILES
-        ${src_dir}/ui/common/graphicalLogStream.cpp
-        ${src_dir}/ui/common/logSideView.cpp
-        ${src_dir}/ui/common/theme.cpp
-        ${src_dir}/ui/common/fileDialogUtils.cpp
-        ${src_dir}/ui/common/inputDialogUtils.cpp
-        ${src_dir}/ui/common/componentSearchMatcher.cpp
-        ${src_dir}/ui/common/componentSearchBox.cpp
-        ${src_dir}/ui/common/boundaryIoPlacement.cpp
-        ${src_dir}/ui/common/ogdfCircuit.cpp
-        ${src_dir}/ui/common/circuitAutoplacer.cpp
-        ${src_dir}/ui/common/diagramView.cpp
-        ${src_dir}/ui/common/diagramScene/diagramScene.cpp
-        ${src_dir}/ui/common/diagramScene/diagramSceneSerializer.cpp
-        ${src_dir}/ui/common/diagramScene/diagramSceneSimulationController.cpp
-        ${src_dir}/ui/common/graphicalWire.cpp
-        ${src_dir}/ui/common/wireManager.cpp
-        ${src_dir}/ui/common/wireRouting.cpp
-        ${src_dir}/ui/common/waveformViewer.cpp
-        ${src_dir}/ui/common/graphicalComponent.cpp
-        ${src_dir}/ui/common/graphicalItem.cpp
-        ${src_dir}/ui/common/undoCommands.cpp
-        ${src_dir}/ui/common/icons.cpp
-        ${src_dir}/ui/common/aboutDialog.cpp
-        ${src_dir}/ui/common/siliconSettings.cpp
-        ${src_dir}/ui/common/settingsWindow.cpp
-        ${src_dir}/ui/logiFlow/components/graphicalLogicComponent.cpp
-        ${src_dir}/ui/logiFlow/components/graphicalIO.cpp
-        ${src_dir}/ui/logiFlow/components/graphicalGates.cpp
-        ${src_dir}/ui/logiFlow/components/graphicalFlipFlops.cpp
-        ${src_dir}/ui/logiFlow/components/graphicalRegister.cpp
-        ${src_dir}/ui/logiFlow/components/graphicalMemory.cpp
-        ${src_dir}/ui/logiFlow/components/subcircuit/componentShapeEditor.cpp
-        ${src_dir}/ui/logiFlow/components/subcircuit/graphicalSubcircuit.cpp
-        ${src_dir}/ui/logiFlow/components/subcircuit/metadata.cpp
-        ${src_dir}/ui/logiFlow/components/subcircuit/utils.cpp
-        ${src_dir}/ui/logiFlow/components/graphicalArithmetic.cpp
-        ${src_dir}/ui/logiFlow/components/graphicalMultiplexer.cpp
-        ${src_dir}/ui/logiFlow/components/graphicalUtils.cpp
-        ${src_dir}/ui/logiFlow/componentCatalogOverlay.cpp
-        ${src_dir}/ui/common/codeFilePresentation.cpp
-        ${src_dir}/ui/logiFlow/code/codeEditor.cpp
-        ${src_dir}/ui/logiFlow/code/codeSyntaxHighlighter.cpp
-        ${src_dir}/ui/logiFlow/code/indentationUtils.cpp
-        ${src_dir}/ui/logiFlow/code/syntax/verilog.cpp
-        ${src_dir}/ui/logiFlow/code/syntax/sisl.cpp
-        ${src_dir}/ui/common/binaryEditor.cpp
-        ${src_dir}/ui/logiFlow/metadataDescriptionEdit.cpp
-        ${src_dir}/ui/logiFlow/projectTree.cpp
-        ${src_dir}/ui/logiFlow/logiFlowWindowActions.cpp
-        ${src_dir}/ui/logiFlow/logiFlowWindowSettings.cpp
-        ${src_dir}/ui/logiFlow/logiFlowWindowFile.cpp
-        ${src_dir}/ui/logiFlow/logiFlowWindowInteraction.cpp
-        ${src_dir}/ui/logiFlow/logiFlowWindowDocuments.cpp
-        ${src_dir}/ui/logiFlow/logiFlowWindowArchitecture.cpp
-        ${src_dir}/ui/logiFlow/sislVisualizer.cpp
-        ${src_dir}/ui/logiFlow/logiFlowWindowConversion.cpp
-        ${src_dir}/ui/logiFlow/logiFlowWindowProject.cpp
-        ${src_dir}/ui/logiFlow/logiFlowWindowProperties.cpp
-        ${src_dir}/ui/logiFlow/logiFlowWindow.cpp
+        ${src_dir}/ui/shell/logging/graphicalLogStream.cpp
+        ${src_dir}/ui/shell/logging/logSideView.cpp
+        ${src_dir}/ui/shell/theme.cpp
+        ${src_dir}/ui/shell/fileDialogUtils.cpp
+        ${src_dir}/ui/shell/inputDialogUtils.cpp
+        ${src_dir}/ui/circuit/editor/componentSearchMatcher.cpp
+        ${src_dir}/ui/circuit/editor/componentSearchBox.cpp
+        ${src_dir}/ui/circuit/diagram/boundaryIoPlacement.cpp
+        ${src_dir}/ui/circuit/diagram/ogdfCircuit.cpp
+        ${src_dir}/ui/circuit/diagram/circuitAutoplacer.cpp
+        ${src_dir}/ui/circuit/diagram/diagramView.cpp
+        ${src_dir}/ui/circuit/diagram/scene/diagramScene.cpp
+        ${src_dir}/ui/circuit/diagram/scene/diagramSceneSerializer.cpp
+        ${src_dir}/ui/circuit/diagram/scene/diagramSceneSimulationController.cpp
+        ${src_dir}/ui/circuit/diagram/graphicalWire.cpp
+        ${src_dir}/ui/circuit/diagram/wireManager.cpp
+        ${src_dir}/ui/circuit/diagram/wireRouting.cpp
+        ${src_dir}/ui/waveform/waveformViewer.cpp
+        ${src_dir}/ui/circuit/diagram/graphicalComponent.cpp
+        ${src_dir}/ui/circuit/diagram/graphicalItem.cpp
+        ${src_dir}/ui/circuit/diagram/undoCommands.cpp
+        ${src_dir}/ui/shell/icons.cpp
+        ${src_dir}/ui/shell/aboutDialog.cpp
+        ${src_dir}/ui/shell/siliconSettings.cpp
+        ${src_dir}/ui/shell/settingsWindow.cpp
+        ${src_dir}/ui/circuit/components/graphicalLogicComponent.cpp
+        ${src_dir}/ui/circuit/components/graphicalIO.cpp
+        ${src_dir}/ui/circuit/components/graphicalGates.cpp
+        ${src_dir}/ui/circuit/components/graphicalFlipFlops.cpp
+        ${src_dir}/ui/circuit/components/graphicalRegister.cpp
+        ${src_dir}/ui/circuit/components/graphicalMemory.cpp
+        ${src_dir}/ui/circuit/components/subcircuit/componentShapeEditor.cpp
+        ${src_dir}/ui/circuit/components/subcircuit/graphicalSubcircuit.cpp
+        ${src_dir}/ui/circuit/components/subcircuit/metadata.cpp
+        ${src_dir}/ui/circuit/components/subcircuit/utils.cpp
+        ${src_dir}/ui/circuit/components/graphicalArithmetic.cpp
+        ${src_dir}/ui/circuit/components/graphicalMultiplexer.cpp
+        ${src_dir}/ui/circuit/components/graphicalUtils.cpp
+        ${src_dir}/ui/circuit/editor/componentCatalogOverlay.cpp
+        ${src_dir}/ui/documents/code/codeFilePresentation.cpp
+        ${src_dir}/ui/documents/code/codeEditor.cpp
+        ${src_dir}/ui/documents/code/codeSyntaxHighlighter.cpp
+        ${src_dir}/ui/documents/code/indentationUtils.cpp
+        ${src_dir}/ui/documents/code/syntax/verilog.cpp
+        ${src_dir}/ui/documents/code/syntax/sisl.cpp
+        ${src_dir}/ui/documents/binary/binaryEditor.cpp
+        ${src_dir}/ui/project/projectTree.cpp
+        ${src_dir}/ui/project/projectSession.cpp
+        ${src_dir}/ui/project/projectDocumentPolicy.cpp
+        ${src_dir}/ui/documents/architecture/architectureWorkspace.cpp
+        ${src_dir}/ui/documents/architecture/architectureController.cpp
+        ${src_dir}/ui/documents/editorWorkspace.cpp
+        ${src_dir}/ui/project/projectDocumentController.cpp
+        ${src_dir}/ui/project/projectDocumentActions.cpp
+        ${src_dir}/ui/project/projectArchitectureActions.cpp
+        ${src_dir}/ui/project/projectDocumentConversion.cpp
+        ${src_dir}/ui/shell/siliconWindowActions.cpp
+        ${src_dir}/ui/shell/uiUtils.cpp
+        ${src_dir}/ui/shell/windowActions.cpp
+        ${src_dir}/ui/shell/windowActionsSettings.cpp
+        ${src_dir}/ui/waveform/waveformController.cpp
+        ${src_dir}/ui/project/projectFileController.cpp
+        ${src_dir}/ui/circuit/editor/diagramInteractionController.cpp
+        ${src_dir}/ui/shell/siliconWindowInteraction.cpp
+        ${src_dir}/ui/documents/architecture/sislVisualizer.cpp
+        ${src_dir}/ui/circuit/editor/propertyPanel.cpp
+        ${src_dir}/ui/shell/siliconWindow.cpp
         ${src_dir}/ui/serialization/gui_component_factory.cpp
         ${src_dir}/ui/serialization/gui_component_registration.cpp
         ${src_dir}/ui/serialization/document_conversion.cpp)
@@ -216,8 +224,8 @@ endif ()
 # for the regex-heavy translation unit.
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND SILICON_ENABLE_SANITIZERS)
     set_source_files_properties(
-	    ${src_dir}/ui/logiFlow/code/syntax/sisl.cpp
-            ${src_dir}/ui/logiFlow/code/syntax/verilog.cpp
+	    ${src_dir}/ui/documents/code/syntax/sisl.cpp
+            ${src_dir}/ui/documents/code/syntax/verilog.cpp
             PROPERTIES COMPILE_OPTIONS -Wno-error=maybe-uninitialized)
 endif ()
 
@@ -227,7 +235,7 @@ endif ()
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU"
     AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 15)
     set_source_files_properties(
-            ${src_dir}/ui/logiFlow/sislVisualizer.cpp
+            ${src_dir}/ui/documents/architecture/sislVisualizer.cpp
             PROPERTIES COMPILE_OPTIONS -Wno-error=aggressive-loop-optimizations\;-Wno-error=array-bounds)
 endif ()
 

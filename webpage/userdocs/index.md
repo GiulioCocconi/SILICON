@@ -17,7 +17,7 @@
 
 # Getting Started
 
-SILICON is an open source suite for simulating digital circuits, finite state machines, and microcontrollers. The current user-facing workflow starts with LogiFlow, the graphical logic editor.
+SILICON is an open source application for designing and simulating digital circuits. A project contains circuit JSON documents and can also contain code, architecture, and binary documents.
 
 ## Install SILICON
 
@@ -33,8 +33,8 @@ SILICON is currently pre-alpha software. Prefer saving small projects often whil
 ## Create a Project
 
 1. Start SILICON.
-2. Create a new project or open an existing one.
-3. Choose the LogiFlow workspace when you want to design digital logic circuits.
+2. Create a new project or open an existing `.sil` project archive.
+3. Add circuit documents to the project to design digital logic.
 4. Save the project before building larger circuits.
 
 ## First Circuit
@@ -50,7 +50,7 @@ Start with a small combinational circuit:
 
 ## Next Steps
 
-- Read [LogiFlow Basics](./guide/logiflow.md) for editor and simulation concepts.
+- Read [SILICON Basics](./guide/silicon.md) for editor and simulation concepts.
 - Read [Silicon Internals](./guide/internals.md) for simulator, project-format,
   waveform, Yosys, and native-component contributor guidance.
 - Read [Troubleshooting](./guide/troubleshooting.md) when a project does not behave as expected.
