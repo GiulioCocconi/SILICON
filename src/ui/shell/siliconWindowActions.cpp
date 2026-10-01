@@ -25,6 +25,7 @@
 #include <QUndoStack>
 
 #include <ui/circuit/components/subcircuit/componentShapeEditor.hpp>
+#include <ui/circuit/editor/circuitEditor.hpp>
 #include <ui/documents/architecture/architectureWorkspace.hpp>
 #include <ui/documents/binary/binaryEditor.hpp>
 #include <ui/documents/code/codeEditor.hpp>
@@ -62,18 +63,34 @@ void SiliconWindow::wireActions()
   connect(actionSet->exportImageAct, &QAction::triggered, this,
           &SiliconWindow::exportImage);
   connect(actionSet->exitAct, &QAction::triggered, this, &QWidget::close);
-  connect(actionSet->cutAct, &QAction::triggered, interactionController,
-          &DiagramInteractionController::cut);
-  connect(actionSet->copyAct, &QAction::triggered, interactionController,
-          &DiagramInteractionController::copy);
-  connect(actionSet->pasteAct, &QAction::triggered, interactionController,
-          &DiagramInteractionController::paste);
+  connect(actionSet->cutAct, &QAction::triggered, this, [this] {
+    if (workspace->activeEditor() == circuitEditor)
+      interactionController->cut();
+    else
+      workspace->cutActiveDocument();
+  });
+  connect(actionSet->copyAct, &QAction::triggered, this, [this] {
+    if (workspace->activeEditor() == circuitEditor)
+      interactionController->copy();
+    else
+      workspace->copyActiveDocument();
+  });
+  connect(actionSet->pasteAct, &QAction::triggered, this, [this] {
+    if (workspace->activeEditor() == circuitEditor)
+      interactionController->paste();
+    else
+      workspace->pasteActiveDocument();
+  });
   connect(actionSet->rotateAct, &QAction::triggered, interactionController,
           &DiagramInteractionController::rotate);
   connect(actionSet->autoPlaceAct, &QAction::triggered, interactionController,
           &DiagramInteractionController::autoPlace);
-  connect(actionSet->deleteAct, &QAction::triggered, interactionController,
-          &DiagramInteractionController::del);
+  connect(actionSet->deleteAct, &QAction::triggered, this, [this] {
+    if (workspace->activeEditor() == circuitEditor)
+      interactionController->del();
+    else
+      workspace->deleteActiveSelection();
+  });
   connect(actionSet->aboutAct, &QAction::triggered, this, &SiliconWindow::about);
   connect(actionSet->settingsAct, &QAction::triggered, actionSet,
           &WindowActions::openSettings);
@@ -85,22 +102,10 @@ void SiliconWindow::wireActions()
           [this](bool) { actionSet->updateHistoryActions(); });
   connect(undoStack, &QUndoStack::canRedoChanged, this,
           [this](bool) { actionSet->updateHistoryActions(); });
-  connect(workspace->codeEditor(), &QPlainTextEdit::undoAvailable, this,
-          [this](bool) { actionSet->updateHistoryActions(); });
-  connect(workspace->codeEditor(), &QPlainTextEdit::redoAvailable, this,
-          [this](bool) { actionSet->updateHistoryActions(); });
-  for (const auto& [type, editor] : workspace->architectureWorkspace()->editors()) {
-    connect(editor, &QPlainTextEdit::undoAvailable, this,
-            [this](bool) { actionSet->updateHistoryActions(); });
-    connect(editor, &QPlainTextEdit::redoAvailable, this,
-            [this](bool) { actionSet->updateHistoryActions(); });
-  }
-  connect(workspace->binaryEditor()->history(), &QUndoStack::canUndoChanged, this,
-          [this](bool) { actionSet->updateHistoryActions(); });
-  connect(workspace->binaryEditor()->history(), &QUndoStack::canRedoChanged, this,
-          [this](bool) { actionSet->updateHistoryActions(); });
-  connect(workspace, &QStackedWidget::currentChanged, this,
-          [this](int) { actionSet->updateHistoryActions(); });
+  connect(workspace, &EditorWorkspace::historyAvailabilityChanged, this,
+          [this] { actionSet->updateHistoryActions(); });
+  connect(workspace, &EditorWorkspace::activeEditorChanged, this,
+          [this] { actionSet->updateHistoryActions(); });
   actionSet->updateHistoryActions();
 
   connect(actionSet->setNormalModeAct, &QAction::triggered, interactionController,

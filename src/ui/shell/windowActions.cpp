@@ -34,9 +34,11 @@
 #include <QUndoStack>
 
 #include <ui/circuit/diagram/scene/diagramScene.hpp>
+#include <ui/circuit/editor/circuitEditor.hpp>
 #include <ui/circuit/editor/diagramInteractionController.hpp>
 #include <ui/documents/binary/binaryEditor.hpp>
 #include <ui/documents/code/codeEditor.hpp>
+#include <ui/documents/documentEditor.hpp>
 #include <ui/documents/editorWorkspace.hpp>
 #include <ui/project/projectSession.hpp>
 #include <ui/serialization/document_conversion.hpp>
@@ -75,24 +77,8 @@ void WindowActions::updateHistoryActions()
 {
   if (!undoAct || !redoAct)
     return;
-  if (workspace.isVisualizerActive()) {
-    undoAct->setEnabled(false);
-    redoAct->setEnabled(false);
-    return;
-  }
-  const auto  type   = activeDocumentType();
-  const auto* editor = type && SILICON::project::isCodeDocument(*type)
-                           ? workspace.activeCodeEditor()
-                           : nullptr;
-  const bool  binary = type
-                      && SILICON::project::categoryOf(*type)
-                             == SILICON::project::DocumentCategory::Binary;
-  undoAct->setEnabled(undoStack.canUndo()
-                      || (editor && editor->document()->isUndoAvailable())
-                      || (binary && workspace.binaryEditor()->history()->canUndo()));
-  redoAct->setEnabled(undoStack.canRedo()
-                      || (editor && editor->document()->isRedoAvailable())
-                      || (binary && workspace.binaryEditor()->history()->canRedo()));
+  undoAct->setEnabled(workspace.canUndoActiveDocument());
+  redoAct->setEnabled(workspace.canRedoActiveDocument());
 }
 
 void WindowActions::createMenus()
@@ -341,7 +327,7 @@ void WindowActions::updateEditActions()
 {
   if (!rotateAct || !cutAct || !copyAct || !pasteAct || !deleteAct)
     return;
-  if (workspace.isVisualizerActive()) {
+  if (!workspace.activeEditor() || !workspace.activeEditor()->isEditable()) {
     setActionsEnabled({rotateAct, cutAct, copyAct, pasteAct, deleteAct}, false);
     return;
   }
@@ -356,8 +342,8 @@ void WindowActions::updateEditActions()
     return;
   }
 
-  const auto interactionMode = workspace.scene()->getInteractionMode();
-  const auto selected        = workspace.scene()->selectedItems();
+  const auto interactionMode = workspace.circuitEditor().scene()->getInteractionMode();
+  const auto selected        = workspace.circuitEditor().scene()->selectedItems();
   const bool hasSelection    = !selected.empty();
 
   rotateAct->setEnabled(

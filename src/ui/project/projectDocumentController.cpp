@@ -18,6 +18,7 @@
 #include <QWidget>
 
 #include <ui/circuit/diagram/scene/diagramScene.hpp>
+#include <ui/circuit/editor/circuitEditor.hpp>
 #include <ui/circuit/editor/componentCatalogOverlay.hpp>
 #include <ui/documents/editorWorkspace.hpp>
 #include <ui/project/projectDocumentPolicy.hpp>
@@ -133,8 +134,9 @@ bool ProjectDocumentController::switchToDocument(const std::string& path,
   const auto type = target->getType();
   catalog.hide();
 
-  if (workspace.scene()->getInteractionMode() != InteractionMode::NORMAL_MODE)
-    workspace.scene()->setInteractionMode(InteractionMode::NORMAL_MODE);
+  if (workspace.circuitEditor().scene()->getInteractionMode()
+      != InteractionMode::NORMAL_MODE)
+    workspace.circuitEditor().scene()->setInteractionMode(InteractionMode::NORMAL_MODE);
 
   try {
     workspace.flushActiveDocument();

@@ -28,10 +28,7 @@
 #include <QPushButton>
 #include <QWidget>
 
-
-namespace SILICON::ui {
-
-namespace inputDialog {
+namespace SILICON::ui::inputDialog {
 
 QWidget* parentWidgetForGraphicsItem(const QGraphicsItem* item)
 {
@@ -183,6 +180,4 @@ void warningChoice(QWidget* parent, const QString& title, const QString& text,
 #endif
 }
 
-}  // namespace inputDialog
-
-}  // namespace SILICON::ui
+}  // namespace SILICON::ui::inputDialog

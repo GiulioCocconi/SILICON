@@ -16,6 +16,8 @@
  */
 
 #include "siliconWindow.hpp"
+#include <ui/circuit/editor/circuitEditor.hpp>
+#include <ui/documents/documentEditor.hpp>
 
 #ifdef __EMSCRIPTEN__
   #include <emscripten/emscripten.h>
@@ -40,7 +42,6 @@
 #include <QToolBar>
 #include <QUndoStack>
 #include <QWidget>
-
 
 #include <logging/logger.hpp>
 
@@ -85,8 +86,8 @@ bool SiliconWindow::handleWasmEscapeKey()
     return true;
   }
 
-  if (workspace->scene())
-    workspace->scene()->cancelCurrentInteraction();
+  if (circuitEditor->scene())
+    circuitEditor->scene()->cancelCurrentInteraction();
 
   return true;
 }
@@ -94,6 +95,7 @@ bool SiliconWindow::handleWasmEscapeKey()
 
 SiliconWindow::SiliconWindow()
 {
+  // --- Layout Setup --------------------------------------------------------------------
   const auto centralWidget = new QWidget();
   setCentralWidget(centralWidget);
 
@@ -120,31 +122,34 @@ SiliconWindow::SiliconWindow()
 
   splitDockWidget(componentsDock, propertyDock, Qt::Vertical);
 
-  workspace = new EditorWorkspace(projectSession, centralWidget);
+  workspace     = new EditorWorkspace(projectSession, centralWidget);
+  circuitEditor = &workspace->circuitEditor();
 
-  connect(workspace->scene(), &DiagramScene::modeChanged, this,
+  connect(circuitEditor->scene(), &DiagramScene::modeChanged, this,
           &SiliconWindow::updateStatus);
   updateStatus();
 
   layout->addWidget(workspace);
   componentCatalogOverlay = new ComponentCatalogOverlay(
-      workspace->scene(), projectSession.projectContext.documents(),
-      &projectSession.circuitResolver, workspace->view()->viewport());
-  workspace->view()->viewport()->installEventFilter(this);
-  watchedViewport = workspace->view()->viewport();
+      circuitEditor->scene(), projectSession.projectContext.documents(),
+      &projectSession.circuitResolver, circuitEditor->view()->viewport());
+  circuitEditor->view()->viewport()->installEventFilter(this);
+  watchedViewport = circuitEditor->view()->viewport();
   updateComponentCatalogGeometry();
   initializeProjectTree();
   undoStack = new QUndoStack(this);
-  workspace->scene()->setUndoStack(undoStack);
-  workspace->setUndoStack(undoStack);
+  connect(workspace, &EditorWorkspace::editorCreated, this,
+          [this](DocumentEditor* editor) { editor->setProjectHistory(undoStack); });
+  circuitEditor->scene()->setUndoStack(undoStack);
+  circuitEditor->setUndoStack(undoStack);
   interactionController = new DiagramInteractionController(
-      projectSession, *workspace, *componentCatalogOverlay, *undoStack, this);
+      projectSession, *circuitEditor, *componentCatalogOverlay, *undoStack, this);
   documentController =
       new ProjectDocumentController(projectSession, *workspace, *projectTree,
                                     *componentCatalogOverlay, *undoStack, this);
   architectureController =
       new ArchitectureController(projectSession, *workspace, *documentController, this);
-  workspace->scene()->setDocumentNavigator(documentController);
+  circuitEditor->scene()->setDocumentNavigator(documentController);
   connect(documentController, &ProjectDocumentController::activeDocumentChanged, this,
           [this](const QString&, SILICON::project::DocumentCategory) {
             refreshActiveDocumentUi();
@@ -159,18 +164,18 @@ SiliconWindow::SiliconWindow()
   connect(fileController, &ProjectFileController::projectChanged, this,
           &SiliconWindow::refreshProjectUi);
   propertyPanel =
-      new PropertyPanel(propertyDock, workspace->scene(), projectTree, undoStack,
+      new PropertyPanel(propertyDock, circuitEditor->scene(), projectTree, undoStack,
                         projectSession.currentProjectInfo, projectSession.currentFileName,
                         [this] { documentController->rebuildTree(); });
 
   actionSet = new WindowActions(*this, projectSession, *workspace, *undoStack);
   actionSet->createActions();
-  connect(workspace->scene(), &DiagramScene::modeChanged, actionSet,
+  connect(circuitEditor->scene(), &DiagramScene::modeChanged, actionSet,
           &WindowActions::updateEditActions);
-  connect(workspace->scene(), &DiagramScene::selectionChanged, this,
+  connect(circuitEditor->scene(), &DiagramScene::selectionChanged, this,
           &SiliconWindow::selectionChanged);
   waveformController =
-      new WaveformController(projectSession, *workspace->scene(), *documentController,
+      new WaveformController(projectSession, *circuitEditor->scene(), *documentController,
                              *actionSet->toggleWaveformViewerAct, this);
   wireActions();
   connect(QApplication::clipboard(), &QClipboard::dataChanged, actionSet,
@@ -180,7 +185,7 @@ SiliconWindow::SiliconWindow()
   actionSet->createToolBar();
 
   logSideView = new LogSideView(logDock);
-  connect(workspace->scene(), &DiagramScene::logsClearRequested, logSideView,
+  connect(circuitEditor->scene(), &DiagramScene::logsClearRequested, logSideView,
           &LogSideView::clear);
   graphicalLogStream = new GraphicalLogStream(this);
   logDock->setWidget(logSideView);
@@ -288,10 +293,10 @@ void SiliconWindow::closeEvent(QCloseEvent* event)
 
 void SiliconWindow::updateComponentCatalogGeometry()
 {
-  if (!componentCatalogOverlay || !workspace->view())
+  if (!componentCatalogOverlay || !circuitEditor->view())
     return;
 
-  componentCatalogOverlay->setGeometry(workspace->view()->viewport()->rect());
+  componentCatalogOverlay->setGeometry(circuitEditor->view()->viewport()->rect());
 }
 
 void SiliconWindow::updatePropertyDock()
@@ -373,8 +378,8 @@ void SiliconWindow::initializeProjectTree()
 
 void SiliconWindow::projectTreeSelectionChanged()
 {
-  const QSignalBlocker blocker(workspace->scene());
-  workspace->scene()->clearSelection();
+  const QSignalBlocker blocker(circuitEditor->scene());
+  circuitEditor->scene()->clearSelection();
 
   if (const auto selection =
           projectTree ? projectTree->selectedDocument() : std::nullopt) {

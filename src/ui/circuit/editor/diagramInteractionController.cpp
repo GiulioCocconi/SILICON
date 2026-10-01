@@ -16,7 +16,7 @@
  */
 
 #include "diagramInteractionController.hpp"
-#include <ui/documents/editorWorkspace.hpp>
+#include <ui/circuit/editor/circuitEditor.hpp>
 #include <ui/project/projectSession.hpp>
 
 #include <cstdint>
@@ -38,16 +38,16 @@
 #include <nlohmann/json.hpp>
 
 #include <core/serialization/component_registry.hpp>
-#include <ui/circuit/diagram/scene/diagramScene.hpp>
-#include <ui/circuit/diagram/diagramView.hpp>
-#include <ui/circuit/diagram/undoCommands.hpp>
-#include <ui/waveform/waveformViewer.hpp>
-#include <ui/documents/code/codeEditor.hpp>
-#include <ui/circuit/editor/componentCatalogOverlay.hpp>
 #include <ui/circuit/components/graphicalLogicComponent.hpp>
 #include <ui/circuit/components/subcircuit/utils.hpp>
+#include <ui/circuit/diagram/diagramView.hpp>
+#include <ui/circuit/diagram/scene/diagramScene.hpp>
+#include <ui/circuit/diagram/undoCommands.hpp>
+#include <ui/circuit/editor/componentCatalogOverlay.hpp>
+#include <ui/documents/code/codeEditor.hpp>
 #include <ui/project/projectTree.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
+#include <ui/waveform/waveformViewer.hpp>
 
 namespace SILICON::ui {
 using namespace SILICON::core;
@@ -71,11 +71,11 @@ namespace {
 }  // namespace
 
 DiagramInteractionController::DiagramInteractionController(
-    ProjectSession& session, EditorWorkspace& workspace, ComponentCatalogOverlay& catalog,
+    ProjectSession& session, CircuitEditor& circuit, ComponentCatalogOverlay& catalog,
     QUndoStack& history, QObject* parent)
   : QObject(parent),
     session(session),
-    workspace(workspace),
+    circuit(circuit),
     catalog(catalog),
     undoStack(history)
 {
@@ -84,7 +84,7 @@ DiagramInteractionController::DiagramInteractionController(
 bool DiagramInteractionController::copySelectionToClipboard()
 {
   try {
-    const auto payload = workspace.scene()->serializeSelection();
+    const auto payload = circuit.scene()->serializeSelection();
     if (!hasClipboardItems(payload))
       return false;
 
@@ -104,13 +104,7 @@ bool DiagramInteractionController::copySelectionToClipboard()
 
 void DiagramInteractionController::copy()
 {
-  if (workspace.isVisualizerActive())
-    return;
   const auto type = SILICON::project::documentTypeForPath(session.activeDocumentPath);
-  if (type && SILICON::project::isCodeDocument(*type)) {
-    workspace.activeCodeEditor()->copy();
-    return;
-  }
   if (!type
       || SILICON::project::categoryOf(*type)
              != SILICON::project::DocumentCategory::Diagram)
@@ -121,13 +115,7 @@ void DiagramInteractionController::copy()
 
 void DiagramInteractionController::cut()
 {
-  if (workspace.isVisualizerActive())
-    return;
   const auto type = SILICON::project::documentTypeForPath(session.activeDocumentPath);
-  if (type && SILICON::project::isCodeDocument(*type)) {
-    workspace.activeCodeEditor()->cut();
-    return;
-  }
   if (!type
       || SILICON::project::categoryOf(*type)
              != SILICON::project::DocumentCategory::Diagram)
@@ -139,13 +127,7 @@ void DiagramInteractionController::cut()
 
 void DiagramInteractionController::paste()
 {
-  if (workspace.isVisualizerActive())
-    return;
   const auto type = SILICON::project::documentTypeForPath(session.activeDocumentPath);
-  if (type && SILICON::project::isCodeDocument(*type)) {
-    workspace.activeCodeEditor()->paste();
-    return;
-  }
   if (!type
       || SILICON::project::categoryOf(*type)
              != SILICON::project::DocumentCategory::Diagram)
@@ -166,18 +148,18 @@ void DiagramInteractionController::paste()
         reinterpret_cast<const std::uint8_t*>(bytes.data()),
         reinterpret_cast<const std::uint8_t*>(bytes.data() + bytes.size()));
 
-    if (workspace.scene()->getInteractionMode() != InteractionMode::NORMAL_MODE)
-      workspace.scene()->setInteractionMode(InteractionMode::NORMAL_MODE);
+    if (circuit.scene()->getInteractionMode() != InteractionMode::NORMAL_MODE)
+      circuit.scene()->setInteractionMode(InteractionMode::NORMAL_MODE);
 
     const QPointF targetOrigin =
-        workspace.view()->mapToScene(workspace.view()->mapFromGlobal(QCursor::pos()));
-    if (!workspace.scene()->insertSelection(payload, guiFactory, coreRegistry,
-                                             targetOrigin, true))
+        circuit.view()->mapToScene(circuit.view()->mapFromGlobal(QCursor::pos()));
+    if (!circuit.scene()->insertSelection(payload, guiFactory, coreRegistry, targetOrigin,
+                                          true))
       return;
 
-    undoStack.push(new SceneSelectionCommand(
-        workspace.scene(), workspace.scene()->serializeSelection(),
-        SceneSelectionCommand::Operation::Add, true));
+    undoStack.push(
+        new SceneSelectionCommand(circuit.scene(), circuit.scene()->serializeSelection(),
+                                  SceneSelectionCommand::Operation::Add, true));
   } catch (const std::exception&) {
   }
 }
@@ -185,14 +167,14 @@ void DiagramInteractionController::paste()
 void DiagramInteractionController::rotate()
 {
   std::vector<GraphicalComponent*> selectedComponents;
-  for (auto* item : workspace.scene()->selectedItems()) {
+  for (auto* item : circuit.scene()->selectedItems()) {
     if (auto* component =
             category_cast<GraphicalComponent>(item, ItemCategory::Component)) {
       selectedComponents.push_back(component);
     }
   }
 
-  switch (workspace.scene()->getInteractionMode()) {
+  switch (circuit.scene()->getInteractionMode()) {
     case InteractionMode::NORMAL_MODE: {
       if (selectedComponents.size() != 1)
         return;
@@ -207,7 +189,7 @@ void DiagramInteractionController::rotate()
       break;
     }
     case InteractionMode::COMPONENT_PLACING_MODE: {
-      workspace.scene()->getComponentToBeDrawn()->rotate();
+      circuit.scene()->getComponentToBeDrawn()->rotate();
       break;
     }
 
@@ -217,52 +199,43 @@ void DiagramInteractionController::rotate()
 
 void DiagramInteractionController::autoPlace()
 {
-  workspace.scene()->autoPlaceCircuit();
+  circuit.scene()->autoPlaceCircuit();
 }
 
 void DiagramInteractionController::del()
 {
   const auto type = SILICON::project::documentTypeForPath(session.activeDocumentPath);
-  if (type && SILICON::project::isCodeDocument(*type)) {
-    auto cursor = workspace.activeCodeEditor()->textCursor();
-    if (cursor.hasSelection())
-      cursor.removeSelectedText();
-    else
-      cursor.deleteChar();
-    workspace.activeCodeEditor()->setTextCursor(cursor);
-    return;
-  }
   if (!type
       || SILICON::project::categoryOf(*type)
              != SILICON::project::DocumentCategory::Diagram)
     return;
 
   auto itemsToDelete =
-      workspace.scene()->selectedItems()
+      circuit.scene()->selectedItems()
       | std::views::filter([](auto* item) { return item->type() > UNKNOWN; })
       | std::ranges::to<std::vector>();
   if (itemsToDelete.empty())
     return;
 
-  const auto payload = workspace.scene()->serializeItems(itemsToDelete);
-  workspace.scene()->removeItems(itemsToDelete);
+  const auto payload = circuit.scene()->serializeItems(itemsToDelete);
+  circuit.scene()->removeItems(itemsToDelete);
   undoStack.push(new SceneSelectionCommand(
-      workspace.scene(), payload, SceneSelectionCommand::Operation::Remove, true));
+      circuit.scene(), payload, SceneSelectionCommand::Operation::Remove, true));
 }
 
 void DiagramInteractionController::setNormalMode()
 {
-  workspace.scene()->setInteractionMode(InteractionMode::NORMAL_MODE);
+  circuit.scene()->setInteractionMode(InteractionMode::NORMAL_MODE);
 }
 
 void DiagramInteractionController::setPanMode()
 {
-  workspace.scene()->setInteractionMode(InteractionMode::PAN_MODE);
+  circuit.scene()->setInteractionMode(InteractionMode::PAN_MODE);
 }
 
 void DiagramInteractionController::setWireCreationMode()
 {
-  workspace.scene()->setInteractionMode(InteractionMode::WIRE_CREATION_MODE);
+  circuit.scene()->setInteractionMode(InteractionMode::WIRE_CREATION_MODE);
 }
 
 void DiagramInteractionController::setSimulationMode()
@@ -273,23 +246,23 @@ void DiagramInteractionController::setSimulationMode()
              != SILICON::project::DocumentCategory::Diagram)
     return;
 
-  workspace.scene()->setInteractionMode(InteractionMode::SIMULATION_MODE);
+  circuit.scene()->setInteractionMode(InteractionMode::SIMULATION_MODE);
 }
 
 void DiagramInteractionController::setComponentPlacingMode()
 {
-  workspace.scene()->setInteractionMode(InteractionMode::COMPONENT_PLACING_MODE);
+  circuit.scene()->setInteractionMode(InteractionMode::COMPONENT_PLACING_MODE);
 }
 
 void DiagramInteractionController::showComponentCatalog()
 {
-  catalog.setGeometry(workspace.view()->viewport()->rect());
+  catalog.setGeometry(circuit.view()->viewport()->rect());
   catalog.open();
 }
 
 void DiagramInteractionController::cancelCurrentInteraction()
 {
-  workspace.scene()->cancelCurrentInteraction();
+  circuit.scene()->cancelCurrentInteraction();
 }
 
 }  // namespace SILICON::ui

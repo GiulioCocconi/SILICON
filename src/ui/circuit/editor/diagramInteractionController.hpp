@@ -19,13 +19,13 @@ inline constexpr char CIRCUIT_SELECTION_MIME_TYPE[] =
     "application/vnd.silicon.circuit-selection+bson";
 
 class ComponentCatalogOverlay;
-class EditorWorkspace;
+class CircuitEditor;
 struct ProjectSession;
 
 /** Diagram editing commands and interaction mode changes. */
 class DiagramInteractionController : public QObject {
 public:
-  DiagramInteractionController(ProjectSession& session, EditorWorkspace& workspace,
+  DiagramInteractionController(ProjectSession& session, CircuitEditor& circuit,
                                ComponentCatalogOverlay& catalog, QUndoStack& undoStack,
                                QObject* parent = nullptr);
 
@@ -47,7 +47,7 @@ private:
   bool copySelectionToClipboard();
 
   ProjectSession&          session;
-  EditorWorkspace&         workspace;
+  CircuitEditor&           circuit;
   ComponentCatalogOverlay& catalog;
   QUndoStack&              undoStack;
 };

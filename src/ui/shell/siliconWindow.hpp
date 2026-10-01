@@ -60,6 +60,7 @@ class Circuit;
 namespace SILICON::ui {
 class AboutDialog;
 class ComponentCatalogOverlay;
+class CircuitEditor;
 class GraphicalLogStream;
 class LogSideView;
 class ProjectTree;
@@ -198,6 +199,7 @@ private:
   GraphicalLogStream* graphicalLogStream = nullptr;
 
   EditorWorkspace* workspace = nullptr;
+  CircuitEditor*   circuitEditor = nullptr;
 
   /** @brief Floating searchable component catalog, shown over the diagram viewport. */
   ComponentCatalogOverlay* componentCatalogOverlay = nullptr;
