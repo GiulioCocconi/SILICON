@@ -16,6 +16,7 @@
  */
 
 #include <ui/documents/architecture/architectureWorkspace.hpp>
+#include <ui/documents/documentEditors.hpp>
 #include <ui/documents/editorWorkspace.hpp>
 #include <ui/project/projectDocumentController.hpp>
 #include <ui/project/projectSession.hpp>
@@ -36,11 +37,11 @@
 
 #include <core/isaArchitecture.hpp>
 #include <logging/logger.hpp>
+#include <ui/documents/architecture/sislVisualizer.hpp>
+#include <ui/documents/code/codeEditor.hpp>
 #include <ui/documents/code/codeFilePresentation.hpp>
 #include <ui/shell/icons.hpp>
 #include <ui/shell/inputDialogUtils.hpp>
-#include <ui/documents/code/codeEditor.hpp>
-#include <ui/documents/architecture/sislVisualizer.hpp>
 
 namespace SILICON::ui {
 void ProjectDocumentController::createArchitecture()
@@ -76,21 +77,25 @@ void ProjectDocumentController::showArchitectureTabContextMenu(const QPoint& pos
       || SILICON::project::categoryOf(*active)
              != SILICON::project::DocumentCategory::Architecture)
     return;
-  const auto index = workspace.architectureWorkspace()->tabBar()->tabAt(position);
+  auto* editor = dynamic_cast<ArchitectureDocumentEditor*>(workspace.activeEditor());
+  if (!editor)
+    return;
+  auto*      architecture = editor->workspace();
+  const auto index        = architecture->tabBar()->tabAt(position);
   if (index < 0)
     return;
-  if (workspace.architectureWorkspace()->isVisualizerTab(index))
+  if (architecture->isVisualizerTab(index))
     return;
   const auto name = SILICON::project::documentSlugForPath(session.activeDocumentPath);
   if (!name)
     return;
   const auto type = static_cast<SILICON::project::DocumentType>(
-      workspace.architectureWorkspace()->tabBar()->tabData(index).toInt());
+      architecture->tabBar()->tabData(index).toInt());
   const auto path = SILICON::project::documentPathForSlug(type, *name);
   QMenu      menu(dialogParent);
   menu.addAction(Icon("delete"), tr("Delete File"), this,
                  [this, path] { deleteArchitectureComponent(path); });
-  menu.exec(workspace.architectureWorkspace()->tabBar()->mapToGlobal(position));
+  menu.exec(architecture->tabBar()->mapToGlobal(position));
 }
 
 void ProjectDocumentController::deleteArchitectureComponent(const std::string& path)

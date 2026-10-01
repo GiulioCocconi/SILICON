@@ -6,105 +6,136 @@
   the Free Software Foundation, either version 3 of the License, or
   (at your option) any later version.
  */
-
 #include "editorWorkspace.hpp"
 
-#include <memory>
 #include <stdexcept>
 
-#include <QByteArray>
-#include <QTextDocument>
-#include <QUndoStack>
+#include <QStackedWidget>
+#include <QVBoxLayout>
 
-#include <nlohmann/json.hpp>
-
-#include <core/serialization/component_registry.hpp>
-
-#include <ui/circuit/components/subcircuit/metadata.hpp>
-#include <ui/circuit/components/subcircuit/utils.hpp>
-#include <ui/circuit/diagram/diagramView.hpp>
-#include <ui/circuit/diagram/scene/diagramScene.hpp>
-#include <ui/circuit/diagram/scene/diagramSceneSerializer.hpp>
-#include <ui/documents/architecture/architectureWorkspace.hpp>
-#include <ui/documents/binary/binaryEditor.hpp>
-#include <ui/documents/code/codeEditor.hpp>
+#include <ui/circuit/editor/circuitEditor.hpp>
+#include <ui/documents/documentEditors.hpp>
 #include <ui/project/projectSession.hpp>
-#include <ui/serialization/gui_component_factory.hpp>
 
 namespace SILICON::ui {
-using namespace SILICON::core;
-
-/** @brief Document deserialized ahead of the editor widgets that will show it. */
 class EditorWorkspace::PreparedDocument {
 public:
-  PreparedDocument(const SILICON::project::DocumentType documentType, std::string path)
-    : type(documentType), path(std::move(path))
+  PreparedDocument(DocumentEditor&                         editor,
+                   std::shared_ptr<PreparedEditorDocument> payload)
+    : editor(&editor), payload(std::move(payload))
   {
   }
-
-  /** @brief Document type selecting the editor that shows the payload. */
-  SILICON::project::DocumentType type;
-  /** @brief Project path the payload was read from. */
-  std::string path;
-  /** @brief Detached diagramScene plan, set for circuit documents. */
-  std::shared_ptr<SceneLoadPlan> scene;
-  /** @brief Detached tab plan, set for architecture documents. */
-  std::shared_ptr<ArchitectureLoadPlan> architecture;
+  DocumentEditor*                         editor;
+  std::shared_ptr<PreparedEditorDocument> payload;
 };
 
 EditorWorkspace::EditorWorkspace(ProjectSession& session, QWidget* parent)
-  : QStackedWidget(parent), session(session)
+  : QWidget(parent), session(session), stack(new QStackedWidget(this))
 {
-  diagramScene = new DiagramScene(this);
-  diagramScene->setDocumentStore(&session.projectContext.documents());
-  diagramScene->setCircuitResolver(&session.circuitResolver);
-  diagramView = new DiagramView(this);
-  diagramView->setScene(diagramScene);
-
-  codeEditor_ = new CodeEditor(this);
-  connect(codeEditor_->document(), &QTextDocument::modificationChanged, this,
-          [this](const bool modified) {
-            if (modified && codeEditor_->fileType())
-              codeDocumentsDirty_ = true;
-          });
-
-  binaryEditor_ = new BinaryEditor(this);
-  connect(binaryEditor_->history(), &QUndoStack::cleanChanged, this, [this](bool clean) {
-    const auto type = SILICON::project::documentTypeForPath(this->session.activeDocumentPath);
-    if (!clean && type
-        && SILICON::project::categoryOf(*type)
-               == SILICON::project::DocumentCategory::Binary)
-      binaryDocumentsDirty_ = true;
-  });
-
-  architectureWorkspace_ = new ArchitectureWorkspace(this);
-  connect(architectureWorkspace_, &ArchitectureWorkspace::documentModified, this,
-          [this] { codeDocumentsDirty_ = true; });
-
-  addWidget(diagramView);
-  addWidget(codeEditor_);
-  addWidget(architectureWorkspace_);
-  addWidget(binaryEditor_);
-  setCurrentWidget(diagramView);
+  auto* layout = new QVBoxLayout(this);
+  layout->setContentsMargins(0, 0, 0, 0);
+  layout->addWidget(stack);
+  activeDocumentEditor = &circuitEditor();
 }
+EditorWorkspace::~EditorWorkspace() = default;
 
-EditorWorkspace::~EditorWorkspace()
+CircuitEditor& EditorWorkspace::circuitEditor()
 {
-  // Graphical items unsubscribe from the project store during scene teardown.
-  diagramView->setScene(nullptr);
-  delete diagramScene;
+  if (!circuit) {
+    circuit = std::make_unique<CircuitEditor>(session, stack);
+    stack->addWidget(circuit->widget());
+    emit editorCreated(circuit.get());
+  }
+  return *circuit;
 }
-
-CodeEditor* EditorWorkspace::activeCodeEditor() const noexcept
+CodeDocumentEditor& EditorWorkspace::ensureCodeEditor()
 {
-  const auto type = SILICON::project::documentTypeForPath(this->session.activeDocumentPath);
-  return type
-                 && SILICON::project::categoryOf(*type)
-                        == SILICON::project::DocumentCategory::Architecture
-             ? architectureWorkspace_->editor(*type)
-             : codeEditor_;
+  if (!code) {
+    code = std::make_unique<CodeDocumentEditor>(
+        session, stack, [this] { emit historyAvailabilityChanged(); });
+    stack->addWidget(code->widget());
+    emit editorCreated(code.get());
+  }
+  return *code;
 }
-
+BinaryDocumentEditor& EditorWorkspace::ensureBinaryEditor()
+{
+  if (!binary) {
+    binary = std::make_unique<BinaryDocumentEditor>(
+        session, stack, [this] { emit historyAvailabilityChanged(); });
+    stack->addWidget(binary->widget());
+    emit editorCreated(binary.get());
+  }
+  return *binary;
+}
+ArchitectureDocumentEditor& EditorWorkspace::ensureArchitectureEditor()
+{
+  if (!architecture) {
+    architecture = std::make_unique<ArchitectureDocumentEditor>(
+        session, stack, [this] { emit historyAvailabilityChanged(); });
+    stack->addWidget(architecture->widget());
+    emit editorCreated(architecture.get());
+  }
+  return *architecture;
+}
+DocumentEditor& EditorWorkspace::editorFor(SILICON::project::DocumentType type)
+{
+  using SILICON::project::DocumentCategory;
+  switch (SILICON::project::categoryOf(type)) {
+    case DocumentCategory::Diagram: return circuitEditor();
+    case DocumentCategory::Code: return ensureCodeEditor();
+    case DocumentCategory::Binary: return ensureBinaryEditor();
+    case DocumentCategory::Architecture: return ensureArchitectureEditor();
+  }
+  throw std::logic_error("Unsupported project document type");
+}
+bool EditorWorkspace::hasUnsavedChanges() const
+{
+  return (circuit && circuit->isDirty()) || (code && code->isDirty())
+         || (binary && binary->isDirty()) || (architecture && architecture->isDirty());
+}
+bool EditorWorkspace::canUndoActiveDocument() const
+{
+  return activeDocumentEditor && activeDocumentEditor->canUndo();
+}
+bool EditorWorkspace::canRedoActiveDocument() const
+{
+  return activeDocumentEditor && activeDocumentEditor->canRedo();
+}
+void EditorWorkspace::resetEditorDirtyState() noexcept
+{
+  if (circuit)
+    circuit->resetDirtyState();
+  if (code)
+    code->resetDirtyState();
+  if (binary)
+    binary->resetDirtyState();
+  if (architecture)
+    architecture->resetDirtyState();
+}
+void EditorWorkspace::reset()
+{
+  if (architecture)
+    architecture->reset();
+  if (code)
+    code->reset();
+  if (binary)
+    binary->reset();
+  circuitEditor().reset();
+  stack->setCurrentWidget(circuit->widget());
+  activeDocumentEditor = circuit.get();
+  emit activeEditorChanged();
+}
+void EditorWorkspace::undoActiveDocument()
+{
+  if (activeDocumentEditor)
+    activeDocumentEditor->undo();
+}
+void EditorWorkspace::redoActiveDocument()
+{
+  if (activeDocumentEditor)
+    activeDocumentEditor->redo();
+}
 void EditorWorkspace::flushActiveDocument()
 {
   if (session.activeDocumentPath.empty()) {
@@ -113,213 +144,51 @@ void EditorWorkspace::flushActiveDocument()
       throw std::runtime_error("Project has no circuit document");
     session.activeDocumentPath = *fallback;
   }
-
-  const auto& store          = session.projectContext.documents();
-  const auto* activeDocument = store.find(session.activeDocumentPath);
-  if (!activeDocument)
+  const auto* document =
+      session.projectContext.documents().find(session.activeDocumentPath);
+  if (!document)
     throw std::runtime_error("Active project document is missing");
-
-  const auto type = activeDocument->getType();
-  if (SILICON::project::categoryOf(type)
-      == SILICON::project::DocumentCategory::Architecture) {
-    auto* editor = architectureWorkspace_->editor(type);
-    if (!editor)
-      throw std::invalid_argument("Architecture component has no editor");
-    session.projectContext.upsertDocument(
-        {session.activeDocumentPath, editor->toPlainText().toStdString()});
-    editor->document()->setModified(false);
-    return;
-  }
-  switch (type) {
-    case SILICON::project::DocumentType::Verilog:
-      session.projectContext.upsertDocument(
-          {session.activeDocumentPath, codeEditor_->toPlainText().toStdString()});
-      codeEditor_->document()->setModified(false);
-      return;
-
-    case SILICON::project::DocumentType::RawBinary: {
-      const auto& data = binaryEditor_->data();
-      session.projectContext.upsertDocument(
-          {session.activeDocumentPath,
-           std::string(data.constData(), static_cast<std::size_t>(data.size()))});
-      binaryEditor_->setModified(false);
-      return;
-    }
-
-    case SILICON::project::DocumentType::Circuit: break;
-    default: throw std::logic_error("Unsupported project document type");
-  }
-
-  auto serializedScene = diagramScene->serialize();
-
-  if (type == SILICON::project::DocumentType::Circuit) {
-    if (const auto* existing = store.find(session.activeDocumentPath)) {
-      try {
-        auto       newJson  = nlohmann::json::parse(serializedScene);
-        const auto fallback = parseGraphicalSubcircuitMetadata(existing->getContents())
-                                  .value_or(GraphicalSubcircuitMetadata{});
-        newJson["graphicalComponent"] = graphicalSubcircuitMetadataToJson(
-            synchronizeGraphicalSubcircuitMetadata(serializedScene, fallback));
-        serializedScene = newJson.dump(2);
-      } catch (const nlohmann::json::exception&) {
-      }
-    }
-  }
-
-  session.projectContext.upsertDocument(SILICON::project::Document(
-      session.activeDocumentPath, std::move(serializedScene)));
+  if (!activeDocumentEditor)
+    throw std::logic_error("No active editor");
+  activeDocumentEditor->flush(session.activeDocumentPath);
 }
-
+std::shared_ptr<EditorWorkspace::PreparedDocument>
+EditorWorkspace::prepareDocument(const SILICON::project::Document& document)
+{
+  auto& editor = editorFor(document.getType());
+  return std::make_shared<PreparedDocument>(editor, editor.prepare(document));
+}
+void EditorWorkspace::activateDocument(const PreparedDocument& prepared)
+{
+  if (!prepared.editor || !prepared.payload)
+    throw std::logic_error("Prepared document has no editor payload");
+  prepared.editor->apply(*prepared.payload);
+  stack->setCurrentWidget(prepared.editor->widget());
+  activeDocumentEditor = prepared.editor;
+  emit activeEditorChanged();
+}
+void EditorWorkspace::copyActiveDocument()
+{
+  if (activeDocumentEditor)
+    activeDocumentEditor->copy();
+}
+void EditorWorkspace::cutActiveDocument()
+{
+  if (activeDocumentEditor)
+    activeDocumentEditor->cut();
+}
+void EditorWorkspace::pasteActiveDocument()
+{
+  if (activeDocumentEditor)
+    activeDocumentEditor->paste();
+}
+void EditorWorkspace::deleteActiveSelection()
+{
+  if (activeDocumentEditor)
+    activeDocumentEditor->deleteSelection();
+}
 void EditorWorkspace::loadDocument(const SILICON::project::Document& document)
 {
   activateDocument(*prepareDocument(document));
 }
-
-std::shared_ptr<EditorWorkspace::PreparedDocument>
-EditorWorkspace::prepareDocument(const SILICON::project::Document& document)
-{
-  const auto type = document.getType();
-
-  // The document type selects the editor that owns the payload, so an unsupported type
-  // is rejected before anything is replaced.
-  if (SILICON::project::categoryOf(type)
-      == SILICON::project::DocumentCategory::Architecture) {
-    auto prepared          = std::make_shared<PreparedDocument>(type, document.getPath());
-    prepared->architecture = architectureWorkspace_->prepareLoadPlan(
-        document, session.projectContext.documents());
-    return prepared;
-  }
-
-  switch (type) {
-    case SILICON::project::DocumentType::Verilog:
-    case SILICON::project::DocumentType::RawBinary:
-      return std::make_shared<PreparedDocument>(type, document.getPath());
-
-    case SILICON::project::DocumentType::Circuit: {
-      auto prepared   = std::make_shared<PreparedDocument>(type, document.getPath());
-      prepared->scene = diagramScene->prepareDeserialize(document.getContents(),
-                                                   GUIComponentFactory::instance(),
-                                                   ComponentRegistry::instance());
-      return prepared;
-    }
-    default: throw std::logic_error("Unsupported project document type");
-  }
-}
-
-void EditorWorkspace::activateDocument(const PreparedDocument& prepared)
-{
-  const auto type = prepared.type;
-
-  if (SILICON::project::categoryOf(type)
-      == SILICON::project::DocumentCategory::Architecture) {
-    if (!prepared.architecture)
-      throw std::logic_error("Prepared architecture document has no load plan");
-    architectureWorkspace_->applyLoadPlan(*prepared.architecture);
-    setCurrentWidget(architectureWorkspace_);
-    return;
-  }
-
-  switch (type) {
-    case SILICON::project::DocumentType::Verilog: {
-      const auto* document = session.projectContext.documents().find(prepared.path);
-      if (!document)
-        throw std::runtime_error("Prepared document is no longer available");
-      codeEditor_->setFileType(type);
-      codeEditor_->setPlainText(QString::fromStdString(document->getContents()));
-      codeEditor_->document()->setModified(false);
-      this->setCurrentWidget(codeEditor_);
-      codeEditor_->setFocus();
-      break;
-    }
-
-    case SILICON::project::DocumentType::RawBinary: {
-      const auto* document = session.projectContext.documents().find(prepared.path);
-      if (!document)
-        throw std::runtime_error("Prepared document is no longer available");
-      const auto& contents = document->getContents();
-      binaryEditor_->setData(
-          QByteArray(contents.data(), static_cast<qsizetype>(contents.size())));
-      this->setCurrentWidget(binaryEditor_);
-      binaryEditor_->setFocus();
-      break;
-    }
-
-    case SILICON::project::DocumentType::Circuit: {
-      if (!prepared.scene)
-        throw std::logic_error("Prepared circuit document has no load plan");
-      diagramScene->clear(false, false);
-      diagramScene->setSubcircuitDocumentMode(true);
-      diagramScene->applyDeserialize(prepared.scene);
-      this->setCurrentWidget(diagramView);
-      break;
-    }
-    default: throw std::logic_error("Unsupported project document type");
-  }
-}
-
-bool EditorWorkspace::isVisualizerActive() const noexcept
-{
-  return currentWidget() == architectureWorkspace_
-         && architectureWorkspace_->isVisualizerActive();
-}
-
-bool EditorWorkspace::hasUnsavedChanges() const
-{
-  return (undoStack && !undoStack->isClean()) || codeDocumentsDirty_
-         || binaryDocumentsDirty_
-         || (codeEditor_ && codeEditor_->document()->isModified())
-         || architectureWorkspace_->hasModifiedEditors()
-         || (binaryEditor_ && binaryEditor_->isModified());
-}
-
-void EditorWorkspace::reset()
-{
-  architectureWorkspace_->resetLoadedArchitecture();
-  resetEditorDirtyState();
-  codeEditor_->clearFileType();
-  binaryEditor_->setData({});
-  setCurrentWidget(diagramView);
-  diagramScene->clear();
-  diagramScene->setDocumentCircuit(std::make_shared<Circuit>());
-  diagramScene->setSubcircuitDocumentMode(false);
-}
-
-void EditorWorkspace::resetEditorDirtyState() noexcept
-{
-  codeDocumentsDirty_   = false;
-  binaryDocumentsDirty_ = false;
-}
-
-void EditorWorkspace::undoActiveDocument()
-{
-  if (isVisualizerActive())
-    return;
-  const auto type = SILICON::project::documentTypeForPath(this->session.activeDocumentPath);
-  if (type
-      && SILICON::project::categoryOf(*type) == SILICON::project::DocumentCategory::Binary
-      && binaryEditor_->history()->canUndo())
-    binaryEditor_->history()->undo();
-  else if (type && SILICON::project::isCodeDocument(*type)
-           && activeCodeEditor()->document()->isUndoAvailable())
-    activeCodeEditor()->undo();
-  else if (undoStack)
-    undoStack->undo();
-}
-
-void EditorWorkspace::redoActiveDocument()
-{
-  if (isVisualizerActive())
-    return;
-  const auto type = SILICON::project::documentTypeForPath(this->session.activeDocumentPath);
-  if (type
-      && SILICON::project::categoryOf(*type) == SILICON::project::DocumentCategory::Binary
-      && binaryEditor_->history()->canRedo())
-    binaryEditor_->history()->redo();
-  else if (type && SILICON::project::isCodeDocument(*type)
-           && activeCodeEditor()->document()->isRedoAvailable())
-    activeCodeEditor()->redo();
-  else if (undoStack)
-    undoStack->redo();
-}
-
 }  // namespace SILICON::ui

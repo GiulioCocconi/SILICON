@@ -43,6 +43,7 @@
 
 #include <ui/documents/code/codeEditor.hpp>
 
+#include <ui/circuit/editor/circuitEditor.hpp>
 #include <ui/documents/architecture/architectureWorkspace.hpp>
 #include <ui/documents/editorWorkspace.hpp>
 #include <ui/project/projectDocumentController.hpp>
@@ -98,7 +99,7 @@ void ProjectFileController::resetProjectState()
       projectDocumentPolicy::defaultProjectInfo(session.currentFileName);
   session.activeDocumentPath = projectDocumentPolicy::defaultCircuitPath();
   auto document               = projectDocumentPolicy::defaultCircuitDocument();
-  document.setContents(workspace.scene()->serialize());
+  document.setContents(workspace.circuitEditor().scene()->serialize());
   session.projectContext.setDocuments({std::move(document)});
   documents.notifyActiveDocumentActivated();
 }
