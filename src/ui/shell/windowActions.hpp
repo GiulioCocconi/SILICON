@@ -144,10 +144,10 @@ private:
   [[nodiscard]] QVector<ShortcutSetting> shortcutSettings() const;
   void                                   syncWasmShortcutCapture();
 
-  QMainWindow&     window_;
-  ProjectSession&  session_;
-  EditorWorkspace& workspace_;
-  QUndoStack&      undoStack_;
+  QMainWindow&     window;
+  ProjectSession&  session;
+  EditorWorkspace& workspace;
+  QUndoStack&      undoStack;
 };
 
 }  // namespace SILICON::ui

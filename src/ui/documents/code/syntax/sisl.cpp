@@ -26,26 +26,26 @@ namespace SILICON::ui {
 namespace {
 
   // Keep these words aligned with the reserved keywords in SISL's parser.
-  constexpr auto DeclarationWords =
+  constexpr auto DECLARATION_WORDS =
       std::to_array<std::string_view>({"arch", "enum", "instr-format", "instr", "alias"});
-  constexpr auto PropertyWords =
+  constexpr auto PROPERTY_WORDS =
       std::to_array<std::string_view>({"endianness", "encoding", "assembly", "width"});
-  constexpr auto TypeWords  = std::to_array<std::string_view>({"bits", "uint", "sint"});
-  constexpr auto ValueWords = std::to_array<std::string_view>({"Little", "Big"});
+  constexpr auto TYPE_WORDS  = std::to_array<std::string_view>({"bits", "uint", "sint"});
+  constexpr auto VALUE_WORDS = std::to_array<std::string_view>({"Little", "Big"});
 
-  constexpr std::array KeywordGroups{
-      CodeSyntaxKeywordGroup{CodeSyntaxStyle::Statement, DeclarationWords},
-      CodeSyntaxKeywordGroup{CodeSyntaxStyle::Label, PropertyWords},
-      CodeSyntaxKeywordGroup{CodeSyntaxStyle::Global, TypeWords},
-      CodeSyntaxKeywordGroup{CodeSyntaxStyle::Constant, ValueWords},
+  constexpr std::array KEYWORD_GROUPS{
+      CodeSyntaxKeywordGroup{CodeSyntaxStyle::Statement, DECLARATION_WORDS},
+      CodeSyntaxKeywordGroup{CodeSyntaxStyle::Label, PROPERTY_WORDS},
+      CodeSyntaxKeywordGroup{CodeSyntaxStyle::Global, TYPE_WORDS},
+      CodeSyntaxKeywordGroup{CodeSyntaxStyle::Constant, VALUE_WORDS},
   };
 
-  constexpr std::array TodoRules{CodeSyntaxContainedRule{
+  constexpr std::array TODO_RULES{CodeSyntaxContainedRule{
       CodeSyntaxStyle::Todo, R"((?<![A-Za-z0-9_-])(?:TODO|FIXME)(?![A-Za-z0-9_-]))"}};
-  constexpr std::array EscapeRules{
+  constexpr std::array ESCAPE_RULES{
       CodeSyntaxContainedRule{CodeSyntaxStyle::Escape, R"(\\(?:["\\nrt]))"}};
 
-  constexpr std::array MatchRules{
+  constexpr std::array MATCH_RULES{
       CodeSyntaxMatchRule{
           CodeSyntaxStyle::Number,
           R"((?<![A-Za-z0-9_-])(?:0[bB][01]+|0[oO][0-7]+|0[xX][0-9a-fA-F]+|[0-9]+)(?![A-Za-z0-9_-]))",
@@ -53,12 +53,12 @@ namespace {
       CodeSyntaxMatchRule{CodeSyntaxStyle::Operator, R"([=;:{}\[\]<>(),])", {}},
   };
 
-  constexpr std::array RegionRules{
+  constexpr std::array REGION_RULES{
       CodeSyntaxRegionRule{
-          CodeSyntaxStyle::Comment, R"(/\*)", R"(\*/)", {}, TodoRules, true},
+          CodeSyntaxStyle::Comment, R"(/\*)", R"(\*/)", {}, TODO_RULES, true},
       CodeSyntaxRegionRule{
-          CodeSyntaxStyle::Comment, R"(//)", R"($)", {}, TodoRules, false},
-      CodeSyntaxRegionRule{CodeSyntaxStyle::String, R"(")", R"(")", R"(\\.)", EscapeRules,
+          CodeSyntaxStyle::Comment, R"(//)", R"($)", {}, TODO_RULES, false},
+      CodeSyntaxRegionRule{CodeSyntaxStyle::String, R"(")", R"(")", R"(\\.)", ESCAPE_RULES,
                            false},
   };
 
@@ -86,12 +86,12 @@ namespace {
     return result;
   }
 
-  constexpr auto IndentationTriggerPatterns =
+  constexpr auto INDENTATION_TRIGGER_PATTERNS =
       std::to_array<std::string_view>({R"(^\s*})", R"(^\s*\])", R"(^\s*\))"});
 
-  constexpr CodeIndentation SislIndentation{
+  constexpr CodeIndentation SISL_INDENTATION{
       .indentationFor       = sislIndentationFor,
-      .triggerPatterns      = IndentationTriggerPatterns,
+      .triggerPatterns      = INDENTATION_TRIGGER_PATTERNS,
       .indentWidth          = 2,
       .expandPairsOnNewline = true,
   };
@@ -99,11 +99,11 @@ namespace {
 }  // namespace
 
 const CodeSyntax SISL_CODE_SYNTAX{
-    .keywordGroups       = KeywordGroups,
-    .matchRules          = MatchRules,
-    .regionRules         = RegionRules,
+    .keywordGroups       = KEYWORD_GROUPS,
+    .matchRules          = MATCH_RULES,
+    .regionRules         = REGION_RULES,
     .extraWordCharacters = "-",
-    .indentation         = &SislIndentation,
+    .indentation         = &SISL_INDENTATION,
 };
 
 }  // namespace SILICON::ui

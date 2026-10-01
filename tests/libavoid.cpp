@@ -68,8 +68,8 @@ void expectNoConsecutiveDuplicates(const std::vector<QPointF>& route)
 
 void configureHyperedgeRouter(Avoid::Router& router)
 {
-  constexpr qreal gridSize = 10.0;
-  configureOrthogonalRouter(router, gridSize);
+  constexpr qreal GRID_SIZE = 10.0;
+  configureOrthogonalRouter(router, GRID_SIZE);
   router.setRoutingOption(Avoid::improveHyperedgeRoutesMovingJunctions, true);
 }
 
@@ -81,8 +81,8 @@ std::vector<QPointF> snappedDisplayRoute(Avoid::ConnRef& connector)
 Avoid::ConnEnd pinnedTerminal(Avoid::Router& router, const QPointF position,
                               const Avoid::ConnDirFlags direction)
 {
-  constexpr double size = 10.0;
-  QRectF bounds(position.x() - size / 2.0, position.y() - size / 2.0, size, size);
+  constexpr double SIZE = 10.0;
+  QRectF bounds(position.x() - SIZE / 2.0, position.y() - SIZE / 2.0, SIZE, SIZE);
   if (direction == Avoid::ConnDirRight)
     bounds.moveRight(position.x());
   else if (direction == Avoid::ConnDirLeft)
@@ -94,19 +94,19 @@ Avoid::ConnEnd pinnedTerminal(Avoid::Router& router, const QPointF position,
 
   auto                   polygon    = Avoid::rectangleFromQRectF(bounds);
   auto*                  shape      = new Avoid::ShapeRef(&router, polygon);
-  constexpr unsigned int pinClassId = 1;
-  new Avoid::ShapeConnectionPin(shape, pinClassId, position.x() - bounds.left(),
+  constexpr unsigned int PIN_CLASS_ID = 1;
+  new Avoid::ShapeConnectionPin(shape, PIN_CLASS_ID, position.x() - bounds.left(),
                                 position.y() - bounds.top(), false, 0.0, direction);
-  return Avoid::ConnEnd(shape, pinClassId);
+  return Avoid::ConnEnd(shape, PIN_CLASS_ID);
 }
 
 Avoid::ConnEnd pinnedTerminal(Avoid::ShapeRef* shape, const QRectF& bounds,
                               const QPointF position, const Avoid::ConnDirFlags direction,
-                              const unsigned int pinClassId)
+                              const unsigned int PIN_CLASS_ID)
 {
-  new Avoid::ShapeConnectionPin(shape, pinClassId, position.x() - bounds.left(),
+  new Avoid::ShapeConnectionPin(shape, PIN_CLASS_ID, position.x() - bounds.left(),
                                 position.y() - bounds.top(), false, 0.0, direction);
-  return Avoid::ConnEnd(shape, pinClassId);
+  return Avoid::ConnEnd(shape, PIN_CLASS_ID);
 }
 
 }  // namespace

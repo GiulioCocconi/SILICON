@@ -85,11 +85,11 @@ ArchitectureController::ArchitectureController(ProjectSession&            sessio
                                                EditorWorkspace&           workspace,
                                                ProjectDocumentController& documents,
                                                QObject*                   parent)
-  : QObject(parent), session_(session), workspace_(workspace), documents_(documents)
+  : QObject(parent), session(session), workspace(workspace), documents(documents)
 {
-  auto* architecture = workspace_.architectureWorkspace();
+  auto* architecture = workspace.architectureWorkspace();
   architecture->tabBar()->setContextMenuPolicy(Qt::CustomContextMenu);
-  connect(architecture->tabBar(), &QWidget::customContextMenuRequested, &documents_,
+  connect(architecture->tabBar(), &QWidget::customContextMenuRequested, &documents,
           &ProjectDocumentController::showArchitectureTabContextMenu);
   connect(architecture, &QTabWidget::currentChanged, this,
           &ArchitectureController::handleTabChanged);
@@ -97,7 +97,7 @@ ArchitectureController::ArchitectureController(ProjectSession&            sessio
 
 void ArchitectureController::handleTabChanged(const int index)
 {
-  auto* architecture = workspace_.architectureWorkspace();
+  auto* architecture = workspace.architectureWorkspace();
   if (index < 0)
     return;
 
@@ -106,20 +106,20 @@ void ArchitectureController::handleTabChanged(const int index)
     return;
   }
 
-  const auto active = SILICON::project::documentTypeForPath(session_.activeDocumentPath);
+  const auto active = SILICON::project::documentTypeForPath(session.activeDocumentPath);
   if (!active
       || SILICON::project::categoryOf(*active)
              != SILICON::project::DocumentCategory::Architecture)
     return;
 
-  const auto name = SILICON::project::documentSlugForPath(session_.activeDocumentPath);
+  const auto name = SILICON::project::documentSlugForPath(session.activeDocumentPath);
   if (!name)
     return;
 
   const auto type = static_cast<SILICON::project::DocumentType>(
       architecture->tabBar()->tabData(index).toInt());
   const auto path = SILICON::project::documentPathForSlug(type, *name);
-  if (documents_.switchToDocument(path, false))
+  if (documents.switchToDocument(path, false))
     return;
 
   // The document was rejected, so the workspace must not keep showing its tab.
@@ -134,26 +134,26 @@ void ArchitectureController::handleTabChanged(const int index)
 
 void ArchitectureController::visualizeActiveArchitecture()
 {
-  if (!isArchitectureDocument(session_))
+  if (!isArchitectureDocument(session))
     return;
-  const auto* editor = workspace_.activeCodeEditor();
+  const auto* editor = workspace.activeCodeEditor();
   if (!editor)
     return;
-  const auto isa = buildEditedArchitecture(session_.activeDocumentPath, *editor);
+  const auto isa = buildEditedArchitecture(session.activeDocumentPath, *editor);
   if (!isa)
     return;
-  workspace_.architectureWorkspace()->showVisualization(isa->describe());
+  workspace.architectureWorkspace()->showVisualization(isa->describe());
 }
 
 void ArchitectureController::buildActiveArchitecture()
 {
-  if (!isArchitectureDocument(session_))
+  if (!isArchitectureDocument(session))
     return;
-  const auto* editor = workspace_.activeCodeEditor();
+  const auto* editor = workspace.activeCodeEditor();
   if (!editor)
     return;
-  if (buildEditedArchitecture(session_.activeDocumentPath, *editor))
-    isaLog.info(std::format("{}: build succeeded", session_.activeDocumentPath));
+  if (buildEditedArchitecture(session.activeDocumentPath, *editor))
+    isaLog.info(std::format("{}: build succeeded", session.activeDocumentPath));
 }
 
 }  // namespace SILICON::ui

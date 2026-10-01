@@ -86,11 +86,11 @@ QGraphicsItem* busShape(const int busSize, const int selectionSize, const bool d
 {
   const int dataBusCount = 1 << selectionSize;
   const int width = getMuxWidth(dataBusCount);
-  constexpr int height   = 90;
+  constexpr int HEIGHT   = 90;
   const QString label =
       demux ? QString("%1 demux 1 to %2").arg(busSize).arg(dataBusCount)
             : QString("%1 mux %2 to 1").arg(busSize).arg(dataBusCount);
-  return new LabeledMuxRectItem(QRectF(0, 0, width, height), label);
+  return new LabeledMuxRectItem(QRectF(0, 0, width, HEIGHT), label);
 }
 
 std::vector<PortPair> northBusPorts(const int count, const QString& prefix,

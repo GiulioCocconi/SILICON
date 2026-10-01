@@ -124,17 +124,17 @@ std::shared_ptr<Comparator> makeComparator()
 
 std::shared_ptr<AdderNBits> makeAdderNBits()
 {
-  constexpr unsigned short defaultSize = 4;
+  constexpr unsigned short DEFAULT_SIZE = 4;
   return std::make_shared<AdderNBits>(
-      std::array<Bus, 2>{Bus(defaultSize), Bus(defaultSize)}, Bus(defaultSize),
+      std::array<Bus, 2>{Bus(DEFAULT_SIZE), Bus(DEFAULT_SIZE)}, Bus(DEFAULT_SIZE),
       Wire_ptr{});
 }
 
 std::shared_ptr<Shifter> makeShifter()
 {
-  constexpr unsigned short defaultSize = 4;
-  return std::make_shared<Shifter>(Bus(defaultSize), Bus(defaultSize),
-                                   Bus(defaultSize));
+  constexpr unsigned short DEFAULT_SIZE = 4;
+  return std::make_shared<Shifter>(Bus(DEFAULT_SIZE), Bus(DEFAULT_SIZE),
+                                   Bus(DEFAULT_SIZE));
 }
 
 }  // namespace
@@ -206,10 +206,10 @@ void GraphicalShifter::setupCallbacks()
 
 std::string GraphicalShifter::applyMode(std::string mode)
 {
-  if (mode != Shifter::LeftMode && mode != Shifter::RightMode)
+  if (mode != Shifter::LEFT_MODE && mode != Shifter::RIGHT_MODE)
     throw std::invalid_argument("Shifter mode must be 'left' or 'right'");
 
-  setItemShape(new QGraphicsSvgItem(mode == Shifter::LeftMode
+  setItemShape(new QGraphicsSvgItem(mode == Shifter::LEFT_MODE
                                         ? ":/other_components/SHIFTL.svg"
                                         : ":/other_components/SHIFTR.svg"));
   return mode;
@@ -223,7 +223,7 @@ void GraphicalShifter::setComponent(const Component_ptr& component)
 
   setupCallbacks();
   applyMode(component->getPropertyValue<std::string>("mode")
-                .value_or(std::string(Shifter::RightMode)));
+                .value_or(std::string(Shifter::RIGHT_MODE)));
 }
 
 GraphicalComparator::GraphicalComparator(QGraphicsItem* parent)

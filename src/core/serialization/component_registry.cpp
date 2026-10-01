@@ -55,7 +55,7 @@ void ComponentRegistry::registerType(std::string type, Factory factory)
   if (!isValidMetadata(metadata))
     throw std::invalid_argument("Component registration requires metadata");
 
-  auto [it, inserted] = types_.emplace(std::move(type), Entry{std::move(factory)});
+  auto [it, inserted] = types.emplace(std::move(type), Entry{std::move(factory)});
   if (!inserted) {
     throw std::logic_error(std::string("Duplicate component registration: ") + it->first);
   }
@@ -63,8 +63,8 @@ void ComponentRegistry::registerType(std::string type, Factory factory)
 
 Component_ptr ComponentRegistry::create(std::string_view type) const
 {
-  auto it = types_.find(type);
-  if (it == types_.end()) {
+  auto it = types.find(type);
+  if (it == types.end()) {
     throw std::runtime_error(std::string("Unknown component type: ") + std::string{type});
   }
   return it->second.factory();
@@ -72,13 +72,13 @@ Component_ptr ComponentRegistry::create(std::string_view type) const
 
 bool ComponentRegistry::hasType(std::string_view type) const
 {
-  return types_.contains(type);
+  return types.contains(type);
 }
 
 ComponentMetadata ComponentRegistry::metadata(std::string_view type) const
 {
-  auto it = types_.find(type);
-  if (it == types_.end()) {
+  auto it = types.find(type);
+  if (it == types.end()) {
     throw std::runtime_error(std::string("Unknown component type: ") + std::string{type});
   }
   return it->second.factory()->metadata();
@@ -87,8 +87,8 @@ ComponentMetadata ComponentRegistry::metadata(std::string_view type) const
 std::vector<std::string> ComponentRegistry::availableTypes() const
 {
   std::vector<std::string> types;
-  types.reserve(types_.size());
-  for (const auto& [type, _] : types_) {
+  types.reserve(this->types.size());
+  for (const auto& [type, _] : this->types) {
     types.push_back(type);
   }
   return types;

@@ -59,7 +59,7 @@ void ProjectDocumentController::pushCreateDocumentCommand(
 
   auto addDocument = [this, document] {
     try {
-      workspace_.flushActiveDocument();
+      workspace.flushActiveDocument();
     } catch (const std::exception&) {
     }
     this->insertDocument(document, std::nullopt, true);
@@ -73,7 +73,7 @@ void ProjectDocumentController::pushCreateDocumentCommand(
 void ProjectDocumentController::importProjectDocument()
 {
   SILICON::ui::fileDialog::openFileContent(
-      dialogParent_, tr("Import Document"),
+      dialogParent, tr("Import Document"),
       tr("Supported Documents (*.json *.v *.sisl *.bin);;All Files (*)"),
       [this](const QString& fileName, const QByteArray& fileContent) {
         try {
@@ -82,14 +82,14 @@ void ProjectDocumentController::importProjectDocument()
               std::string(fileContent.constData(),
                           static_cast<std::size_t>(fileContent.size())));
 
-          workspace_.flushActiveDocument();
-          const auto sourcePath = session_.activeDocumentPath;
+          workspace.flushActiveDocument();
+          const auto sourcePath = session.activeDocumentPath;
           const auto importPath = document.getPath();
           commitDocumentChanges({std::move(document)}, sourcePath, importPath,
                                 tr("Import Document"), tr("Document Import Error"));
         } catch (const std::exception& error) {
           SILICON::ui::inputDialog::critical(
-              dialogParent_, tr("Document Import Error"),
+              dialogParent, tr("Document Import Error"),
               tr("Failed to import the document:\n%1").arg(error.what()));
         }
       });
@@ -102,22 +102,22 @@ void ProjectDocumentController::exportSelectedDocument()
     return;
 
   try {
-    if (selection->path == session_.activeDocumentPath)
-      workspace_.flushActiveDocument();
+    if (selection->path == session.activeDocumentPath)
+      workspace.flushActiveDocument();
 
-    const auto* document = session_.projectContext.documents().find(selection->path);
+    const auto* document = session.projectContext.documents().find(selection->path);
     if (!document)
       throw std::runtime_error("The selected document no longer exists");
 
     const auto& contents = document->getContents();
     SILICON::ui::fileDialog::saveFileContent(
-        dialogParent_, tr("Export Document"),
+        dialogParent, tr("Export Document"),
         QString::fromStdString(SILICON::project::documentFileName(*document)),
         tr("All Files (*)"),
         QByteArray(contents.data(), static_cast<qsizetype>(contents.size())));
   } catch (const std::exception& error) {
     SILICON::ui::inputDialog::critical(
-        dialogParent_, tr("Document Export Error"),
+        dialogParent, tr("Document Export Error"),
         tr("Failed to export the document:\n%1").arg(error.what()));
   }
 }
@@ -129,7 +129,7 @@ void ProjectDocumentController::createCircuit()
 
 void ProjectDocumentController::createCodeFile()
 {
-  auto* dialog = new QDialog(dialogParent_);
+  auto* dialog = new QDialog(dialogParent);
   dialog->setAttribute(Qt::WA_DeleteOnClose);
   dialog->setWindowTitle(tr("New Code File"));
   dialog->setModal(true);
@@ -161,13 +161,13 @@ void ProjectDocumentController::createCodeFile()
 
         if (!SILICON::project::isValidDocumentSlug(slug)) {
           SILICON::ui::inputDialog::warning(
-              dialogParent_, tr("New Code File"),
+              dialogParent, tr("New Code File"),
               tr("The name must be non-empty and cannot contain path separators."));
           return;
         }
         const auto path = SILICON::project::documentPathForSlug(type, slug);
-        if (session_.projectContext.documents().contains(path)) {
-          SILICON::ui::inputDialog::warning(dialogParent_, tr("New Code File"),
+        if (session.projectContext.documents().contains(path)) {
+          SILICON::ui::inputDialog::warning(dialogParent, tr("New Code File"),
                                             tr("A code file named '%1' already exists.")
                                                 .arg(QString::fromStdString(path)));
           return;
@@ -184,9 +184,9 @@ void ProjectDocumentController::createCodeFile()
 
 void ProjectDocumentController::createBinaryFile()
 {
-  constexpr int MaximumBinarySize = 256 * 1024 * 1024;
+  constexpr int MAXIMUM_BINARY_SIZE = 256 * 1024 * 1024;
 
-  auto* dialog = new QDialog(dialogParent_);
+  auto* dialog = new QDialog(dialogParent);
   dialog->setAttribute(Qt::WA_DeleteOnClose);
   dialog->setWindowTitle(tr("New Binary File"));
   dialog->setModal(true);
@@ -194,7 +194,7 @@ void ProjectDocumentController::createBinaryFile()
   auto* form     = new QFormLayout(dialog);
   auto* nameEdit = new QLineEdit(tr("untitled"), dialog);
   auto* sizeEdit = new QSpinBox(dialog);
-  sizeEdit->setRange(1, MaximumBinarySize);
+  sizeEdit->setRange(1, MAXIMUM_BINARY_SIZE);
   sizeEdit->setValue(256);
   sizeEdit->setSuffix(tr(" bytes"));
 
@@ -210,15 +210,15 @@ void ProjectDocumentController::createBinaryFile()
         const auto slug = nameEdit->text().trimmed().toStdString();
         if (!SILICON::project::isValidDocumentSlug(slug)) {
           SILICON::ui::inputDialog::warning(
-              dialogParent_, tr("New Binary File"),
+              dialogParent, tr("New Binary File"),
               tr("The name must be non-empty and cannot contain path separators."));
           return;
         }
 
         const auto path = SILICON::project::documentPathForSlug(
             SILICON::project::DocumentType::RawBinary, slug);
-        if (session_.projectContext.documents().contains(path)) {
-          SILICON::ui::inputDialog::warning(dialogParent_, tr("New Binary File"),
+        if (session.projectContext.documents().contains(path)) {
+          SILICON::ui::inputDialog::warning(dialogParent, tr("New Binary File"),
                                             tr("A binary file named '%1' already exists.")
                                                 .arg(QString::fromStdString(path)));
           return;
@@ -244,12 +244,12 @@ void ProjectDocumentController::createDocument(const SILICON::project::DocumentT
 
   const auto noun = documentTypeName(type);
   SILICON::ui::inputDialog::getText(
-      dialogParent_, tr("New %1").arg(noun), tr("%1 name").arg(noun), noun,
+      dialogParent, tr("New %1").arg(noun), tr("%1 name").arg(noun), noun,
       [this, type, noun](const QString& requestedName) {
         const auto trimmed     = requestedName.trimmed();
         const auto displayName = trimmed.isEmpty() ? noun : trimmed;
         const auto path        = projectDocumentPolicy::uniqueDocumentPath(
-            session_.projectContext, type, displayName);
+            session.projectContext, type, displayName);
         const auto sceneJson = projectDocumentPolicy::emptyGraphicalDocumentJson(type);
 
         SILICON::project::Document document(path, sceneJson);
@@ -290,12 +290,12 @@ void ProjectDocumentController::renameSelectedDocument()
   const auto noun  = documentTypeName(selection->type);
   const auto title = tr("Rename %1").arg(noun);
   SILICON::ui::inputDialog::getText(
-      dialogParent_, title, tr("Name"), QString::fromStdString(*slug),
+      dialogParent, title, tr("Name"), QString::fromStdString(*slug),
       [this, selection = *selection, noun, title](const QString& requestedName) {
         const auto newSlug = requestedName.trimmed().toStdString();
         if (!SILICON::project::isValidDocumentSlug(newSlug)) {
           SILICON::ui::inputDialog::warning(
-              dialogParent_, title,
+              dialogParent, title,
               tr("The name must be non-empty and cannot contain path separators."));
           return;
         }
@@ -303,18 +303,18 @@ void ProjectDocumentController::renameSelectedDocument()
             SILICON::project::documentPathForSlug(selection.type, newSlug);
         if (newPath == selection.path)
           return;
-        if (session_.projectContext.documents().contains(newPath)) {
+        if (session.projectContext.documents().contains(newPath)) {
           SILICON::ui::inputDialog::warning(
-              dialogParent_, title,
+              dialogParent, title,
               tr("A %1 named '%2' already exists.")
                   .arg(noun.toLower(), QString::fromStdString(newPath)));
           return;
         }
 
         try {
-          workspace_.flushActiveDocument();
-          const auto before       = session_.projectContext.documents().getDocuments();
-          const auto beforeActive = session_.activeDocumentPath;
+          workspace.flushActiveDocument();
+          const auto before       = session.projectContext.documents().getDocuments();
+          const auto beforeActive = session.activeDocumentPath;
           SILICON::project::ProjectContext renamed;
           renamed.setDocuments(before);
           renamed.renameDocument(selection.path, newPath);
@@ -323,7 +323,7 @@ void ProjectDocumentController::renameSelectedDocument()
           pushDocumentSnapshotCommand(title, before, beforeActive,
                                       renamed.documents().getDocuments(), afterActive);
         } catch (const std::exception& error) {
-          SILICON::ui::inputDialog::warning(dialogParent_, title, error.what());
+          SILICON::ui::inputDialog::warning(dialogParent, title, error.what());
         }
       });
 }
@@ -332,8 +332,8 @@ void ProjectDocumentController::removeProjectDocuments(
     const std::vector<std::string>& paths, const QString& commandText)
 {
   try {
-    workspace_.flushActiveDocument();
-    const auto before = session_.projectContext.documents().getDocuments();
+    workspace.flushActiveDocument();
+    const auto before = session.projectContext.documents().getDocuments();
     auto       after  = before;
     std::erase_if(after, [&paths](const auto& document) {
       return std::ranges::find(paths, document.getPath()) != paths.end();
@@ -341,7 +341,7 @@ void ProjectDocumentController::removeProjectDocuments(
     if (after.size() == before.size())
       return;
 
-    const auto beforeActive = session_.activeDocumentPath;
+    const auto beforeActive = session.activeDocumentPath;
     auto       afterActive  = beforeActive;
     if (std::ranges::find(paths, beforeActive) != paths.end()) {
       const auto activeType = SILICON::project::documentTypeForPath(beforeActive);
@@ -375,7 +375,7 @@ void ProjectDocumentController::removeProjectDocuments(
     pushDocumentSnapshotCommand(commandText, before, beforeActive, std::move(after),
                                 afterActive);
   } catch (const std::exception& error) {
-    SILICON::ui::inputDialog::warning(dialogParent_, commandText, error.what());
+    SILICON::ui::inputDialog::warning(dialogParent, commandText, error.what());
   }
 }
 
@@ -393,7 +393,7 @@ void ProjectDocumentController::deleteSelectedDocument()
 
   if (selection->type == SILICON::project::DocumentType::Circuit) {
     const auto circuitCount = std::ranges::count_if(
-        session_.projectContext.documents().getDocuments(), [](const auto& document) {
+        session.projectContext.documents().getDocuments(), [](const auto& document) {
           return document.getType() == SILICON::project::DocumentType::Circuit;
         });
     if (circuitCount <= 1)
@@ -404,33 +404,33 @@ void ProjectDocumentController::deleteSelectedDocument()
   const auto title = tr("Delete %1").arg(noun);
 
   try {
-    workspace_.flushActiveDocument();
+    workspace.flushActiveDocument();
   } catch (const std::exception& e) {
     SILICON::ui::inputDialog::warning(
-        dialogParent_, title,
+        dialogParent, title,
         tr("Failed to save the active document before deleting it:\n%1").arg(e.what()));
     return;
   }
 
   if (selection->type == SILICON::project::DocumentType::Circuit) {
     const auto dependents =
-        session_.projectContext.circuitDependencies().dependentsOf(selection->path);
+        session.projectContext.circuitDependencies().dependentsOf(selection->path);
     if (!dependents.empty()) {
       QStringList names;
       for (const auto& dependent : dependents)
         names.push_back(QString::fromStdString(dependent));
 
       SILICON::ui::inputDialog::warning(
-          dialogParent_, title,
+          dialogParent, title,
           tr("This subcircuit is still used by:\n%1").arg(names.join('\n')));
       return;
     }
   }
 
   SILICON::ui::inputDialog::question(
-      dialogParent_, title, tr("Delete %1 \"%2\"?").arg(noun.toLower(), item->text(0)),
+      dialogParent, title, tr("Delete %1 \"%2\"?").arg(noun.toLower(), item->text(0)),
       [this, path = selection->path, title] {
-        const auto& store          = session_.projectContext.documents();
+        const auto& store          = session.projectContext.documents();
         const auto* storedDocument = store.find(path);
         const auto  storedIndex    = store.indexOf(path);
         if (!storedDocument || !storedIndex)
@@ -455,14 +455,14 @@ void ProjectDocumentController::commitDocumentChanges(
 {
   QStringList conflicts;
   for (const auto& document : documents) {
-    if (session_.projectContext.documents().contains(document.getPath()))
+    if (session.projectContext.documents().contains(document.getPath()))
       conflicts.push_back(QString::fromStdString(document.getPath()));
   }
 
   auto commit = [this, documents = std::move(documents), sourcePath, activatePath,
                  commandText, errorTitle]() mutable {
     try {
-      const auto& store           = session_.projectContext.documents();
+      const auto& store           = session.projectContext.documents();
       auto        beforeDocuments = store.getDocuments();
       auto        afterDocuments  = beforeDocuments;
 
@@ -482,14 +482,14 @@ void ProjectDocumentController::commitDocumentChanges(
                                   std::move(afterDocuments), activatePath);
     } catch (const std::exception& error) {
       SILICON::ui::inputDialog::critical(
-          dialogParent_, errorTitle,
+          dialogParent, errorTitle,
           tr("Failed to update the project documents:\n%1").arg(error.what()));
     }
   };
 
   if (!conflicts.empty()) {
     SILICON::ui::inputDialog::question(
-        dialogParent_, tr("Replace Existing Documents"),
+        dialogParent, tr("Replace Existing Documents"),
         tr("The following documents already exist and will be replaced:\n\n%1")
             .arg(conflicts.join('\n')),
         std::move(commit));

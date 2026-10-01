@@ -200,11 +200,11 @@ namespace {
 
       template <std::size_t ParameterCount, std::size_t ConnectionCount>
       void requireSchema(
-          const std::array<std::string_view, ParameterCount>&  parameterNames,
-          const std::array<std::string_view, ConnectionCount>& connectionNames) const
+          const std::array<std::string_view, ParameterCount>&  PARAMETER_NAMES,
+          const std::array<std::string_view, ConnectionCount>& CONNECTION_NAMES) const
       {
-        requireExactMembers(parametersJson, parameterNames, context, "parameter");
-        requireExactMembers(connectionsJson, connectionNames, context, "connection");
+        requireExactMembers(parametersJson, PARAMETER_NAMES, context, "parameter");
+        requireExactMembers(connectionsJson, CONNECTION_NAMES, context, "connection");
       }
 
       [[nodiscard]] const Json& parameter(const std::string_view name) const
@@ -688,7 +688,7 @@ namespace {
                                       std::format("{}.bits", context));
             bus             = Bus(static_cast<unsigned short>(bitsJson.size()));
             components.push_back(std::make_shared<Extender>(
-                input, bus, std::string(Extender::UnsignedMode)));
+                input, bus, std::string(Extender::UNSIGNED_MODE)));
           } else {
             bus = readBus(bitsJson, ConnectionRole::Consumer,
                           std::format("{}.bits", context));
@@ -751,7 +751,7 @@ namespace {
       const auto attributes = raw.value("attributes", Json::object());
       if (!attributes.is_object())
         fail(cell.where(), "ROM attributes must be an object");
-      if (const auto attribute = attributes.find(std::string(attributes::BinaryDocument));
+      if (const auto attribute = attributes.find(std::string(attributes::BINARY_DOCUMENT));
           attribute != attributes.end()) {
         if (!attribute->is_string())
           fail(cell.where(), "binary document attribute must be a string");
@@ -959,8 +959,8 @@ namespace {
       if (aWidth != yWidth) {
         components.push_back(std::make_shared<Extender>(
             a, y,
-            std::string(cell.flag("A_SIGNED") ? Extender::SignedMode
-                                              : Extender::UnsignedMode)));
+            std::string(cell.flag("A_SIGNED") ? Extender::SIGNED_MODE
+                                              : Extender::UNSIGNED_MODE)));
         return;
       }
 
@@ -1017,8 +1017,8 @@ namespace {
       auto shifter = std::make_shared<Shifter>(cell.consumer("A", width),
                                                cell.consumer("B", cell.width("B_WIDTH")),
                                                cell.driver("Y", width));
-      shifter->setProperty("mode", std::string(direction == 0 ? Shifter::LeftMode
-                                                               : Shifter::RightMode));
+      shifter->setProperty("mode", std::string(direction == 0 ? Shifter::LEFT_MODE
+                                                               : Shifter::RIGHT_MODE));
       shifter->setProperty("signed", arithmetic);
       addWithZeroDelay(std::move(shifter));
     }
@@ -1034,7 +1034,7 @@ namespace {
       Bus  result(static_cast<unsigned short>(width));
       auto extender = std::make_shared<Extender>(
           operand, result,
-          std::string(signExtend ? Extender::SignedMode : Extender::UnsignedMode));
+          std::string(signExtend ? Extender::SIGNED_MODE : Extender::UNSIGNED_MODE));
       components.push_back(std::move(extender));
       return result;
     }
@@ -1086,15 +1086,15 @@ namespace {
       cell.requireSchema(std::to_array<std::string_view>({"WIDTH", "MODE", "SIGNED"}),
                          std::to_array<std::string_view>({"A", "B", "Y"}));
       const auto mode = parseUnsigned(cell.parameter("MODE"), cell.where());
-      static constexpr std::array<std::string_view, 5> modes{"==", "<", "<=", ">", ">="};
-      if (mode >= modes.size())
+      static constexpr std::array<std::string_view, 5> MODES{"==", "<", "<=", ">", ">="};
+      if (mode >= MODES.size())
         fail(cell.where(), "invalid SILICON_COMPARE mode");
       const auto width = cell.width("WIDTH");
       const Bus a = cell.consumer("A", width);
       const Bus b = cell.consumer("B", width);
       const Bus y = cell.driver("Y", 1);
       auto comparator = std::make_shared<Comparator>(std::array<Bus, 2>{a, b}, y[0]);
-      comparator->setProperty("mode", std::string(modes[mode]));
+      comparator->setProperty("mode", std::string(MODES[mode]));
       comparator->setProperty("signed", cell.flag("SIGNED"));
       addWithZeroDelay(std::move(comparator));
     }
@@ -1240,7 +1240,7 @@ namespace {
 
     template <bool Enabled, bool SetReset> void importSiliconDff(const Cell& cell)
     {
-      static constexpr auto parameterNames = [] {
+      static constexpr auto PARAMETER_NAMES = [] {
         std::array<std::string_view, 1 + Enabled + 2 * SetReset> names{};
         std::size_t                                              index = 0;
         names[index++]                                                 = "CLK_POLARITY";
@@ -1252,7 +1252,7 @@ namespace {
         }
         return names;
       }();
-      static constexpr auto connectionNames = [] {
+      static constexpr auto CONNECTION_NAMES = [] {
         std::array<std::string_view, 4 + Enabled + 2 * SetReset> names{};
         std::size_t                                              index = 0;
         names[index++]                                                 = "D";
@@ -1267,7 +1267,7 @@ namespace {
         names[index]   = "QN";
         return names;
       }();
-      cell.requireSchema(parameterNames, connectionNames);
+      cell.requireSchema(PARAMETER_NAMES, CONNECTION_NAMES);
 
       if constexpr (Enabled) {
         if (!cell.flag("EN_POLARITY"))
@@ -1308,11 +1308,11 @@ namespace {
 
     void importSiliconJkff(const Cell& cell)
     {
-      static constexpr auto parameters = std::to_array<std::string_view>(
+      static constexpr auto PARAMETERS = std::to_array<std::string_view>(
           {"CLK_POLARITY", "SET_POLARITY", "CLR_POLARITY"});
-      static constexpr auto connections =
+      static constexpr auto CONNECTIONS =
           std::to_array<std::string_view>({"J", "K", "CLK", "SET", "CLR", "Q", "QN"});
-      cell.requireSchema(parameters, connections);
+      cell.requireSchema(PARAMETERS, CONNECTIONS);
       if (!cell.flag("SET_POLARITY") || !cell.flag("CLR_POLARITY"))
         fail(cell.where(), "SILICON_JKFF requires active-high SET and CLR");
 
@@ -1325,10 +1325,10 @@ namespace {
 
     void importSiliconDlatch(const Cell& cell)
     {
-      static constexpr auto parameters = std::to_array<std::string_view>({"EN_POLARITY"});
-      static constexpr auto connections =
+      static constexpr auto PARAMETERS = std::to_array<std::string_view>({"EN_POLARITY"});
+      static constexpr auto CONNECTIONS =
           std::to_array<std::string_view>({"D", "EN", "Q", "QN"});
-      cell.requireSchema(parameters, connections);
+      cell.requireSchema(PARAMETERS, CONNECTIONS);
       if (!cell.flag("EN_POLARITY"))
         fail(cell.where(), "SILICON_DLATCH requires active-high EN");
 
@@ -1339,10 +1339,10 @@ namespace {
 
     void importSiliconHalfAdder(const Cell& cell)
     {
-      static constexpr std::array<std::string_view, 0> parameters{};
-      static constexpr auto                            connections =
+      static constexpr std::array<std::string_view, 0> PARAMETERS{};
+      static constexpr auto                            CONNECTIONS =
           std::to_array<std::string_view>({"A", "B", "SUM", "COUT"});
-      cell.requireSchema(parameters, connections);
+      cell.requireSchema(PARAMETERS, CONNECTIONS);
       auto adder = std::make_shared<HalfAdder>(
           std::array<Wire_ptr, 2>{cell.consumerBit("A"), cell.consumerBit("B")},
           cell.driverBit("SUM"), cell.driverBit("COUT"));
@@ -1351,10 +1351,10 @@ namespace {
 
     void importSiliconFullAdder(const Cell& cell)
     {
-      static constexpr std::array<std::string_view, 0> parameters{};
-      static constexpr auto                            connections =
+      static constexpr std::array<std::string_view, 0> PARAMETERS{};
+      static constexpr auto                            CONNECTIONS =
           std::to_array<std::string_view>({"A", "B", "CIN", "SUM", "COUT"});
-      cell.requireSchema(parameters, connections);
+      cell.requireSchema(PARAMETERS, CONNECTIONS);
       auto adder = std::make_shared<FullAdder>(
           std::array<Wire_ptr, 2>{cell.consumerBit("A"), cell.consumerBit("B")},
           cell.consumerBit("CIN"), cell.driverBit("SUM"), cell.driverBit("COUT"));
@@ -1363,11 +1363,11 @@ namespace {
 
     void importSiliconAdder(const Cell& cell)
     {
-      static constexpr auto parameters =
+      static constexpr auto PARAMETERS =
           std::to_array<std::string_view>({"WIDTH", "A_SIGNED", "B_SIGNED"});
-      static constexpr auto connections =
+      static constexpr auto CONNECTIONS =
           std::to_array<std::string_view>({"A", "B", "SUM", "COUT"});
-      cell.requireSchema(parameters, connections);
+      cell.requireSchema(PARAMETERS, CONNECTIONS);
       const auto width = cell.width("WIDTH");
       if (cell.flag("A_SIGNED") || cell.flag("B_SIGNED"))
         fail(cell.where(), "SILICON_ADDER supports unsigned operands only");
@@ -1384,17 +1384,17 @@ namespace {
     void importSiliconRegister(const Cell& cell)
     {
       if constexpr (ParallelInput && !ParallelOutput) {
-        static constexpr auto parameters = std::to_array<std::string_view>(
+        static constexpr auto PARAMETERS = std::to_array<std::string_view>(
             {"WIDTH", "CLK_POLARITY", "EN_POLARITY", "CLR_POLARITY", "LOAD_POLARITY"});
-        static constexpr auto connections =
+        static constexpr auto CONNECTIONS =
             std::to_array<std::string_view>({"DATA", "CLK", "EN", "CLR", "LOAD", "OUT"});
-        cell.requireSchema(parameters, connections);
+        cell.requireSchema(PARAMETERS, CONNECTIONS);
       } else {
-        static constexpr auto parameters = std::to_array<std::string_view>(
+        static constexpr auto PARAMETERS = std::to_array<std::string_view>(
             {"WIDTH", "CLK_POLARITY", "EN_POLARITY", "CLR_POLARITY"});
-        static constexpr auto connections =
+        static constexpr auto CONNECTIONS =
             std::to_array<std::string_view>({"DATA", "CLK", "EN", "CLR", "OUT"});
-        cell.requireSchema(parameters, connections);
+        cell.requireSchema(PARAMETERS, CONNECTIONS);
       }
 
       const auto width = cell.width("WIDTH");
@@ -1421,10 +1421,10 @@ namespace {
 
       auto reg = std::make_shared<Register>();
       reg->setProperty("size", static_cast<int>(width));
-      reg->setProperty("inputType", std::string(ParallelInput ? Register::ParallelType
-                                                              : Register::SerialType));
-      reg->setProperty("outputType", std::string(ParallelOutput ? Register::ParallelType
-                                                                : Register::SerialType));
+      reg->setProperty("inputType", std::string(ParallelInput ? Register::PARALLEL_TYPE
+                                                              : Register::SERIAL_TYPE));
+      reg->setProperty("outputType", std::string(ParallelOutput ? Register::PARALLEL_TYPE
+                                                                : Register::SERIAL_TYPE));
       reg->setProperty("delay", 0);
       connectAndAdd(std::move(reg), std::move(inputs), std::move(outputs));
     }
@@ -1432,33 +1432,33 @@ namespace {
     void importCell(const std::string_view name, const Json& cell)
     {
       using CellHandler = void (Importer::*)(const Cell&);
-      static constexpr auto handlers =
+      static constexpr auto HANDLERS =
           std::to_array<std::pair<std::string_view, CellHandler>>({
-              {cells::Dff, &Importer::importSiliconDff<false, false>},
-              {cells::Dffe, &Importer::importSiliconDff<true, false>},
-              {cells::Dlatch, &Importer::importSiliconDlatch},
-              {cells::Dffsr, &Importer::importSiliconDff<false, true>},
-              {cells::Dffsre, &Importer::importSiliconDff<true, true>},
-              {cells::Jkff, &Importer::importSiliconJkff},
-              {cells::HalfAdder, &Importer::importSiliconHalfAdder},
-              {cells::FullAdder, &Importer::importSiliconFullAdder},
-              {cells::Adder, &Importer::importSiliconAdder},
-              {cells::Pipo, &Importer::importSiliconRegister<true, true>},
-              {cells::Piso, &Importer::importSiliconRegister<true, false>},
-              {cells::Sipo, &Importer::importSiliconRegister<false, true>},
-              {cells::Siso, &Importer::importSiliconRegister<false, false>},
+              {cells::DFF, &Importer::importSiliconDff<false, false>},
+              {cells::DFFE, &Importer::importSiliconDff<true, false>},
+              {cells::DLATCH, &Importer::importSiliconDlatch},
+              {cells::DFFSR, &Importer::importSiliconDff<false, true>},
+              {cells::DFFSRE, &Importer::importSiliconDff<true, true>},
+              {cells::JKFF, &Importer::importSiliconJkff},
+              {cells::HALF_ADDER, &Importer::importSiliconHalfAdder},
+              {cells::FULL_ADDER, &Importer::importSiliconFullAdder},
+              {cells::ADDER, &Importer::importSiliconAdder},
+              {cells::PIPO, &Importer::importSiliconRegister<true, true>},
+              {cells::PISO, &Importer::importSiliconRegister<true, false>},
+              {cells::SIPO, &Importer::importSiliconRegister<false, true>},
+              {cells::SISO, &Importer::importSiliconRegister<false, false>},
               {"$and", &Importer::importBinaryGate<AndGate>},
               {"$or", &Importer::importBinaryGate<OrGate>},
               {"$xor", &Importer::importBinaryGate<XorGate>},
               {"$not", &Importer::importNot},
-              {cells::Logic, &Importer::importSiliconLogic},
+              {cells::LOGIC, &Importer::importSiliconLogic},
               {"$_NAND_", &Importer::importFineBinaryGate<NandGate>},
               {"$_NOR_", &Importer::importFineBinaryGate<NorGate>},
               {"$pos", &Importer::importPos},
               {"$add", &Importer::importAdd},
               {"$sub", &Importer::importSub},
-              {cells::Compare, &Importer::importSiliconCompare},
-              {cells::Shift, &Importer::importSiliconShift},
+              {cells::COMPARE, &Importer::importSiliconCompare},
+              {cells::SHIFT, &Importer::importSiliconShift},
               {"$mux", &Importer::importMux},
               {"$bmux", &Importer::importBmux},
               {"$demux", &Importer::importDemux},
@@ -1470,7 +1470,7 @@ namespace {
           });
 
       Cell view(*this, cell, std::format("{}.cells.{}", moduleContext(), name));
-      for (const auto& [type, handler] : handlers) {
+      for (const auto& [type, handler] : HANDLERS) {
         if (view.cellType() == type)
           return (this->*handler)(view);
       }

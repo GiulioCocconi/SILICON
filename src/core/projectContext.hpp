@@ -40,8 +40,8 @@ public:
   void removeDocument(std::string_view documentPath);
 
 private:
-  DocumentStore          documents_;
-  CircuitDependencyGraph circuitDependencies_;
+  DocumentStore          documentStore;
+  CircuitDependencyGraph dependencyGraph;
 
   void commit(std::vector<Document> documents, CircuitDependencyGraph dependencies,
               const DocumentChange& change) noexcept;

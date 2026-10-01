@@ -81,8 +81,8 @@ namespace {
     tree->setHeaderLabels({QObject::tr("Item")});
     tree->setRootIsDecorated(true);
     tree->setSelectionMode(QAbstractItemView::NoSelection);
-    constexpr int explicitlySelectedRole = Qt::UserRole;
-    constexpr int choiceIdRole           = Qt::UserRole + 1;
+    constexpr int EXPLICITLY_SELECTED_ROLE = Qt::UserRole;
+    constexpr int CHOICE_ID_ROLE           = Qt::UserRole + 1;
 
     const auto addDependencies = [&choicesById](this auto&&        addDependencies,
                                                 QTreeWidgetItem*   parentItem,
@@ -107,8 +107,8 @@ namespace {
       item->setText(0, QString::fromStdString(choice.label));
       item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
       item->setCheckState(0, Qt::Unchecked);
-      item->setData(0, explicitlySelectedRole, false);
-      item->setData(0, choiceIdRole, QString::fromStdString(choice.id));
+      item->setData(0, EXPLICITLY_SELECTED_ROLE, false);
+      item->setData(0, CHOICE_ID_ROLE, QString::fromStdString(choice.id));
       addDependencies(item, choice.id);
     }
     tree->collapseAll();
@@ -130,15 +130,15 @@ namespace {
           const QSignalBlocker blocker(tree);
           if (!changedItem->parent()
               && changedItem->flags().testFlag(Qt::ItemIsEnabled)) {
-            changedItem->setData(0, explicitlySelectedRole,
+            changedItem->setData(0, EXPLICITLY_SELECTED_ROLE,
                                  changedItem->checkState(0) == Qt::Checked);
           }
 
           std::vector<std::string> roots;
           for (int index = 0; index < tree->topLevelItemCount(); ++index) {
             const auto* item = tree->topLevelItem(index);
-            if (item->data(0, explicitlySelectedRole).toBool())
-              roots.push_back(item->data(0, choiceIdRole).toString().toStdString());
+            if (item->data(0, EXPLICITLY_SELECTED_ROLE).toBool())
+              roots.push_back(item->data(0, CHOICE_ID_ROLE).toString().toStdString());
           }
 
           importButton->setEnabled(!roots.empty());
@@ -161,8 +161,8 @@ namespace {
 
           for (int index = 0; index < tree->topLevelItemCount(); ++index) {
             auto*      item       = tree->topLevelItem(index);
-            const auto name       = item->data(0, choiceIdRole).toString().toStdString();
-            const bool selected   = item->data(0, explicitlySelectedRole).toBool();
+            const auto name       = item->data(0, CHOICE_ID_ROLE).toString().toStdString();
+            const bool selected   = item->data(0, EXPLICITLY_SELECTED_ROLE).toBool();
             const bool dependency = std::ranges::contains(dependencies, name);
 
             auto flags = item->flags() | Qt::ItemIsUserCheckable;
@@ -183,8 +183,8 @@ namespace {
     std::vector<std::string> roots;
     for (int index = 0; index < tree->topLevelItemCount(); ++index) {
       const auto* item = tree->topLevelItem(index);
-      if (item->data(0, explicitlySelectedRole).toBool())
-        roots.push_back(item->data(0, choiceIdRole).toString().toStdString());
+      if (item->data(0, EXPLICITLY_SELECTED_ROLE).toBool())
+        roots.push_back(item->data(0, CHOICE_ID_ROLE).toString().toStdString());
     }
     return roots;
   }
@@ -194,7 +194,7 @@ namespace {
 void ProjectDocumentController::convertActiveDocument()
 {
   const auto* source =
-      session_.projectContext.documents().find(session_.activeDocumentPath);
+      session.projectContext.documents().find(session.activeDocumentPath);
   if (!source)
     return;
 
@@ -216,7 +216,7 @@ void ProjectDocumentController::convertActiveDocument()
   }
 
   SILICON::ui::inputDialog::getItem(
-      dialogParent_, tr("Convert Document"), tr("Target format"), labels, 0, false,
+      dialogParent, tr("Convert Document"), tr("Target format"), labels, 0, false,
       [this, labels = std::move(labels),
        targets = std::move(targets)](const QString& selected) {
         const auto index = labels.indexOf(selected);
@@ -229,17 +229,17 @@ void ProjectDocumentController::convertActiveDocumentTo(
     const SILICON::project::DocumentType target)
 {
   try {
-    workspace_.flushActiveDocument();
-    const auto  sourcePath = session_.activeDocumentPath;
-    const auto& store      = session_.projectContext.documents();
+    workspace.flushActiveDocument();
+    const auto  sourcePath = session.activeDocumentPath;
+    const auto& store      = session.projectContext.documents();
     const auto* source     = store.find(sourcePath);
     if (!source)
       throw std::runtime_error("The active document no longer exists");
 
     auto prepared = prepareDocumentConversion(
         *source, target, store.getDocuments(),
-        SILICON::core::ComponentRegistry::instance(), session_.circuitResolver);
-    auto selected = selectConversionChoices(dialogParent_, prepared.choices);
+        SILICON::core::ComponentRegistry::instance(), session.circuitResolver);
+    auto selected = selectConversionChoices(dialogParent, prepared.choices);
     if (!selected)
       return;
 
@@ -251,7 +251,7 @@ void ProjectDocumentController::convertActiveDocumentTo(
                                 tr("Code Conversion Error"));
   } catch (const std::exception& error) {
     SILICON::ui::inputDialog::critical(
-        dialogParent_, tr("Code Conversion Error"),
+        dialogParent, tr("Code Conversion Error"),
         tr("Failed to convert the active document:\n%1").arg(error.what()));
   }
 }

@@ -93,8 +93,8 @@ TEST(YosysTest, YosysAcceptsEveryBuiltInLowering)
   auto serialRegister = std::make_shared<Register>(Bus(2), std::make_shared<Wire>(),
                                                    std::make_shared<Wire>(),
                                                    std::make_shared<Wire>(), Bus(2));
-  serialRegister->setProperty("inputType", std::string(Register::SerialType));
-  serialRegister->setProperty("outputType", std::string(Register::SerialType));
+  serialRegister->setProperty("inputType", std::string(Register::SERIAL_TYPE));
+  serialRegister->setProperty("outputType", std::string(Register::SERIAL_TYPE));
   components.push_back(serialRegister);
 
   for (std::size_t index = 0; index < components.size(); ++index) {

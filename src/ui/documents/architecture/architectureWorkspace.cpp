@@ -47,22 +47,22 @@ public:
 
 ArchitectureWorkspace::ArchitectureWorkspace(QWidget* parent) : QTabWidget(parent)
 {
-  visualizer_ = new SislVisualizer(this);
+  visualizer = new SislVisualizer(this);
   for (const auto& component : codeFilePresentations()) {
     if (!component.architectureTabName)
       continue;
     auto* codeEditor = new CodeEditor(this);
     codeEditor->setFileType(component.type);
-    editors_.emplace(component.type, codeEditor);
+    codeEditors.emplace(component.type, codeEditor);
     connect(codeEditor->document(), &QTextDocument::modificationChanged, this,
             [this](bool modified) {
               if (modified)
                 emit documentModified();
             });
     connect(codeEditor, &QPlainTextEdit::textChanged, this, [this] {
-      const int index = indexOf(visualizer_);
+      const int index = indexOf(visualizer);
       if (index >= 0) {
-        visualizer_->hide();
+        visualizer->hide();
         removeTab(index);
       }
     });
@@ -72,24 +72,24 @@ ArchitectureWorkspace::ArchitectureWorkspace(QWidget* parent) : QTabWidget(paren
 CodeEditor*
 ArchitectureWorkspace::editor(const SILICON::project::DocumentType type) const noexcept
 {
-  const auto it = editors_.find(type);
-  return it == editors_.end() ? nullptr : it->second;
+  const auto it = codeEditors.find(type);
+  return it == codeEditors.end() ? nullptr : it->second;
 }
 
 bool ArchitectureWorkspace::hasModifiedEditors() const
 {
   return std::ranges::any_of(
-      editors_, [](const auto& entry) { return entry.second->document()->isModified(); });
+      codeEditors, [](const auto& entry) { return entry.second->document()->isModified(); });
 }
 
 bool ArchitectureWorkspace::isVisualizerActive() const noexcept
 {
-  return currentWidget() == visualizer_;
+  return currentWidget() == visualizer;
 }
 
 bool ArchitectureWorkspace::isVisualizerTab(int index) const noexcept
 {
-  return widget(index) == visualizer_;
+  return widget(index) == visualizer;
 }
 
 void ArchitectureWorkspace::loadDocument(const SILICON::project::Document&      document,
@@ -136,9 +136,9 @@ ArchitectureWorkspace::prepareLoadPlan(const SILICON::project::Document&      do
 void ArchitectureWorkspace::applyLoadPlan(const ArchitectureLoadPlan& plan)
 {
   const QSignalBlocker blocker(this);
-  visualizer_->hide();
+  visualizer->hide();
   clear();
-  const bool newArchitecture = loadedArchitectureName_ != plan.name;
+  const bool newArchitecture = loadedArchitectureName != plan.name;
   int        activeTab       = -1;
   for (const auto& file : plan.files) {
     auto* codeEditor = editor(file.type);
@@ -152,7 +152,7 @@ void ArchitectureWorkspace::applyLoadPlan(const ArchitectureLoadPlan& plan)
     if (file.type == plan.activeType)
       activeTab = tab;
   }
-  loadedArchitectureName_ = plan.name;
+  loadedArchitectureName = plan.name;
   setCurrentIndex(activeTab);
   if (auto* active = editor(plan.activeType))
     active->setFocus();
@@ -160,10 +160,10 @@ void ArchitectureWorkspace::applyLoadPlan(const ArchitectureLoadPlan& plan)
 
 void ArchitectureWorkspace::showVisualization(sisl::IsaDescription description)
 {
-  visualizer_->setDescription(std::move(description));
-  if (indexOf(visualizer_) < 0)
-    addTab(visualizer_, tr("Visualizer"));
-  setCurrentWidget(visualizer_);
+  visualizer->setDescription(std::move(description));
+  if (indexOf(visualizer) < 0)
+    addTab(visualizer, tr("Visualizer"));
+  setCurrentWidget(visualizer);
 }
 
 }  // namespace SILICON::ui

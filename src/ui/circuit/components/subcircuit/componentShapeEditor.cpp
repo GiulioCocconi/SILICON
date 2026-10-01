@@ -59,7 +59,7 @@ namespace SILICON::ui {
 
   namespace {
 
-    constexpr int ExternalPortMarginGrid = 2;
+    constexpr int EXTERNAL_PORT_MARGIN_GRID = 2;
 
     [[nodiscard]] std::vector<Bus>
     previewBuses(const std::vector<GraphicalSubcircuitPortMetadata>& ports)
@@ -74,7 +74,7 @@ namespace SILICON::ui {
     [[nodiscard]] QPoint sanitizePortPosition(QPoint pos, QRect shapeRect)
     {
       pos                           = DiagramScene::snapToGrid(pos);
-      const int extension           = gridToPixels(ExternalPortMarginGrid);
+      const int extension           = gridToPixels(EXTERNAL_PORT_MARGIN_GRID);
       const auto [side, projection] = nearestPortSide(pos, shapeRect);
 
       // Offset from the projected edge rather than from the requested point. This
@@ -207,27 +207,27 @@ namespace SILICON::ui {
 
       [[nodiscard]] QRectF markerRect() const
       {
-        constexpr qreal radius = 6.0;
-        return {-radius, -radius, radius * 2.0, radius * 2.0};
+        constexpr qreal RADIUS = 6.0;
+        return {-RADIUS, -RADIUS, RADIUS * 2.0, RADIUS * 2.0};
       }
 
       [[nodiscard]] QRectF labelRect() const
       {
         const QFontMetricsF metrics(QFont("NovaMono", 9));
         const QRectF        text = metrics.boundingRect(label).adjusted(-6, -3, 6, 3);
-        constexpr qreal     gap  = 8.0;
+        constexpr qreal     GAP  = 8.0;
 
         switch (currentSide()) {
           case PortSide::LEFT:
-            return {-gap - text.width(), -text.height() / 2.0, text.width(),
+            return {-GAP - text.width(), -text.height() / 2.0, text.width(),
                     text.height()};
           case PortSide::RIGHT:
-            return {gap, -text.height() / 2.0, text.width(), text.height()};
+            return {GAP, -text.height() / 2.0, text.width(), text.height()};
           case PortSide::UP:
-            return {-text.width() / 2.0, -gap - text.height(), text.width(),
+            return {-text.width() / 2.0, -GAP - text.height(), text.width(),
                     text.height()};
           case PortSide::DOWN:
-            return {-text.width() / 2.0, gap, text.width(), text.height()};
+            return {-text.width() / 2.0, GAP, text.width(), text.height()};
         }
         std::unreachable();
       }
@@ -296,7 +296,7 @@ namespace SILICON::ui {
         inputVisuals.clear();
         outputVisuals.clear();
 
-        const int gridMargin = gridToPixels(ExternalPortMarginGrid + 3);
+        const int gridMargin = gridToPixels(EXTERNAL_PORT_MARGIN_GRID + 3);
         scene->setSceneRect(-gridMargin, -gridMargin, shapeSize.width() + gridMargin * 2,
                             shapeSize.height() + gridMargin * 2);
         addGrid();

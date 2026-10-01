@@ -139,7 +139,7 @@ TEST(YosysTest, ImportsSubWithYosysWidthAndSignednessSemantics)
   EXPECT_EQ(extender->getPropertyValue<int>("inSize"), 3);
   EXPECT_EQ(extender->getPropertyValue<int>("outSize"), 5);
   EXPECT_EQ(extender->getPropertyValue<std::string>("mode"),
-            std::string(Extender::UnsignedMode));
+            std::string(Extender::UNSIGNED_MODE));
   EXPECT_EQ(evaluateBinaryCircuit(unsignedCircuit, 2, 5), valueFor(4, 13));
 
   // Both signed flags cause sign extension: 3'b110 (-2) - 5'b00011 (3) = -5.
@@ -147,7 +147,7 @@ TEST(YosysTest, ImportsSubWithYosysWidthAndSignednessSemantics)
   auto signedExtender = findComponent<Extender>(*signedCircuit);
   ASSERT_TRUE(signedExtender);
   EXPECT_EQ(signedExtender->getPropertyValue<std::string>("mode"),
-            std::string(Extender::SignedMode));
+            std::string(Extender::SIGNED_MODE));
   EXPECT_EQ(evaluateBinaryCircuit(signedCircuit, 6, 3), valueFor(6, 59));
 
   // A mixed signedness operation is unsigned in Yosys: 6 - 3 = 3.
@@ -155,7 +155,7 @@ TEST(YosysTest, ImportsSubWithYosysWidthAndSignednessSemantics)
   auto mixedExtender = findComponent<Extender>(*mixedCircuit);
   ASSERT_TRUE(mixedExtender);
   EXPECT_EQ(mixedExtender->getPropertyValue<std::string>("mode"),
-            std::string(Extender::UnsignedMode));
+            std::string(Extender::UNSIGNED_MODE));
   EXPECT_EQ(evaluateBinaryCircuit(mixedCircuit, 6, 3), valueFor(6, 3));
 
   // Arithmetic is evaluated at the widest width and narrowed to the low Y bits.
@@ -185,13 +185,13 @@ TEST(YosysTest, ImportsComparisonCellsWithYosysWidthAndSignednessSemantics)
     std::string_view type;
     std::string_view mode;
   };
-  static constexpr std::array cases{
+  static constexpr std::array CASES{
       ComparisonCase{"$eq", "=="}, ComparisonCase{"$lt", "<"},
       ComparisonCase{"$le", "<="}, ComparisonCase{"$gt", ">"},
       ComparisonCase{"$ge", ">="},
   };
 
-  for (const auto& comparison : cases) {
+  for (const auto& comparison : CASES) {
     SCOPED_TRACE(comparison.type);
     auto       circuit    = std::make_shared<Circuit>(SILICON::yosys::deserialize(
         legalizeExpressions(comparisonDesign(comparison.type, 3, 5, 1, false, false).dump())));

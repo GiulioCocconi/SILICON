@@ -34,8 +34,8 @@ Extender::Extender()
 {
   defineProperty("inSize", 4);
   defineProperty("outSize", 8);
-  defineStringListProperty("mode", std::string(UnsignedMode),
-                           {std::string(UnsignedMode), std::string(SignedMode)});
+  defineStringListProperty("mode", std::string(UNSIGNED_MODE),
+                           {std::string(UNSIGNED_MODE), std::string(SIGNED_MODE)});
 
   setPropertyCallback("inSize", [this](const PropertyValue& value) {
     const int width = std::get<int>(requireValidSize("Extender inSize", value));
@@ -97,8 +97,8 @@ void Extender::simulate(SILICON::simulation::Simulator& sim)
   auto value = inputs[0].getCurrentValue();
 
   const bool signedMode =
-      getPropertyValue<std::string>("mode").value_or(std::string(UnsignedMode))
-      == SignedMode;
+      getPropertyValue<std::string>("mode").value_or(std::string(UNSIGNED_MODE))
+      == SIGNED_MODE;
 
   const State extension = signedMode ? value.back() : State::LOW;
   value = wireUtils::normalizeBusValue(value, outputs[0].size(), extension);
@@ -319,8 +319,8 @@ Shifter::Shifter()
       setAmountSize(width);
     return value;
   });
-  defineStringListProperty("mode", std::string(RightMode),
-                           {std::string(LeftMode), std::string(RightMode)});
+  defineStringListProperty("mode", std::string(RIGHT_MODE),
+                           {std::string(LEFT_MODE), std::string(RIGHT_MODE)});
   defineProperty("signed", false);
 }
 
@@ -384,7 +384,7 @@ void Shifter::simulate(SILICON::simulation::Simulator& sim)
       count = std::min(value.size(), count * 2 + (amount[bit] == State::HIGH));
     }
     const bool left =
-        getPropertyValue<std::string>("mode").value_or(std::string(RightMode)) == LeftMode;
+        getPropertyValue<std::string>("mode").value_or(std::string(RIGHT_MODE)) == LEFT_MODE;
     const auto signedness = getPropertyValue<bool>("signed").value_or(false)
                                 ? Signedness::SIGNED : Signedness::UNSIGNED;
     result = shift(value, left ? -static_cast<ptrdiff_t>(count)

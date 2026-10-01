@@ -279,7 +279,7 @@ void GraphicalWireSegment::paint(QPainter*                       painter,
       // Compare size_t to safely avoid signed/unsigned compiler warnings
       const bool hovered = (i == static_cast<size_t>(hoveredPointIndex));
       painter->setBrush(hovered ? QColor(255, 80, 80) : QColor(200, 60, 60, 160));
-      painter->drawEllipse(points[i], pointRadius, pointRadius);
+      painter->drawEllipse(points[i], POINT_RADIUS, POINT_RADIUS);
     }
   }
 
@@ -288,7 +288,7 @@ void GraphicalWireSegment::paint(QPainter*                       painter,
    *       |  [ ]  |       |  [ ]  |          */
 
   const qreal totalLength     = path.length();
-  const bool  drawDecorations = (size > 1) && (totalLength >= 2 * interval);
+  const bool  drawDecorations = (size > 1) && (totalLength >= 2 * INTERVAL);
 
   if (!drawDecorations)
     return;
@@ -297,11 +297,11 @@ void GraphicalWireSegment::paint(QPainter*                       painter,
   painter->setFont(QFont("NovaMono", painter->font().pointSize() * 0.8));
 
   const QString   sizeText = QString::number(size);
-  const QRectF    boxRect(-boxWidth / 2.0, -boxHeight / 2.0, boxWidth, boxHeight);
-  constexpr qreal halfLen = slashLength / 2.0;
+  const QRectF    boxRect(-BOX_WIDTH / 2.0, -BOX_HEIGHT / 2.0, BOX_WIDTH, BOX_HEIGHT);
+  constexpr qreal HALF_LEN = SLASH_LENGTH / 2.0;
 
   int counter = 0;
-  for (qreal dist = interval; dist < totalLength; dist += interval, ++counter) {
+  for (qreal dist = INTERVAL; dist < totalLength; dist += INTERVAL, ++counter) {
     const bool drawSlash = (counter % 2 == 0);
     const bool drawBox   = ((counter - 1) % 4 == 0);
 
@@ -324,8 +324,8 @@ void GraphicalWireSegment::paint(QPainter*                       painter,
     if (drawSlash) {
       // Now that the coordinate system is aligned with the path we can draw a simple
       // rotated line.
-      painter->rotate(slashAngle);
-      painter->drawLine(QPointF(-halfLen, 0), QPointF(halfLen, 0));
+      painter->rotate(SLASH_ANGLE);
+      painter->drawLine(QPointF(-HALF_LEN, 0), QPointF(HALF_LEN, 0));
     } else if (drawBox) {
       // Rotate the coordinate system back to the original position in order not to
       // write the size upside down
@@ -347,7 +347,7 @@ QRectF GraphicalWireSegment::boundingRect() const
   return this->path.boundingRect()
       .united(this->showPath.boundingRect())
       .adjusted(-5, -5, 5, 5)
-      .adjusted(-boxHeight / 2, -boxHeight / 2, boxHeight / 2, boxHeight / 2);
+      .adjusted(-BOX_HEIGHT / 2, -BOX_HEIGHT / 2, BOX_HEIGHT / 2, BOX_HEIGHT / 2);
 }
 
 QPainterPath GraphicalWireSegment::shape() const
@@ -358,12 +358,12 @@ QPainterPath GraphicalWireSegment::shape() const
 
 bool GraphicalWireSegment::isPointOnPath(const QPointF point) const
 {
-  constexpr qreal hitWidth = 10.0;
+  constexpr qreal HIT_WIDTH = 10.0;
   if (points.size() == 1)
-    return QLineF(point, points.front()).length() <= hitWidth / 2.0;
+    return QLineF(point, points.front()).length() <= HIT_WIDTH / 2.0;
 
   QPainterPathStroker stroker;
-  stroker.setWidth(hitWidth);
+  stroker.setWidth(HIT_WIDTH);
   return stroker.createStroke(path).contains(point);
 }
 
@@ -386,7 +386,7 @@ void GraphicalWireSegment::setPoints(std::vector<QPointF> newPoints)
 int GraphicalWireSegment::pointIndexAt(const QPointF localPos) const
 {
   for (size_t i = 0; i < points.size(); i++) {
-    if (QLineF(localPos, points[i]).length() <= grabRadius)
+    if (QLineF(localPos, points[i]).length() <= GRAB_RADIUS)
       return i;
   }
   return -1;

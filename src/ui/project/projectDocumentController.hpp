@@ -110,12 +110,12 @@ private:
   /** @brief Reports a rejected document activation to the user. */
   void reportLoadFailure(SILICON::project::DocumentType type, const std::string& reason);
 
-  ProjectSession&          session_;
-  EditorWorkspace&         workspace_;
+  ProjectSession&          session;
+  EditorWorkspace&         workspace;
   ProjectTree*             projectTree;
-  ComponentCatalogOverlay& catalog_;
+  ComponentCatalogOverlay& catalog;
   QUndoStack*              undoStack;
-  QWidget*                 dialogParent_;
+  QWidget*                 dialogParent;
 };
 
 }  // namespace SILICON::ui

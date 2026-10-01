@@ -132,9 +132,9 @@ TEST(YosysToolTest, RejectsInvalidMultiSourceInputs)
   EXPECT_THROW((void)SILICON::verilog::read(duplicate, "code/top.v"),
                std::invalid_argument);
 
-  const std::array sources{
+  const std::array SOURCES{
       SourceFile{.path = "code/helper.v", .contents = "module helper; endmodule"}};
-  EXPECT_THROW((void)SILICON::verilog::read(sources, "code/top.v"),
+  EXPECT_THROW((void)SILICON::verilog::read(SOURCES, "code/top.v"),
                std::invalid_argument);
 }
 
@@ -158,7 +158,7 @@ TEST(YosysToolTest, ResolvesTransitiveProjectIncludesWithoutParsingUnrelatedFile
 {
   using SILICON::verilog::SourceFile;
 
-  constexpr std::array sources{
+  constexpr std::array SOURCES{
       SourceFile{.path = "code/top.v", .contents = R"(`include "helper.v"
 module top(input a, output y);
   helper child(.a(a), .y(y));
@@ -173,7 +173,7 @@ endmodule
       SourceFile{.path     = "code/unrelated.v",
                  .contents = "this is deliberately invalid Verilog\n"}};
 
-  const auto designJson = SILICON::verilog::read(sources, "code/top.v");
+  const auto designJson = SILICON::verilog::read(SOURCES, "code/top.v");
   const auto design     = SILICON::yosys::Json::parse(designJson);
   ASSERT_TRUE(design.at("modules").contains("top"));
   ASSERT_TRUE(design.at("modules").contains("helper"));
@@ -190,12 +190,12 @@ endmodule
 
 TEST(YosysToolTest, ReportsMissingProjectIncludeThroughYosysDiagnostics)
 {
-  constexpr std::array sources{SILICON::verilog::SourceFile{
+  constexpr std::array SOURCES{SILICON::verilog::SourceFile{
       .path = "code/top.v", .contents = "`include \"missing.v\"\n"}};
   YosysLogCapture      logCapture;
   std::string          message;
   try {
-    (void)SILICON::verilog::read(sources, "code/top.v");
+    (void)SILICON::verilog::read(SOURCES, "code/top.v");
   } catch (const std::runtime_error& error) {
     message = error.what();
   }
@@ -206,7 +206,7 @@ TEST(YosysToolTest, ReportsMissingProjectIncludeThroughYosysDiagnostics)
 
 TEST(YosysToolTest, BuildsDependencyGraphFromMultiModuleVerilog)
 {
-  constexpr std::string_view source = R"(
+  constexpr std::string_view SOURCE = R"(
     module leaf(input a, output reg y);
       always @* y = ~a;
     endmodule
@@ -235,7 +235,7 @@ TEST(YosysToolTest, BuildsDependencyGraphFromMultiModuleVerilog)
     endmodule
   )";
 
-  const auto designJson = SILICON::verilog::read(source);
+  const auto designJson = SILICON::verilog::read(SOURCE);
   const auto design     = SILICON::yosys::Json::parse(designJson);
 
   std::set<std::string> topCellTypes;
@@ -260,7 +260,7 @@ TEST(YosysToolTest, BuildsDependencyGraphFromMultiModuleVerilog)
 
 TEST(YosysToolTest, ImportsCombinationalVerilogPreservingHelperHierarchy)
 {
-  constexpr std::string_view source = R"(
+  constexpr std::string_view SOURCE = R"(
     module helper(input a, input b, output y);
       assign y = a & b;
     endmodule
@@ -272,13 +272,13 @@ TEST(YosysToolTest, ImportsCombinationalVerilogPreservingHelperHierarchy)
     endmodule
   )";
 
-  const Circuit circuit = importVerilog(source, "selected");
+  const Circuit circuit = importVerilog(SOURCE, "selected");
   // Elaboration preserves the module hierarchy, so the helper instance is kept
   // as a subcircuit rather than flattened into its gates.
   EXPECT_EQ(componentTypes(circuit),
             (std::multiset<std::string>{"Subcircuit", "DummyInputComponent",
                                         "DummyInputComponent", "DummyOutputComponent"}));
-  EXPECT_THROW((void)importVerilog(source, "missing"), std::runtime_error);
+  EXPECT_THROW((void)importVerilog(SOURCE, "missing"), std::runtime_error);
 }
 
 TEST(YosysToolTest, ImportsLogicalOperatorsWithVectorTruthSemantics)
@@ -286,17 +286,17 @@ TEST(YosysToolTest, ImportsLogicalOperatorsWithVectorTruthSemantics)
   const auto verify = [](const std::string_view expression,
                          const std::string_view yosysCell,
                          const std::string_view siliconComponent, const auto& expected) {
-    const auto source = std::format("module top(input [2:0] a, input [2:0] b, output y); "
+    const auto SOURCE = std::format("module top(input [2:0] a, input [2:0] b, output y); "
                                     "assign y = {}; endmodule",
                                     expression);
 
     const auto hierarchicalJson =
-        SILICON::yosys::elaborateHierarchy(SILICON::verilog::read(source));
+        SILICON::yosys::elaborateHierarchy(SILICON::verilog::read(SOURCE));
     EXPECT_NE(hierarchicalJson.find(yosysCell), std::string::npos);
 
     const std::array circuits{
         std::make_shared<Circuit>(SILICON::yosys::deserialize(hierarchicalJson, "top")),
-        std::make_shared<Circuit>(importVerilog(source, "top")),
+        std::make_shared<Circuit>(importVerilog(SOURCE, "top")),
     };
     for (const auto& circuit : circuits) {
       EXPECT_EQ(componentTypes(*circuit).count(std::string(siliconComponent)), 1);
@@ -320,9 +320,9 @@ TEST(YosysToolTest, ImportsLogicalOperatorsWithVectorTruthSemantics)
 
 TEST(YosysToolTest, ImportsLogicalNotAsOneGate)
 {
-  constexpr std::string_view source =
+  constexpr std::string_view SOURCE =
       "module top(input [2:0] a, output y); assign y = !a; endmodule";
-  auto circuit = std::make_shared<Circuit>(importVerilog(source, "top"));
+  auto circuit = std::make_shared<Circuit>(importVerilog(SOURCE, "top"));
 
   EXPECT_EQ(componentTypes(*circuit).count("NotGate"), 1);
   EXPECT_EQ(componentTypes(*circuit).count("OrGate"), 0);
@@ -350,7 +350,7 @@ TEST(YosysToolTest, ImportsLogicalNotAsOneGate)
 
 TEST(YosysToolTest, KeepsAluLogicalOperationsAndVectorNotCompact)
 {
-  constexpr std::string_view source = R"(
+  constexpr std::string_view SOURCE = R"(
     module alu(
       input [2:0] opcode,
       input [7:0] OperandA,
@@ -371,7 +371,7 @@ TEST(YosysToolTest, KeepsAluLogicalOperationsAndVectorNotCompact)
     endmodule
   )";
 
-  const Circuit circuit = importVerilog(source, "alu");
+  const Circuit circuit = importVerilog(SOURCE, "alu");
   const auto    types   = componentTypes(circuit);
   EXPECT_EQ(types.count("AndGate"), 1);
   EXPECT_EQ(types.count("OrGate"), 1);
@@ -384,18 +384,18 @@ TEST(YosysToolTest, KeepsAluLogicalOperationsAndVectorNotCompact)
 
 TEST(YosysToolTest, ImportsOnlyASingleDiscoveredModule)
 {
-  const auto discover = [](const std::string_view source) -> std::string {
+  const auto discover = [](const std::string_view SOURCE) -> std::string {
     const auto modules =
-        SILICON::yosys::moduleDependencyGraph(SILICON::verilog::read(source)).modules();
+        SILICON::yosys::moduleDependencyGraph(SILICON::verilog::read(SOURCE)).modules();
     if (modules.size() != 1)
       throw std::runtime_error("Verilog source must declare exactly one module");
     return modules.front();
   };
 
-  const std::string_view source =
+  const std::string_view SOURCE =
       "module sole(input a, output y); assign y = ~a; endmodule";
-  const auto top     = discover(source);
-  const auto circuit = importVerilog(source, top);
+  const auto top     = discover(SOURCE);
+  const auto circuit = importVerilog(SOURCE, top);
   EXPECT_EQ(top, "sole");
 
   EXPECT_THROW((void)discover(""), std::runtime_error);
@@ -405,19 +405,19 @@ TEST(YosysToolTest, ImportsOnlyASingleDiscoveredModule)
 
 TEST(YosysToolTest, ImportsZeroExtendedOutputAsUnsignedExtender)
 {
-  constexpr std::string_view source = R"(
+  constexpr std::string_view SOURCE = R"(
     module a(output [7:0] bus_out, input in);
       assign bus_out = { 7'h00, in };
     endmodule
   )";
 
-  const Circuit circuit  = importVerilog(source, "a");
+  const Circuit circuit  = importVerilog(SOURCE, "a");
   const auto    extender = findComponent<Extender>(circuit);
   ASSERT_TRUE(extender);
   EXPECT_EQ(extender->getPropertyValue<int>("inSize"), 1);
   EXPECT_EQ(extender->getPropertyValue<int>("outSize"), 8);
   EXPECT_EQ(extender->getPropertyValue<std::string>("mode"),
-            std::string(Extender::UnsignedMode));
+            std::string(Extender::UNSIGNED_MODE));
   EXPECT_FALSE(findComponent<ConstantComponent>(circuit));
 }
 
@@ -426,14 +426,14 @@ TEST(YosysToolTest, RaisesSharedConstantEqualityComparisonsToDecoder)
   #ifndef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
   GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
   #else
-  constexpr std::string_view source = R"(
+  constexpr std::string_view SOURCE = R"(
     module top(input [2:0] select, output [1:0] matches);
       assign matches[0] = select == 3'd1;
       assign matches[1] = 3'd6 == select;
     endmodule
   )";
 
-  auto circuit = std::make_shared<Circuit>(importVerilog(source, "top"));
+  auto circuit = std::make_shared<Circuit>(importVerilog(SOURCE, "top"));
   auto decoder = findComponent<Decoder>(*circuit);
   ASSERT_TRUE(decoder);
   EXPECT_EQ(decoder->getPropertyValue<int>("selectionSize"), 3);
@@ -494,7 +494,7 @@ TEST(YosysToolTest, PmgenMatchesSelectedPmuxWithUnselectedPredicates)
   #ifndef SILICON_TEST_YOSYS_PLUGIN_PATH
   GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
   #else
-  constexpr std::string_view source = R"(
+  constexpr std::string_view SOURCE = R"(
     module top(
       input [1:0] select,
       input [3:0] lane0,
@@ -514,7 +514,7 @@ TEST(YosysToolTest, PmgenMatchesSelectedPmuxWithUnselectedPredicates)
     endmodule
   )";
 
-  EXPECT_NO_THROW(runPluginScript(source,
+  EXPECT_NO_THROW(runPluginScript(SOURCE,
                                   "hierarchy -check -top top\n"
                                   "proc\n"
                                   "muxpack\n"
@@ -531,7 +531,7 @@ TEST(YosysToolTest, PmgenLeavesInvalidGroupsAndRaisesValidSignedGroup)
   #ifndef SILICON_TEST_YOSYS_PLUGIN_PATH
   GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
   #else
-  constexpr std::string_view source = R"(
+  constexpr std::string_view SOURCE = R"(
     module top(
       input [2:0] first,
       input [2:0] second,
@@ -547,7 +547,7 @@ TEST(YosysToolTest, PmgenLeavesInvalidGroupsAndRaisesValidSignedGroup)
     endmodule
   )";
 
-  EXPECT_NO_THROW(runPluginScript(source,
+  EXPECT_NO_THROW(runPluginScript(SOURCE,
                                   "hierarchy -check -top top\n"
                                   "proc\n"
                                   "silicon_eq_decoder\n"
@@ -562,7 +562,7 @@ TEST(YosysToolTest, FoldsPrivateClockedRomAddressInPlugin)
   #ifndef SILICON_TEST_YOSYS_PLUGIN_PATH
   GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
   #else
-  constexpr std::string_view source = R"(
+  constexpr std::string_view SOURCE = R"(
     module top(input clk, input en, input [1:0] addr, output [7:0] data);
       reg [1:0] saved_addr;
       reg [7:0] rom [0:3];
@@ -574,7 +574,7 @@ TEST(YosysToolTest, FoldsPrivateClockedRomAddressInPlugin)
       assign data = rom[saved_addr];
     endmodule
   )";
-  EXPECT_NO_THROW(runPluginScript(source,
+  EXPECT_NO_THROW(runPluginScript(SOURCE,
                                   "hierarchy -check -top top\n"
                                   "proc\n"
                                   "memory_collect\n"
@@ -595,7 +595,7 @@ TEST(YosysToolTest, KeepsRomAddressRegisterWithExternalConsumer)
   #ifndef SILICON_TEST_YOSYS_PLUGIN_PATH
   GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
   #else
-  constexpr std::string_view source = R"(
+  constexpr std::string_view SOURCE = R"(
     module top(input clk, input en, input [1:0] addr,
                output [1:0] saved, output [7:0] data);
       reg [1:0] saved_addr;
@@ -609,7 +609,7 @@ TEST(YosysToolTest, KeepsRomAddressRegisterWithExternalConsumer)
       assign data = rom[saved_addr];
     endmodule
   )";
-  EXPECT_NO_THROW(runPluginScript(source,
+  EXPECT_NO_THROW(runPluginScript(SOURCE,
                                   "hierarchy -check -top top\n"
                                   "proc\n"
                                   "memory_collect\n"
@@ -624,7 +624,7 @@ TEST(YosysToolTest, KeepsRomAddressRegisterWithExternalConsumer)
 
 TEST(YosysToolTest, LowersPriorityMuxCellsBeforeImport)
 {
-  constexpr std::string_view source = R"(
+  constexpr std::string_view SOURCE = R"(
     module top(
       input [1:0] fallback,
       input [1:0] lane0,
@@ -645,19 +645,19 @@ TEST(YosysToolTest, LowersPriorityMuxCellsBeforeImport)
     endmodule
   )";
 
-  const Circuit circuit = importVerilog(source, "top");
+  const Circuit circuit = importVerilog(SOURCE, "top");
   EXPECT_GT(componentTypes(circuit).count("Multiplexer"), 0);
 }
 
 TEST(YosysToolTest, ImportsSequentialVerilog)
 {
-  constexpr std::string_view source  = R"(
+  constexpr std::string_view SOURCE  = R"(
     module storage(input d, input clk, output reg q);
       always @(posedge clk)
         q <= d;
     endmodule
   )";
-  const Circuit              circuit = importVerilog(source, "storage");
+  const Circuit              circuit = importVerilog(SOURCE, "storage");
   EXPECT_TRUE(componentTypes(circuit).contains("DFlipFlop"));
 }
 
@@ -666,7 +666,7 @@ TEST(YosysToolTest, FoldsSparseCaseIntoOneWideMultiplexer)
   #ifndef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
   GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
   #endif
-  constexpr std::string_view source = R"(
+  constexpr std::string_view SOURCE = R"(
     module top(
       input [7:0] a,
       input [7:0] b,
@@ -684,7 +684,7 @@ TEST(YosysToolTest, FoldsSparseCaseIntoOneWideMultiplexer)
     endmodule
   )";
 
-  const Circuit circuit = importVerilog(source, "top");
+  const Circuit circuit = importVerilog(SOURCE, "top");
   EXPECT_EQ(componentTypes(circuit).count("Multiplexer"), 1);
   EXPECT_EQ(componentTypes(circuit).count("Decoder"), 0);
   EXPECT_EQ(componentTypes(circuit).count("OrGate"), 0);
@@ -692,7 +692,7 @@ TEST(YosysToolTest, FoldsSparseCaseIntoOneWideMultiplexer)
 
 TEST(YosysToolTest, KeepsSynchronousResetAsScalarMuxAndDFlipFlop)
 {
-  constexpr std::string_view source = R"(
+  constexpr std::string_view SOURCE = R"(
     module sdff_test(
       input wire clk,
       input wire rst,
@@ -708,7 +708,7 @@ TEST(YosysToolTest, KeepsSynchronousResetAsScalarMuxAndDFlipFlop)
     endmodule
   )";
 
-  const Circuit circuit = importVerilog(source, "sdff_test");
+  const Circuit circuit = importVerilog(SOURCE, "sdff_test");
   EXPECT_EQ(componentTypes(circuit).count("Multiplexer"), 1);
   EXPECT_EQ(componentTypes(circuit).count("DFlipFlop"), 1);
   EXPECT_EQ(componentTypes(circuit).count("WireMerger"), 0);
@@ -726,7 +726,7 @@ TEST(YosysToolTest, FoldsExhaustiveCaseIntoOneWideMultiplexer)
   #ifndef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
   GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
   #endif
-  constexpr std::string_view source = R"(
+  constexpr std::string_view SOURCE = R"(
     module mux(
       input [3:0] bus_1,
       input [3:0] bus_2,
@@ -747,7 +747,7 @@ TEST(YosysToolTest, FoldsExhaustiveCaseIntoOneWideMultiplexer)
     endmodule
   )";
 
-  const Circuit circuit = importVerilog(source, "mux");
+  const Circuit circuit = importVerilog(SOURCE, "mux");
   EXPECT_EQ(componentTypes(circuit).count("Multiplexer"), 1);
   EXPECT_EQ(componentTypes(circuit).count("Decoder"), 0);
   EXPECT_EQ(componentTypes(circuit).count("OrGate"), 0);
@@ -764,7 +764,7 @@ TEST(YosysToolTest, ImportsCaseLiteralLanesAsSizedConstants)
   #ifndef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
   GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
   #endif
-  constexpr std::string_view source = R"(
+  constexpr std::string_view SOURCE = R"(
     module my_mux(input [1:0] a, input [3:0] b, c, output reg [3:0] o);
       always @(a, b, c) begin
         case (a)
@@ -777,7 +777,7 @@ TEST(YosysToolTest, ImportsCaseLiteralLanesAsSizedConstants)
     endmodule
   )";
 
-  const Circuit circuit = importVerilog(source, "my_mux");
+  const Circuit circuit = importVerilog(SOURCE, "my_mux");
   EXPECT_EQ(componentTypes(circuit).count("Multiplexer"), 1);
   EXPECT_EQ(componentTypes(circuit).count("ConstantComponent"), 2);
   EXPECT_EQ(componentTypes(circuit).count("WireMerger"), 0);

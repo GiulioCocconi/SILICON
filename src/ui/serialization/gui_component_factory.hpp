@@ -134,7 +134,7 @@ private:
     EntryMetadata metadata;
   };
 
-  std::map<std::string, Entry, std::less<>> factories_;
+  std::map<std::string, Entry, std::less<>> factories;
 };
 
 }  // namespace SILICON::ui

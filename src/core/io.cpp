@@ -31,14 +31,14 @@ namespace SILICON::core {
 
 namespace {
 
-  constexpr std::string_view                PortOrientationProperty = "portOrientation";
-  constexpr std::array<std::string_view, 4> PortOrientations = {"UP", "DOWN", "LEFT",
+  constexpr std::string_view                PORT_ORIENTATION_PROPERTY = "portOrientation";
+  constexpr std::array<std::string_view, 4> PORT_ORIENTATIONS = {"UP", "DOWN", "LEFT",
                                                                 "RIGHT"};
   [[nodiscard]] StringPropertyOptions orientationOptions()
   {
     StringPropertyOptions options;
-    options.reserve(PortOrientations.size());
-    for (const auto orientation : PortOrientations)
+    options.reserve(PORT_ORIENTATIONS.size());
+    for (const auto orientation : PORT_ORIENTATIONS)
       options.emplace_back(orientation);
     return options;
   }
@@ -129,7 +129,7 @@ BoundaryIoComponent::BoundaryIoComponent(std::vector<Bus> inputs,
   : Component(std::move(inputs), std::move(outputs))
 {
   defineProperty("name", std::move(name));
-  defineStringListProperty(std::string(PortOrientationProperty), "DOWN",
+  defineStringListProperty(std::string(PORT_ORIENTATION_PROPERTY), "DOWN",
                            orientationOptions());
 }
 

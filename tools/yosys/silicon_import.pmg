@@ -185,7 +185,7 @@ arg pmux choice_index choice_selector choice_values selector lane_overrides
 
 code choice_index selector lane_overrides
 	{
-	if (choice_selector.empty() || GetSize(choice_selector) > MaxDecodedSelectorWidth)
+	if (choice_selector.empty() || GetSize(choice_selector) > MAX_DECODED_SELECTOR_WIDTH)
 		reject;
 
 	if (selector.empty())

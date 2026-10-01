@@ -392,25 +392,25 @@ private:
   void hoverMoveEvent(QGraphicsSceneHoverEvent* event) override;
 
   /** @brief Interval for bus size decorations */
-  static constexpr int interval = 60;
+  static constexpr int INTERVAL = 60;
 
   /** @brief Length of slash decorations */
-  static constexpr int slashLength = 20;
+  static constexpr int SLASH_LENGTH = 20;
 
   /** @brief Angle for slash decorations */
-  static constexpr int slashAngle = 135;
+  static constexpr int SLASH_ANGLE = 135;
 
   /** @brief Height of bus size label box */
-  static constexpr int boxHeight = 20;
+  static constexpr int BOX_HEIGHT = 20;
 
   /** @brief Width of bus size label box */
-  static constexpr int boxWidth = interval * 0.6;
+  static constexpr int BOX_WIDTH = INTERVAL * 0.6;
 
   /** @brief Radius of draggable points */
-  static constexpr double pointRadius = 4.0;
+  static constexpr double POINT_RADIUS = 4.0;
 
   /** @brief Grab radius for point selection */
-  static constexpr double grabRadius = 8.0;
+  static constexpr double GRAB_RADIUS = 8.0;
 };
 
 }  // namespace SILICON::ui

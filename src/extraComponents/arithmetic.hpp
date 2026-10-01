@@ -34,8 +34,8 @@ using namespace SILICON::core;
 class Extender : public Component {
 public:
   static constexpr std::string_view Type         = "Extender";
-  static constexpr std::string_view SignedMode   = "signed";
-  static constexpr std::string_view UnsignedMode = "unsigned";
+  static constexpr std::string_view SIGNED_MODE   = "signed";
+  static constexpr std::string_view UNSIGNED_MODE = "unsigned";
 
   std::string_view  typeName() const override { return Type; }
   ComponentMetadata metadata() const override
@@ -45,7 +45,7 @@ public:
   }
 
   Extender();
-  Extender(Bus in, Bus out, std::string mode = std::string(UnsignedMode));
+  Extender(Bus in, Bus out, std::string mode = std::string(UNSIGNED_MODE));
 
   int setInputSize(int width);
   int setOutputSize(int width);
@@ -267,8 +267,8 @@ public:
 class Shifter : public Component {
 public:
   static constexpr std::string_view Type = "Shifter";
-  static constexpr std::string_view LeftMode = "left";
-  static constexpr std::string_view RightMode = "right";
+  static constexpr std::string_view LEFT_MODE = "left";
+  static constexpr std::string_view RIGHT_MODE = "right";
 
   enum class Inputs : unsigned int { Value = 0, Amount = 1 };
   enum class Outputs : unsigned int { Result = 0 };

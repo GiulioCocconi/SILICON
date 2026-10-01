@@ -53,8 +53,8 @@ namespace SILICON::ui {
     : GraphicalLogicComponent(
           std::make_shared<SubcircuitComponent>(resolver),
           new SubcircuitRectShape(
-              QSize(GraphicalSubcircuitDefaultSize * DiagramScene::GRID_SIZE,
-                    GraphicalSubcircuitDefaultSize * DiagramScene::GRID_SIZE)),
+              QSize(GRAPHICAL_SUBCIRCUIT_DEFAULT_SIZE * DiagramScene::GRID_SIZE,
+                    GRAPHICAL_SUBCIRCUIT_DEFAULT_SIZE * DiagramScene::GRID_SIZE)),
           parent, false),
       documents(documents),
       resolver(resolver)
@@ -184,8 +184,8 @@ namespace SILICON::ui {
     auto applyEmptyMetadata = [this] {
       prepareGeometryChange();
       setItemShape(new SubcircuitRectShape(
-          QSize(GraphicalSubcircuitDefaultSize * DiagramScene::GRID_SIZE,
-                GraphicalSubcircuitDefaultSize * DiagramScene::GRID_SIZE)));
+          QSize(GRAPHICAL_SUBCIRCUIT_DEFAULT_SIZE * DiagramScene::GRID_SIZE,
+                GRAPHICAL_SUBCIRCUIT_DEFAULT_SIZE * DiagramScene::GRID_SIZE)));
       clearPorts();
       update();
     };

@@ -29,8 +29,8 @@
 USING_YOSYS_NAMESPACE
 PRIVATE_NAMESPACE_BEGIN
 
-constexpr int MaxDecodedSelectorWidth = 10;
-constexpr int DecoderDensityFactor    = 4;
+constexpr int MAX_DECODED_SELECTOR_WIDTH = 10;
+constexpr int DECODER_DENSITY_FACTOR    = 4;
 
 #include "silicon_import_pm.h"
 
@@ -69,7 +69,7 @@ void collectSelectedCells(pool<RTLIL::Cell*>& selectedCells, RTLIL::Module* modu
 
 class SignalUsers {
 public:
-  SignalUsers(RTLIL::Module* module, SigMap& sigmap) : sigmap_(sigmap)
+  SignalUsers(RTLIL::Module* module, SigMap& sigmap) : sigmap(sigmap)
   {
     for (auto port : module->ports)
       add(module->wire(port), nullptr);
@@ -82,9 +82,9 @@ public:
   int count(const RTLIL::SigSpec& signal)
   {
     pool<RTLIL::Cell*> users;
-    for (const auto bit : sigmap_(signal)) {
-      const auto it = users_.find(bit);
-      if (it == users_.end())
+    for (const auto bit : sigmap(signal)) {
+      const auto it = this->users.find(bit);
+      if (it == this->users.end())
         continue;
       for (auto* user : it->second)
         users.insert(user);
@@ -95,15 +95,15 @@ public:
 private:
   void add(const RTLIL::SigSpec& signal, RTLIL::Cell* cell)
   {
-    for (const auto bit : sigmap_(signal)) {
+    for (const auto bit : sigmap(signal)) {
       if (bit.wire == nullptr)
         continue;
-      users_[bit].insert(cell);
+      this->users[bit].insert(cell);
     }
   }
 
-  SigMap&                                 sigmap_;
-  dict<RTLIL::SigBit, pool<RTLIL::Cell*>> users_;
+  SigMap&                                 sigmap;
+  dict<RTLIL::SigBit, pool<RTLIL::Cell*>> users;
 };
 
 std::optional<EqCandidate> decodeEquality(RTLIL::Cell* cell, SigMap& sigmap,
@@ -116,7 +116,7 @@ std::optional<EqCandidate> decodeEquality(RTLIL::Cell* cell, SigMap& sigmap,
   const int bWidth = cell->getParam(ID::B_WIDTH).as_int();
   const int yWidth = cell->getParam(ID::Y_WIDTH).as_int();
 
-  if (aWidth != bWidth || aWidth <= 0 || aWidth > MaxDecodedSelectorWidth || yWidth != 1)
+  if (aWidth != bWidth || aWidth <= 0 || aWidth > MAX_DECODED_SELECTOR_WIDTH || yWidth != 1)
     return std::nullopt;
 
   const auto output = sigmap(cell->getPort(ID::Y));
@@ -186,7 +186,7 @@ std::vector<EqDecoderGroup> collectEqDecoderGroups(RTLIL::Module* module)
       continue;
 
     const int laneCount = 1 << GetSize(selector);
-    if (GetSize(bucket) * DecoderDensityFactor < laneCount)
+    if (GetSize(bucket) * DECODER_DENSITY_FACTOR < laneCount)
       continue;
 
     std::sort(bucket.begin(), bucket.end(), [](const EqMember& lhs, const EqMember& rhs) {

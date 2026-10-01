@@ -110,7 +110,7 @@ TEST(YosysRomTest, ExportsSelfContainedInitializedArrayAndReimportsIt)
       std::make_shared<DummyOutputComponent>(data, "data")}, false);
   const auto source = SILICON::verilog::write(circuit, "romtest");
   EXPECT_NE(source.find("initial"), std::string::npos);
-  EXPECT_NE(source.find(SILICON::yosys::attributes::BinaryDocument), std::string::npos);
+  EXPECT_NE(source.find(SILICON::yosys::attributes::BINARY_DOCUMENT), std::string::npos);
   EXPECT_EQ(source.find("readmem"), std::string::npos);
   const auto imported = SILICON::yosys::deserialize(
       SILICON::yosys::elaborateHierarchy(SILICON::verilog::read(source)), "romtest");
@@ -271,7 +271,7 @@ TEST(YosysRomTest, ImportsClockedReadWithAddressRegister)
   EXPECT_EQ(output->inputBuses()[0].getCurrentValue(), valueFor(output->inputBuses()[0], 0x56));
   const auto exported = SILICON::verilog::write(*circuit, "syncrom_roundtrip");
   EXPECT_NE(exported.find("initial"), std::string::npos);
-  EXPECT_NE(exported.find(SILICON::yosys::attributes::BinaryDocument), std::string::npos);
+  EXPECT_NE(exported.find(SILICON::yosys::attributes::BINARY_DOCUMENT), std::string::npos);
   EXPECT_EQ(exported.find("readmem"), std::string::npos);
   const auto restored = SILICON::yosys::deserialize(
       SILICON::yosys::elaborateHierarchy(SILICON::verilog::read(exported)),

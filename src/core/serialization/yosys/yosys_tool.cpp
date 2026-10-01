@@ -498,7 +498,7 @@ std::string writeVerilog(std::string_view json, const ToolOptions& options)
              : std::string();
   // Emit attributes only when a ROM document name must survive Verilog export.
   const std::string_view backendOptions =
-      json.find(attributes::BinaryDocument) != std::string_view::npos
+      json.find(attributes::BINARY_DOCUMENT) != std::string_view::npos
           ? "-norename -decimal" : "-noattr -norename -decimal";
 
   (void)runScript(std::format("read_verilog -lib -D SILICON_BLACKBOX {}\n"

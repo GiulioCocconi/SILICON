@@ -95,12 +95,12 @@ namespace {
 
 const DocumentStore& ProjectContext::documents() const noexcept
 {
-  return documents_;
+  return documentStore;
 }
 
 const CircuitDependencyGraph& ProjectContext::circuitDependencies() const noexcept
 {
-  return circuitDependencies_;
+  return dependencyGraph;
 }
 
 void ProjectContext::setDocuments(std::vector<Document> nextDocuments)
@@ -114,7 +114,7 @@ void ProjectContext::setDocuments(std::vector<Document> nextDocuments)
 
 void ProjectContext::upsertDocument(Document document)
 {
-  auto       nextDocuments = documents_.getDocuments();
+  auto       nextDocuments = documentStore.getDocuments();
   const auto existing =
       std::ranges::find(nextDocuments, document.getPath(), &Document::getPath);
   const auto kind = existing == nextDocuments.end() ? DocumentChangeKind::Added
@@ -133,11 +133,11 @@ void ProjectContext::upsertDocument(Document document)
 
 void ProjectContext::insertDocument(Document document, const std::size_t index)
 {
-  if (documents_.contains(document.getPath()))
+  if (documentStore.contains(document.getPath()))
     throw std::invalid_argument(
         std::format("Duplicate project document path: {}", document.getPath()));
 
-  auto       nextDocuments = documents_.getDocuments();
+  auto       nextDocuments = documentStore.getDocuments();
   const auto path          = document.getPath();
   const auto offset        = std::min(index, nextDocuments.size());
   nextDocuments.insert(nextDocuments.begin() + static_cast<std::ptrdiff_t>(offset),
@@ -156,11 +156,11 @@ void ProjectContext::renameDocument(const std::string_view oldPath,
   const auto newType = documentTypeForPath(newPath);
   if (!oldType || !newType || *oldType != *newType)
     throw std::invalid_argument("A document rename must preserve its document type");
-  if (!documents_.contains(oldPath))
+  if (!documentStore.contains(oldPath))
     throw std::invalid_argument(std::format("Unknown project document: {}", oldPath));
   if (oldPath == newPath)
     return;
-  if (documents_.contains(newPath))
+  if (documentStore.contains(newPath))
     throw std::invalid_argument(
         std::format("Project document already exists: {}", newPath));
 
@@ -169,7 +169,7 @@ void ProjectContext::renameDocument(const std::string_view oldPath,
   if (!oldSlug || !newSlug)
     throw std::invalid_argument("A document rename requires canonical document paths");
 
-  auto nextDocuments = documents_.getDocuments();
+  auto nextDocuments = documentStore.getDocuments();
   for (auto& document : nextDocuments) {
     const bool renamedDocument = document.getPath() == oldPath;
     if (renamedDocument)
@@ -186,11 +186,11 @@ void ProjectContext::renameDocument(const std::string_view oldPath,
 
 void ProjectContext::removeDocument(const std::string_view documentPath)
 {
-  if (!documents_.contains(documentPath))
+  if (!documentStore.contains(documentPath))
     return;
 
-  circuitDependencies_.validateDocumentRemoval(documentPath);
-  auto nextDocuments = documents_.getDocuments();
+  dependencyGraph.validateDocumentRemoval(documentPath);
+  auto nextDocuments = documentStore.getDocuments();
   std::erase_if(nextDocuments, [&](const Document& document) {
     return document.getPath() == documentPath;
   });
@@ -205,8 +205,8 @@ void ProjectContext::commit(std::vector<Document>  nextDocuments,
                             CircuitDependencyGraph nextDependencies,
                             const DocumentChange&  change) noexcept
 {
-  circuitDependencies_ = std::move(nextDependencies);
-  documents_.commitDocuments(std::move(nextDocuments), change);
+  dependencyGraph = std::move(nextDependencies);
+  documentStore.commitDocuments(std::move(nextDocuments), change);
 }
 
 }  // namespace SILICON::project

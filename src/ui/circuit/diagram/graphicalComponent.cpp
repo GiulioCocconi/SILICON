@@ -100,9 +100,9 @@ void GraphicalComponent::setItemShape(QGraphicsItem* shape)
 
 QRectF GraphicalComponent::boundingRect() const
 {
-  const qreal margin = isSelected() ? 0 : 4;  // Pen width is 3
+  const qreal MARGIN = isSelected() ? 0 : 4;  // Pen width is 3
   auto        rect   = boundingRectWithoutMargins();
-  rect.adjust(-margin, -margin, margin, margin);
+  rect.adjust(-MARGIN, -MARGIN, MARGIN, MARGIN);
 
   return rect;
 }
@@ -370,7 +370,7 @@ void Port::paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
 
   if (printName) {
     auto getNameRect = [portLine, metrics, this]() -> QRectF {
-      constexpr qreal margin = DiagramScene::GRID_SIZE / 2.0;
+      constexpr qreal MARGIN = DiagramScene::GRID_SIZE / 2.0;
       const QPointF   linePt = portLine.p2();
 
       const qreal textWidth  = metrics.horizontalAdvance(name);
@@ -378,16 +378,16 @@ void Port::paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
 
       switch (this->side) {
         case PortSide::DOWN:
-          return {linePt.x() - textWidth / 2.0, linePt.y() - margin / 1.5 - textHeight,
+          return {linePt.x() - textWidth / 2.0, linePt.y() - MARGIN / 1.5 - textHeight,
                   textWidth, textHeight};
         case PortSide::UP:
-          return {linePt.x() - textWidth / 2.0, linePt.y() + margin / 1.5, textWidth,
+          return {linePt.x() - textWidth / 2.0, linePt.y() + MARGIN / 1.5, textWidth,
                   textHeight};
         case PortSide::LEFT:
-          return {linePt.x() + margin, linePt.y() - textHeight / 2.0, textWidth,
+          return {linePt.x() + MARGIN, linePt.y() - textHeight / 2.0, textWidth,
                   textHeight};
         case PortSide::RIGHT:
-          return {linePt.x() - margin - textWidth, linePt.y() - textHeight / 2.0,
+          return {linePt.x() - MARGIN - textWidth, linePt.y() - textHeight / 2.0,
                   textWidth, textHeight};
       }
       std::unreachable();
@@ -401,8 +401,8 @@ void Port::paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
   }
 
   if (isBusPort) {
-    constexpr qreal slashLength = 12.0;
-    constexpr qreal slashAngle  = 60.0;
+    constexpr qreal SLASH_LENGTH = 12.0;
+    constexpr qreal SLASH_ANGLE  = 60.0;
 
     const QPointF midpoint((portLine.p1().x() + portLine.p2().x()) / 2.0,
                            (portLine.p1().y() + portLine.p2().y()) / 2.0);
@@ -414,8 +414,8 @@ void Port::paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
     painter->setFont(markerFont);
 
     painter->translate(midpoint);
-    painter->rotate(-lineAngle + slashAngle);
-    painter->drawLine(QPointF(-slashLength / 2.0, 0), QPointF(slashLength / 2.0, 0));
+    painter->rotate(-lineAngle + SLASH_ANGLE);
+    painter->drawLine(QPointF(-SLASH_LENGTH / 2.0, 0), QPointF(SLASH_LENGTH / 2.0, 0));
     painter->restore();
 
     const QRectF textRect = metrics.boundingRect(sizeText).adjusted(-4.0, -2.0, 4.0, 2.0);
