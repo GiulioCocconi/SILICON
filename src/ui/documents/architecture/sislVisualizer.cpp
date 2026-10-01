@@ -22,21 +22,21 @@ namespace SILICON::ui {
 namespace {
 
 namespace Layout {
-  constexpr qreal CellW = 27.0;
-  constexpr qreal LeftM = 34.0;
-  constexpr qreal RowH = 55.0;
-  constexpr qreal RectH = 33.0;
-  constexpr qreal BoxPadX = 15.0;
-  constexpr qreal BoxPadY = 5.0;
-  constexpr qreal BaseY = 48.0;
+  constexpr qreal CELL_W = 27.0;
+  constexpr qreal LEFT_M = 34.0;
+  constexpr qreal ROW_H = 55.0;
+  constexpr qreal RECT_H = 33.0;
+  constexpr qreal BOX_PAD_X = 15.0;
+  constexpr qreal BOX_PAD_Y = 5.0;
+  constexpr qreal BASE_Y = 48.0;
 
-  constexpr qreal TitleScale = 1.4;
-  constexpr qreal SubTitleScale = 1.15;
-  constexpr qreal NormalScale = 1.0;
-  constexpr qreal IndexScale = 0.7;
+  constexpr qreal TITLE_SCALE = 1.4;
+  constexpr qreal SUB_TITLE_SCALE = 1.15;
+  constexpr qreal NORMAL_SCALE = 1.0;
+  constexpr qreal INDEX_SCALE = 0.7;
 
   inline qreal calcBoxWidth(std::size_t bitsWidth) {
-    return std::max<qreal>(550.0, bitsWidth * CellW + 35.0);
+    return std::max<qreal>(550.0, bitsWidth * CELL_W + 35.0);
   }
 } // namespace Layout
 
@@ -46,8 +46,8 @@ struct SliceGeometry {
 
   static SliceGeometry calculate(std::size_t totalWidth, std::size_t msb, std::size_t lsb) {
     return {
-      Layout::LeftM + (totalWidth - msb - 1) * Layout::CellW,
-      (msb - lsb + 1) * Layout::CellW
+      Layout::LEFT_M + (totalWidth - msb - 1) * Layout::CELL_W,
+      (msb - lsb + 1) * Layout::CELL_W
     };
   }
 };
@@ -60,15 +60,15 @@ public:
 
 protected:
   void wheelEvent(QWheelEvent* event) override {
-    constexpr qreal ZoomIn = 1.15;
-    constexpr qreal ZoomOut = 1.0 / ZoomIn;
-    constexpr qreal MinScale = 0.2;
-    constexpr qreal MaxScale = 4.0;
+    constexpr qreal ZOOM_IN = 1.15;
+    constexpr qreal ZOOM_OUT = 1.0 / ZOOM_IN;
+    constexpr qreal MIN_SCALE = 0.2;
+    constexpr qreal MAX_SCALE = 4.0;
 
-    const qreal factor = event->angleDelta().y() > 0 ? ZoomIn : ZoomOut;
+    const qreal factor = event->angleDelta().y() > 0 ? ZOOM_IN : ZOOM_OUT;
     const qreal nextScale = transform().m11() * factor;
 
-    if (nextScale >= MinScale && nextScale <= MaxScale) {
+    if (nextScale >= MIN_SCALE && nextScale <= MAX_SCALE) {
       scale(factor, factor);
     }
     event->accept();
@@ -94,7 +94,7 @@ private:
 // --- Helper Functions ---
 
 QGraphicsSimpleTextItem* addText(QGraphicsScene* scene, const QString& value, qreal x, qreal y,
-                                 const QColor& color, qreal scale = Layout::NormalScale) {
+                                 const QColor& color, qreal scale = Layout::NORMAL_SCALE) {
   auto* item = scene->addSimpleText(value);
   item->setBrush(color);
   item->setPos(x, y);
@@ -227,7 +227,7 @@ void SislVisualizer::showOverview() {
 
   drawOverviewTitle();
 
-  qreal y = Layout::BaseY;
+  qreal y = Layout::BASE_Y;
   drawAllFormatBoxes(theme, y);
   drawStandaloneInstructionsBox(theme, y);
   drawAllEnums(theme, y);
@@ -237,7 +237,7 @@ void SislVisualizer::showOverview() {
 
 void SislVisualizer::drawOverviewTitle() {
   const QString title = tr("%1 · Instruction formats").arg(QString::fromStdString(description.name));
-  addText(scene, title, Layout::LeftM, 0, palette().color(QPalette::Text), Layout::TitleScale);
+  addText(scene, title, Layout::LEFT_M, 0, palette().color(QPalette::Text), Layout::TITLE_SCALE);
 }
 
 void SislVisualizer::drawAllFormatBoxes(const ThemeColors& theme, qreal& y) {
@@ -249,19 +249,19 @@ void SislVisualizer::drawAllFormatBoxes(const ThemeColors& theme, qreal& y) {
     title += format.width ? tr(" · %1 bits").arg(static_cast<qulonglong>(*format.width)) : tr(" · width unspecified");
 
     auto* box = new FormatBox(
-      QRectF(Layout::LeftM - Layout::BoxPadX, y - Layout::BoxPadY, Layout::calcBoxWidth(width), Layout::RowH + 25),
+      QRectF(Layout::LEFT_M - Layout::BOX_PAD_X, y - Layout::BOX_PAD_Y, Layout::calcBoxWidth(width), Layout::ROW_H + 25),
       [this, name = format.name] { QTimer::singleShot(0, this, [this, name] { showFormat(name); }); }
     );
 
     box->setPen(QPen(theme.mid));
     scene->addItem(box);
 
-    addText(scene, title, Layout::LeftM, y, theme.ink);
+    addText(scene, title, Layout::LEFT_M, y, theme.ink);
     if (width > 0) {
       drawLayout(format.fields, width, {}, y + 22, theme);
     }
 
-    y += Layout::RowH + 42;
+    y += Layout::ROW_H + 42;
   }
 }
 
@@ -270,30 +270,30 @@ void SislVisualizer::drawStandaloneInstructionsBox(const ThemeColors& theme, qre
                                          [](const auto& item) { return !item.format; });
   if (!hasStandalone) return;
 
-  auto* box = new FormatBox(QRectF(Layout::LeftM - Layout::BoxPadX, y, Layout::calcBoxWidth(0), 48), [this] {
+  auto* box = new FormatBox(QRectF(Layout::LEFT_M - Layout::BOX_PAD_X, y, Layout::calcBoxWidth(0), 48), [this] {
     QTimer::singleShot(0, this, [this] { showFormat(std::nullopt); });
   });
 
   box->setPen(QPen(theme.mid));
   scene->addItem(box);
 
-  addText(scene, tr("Standalone instructions · double-click"), Layout::LeftM, y + 12, theme.ink);
+  addText(scene, tr("Standalone instructions · double-click"), Layout::LEFT_M, y + 12, theme.ink);
   y += 70;
 }
 
 void SislVisualizer::drawAllEnums(const ThemeColors& theme, qreal& y) {
   y += 15;
-  addText(scene, tr("Enum values"), Layout::LeftM, y, theme.ink, 1.25);
+  addText(scene, tr("Enum values"), Layout::LEFT_M, y, theme.ink, 1.25);
   y += 35;
 
   for (const auto& enumeration : description.enums) {
     const QString title = QString::fromStdString(enumeration.name) + tr(" · %1 bits").arg(static_cast<qulonglong>(enumeration.width));
-    addText(scene, title, Layout::LeftM, y, theme.ink);
+    addText(scene, title, Layout::LEFT_M, y, theme.ink);
     y += 25;
 
     for (const auto& [name, value] : enumeration.members) {
       const QString itemText = QStringLiteral("%1 = %2").arg(QString::fromStdString(name), formatBinaryString(value, enumeration.width));
-      addText(scene, itemText, Layout::LeftM + 20, y, theme.ink);
+      addText(scene, itemText, Layout::LEFT_M + 20, y, theme.ink);
       y += 22;
     }
     y += 15;
@@ -307,7 +307,7 @@ void SislVisualizer::showFormat(const std::optional<std::string>& formatName) {
   ThemeColors theme(palette());
 
   const QString pageTitle = formatName ? QString::fromStdString(*formatName) : tr("Standalone instructions");
-  addText(scene, pageTitle, Layout::LeftM, 0, theme.ink, Layout::TitleScale);
+  addText(scene, pageTitle, Layout::LEFT_M, 0, theme.ink, Layout::TITLE_SCALE);
 
   qreal y = 50;
   if (formatName) {
@@ -325,12 +325,12 @@ void SislVisualizer::drawFormatHeader(const std::string& formatName, const Theme
   if (format == description.formats.end()) return;
 
   const auto width = getEffectiveWidth(*format);
-  auto* box = scene->addRect(Layout::LeftM - Layout::BoxPadX, y - Layout::BoxPadY,
+  auto* box = scene->addRect(Layout::LEFT_M - Layout::BOX_PAD_X, y - Layout::BOX_PAD_Y,
                              Layout::calcBoxWidth(width), 83, QPen(theme.mid));
   box->setAcceptedMouseButtons(Qt::NoButton);
 
   const QString inheritance = format->parent ? tr(" · inherits %1").arg(QString::fromStdString(*format->parent)) : QString();
-  addText(scene, tr("Format structure%1").arg(inheritance), Layout::LeftM, y, theme.ink);
+  addText(scene, tr("Format structure%1").arg(inheritance), Layout::LEFT_M, y, theme.ink);
 
   if (width > 0) {
     drawLayout(format->fields, width, {}, y + 22, theme);
@@ -339,7 +339,7 @@ void SislVisualizer::drawFormatHeader(const std::string& formatName, const Theme
 }
 
 void SislVisualizer::drawInstructionsForFormat(const std::optional<std::string>& formatName, const ThemeColors& theme, qreal& y) {
-  addText(scene, tr("Instructions"), Layout::LeftM, y, theme.ink, Layout::SubTitleScale);
+  addText(scene, tr("Instructions"), Layout::LEFT_M, y, theme.ink, Layout::SUB_TITLE_SCALE);
   y += 38;
 
   bool hasAnyInstructions = false;
@@ -349,7 +349,7 @@ void SislVisualizer::drawInstructionsForFormat(const std::optional<std::string>&
     hasAnyInstructions = true;
 
     const QString instName = QString::fromStdString(instruction.assembly.empty() ? instruction.name : instruction.assembly);
-    addText(scene, instName, Layout::LeftM, y, theme.ink, 1.1);
+    addText(scene, instName, Layout::LEFT_M, y, theme.ink, 1.1);
 
     drawLayout(instruction.fields, instruction.width, instruction.fixed_fields, y + 22, theme);
     y += 105;
@@ -359,7 +359,7 @@ void SislVisualizer::drawInstructionsForFormat(const std::optional<std::string>&
   }
 
   if (!hasAnyInstructions) {
-    addText(scene, tr("No instructions use this format."), Layout::LeftM, y, theme.ink);
+    addText(scene, tr("No instructions use this format."), Layout::LEFT_M, y, theme.ink);
   }
 }
 
@@ -373,7 +373,7 @@ void SislVisualizer::drawAliases(const sisl::InstructionDescription& inst, const
     const QString aliasName = QString::fromStdString(alias.assembly.empty() ? alias.name : alias.assembly);
     const QString title = tr("Alias: %1 → %2").arg(aliasName, QString::fromStdString(alias.target));
 
-    addText(scene, title, Layout::LeftM + 16, y, theme.ink);
+    addText(scene, title, Layout::LEFT_M + 16, y, theme.ink);
     drawLayout(inst.fields, inst.width, mergedFixedFields, y + 22, theme);
     y += 100;
   }
@@ -424,7 +424,7 @@ void SislVisualizer::drawFieldSlices(const std::vector<sisl::FieldDescription>& 
 
       const SliceGeometry geom = SliceGeometry::calculate(width, high, low);
 
-      auto* rect = scene->addRect(geom.x, top, geom.w, Layout::RectH, QPen(theme.ink), QBrush(isFixed ? theme.accent : theme.shaded));
+      auto* rect = scene->addRect(geom.x, top, geom.w, Layout::RECT_H, QPen(theme.ink), QBrush(isFixed ? theme.accent : theme.shaded));
       rect->setAcceptedMouseButtons(Qt::NoButton);
 
       QString tooltip = QStringLiteral("%1 : %2 bits").arg(QString::fromStdString(field.name)).arg(field.width);
@@ -473,7 +473,7 @@ void SislVisualizer::drawUnoccupiedSlices(std::size_t width,
 
     const SliceGeometry geom = SliceGeometry::calculate(width, high, low);
 
-    auto* rect = scene->addRect(geom.x, top, geom.w, Layout::RectH, QPen(theme.ink), QBrush(theme.base));
+    auto* rect = scene->addRect(geom.x, top, geom.w, Layout::RECT_H, QPen(theme.ink), QBrush(theme.base));
     rect->setAcceptedMouseButtons(Qt::NoButton);
 
     auto* dash = addText(scene, QStringLiteral("—"), 0, top + 5, theme.ink);
@@ -485,10 +485,10 @@ void SislVisualizer::drawAxisIndices(std::size_t width, qreal y, const ThemeColo
   for (std::size_t bit = 0; bit < width; ++bit) {
     if (!indexes[bit]) continue;
 
-    auto* index = addText(scene, QString::number(bit), 0, y, theme.ink, Layout::IndexScale);
-    const qreal targetX = Layout::LeftM + (width - bit - 1) * Layout::CellW;
+    auto* index = addText(scene, QString::number(bit), 0, y, theme.ink, Layout::INDEX_SCALE);
+    const qreal targetX = Layout::LEFT_M + (width - bit - 1) * Layout::CELL_W;
 
-    index->setPos(targetX + (Layout::CellW - index->boundingRect().width() * Layout::IndexScale) / 2.0, y);
+    index->setPos(targetX + (Layout::CELL_W - index->boundingRect().width() * Layout::INDEX_SCALE) / 2.0, y);
   }
 }
 

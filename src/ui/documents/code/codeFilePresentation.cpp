@@ -24,7 +24,7 @@
 namespace SILICON::ui {
 namespace {
 
-  constexpr std::array Presentations{
+  constexpr std::array PRESENTATIONS{
       CodeFilePresentation{.type                = project::DocumentType::Verilog,
                            .displayName         = "Verilog",
                            .syntax              = &VERILOG_CODE_SYNTAX,
@@ -38,13 +38,13 @@ namespace {
 
 std::span<const CodeFilePresentation> codeFilePresentations()
 {
-  return Presentations;
+  return PRESENTATIONS;
 }
 
 const CodeFilePresentation& codeFilePresentation(const project::DocumentType type)
 {
-  const auto it = std::ranges::find(Presentations, type, &CodeFilePresentation::type);
-  if (it == Presentations.end())
+  const auto it = std::ranges::find(PRESENTATIONS, type, &CodeFilePresentation::type);
+  if (it == PRESENTATIONS.end())
     throw std::invalid_argument("Unknown code-file presentation");
   return *it;
 }

@@ -37,34 +37,34 @@ WaveformController::WaveformController(ProjectSession& session, DiagramScene& sc
                                        ProjectDocumentController& documents,
                                        QAction& toggleAction, QWidget* window)
   : QObject(window),
-    scene_(scene),
-    toggleAction_(toggleAction),
-    activeIsDiagram_(isDiagramDocument(session))
+    scene(scene),
+    toggleAction(toggleAction),
+    activeIsDiagram(isDiagramDocument(session))
 {
-  activeDocumentPath_ = QString::fromStdString(session.activeDocumentPath);
+  activeDocumentPath = QString::fromStdString(session.activeDocumentPath);
 
-  window_ = new QDialog(window);
-  window_->setWindowTitle(tr("Waveform"));
-  window_->setModal(false);
-  window_->resize(900, 420);
+  this->window = new QDialog(window);
+  this->window->setWindowTitle(tr("Waveform"));
+  this->window->setModal(false);
+  this->window->resize(900, 420);
 
-  auto* layout = new QVBoxLayout(window_);
+  auto* layout = new QVBoxLayout(this->window);
   layout->setContentsMargins(0, 0, 0, 0);
-  viewer_ = new waveform::Viewer(window_);
-  layout->addWidget(viewer_);
+  this->viewer = new waveform::Viewer(this->window);
+  layout->addWidget(this->viewer);
 
-  connect(window_, &QDialog::finished, this, [this] {
-    const QSignalBlocker blocker(&toggleAction_);
-    toggleAction_.setChecked(false);
-    viewer_->setEditMode(false);
+  connect(this->window, &QDialog::finished, this, [this] {
+    const QSignalBlocker blocker(&this->toggleAction);
+    this->toggleAction.setChecked(false);
+    this->viewer->setEditMode(false);
   });
-  connect(&scene_, &DiagramScene::waveformTraceReset, viewer_,
+  connect(&this->scene, &DiagramScene::waveformTraceReset, this->viewer,
           &waveform::Viewer::resetTrace);
-  connect(&scene_, &DiagramScene::waveformTraceSnapshots, viewer_,
+  connect(&this->scene, &DiagramScene::waveformTraceSnapshots, this->viewer,
           &waveform::Viewer::appendSnapshots);
-  connect(viewer_, &waveform::Viewer::editModeChanged, this,
-          [this](bool enabled) { scene_.setIoInteractionsEnabled(!enabled); });
-  connect(viewer_, &waveform::Viewer::editTraceCommitted, &scene_,
+  connect(this->viewer, &waveform::Viewer::editModeChanged, this,
+          [this](bool enabled) { this->scene.setIoInteractionsEnabled(!enabled); });
+  connect(this->viewer, &waveform::Viewer::editTraceCommitted, &this->scene,
           &DiagramScene::simulateEditedWaveform);
 
   // Traces belong to the circuit that produced them, so the viewer follows the document
@@ -75,34 +75,34 @@ WaveformController::WaveformController(ProjectSession& session, DiagramScene& sc
 
 WaveformController::~WaveformController()
 {
-  delete window_;
+  delete window;
 }
 
 void WaveformController::toggle(const bool enabled)
 {
-  if (enabled && !activeIsDiagram_) {
-    const QSignalBlocker blocker(&toggleAction_);
-    toggleAction_.setChecked(false);
+  if (enabled && !activeIsDiagram) {
+    const QSignalBlocker blocker(&toggleAction);
+    toggleAction.setChecked(false);
     return;
   }
 
-  window_->setVisible(enabled);
+  window->setVisible(enabled);
   if (!enabled)
     return;
 
-  scene_.setInteractionMode(DiagramScene::InteractionMode::SIMULATION_MODE);
-  window_->raise();
-  window_->activateWindow();
+  scene.setInteractionMode(DiagramScene::InteractionMode::SIMULATION_MODE);
+  window->raise();
+  window->activateWindow();
 }
 
 void WaveformController::handleActiveDocumentChanged(
     const QString& path, const SILICON::project::DocumentCategory category)
 {
-  const bool switchedDocument = path != activeDocumentPath_;
-  activeDocumentPath_         = path;
-  activeIsDiagram_            = category == SILICON::project::DocumentCategory::Diagram;
+  const bool switchedDocument = path != activeDocumentPath;
+  activeDocumentPath         = path;
+  activeIsDiagram            = category == SILICON::project::DocumentCategory::Diagram;
 
-  if (!activeIsDiagram_) {
+  if (!activeIsDiagram) {
     // Waveforms only exist for diagram documents: a code, binary, or architecture
     // document has no scene to trace.
     closeViewer();
@@ -111,19 +111,19 @@ void WaveformController::handleActiveDocumentChanged(
 
   // Another circuit is now shown, so the previous circuit's samples would be misleading.
   if (switchedDocument)
-    viewer_->resetTrace({}, 0, {});
+    viewer->resetTrace({}, 0, {});
 }
 
 void WaveformController::closeViewer()
 {
   // Closing emits finished(), which already unchecks the action and leaves edit mode.
-  if (window_->isVisible())
-    window_->close();
+  if (window->isVisible())
+    window->close();
 
-  const QSignalBlocker blocker(&toggleAction_);
-  toggleAction_.setChecked(false);
-  viewer_->setEditMode(false);
-  scene_.setInteractionMode(DiagramScene::InteractionMode::NORMAL_MODE);
+  const QSignalBlocker blocker(&toggleAction);
+  toggleAction.setChecked(false);
+  viewer->setEditMode(false);
+  scene.setInteractionMode(DiagramScene::InteractionMode::NORMAL_MODE);
 }
 
 }  // namespace SILICON::ui

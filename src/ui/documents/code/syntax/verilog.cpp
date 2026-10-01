@@ -35,7 +35,7 @@ namespace {
   using indentation::trimRight;
 
   // Adapted from Vim's runtime/syntax/verilog.vim.
-  constexpr auto StatementWords = std::to_array<std::string_view>({
+  constexpr auto STATEMENT_WORDS = std::to_array<std::string_view>({
       std::string_view{"always"},
       "and",
       "assign",
@@ -146,26 +146,26 @@ namespace {
       "xor",
   });
 
-  constexpr auto LabelWords =
+  constexpr auto LABEL_WORDS =
       std::to_array<std::string_view>({"begin", "end", "fork", "join"});
-  constexpr auto ConditionalWords = std::to_array<std::string_view>(
+  constexpr auto CONDITIONAL_WORDS = std::to_array<std::string_view>(
       {"if", "else", "case", "casex", "casez", "default", "endcase"});
-  constexpr auto RepeatWords =
+  constexpr auto REPEAT_WORDS =
       std::to_array<std::string_view>({"forever", "repeat", "while", "for"});
 
-  constexpr std::array KeywordGroups{
-      CodeSyntaxKeywordGroup{CodeSyntaxStyle::Statement, StatementWords},
-      CodeSyntaxKeywordGroup{CodeSyntaxStyle::Label, LabelWords},
-      CodeSyntaxKeywordGroup{CodeSyntaxStyle::Conditional, ConditionalWords},
-      CodeSyntaxKeywordGroup{CodeSyntaxStyle::Repeat, RepeatWords},
+  constexpr std::array KEYWORD_GROUPS{
+      CodeSyntaxKeywordGroup{CodeSyntaxStyle::Statement, STATEMENT_WORDS},
+      CodeSyntaxKeywordGroup{CodeSyntaxStyle::Label, LABEL_WORDS},
+      CodeSyntaxKeywordGroup{CodeSyntaxStyle::Conditional, CONDITIONAL_WORDS},
+      CodeSyntaxKeywordGroup{CodeSyntaxStyle::Repeat, REPEAT_WORDS},
   };
 
-  constexpr std::array TodoRules{CodeSyntaxContainedRule{
+  constexpr std::array TODO_RULES{CodeSyntaxContainedRule{
       CodeSyntaxStyle::Todo, R"((?<![A-Za-z0-9_?])(?:TODO|FIXME)(?![A-Za-z0-9_?]))"}};
-  constexpr std::array EscapeRules{
+  constexpr std::array ESCAPE_RULES{
       CodeSyntaxContainedRule{CodeSyntaxStyle::Escape, R"(\\(?:[nt"\\]|[0-7]{1,3}))"}};
 
-  constexpr std::array MatchRules{
+  constexpr std::array MATCH_RULES{
       CodeSyntaxMatchRule{
           CodeSyntaxStyle::Operator, R"([&|~><!)(*#%@+/=?:;}{,.^\-\[\]])", {}},
       CodeSyntaxMatchRule{CodeSyntaxStyle::Constant,
@@ -200,7 +200,7 @@ namespace {
 
   // More specific regions precede their generic comment counterparts so ties at
   // the same start position resolve like Vim's contained syntax groups.
-  constexpr std::array RegionRules{
+  constexpr std::array REGION_RULES{
       CodeSyntaxRegionRule{CodeSyntaxStyle::Directive,
                            R"(//\s*synopsys dc_script_begin\b)",
                            R"(//\s*synopsys dc_script_end\b)",
@@ -222,10 +222,10 @@ namespace {
       CodeSyntaxRegionRule{
           CodeSyntaxStyle::Directive, R"(//\s*\$s\b)", R"($)", {}, {}, false},
       CodeSyntaxRegionRule{
-          CodeSyntaxStyle::Comment, R"(/\*)", R"(\*/)", {}, TodoRules, true},
+          CodeSyntaxStyle::Comment, R"(/\*)", R"(\*/)", {}, TODO_RULES, true},
       CodeSyntaxRegionRule{
-          CodeSyntaxStyle::Comment, R"(//)", R"($)", {}, TodoRules, false},
-      CodeSyntaxRegionRule{CodeSyntaxStyle::String, R"(")", R"(")", R"(\\.)", EscapeRules,
+          CodeSyntaxStyle::Comment, R"(//)", R"($)", {}, TODO_RULES, false},
+      CodeSyntaxRegionRule{CodeSyntaxStyle::String, R"(")", R"(")", R"(\\.)", ESCAPE_RULES,
                            false},
   };
 
@@ -311,8 +311,8 @@ namespace {
       return false;
     if (endsWithWord(trimmed, "or"))
       return true;
-    constexpr std::string_view OpenCharacters = "*(,{><+-/%^&|!=?:";
-    return OpenCharacters.contains(trimmed.back());
+    constexpr std::string_view OPEN_CHARACTERS = "*(,{><+-/%^&|!=?:";
+    return OPEN_CHARACTERS.contains(trimmed.back());
   }
 
   [[nodiscard]] bool isCaseLabel(const std::string_view code)
@@ -419,27 +419,27 @@ namespace {
     return indentation;
   }
 
-  constexpr auto IndentationTriggerPatterns = std::to_array<std::string_view>({
+  constexpr auto INDENTATION_TRIGGER_PATTERNS = std::to_array<std::string_view>({
       std::string_view{
           R"((?<![A-Za-z0-9_?])(?:begin|end|join|endcase|endmodule|endfunction|endtask|endspecify|endconfig|endgenerate|endprimitive|endtable)\s*$)"},
       R"(^\s*\))",
       R"(^\s*`(?:else|elsif|endif)\b)",
   });
 
-  constexpr CodeIndentation VerilogIndentation{
+  constexpr CodeIndentation VERILOG_INDENTATION{
       .indentationFor  = verilogIndentationFor,
-      .triggerPatterns = IndentationTriggerPatterns,
+      .triggerPatterns = INDENTATION_TRIGGER_PATTERNS,
       .indentWidth     = 2,
   };
 
 }  // namespace
 
 const CodeSyntax VERILOG_CODE_SYNTAX{
-    .keywordGroups       = KeywordGroups,
-    .matchRules          = MatchRules,
-    .regionRules         = RegionRules,
+    .keywordGroups       = KEYWORD_GROUPS,
+    .matchRules          = MATCH_RULES,
+    .regionRules         = REGION_RULES,
     .extraWordCharacters = "?",
-    .indentation         = &VerilogIndentation,
+    .indentation         = &VERILOG_INDENTATION,
 };
 
 }  // namespace SILICON::ui

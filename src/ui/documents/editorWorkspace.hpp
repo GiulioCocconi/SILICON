@@ -35,15 +35,15 @@ public:
   explicit EditorWorkspace(ProjectSession& session, QWidget* parent = nullptr);
   ~EditorWorkspace() override;
 
-  [[nodiscard]] DiagramScene* scene() const noexcept { return scene_; }
-  [[nodiscard]] DiagramView*  view() const noexcept { return view_; }
+  [[nodiscard]] DiagramScene* scene() const noexcept { return diagramScene; }
+  [[nodiscard]] DiagramView*  view() const noexcept { return diagramView; }
   [[nodiscard]] CodeEditor*   codeEditor() const noexcept { return codeEditor_; }
   [[nodiscard]] BinaryEditor* binaryEditor() const noexcept { return binaryEditor_; }
   [[nodiscard]] ArchitectureWorkspace* architectureWorkspace() const noexcept
   {
     return architectureWorkspace_;
   }
-  void setUndoStack(QUndoStack* stack) noexcept { undoStack_ = stack; }
+  void setUndoStack(QUndoStack* stack) noexcept { undoStack = stack; }
   [[nodiscard]] CodeEditor* activeCodeEditor() const noexcept;
   [[nodiscard]] bool        isVisualizerActive() const noexcept;
   [[nodiscard]] bool        hasUnsavedChanges() const;
@@ -78,10 +78,10 @@ public:
   void loadDocument(const SILICON::project::Document& document);
 
 private:
-  ProjectSession&        session_;
-  QUndoStack*            undoStack_             = nullptr;
-  DiagramScene*          scene_                 = nullptr;
-  DiagramView*           view_                  = nullptr;
+  ProjectSession&        session;
+  QUndoStack*            undoStack             = nullptr;
+  DiagramScene*          diagramScene                 = nullptr;
+  DiagramView*           diagramView                  = nullptr;
   CodeEditor*            codeEditor_            = nullptr;
   BinaryEditor*          binaryEditor_          = nullptr;
   ArchitectureWorkspace* architectureWorkspace_ = nullptr;

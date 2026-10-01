@@ -46,9 +46,9 @@ private:
   /** @brief Activates the document owned by a newly selected architecture tab. */
   void handleTabChanged(int index);
 
-  ProjectSession&            session_;
-  EditorWorkspace&           workspace_;
-  ProjectDocumentController& documents_;
+  ProjectSession&            session;
+  EditorWorkspace&           workspace;
+  ProjectDocumentController& documents;
 };
 
 }  // namespace SILICON::ui

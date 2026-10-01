@@ -223,8 +223,8 @@ void WindowActions::applyStoredSettings()
         SILICON::ui::settings::value(settings, shortcut.setting).value<QKeySequence>());
 #ifdef __EMSCRIPTEN__
     shortcut.action->setShortcutContext(Qt::ApplicationShortcut);
-    if (!window_.actions().contains(shortcut.action))
-      window_.addAction(shortcut.action);
+    if (!window.actions().contains(shortcut.action))
+      window.addAction(shortcut.action);
 #endif
   }
 
@@ -234,7 +234,7 @@ void WindowActions::applyStoredSettings()
 void WindowActions::openSettings()
 {
   const auto     shortcuts = shortcutSettings();
-  SettingsWindow settingsWindow("SILICON", shortcuts, &window_);
+  SettingsWindow settingsWindow("SILICON", shortcuts, &window);
   settingsWindow.exec();
   syncWasmShortcutCapture();
 }

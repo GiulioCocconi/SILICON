@@ -300,9 +300,9 @@ void CodeEditor::showCompletion(const bool explicitRequest)
     completer->popup()->hide();
     return;
   }
-  constexpr int CompletionPopupPadding = 8;
+  constexpr int COMPLETION_POPUP_PADDING = 8;
   QRect         rect                   = cursorRect();
-  rect.translate(0, CompletionPopupPadding);
+  rect.translate(0, COMPLETION_POPUP_PADDING);
   rect.setWidth(completer->popup()->sizeHintForColumn(0)
                 + completer->popup()->verticalScrollBar()->sizeHint().width());
   completer->complete(rect);
@@ -541,8 +541,8 @@ void CodeEditor::wheelEvent(QWheelEvent* event)
     return;
   }
 
-  constexpr qreal MinimumFontSize = 6.0;
-  constexpr qreal MaximumFontSize = 48.0;
+  constexpr qreal MINIMUM_FONT_SIZE = 6.0;
+  constexpr qreal MAXIMUM_FONT_SIZE = 48.0;
   const int       steps           = std::max(1, std::abs(delta) / 120);
 
   if (zoomFontPointSize <= 0.0)
@@ -550,7 +550,7 @@ void CodeEditor::wheelEvent(QWheelEvent* event)
   if (zoomFontPointSize <= 0.0)
     zoomFontPointSize = 10.0;
   zoomFontPointSize = std::clamp(zoomFontPointSize + (delta > 0 ? steps : -steps),
-                                 MinimumFontSize, MaximumFontSize);
+                                 MINIMUM_FONT_SIZE, MAXIMUM_FONT_SIZE);
 
   QFont editorFont = font();
   editorFont.setPointSizeF(zoomFontPointSize);

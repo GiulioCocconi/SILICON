@@ -15,7 +15,7 @@ class QUndoStack;
 
 namespace SILICON::ui {
 
-inline constexpr char CircuitSelectionMimeType[] =
+inline constexpr char CIRCUIT_SELECTION_MIME_TYPE[] =
     "application/vnd.silicon.circuit-selection+bson";
 
 class ComponentCatalogOverlay;
@@ -46,10 +46,10 @@ public:
 private:
   bool copySelectionToClipboard();
 
-  ProjectSession&          session_;
-  EditorWorkspace&         workspace_;
-  ComponentCatalogOverlay& catalog_;
-  QUndoStack&              undoStack_;
+  ProjectSession&          session;
+  EditorWorkspace&         workspace;
+  ComponentCatalogOverlay& catalog;
+  QUndoStack&              undoStack;
 };
 
 }  // namespace SILICON::ui

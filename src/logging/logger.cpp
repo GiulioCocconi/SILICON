@@ -45,13 +45,13 @@ namespace {
     : public sinks::basic_formatted_sink_backend<char, sinks::synchronized_feeding> {
   public:
     explicit CallbackSinkBackend(Logger::CallbackSink callback)
-      : callback_(std::move(callback))
+      : callback(std::move(callback))
     {
     }
 
     void consume(const logging::record_view& rec, const string_type& formatted)
     {
-      if (!callback_)
+      if (!callback)
         return;
 
       const auto severityRef   = rec[logging::trivial::severity];
@@ -65,11 +65,11 @@ namespace {
           .formatted = formatted,
       };
 
-      callback_(logMessage);
+      callback(logMessage);
     }
 
   private:
-    Logger::CallbackSink callback_;
+    Logger::CallbackSink callback;
   };
 
   using CallbackFrontendSink = sinks::synchronous_sink<CallbackSinkBackend>;

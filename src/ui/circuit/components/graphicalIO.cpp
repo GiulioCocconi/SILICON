@@ -37,22 +37,22 @@ using namespace SILICON::core;
 
 namespace {
 
-constexpr int              BusIoMinWidth     = 8 * DiagramScene::GRID_SIZE;
-constexpr int              BusIoHeight       = 4 * DiagramScene::GRID_SIZE;
-constexpr int              BusIoPortX        = 0;
-constexpr int              BusIoPortY        = 6 * DiagramScene::GRID_SIZE;
-constexpr int              BusIoPaddingX     = DiagramScene::GRID_SIZE;
-constexpr int              BusIoValueTextGap = 8;
-constexpr int              MaxInlineValueCharacters = 18;
-constexpr int              IoPortExtension         = 2 * DiagramScene::GRID_SIZE;
-constexpr int              ConstantSize             = 4 * DiagramScene::GRID_SIZE;
-constexpr int              ConstantPortExtension    = 2 * DiagramScene::GRID_SIZE;
-constexpr std::string_view PortOrientationProperty = "portOrientation";
-constexpr std::string_view PortOrientationUp       = "UP";
-constexpr std::string_view PortOrientationDown     = "DOWN";
-constexpr std::string_view PortOrientationLeft     = "LEFT";
-constexpr std::string_view PortOrientationRight    = "RIGHT";
-constexpr std::string_view DefaultPortOrientation  = PortOrientationDown;
+constexpr int              BUS_IO_MIN_WIDTH     = 8 * DiagramScene::GRID_SIZE;
+constexpr int              BUS_IO_HEIGHT       = 4 * DiagramScene::GRID_SIZE;
+constexpr int              BUS_IO_PORT_X        = 0;
+constexpr int              BUS_IO_PORT_Y        = 6 * DiagramScene::GRID_SIZE;
+constexpr int              BUS_IO_PADDING_X     = DiagramScene::GRID_SIZE;
+constexpr int              BUS_IO_VALUE_TEXT_GAP = 8;
+constexpr int              MAX_INLINE_VALUE_CHARACTERS = 18;
+constexpr int              IO_PORT_EXTENSION         = 2 * DiagramScene::GRID_SIZE;
+constexpr int              CONSTANT_SIZE             = 4 * DiagramScene::GRID_SIZE;
+constexpr int              CONSTANT_PORT_EXTENSION    = 2 * DiagramScene::GRID_SIZE;
+constexpr std::string_view PORT_ORIENTATION_PROPERTY = "portOrientation";
+constexpr std::string_view PORT_ORIENTATION_UP       = "UP";
+constexpr std::string_view PORT_ORIENTATION_DOWN     = "DOWN";
+constexpr std::string_view PORT_ORIENTATION_LEFT     = "LEFT";
+constexpr std::string_view PORT_ORIENTATION_RIGHT    = "RIGHT";
+constexpr std::string_view DEFAULT_PORT_ORIENTATION  = PORT_ORIENTATION_DOWN;
 
 // Re-use static fonts to prevent allocations
 const QFont& getWidthFont()
@@ -79,7 +79,7 @@ QRectF busIoNameRect(const QRectF& shapeRect, const QString& name, const bool be
 
 int snapBusIoWidthToGrid(const int width)
 {
-  return std::max(BusIoMinWidth, ((width + 2 * DiagramScene::GRID_SIZE - 1)
+  return std::max(BUS_IO_MIN_WIDTH, ((width + 2 * DiagramScene::GRID_SIZE - 1)
                                   / (2 * DiagramScene::GRID_SIZE))
                                      * (2 * DiagramScene::GRID_SIZE));
 }
@@ -92,7 +92,7 @@ int normalizedBusSize(const int size)
 
 QString compactValueText(QString value)
 {
-  if (value.size() <= MaxInlineValueCharacters)
+  if (value.size() <= MAX_INLINE_VALUE_CHARACTERS)
     return value;
   return value.left(9) + QStringLiteral("…") + value.right(8);
 }
@@ -127,7 +127,7 @@ public:
   QRectF boundingRect() const override
   {
     // Zero-cost geometric return - no text allocation!
-    return {-cachedWidth / 2.0, 0, cachedWidth, BusIoHeight};
+    return {-cachedWidth / 2.0, 0, cachedWidth, BUS_IO_HEIGHT};
   }
 
   void setBusWidth(const unsigned int width)
@@ -167,14 +167,14 @@ public:
 
     painter->setPen(ink);
     painter->setFont(GraphicalIO::UI_FONT);
-    painter->drawText(QRectF(body.left() + BusIoPaddingX, 3,
-                             body.width() - 2 * BusIoPaddingX - cachedWidthTextWidth
-                                 - BusIoValueTextGap,
+    painter->drawText(QRectF(body.left() + BUS_IO_PADDING_X, 3,
+                             body.width() - 2 * BUS_IO_PADDING_X - cachedWidthTextWidth
+                                 - BUS_IO_VALUE_TEXT_GAP,
                              34),
                       Qt::AlignCenter, valueText);
 
     painter->setFont(getWidthFont());
-    painter->drawText(QRectF(body.right() - BusIoPaddingX - cachedWidthTextWidth, 3,
+    painter->drawText(QRectF(body.right() - BUS_IO_PADDING_X - cachedWidthTextWidth, 3,
                              cachedWidthTextWidth, 16),
                       Qt::AlignCenter, cachedWidthText);
   }
@@ -202,7 +202,7 @@ private:
     }
 
     const int contentWidth =
-        2 * BusIoPaddingX + maxAdvance + BusIoValueTextGap + cachedWidthTextWidth;
+        2 * BUS_IO_PADDING_X + maxAdvance + BUS_IO_VALUE_TEXT_GAP + cachedWidthTextWidth;
     cachedWidth = snapBusIoWidthToGrid(contentWidth);
   }
 
@@ -226,7 +226,7 @@ private:
   State        displayState = State::UNKNOWN;
 
   // Cached dimension metrics
-  qreal   cachedWidth = BusIoMinWidth;
+  qreal   cachedWidth = BUS_IO_MIN_WIDTH;
   QString cachedWidthText;
   int     cachedWidthTextWidth = 0;
 };
@@ -235,7 +235,7 @@ class ConstantShape : public QGraphicsItem {
 public:
   QRectF boundingRect() const override
   {
-    return {0, 0, static_cast<qreal>(cachedWidth), static_cast<qreal>(ConstantSize)};
+    return {0, 0, static_cast<qreal>(cachedWidth), static_cast<qreal>(CONSTANT_SIZE)};
   }
 
   void setValue(QString newValue)
@@ -247,7 +247,7 @@ public:
     const QString label    = displayValue();
     const int contentWidth = QFontMetrics(GraphicalIO::UI_FONT).horizontalAdvance(label)
                              + 2 * DiagramScene::GRID_SIZE;
-    cachedWidth = std::max(ConstantSize, ((contentWidth + 2 * DiagramScene::GRID_SIZE - 1)
+    cachedWidth = std::max(CONSTANT_SIZE, ((contentWidth + 2 * DiagramScene::GRID_SIZE - 1)
                                           / (2 * DiagramScene::GRID_SIZE))
                                              * (2 * DiagramScene::GRID_SIZE));
     update();
@@ -275,7 +275,7 @@ private:
   }
 
   QString value       = QStringLiteral("0");
-  int     cachedWidth = ConstantSize;
+  int     cachedWidth = CONSTANT_SIZE;
 };
 
 ConstantShape* getConstantShape(QGraphicsItem* itemShape, const char* context)
@@ -307,11 +307,11 @@ QRectF busIoNamedBounds(QGraphicsItem* itemShape, const QString& name,
 
 IoPortOrientation parsePortOrientation(const std::string_view orientation)
 {
-  if (orientation == PortOrientationUp)
+  if (orientation == PORT_ORIENTATION_UP)
     return IoPortOrientation::Up;
-  if (orientation == PortOrientationLeft)
+  if (orientation == PORT_ORIENTATION_LEFT)
     return IoPortOrientation::Left;
-  if (orientation == PortOrientationRight)
+  if (orientation == PORT_ORIENTATION_RIGHT)
     return IoPortOrientation::Right;
   return IoPortOrientation::Down;
 }
@@ -324,10 +324,10 @@ bool portNameBelongsBelowShape(const std::string_view orientation)
 std::string currentPortOrientation(const Component_ptr& component)
 {
   if (!component)
-    return std::string(DefaultPortOrientation);
+    return std::string(DEFAULT_PORT_ORIENTATION);
 
-  return component->getPropertyValue<std::string>(PortOrientationProperty)
-      .value_or(std::string(DefaultPortOrientation));
+  return component->getPropertyValue<std::string>(PORT_ORIENTATION_PROPERTY)
+      .value_or(std::string(DEFAULT_PORT_ORIENTATION));
 }
 
 QPoint ioPortPosition(const QRectF& shapeRect, const IoPortOrientation orientation)
@@ -337,13 +337,13 @@ QPoint ioPortPosition(const QRectF& shapeRect, const IoPortOrientation orientati
 
   switch (orientation) {
     case IoPortOrientation::Up:
-      return {centerX, DiagramScene::snapToGrid(shapeRect.top() - IoPortExtension)};
+      return {centerX, DiagramScene::snapToGrid(shapeRect.top() - IO_PORT_EXTENSION)};
     case IoPortOrientation::Down:
-      return {centerX, DiagramScene::snapToGrid(shapeRect.bottom() + IoPortExtension)};
+      return {centerX, DiagramScene::snapToGrid(shapeRect.bottom() + IO_PORT_EXTENSION)};
     case IoPortOrientation::Left:
-      return {DiagramScene::snapToGrid(shapeRect.left() - IoPortExtension), centerY};
+      return {DiagramScene::snapToGrid(shapeRect.left() - IO_PORT_EXTENSION), centerY};
     case IoPortOrientation::Right:
-      return {DiagramScene::snapToGrid(shapeRect.right() + IoPortExtension), centerY};
+      return {DiagramScene::snapToGrid(shapeRect.right() + IO_PORT_EXTENSION), centerY};
   }
   std::unreachable();
 }
@@ -351,10 +351,10 @@ QPoint ioPortPosition(const QRectF& shapeRect, const IoPortOrientation orientati
 std::string_view portOrientationName(const PortSide side)
 {
   switch (side) {
-    case PortSide::UP: return PortOrientationUp;
-    case PortSide::DOWN: return PortOrientationDown;
-    case PortSide::LEFT: return PortOrientationLeft;
-    case PortSide::RIGHT: return PortOrientationRight;
+    case PortSide::UP: return PORT_ORIENTATION_UP;
+    case PortSide::DOWN: return PORT_ORIENTATION_DOWN;
+    case PortSide::LEFT: return PORT_ORIENTATION_LEFT;
+    case PortSide::RIGHT: return PORT_ORIENTATION_RIGHT;
   }
   std::unreachable();
 }
@@ -424,7 +424,7 @@ void GraphicalConstant::updateLayout(const BusValue& value)
   shape->setValue(compactValueText(value, BusValueFormat::Raw));
   const QRectF bounds = shape->boundingRect();
   setPorts({},
-           {PortPair{"o", QPoint(static_cast<int>(bounds.right()) + ConstantPortExtension,
+           {PortPair{"o", QPoint(static_cast<int>(bounds.right()) + CONSTANT_PORT_EXTENSION,
                                  static_cast<int>(bounds.center().y()))}});
 }
 
@@ -455,14 +455,14 @@ QString GraphicalIO::getComponentName() const
 
 void GraphicalIO::installPortOrientationCallback()
 {
-  if (!associatedComponent || !associatedComponent->getProperty(PortOrientationProperty))
+  if (!associatedComponent || !associatedComponent->getProperty(PORT_ORIENTATION_PROPERTY))
     return;
 
   QPointer<GraphicalIO>    safeThis(this);
   std::weak_ptr<Component> boundComponent = associatedComponent;
 
   associatedComponent->setPropertyCallback(
-      PortOrientationProperty, [safeThis, boundComponent](const PropertyValue& value) {
+      PORT_ORIENTATION_PROPERTY, [safeThis, boundComponent](const PropertyValue& value) {
         auto component = boundComponent.lock();
         if (safeThis && safeThis->getComponent() == component) {
           safeThis->prepareGeometryChange();
@@ -544,7 +544,7 @@ void GraphicalIO::setPortOrientation(const PortSide side)
 {
   if (!associatedComponent)
     return;
-  associatedComponent->setPropertyValue(std::string(PortOrientationProperty),
+  associatedComponent->setPropertyValue(std::string(PORT_ORIENTATION_PROPERTY),
                                         std::string(portOrientationName(side)));
 }
 
@@ -648,7 +648,7 @@ GraphicalBusInput::GraphicalBusInput(QGraphicsItem* parent)
 {
   isEditable = false;
   GraphicalLogicComponent::setPorts({},
-                                    {PortPair{"bus", QPoint(BusIoPortX, BusIoPortY)}});
+                                    {PortPair{"bus", QPoint(BUS_IO_PORT_X, BUS_IO_PORT_Y)}});
   installPortOrientationCallback();
   installPropertyCallbacks();
   GraphicalBusInput::applyStartValue();
@@ -917,7 +917,7 @@ GraphicalBusOutput::GraphicalBusOutput(QGraphicsItem* parent)
                 new BusIoShape(BusIoKind::Output, 8), parent)
 {
   isEditable = false;
-  GraphicalLogicComponent::setPorts({PortPair{"bus", QPoint(BusIoPortX, BusIoPortY)}},
+  GraphicalLogicComponent::setPorts({PortPair{"bus", QPoint(BUS_IO_PORT_X, BUS_IO_PORT_Y)}},
                                     {});
   installPortOrientationCallback();
   installPropertyCallbacks();

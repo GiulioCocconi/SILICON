@@ -29,7 +29,7 @@ class ArchitectureLoadPlan;
 class CodeEditor;
 class SislVisualizer;
 
-/** Owns the editors, tabs, and visualization for architecture documents. */
+/** Owns the codeEditors, tabs, and visualization for architecture documents. */
 class ArchitectureWorkspace : public QTabWidget {
   Q_OBJECT
 
@@ -40,12 +40,12 @@ public:
   [[nodiscard]] const std::map<SILICON::project::DocumentType, CodeEditor*>&
   editors() const noexcept
   {
-    return editors_;
+    return codeEditors;
   }
   [[nodiscard]] bool hasModifiedEditors() const;
   [[nodiscard]] bool isVisualizerActive() const noexcept;
   [[nodiscard]] bool isVisualizerTab(int index) const noexcept;
-  void resetLoadedArchitecture() noexcept { loadedArchitectureName_.clear(); }
+  void resetLoadedArchitecture() noexcept { loadedArchitectureName.clear(); }
   void loadDocument(const SILICON::project::Document&      document,
                     const SILICON::project::DocumentStore& store);
 
@@ -77,9 +77,9 @@ signals:
   void documentModified();
 
 private:
-  std::map<SILICON::project::DocumentType, CodeEditor*> editors_;
-  SislVisualizer*                                       visualizer_ = nullptr;
-  std::string                                           loadedArchitectureName_;
+  std::map<SILICON::project::DocumentType, CodeEditor*> codeEditors;
+  SislVisualizer*                                       visualizer = nullptr;
+  std::string                                           loadedArchitectureName;
 };
 
 }  // namespace SILICON::ui

@@ -117,7 +117,7 @@ void ROM::serializeYosys(SerializationContext& context) const
   Json attributes = Json::object();
   const auto binaryDocument = getPropertyValue<std::string>("binaryContents");
   if (binaryDocument && !binaryDocument->empty())
-    attributes[std::string(SILICON::yosys::attributes::BinaryDocument)] = *binaryDocument;
+    attributes[std::string(SILICON::yosys::attributes::BINARY_DOCUMENT)] = *binaryDocument;
   context.addCell(
       "memory", "$mem_v2",
       Json{{"ABITS", p(addressWidth)}, {"INIT", init},
@@ -266,7 +266,7 @@ void Extender::serializeYosys(SerializationContext& context) const
   const auto outSize = getPropertyValue<int>("outSize");
   const auto mode    = getPropertyValue<std::string>("mode");
   if (!inSize || !outSize || !mode || *inSize < 1 || *outSize < 1
-      || (*mode != SignedMode && *mode != UnsignedMode)) {
+      || (*mode != SIGNED_MODE && *mode != UNSIGNED_MODE)) {
     throw std::runtime_error(
         "Cannot export malformed 'Extender': buses do not match its properties");
   }
@@ -276,7 +276,7 @@ void Extender::serializeYosys(SerializationContext& context) const
 
   context.addCell(
       "extend", "$pos",
-      Json{{"A_SIGNED", SerializationContext::parameter(*mode == SignedMode, 1)},
+      Json{{"A_SIGNED", SerializationContext::parameter(*mode == SIGNED_MODE, 1)},
            {"A_WIDTH", SerializationContext::parameter(*inSize)},
            {"Y_WIDTH", SerializationContext::parameter(*outSize)}},
       directions({{"A", "input"}, {"Y", "output"}}),
@@ -321,7 +321,7 @@ void HalfAdder::serializeYosys(SerializationContext& context) const
         "Cannot export malformed 'HalfAdder': expected 2 inputs and 2 outputs");
 
   context.addCell(
-      "half_adder", SILICON::yosys::cells::HalfAdder, Json::object(),
+      "half_adder", SILICON::yosys::cells::HALF_ADDER, Json::object(),
       directions({{"A", "input"}, {"B", "input"}, {"SUM", "output"}, {"COUT", "output"}}),
       Json{{"A", context.bits(requireScalarBus(*this, true, 0))},
            {"B", context.bits(requireScalarBus(*this, true, 1))},
@@ -335,7 +335,7 @@ void FullAdder::serializeYosys(SerializationContext& context) const
     throw std::runtime_error(
         "Cannot export malformed 'FullAdder': expected 3 inputs and 2 outputs");
 
-  context.addCell("full_adder", SILICON::yosys::cells::FullAdder, Json::object(),
+  context.addCell("full_adder", SILICON::yosys::cells::FULL_ADDER, Json::object(),
                   directions({{"A", "input"},
                               {"B", "input"},
                               {"CIN", "input"},
@@ -365,7 +365,7 @@ void AdderNBits::serializeYosys(SerializationContext& context) const
   const auto& carry    = requireScalarBus(*this, false, 1);
 
   context.addCell(
-      "adder", SILICON::yosys::cells::Adder,
+      "adder", SILICON::yosys::cells::ADDER,
       Json{{"WIDTH", SerializationContext::parameter(*width)},
            {"A_SIGNED", SerializationContext::parameter(0, 1)},
            {"B_SIGNED", SerializationContext::parameter(0, 1)}},
@@ -384,13 +384,13 @@ void Shifter::serializeYosys(SerializationContext& context) const
   const auto mode = getPropertyValue<std::string>("mode");
   const auto isSigned = getPropertyValue<bool>("signed");
   if (!width || *width < 1 || !amountWidth || *amountWidth < 1 || !mode
-      || (*mode != LeftMode && *mode != RightMode) || !isSigned)
+      || (*mode != LEFT_MODE && *mode != RIGHT_MODE) || !isSigned)
     throw std::runtime_error("Cannot export malformed 'Shifter': invalid properties");
 
   const auto& value = requireBusWidth(*this, true, 0, *width);
   const auto& amount = requireBusWidth(*this, true, 1, *amountWidth);
   const auto& result = requireBusWidth(*this, false, 0, *width);
-  const auto type = *mode == LeftMode ? "$shl" : (*isSigned ? "$sshr" : "$shr");
+  const auto type = *mode == LEFT_MODE ? "$shl" : (*isSigned ? "$sshr" : "$shr");
   context.addCell(
       "shifter", type,
       Json{{"A_SIGNED", SerializationContext::parameter(*isSigned ? 1 : 0, 1)},
@@ -414,7 +414,7 @@ void Comparator::serializeYosys(SerializationContext& context) const
   if (!width || *width < 1 || !mode || !isSigned)
     throw std::runtime_error("Cannot export malformed 'Comparator': invalid properties");
 
-  static constexpr std::array modes{
+  static constexpr std::array MODES{
       std::pair<std::string_view, std::string_view>{"==", "$eq"},
       std::pair<std::string_view, std::string_view>{"<", "$lt"},
       std::pair<std::string_view, std::string_view>{"<=", "$le"},
@@ -422,8 +422,8 @@ void Comparator::serializeYosys(SerializationContext& context) const
       std::pair<std::string_view, std::string_view>{">=", "$ge"},
   };
   const auto cellType = std::ranges::find_if(
-      modes, [&mode](const auto& entry) { return entry.first == *mode; });
-  if (cellType == modes.end())
+      MODES, [&mode](const auto& entry) { return entry.first == *mode; });
+  if (cellType == MODES.end())
     throw std::runtime_error("Cannot export malformed 'Comparator': invalid mode");
 
   const auto  busWidth = static_cast<std::size_t>(*width);
@@ -588,8 +588,8 @@ void DFlipFlop::serializeYosys(SerializationContext& context) const
   const auto& qn = requireScalarBus(*this, false, 1);
   emitDff(context, *this, context.inputBits(*this, 0, 1), std::nullopt,
           context.inputBits(*this, 1, 1), context.inputBits(*this, 2, 1),
-          context.inputBits(*this, 3, 1), q, qn, SILICON::yosys::cells::Dff,
-          SILICON::yosys::cells::Dffsr, "dff");
+          context.inputBits(*this, 3, 1), q, qn, SILICON::yosys::cells::DFF,
+          SILICON::yosys::cells::DFFSR, "dff");
 }
 
 void EFlipFlop::serializeYosys(SerializationContext& context) const
@@ -599,8 +599,8 @@ void EFlipFlop::serializeYosys(SerializationContext& context) const
   const auto& qn = requireScalarBus(*this, false, 1);
   emitDff(context, *this, context.inputBits(*this, 0, 1), context.inputBits(*this, 1, 1),
           context.inputBits(*this, 2, 1), context.inputBits(*this, 3, 1),
-          context.inputBits(*this, 4, 1), q, qn, SILICON::yosys::cells::Dffe,
-          SILICON::yosys::cells::Dffsre, "dffe");
+          context.inputBits(*this, 4, 1), q, qn, SILICON::yosys::cells::DFFE,
+          SILICON::yosys::cells::DFFSRE, "dffe");
 }
 
 void DLatch::serializeYosys(SerializationContext& context) const
@@ -609,7 +609,7 @@ void DLatch::serializeYosys(SerializationContext& context) const
   const auto& q  = requireScalarBus(*this, false, 0);
   const auto& qn = requireScalarBus(*this, false, 1);
   context.addCell(
-      "dlatch", SILICON::yosys::cells::Dlatch,
+      "dlatch", SILICON::yosys::cells::DLATCH,
       Json{{"EN_POLARITY", SerializationContext::parameter(1, 1)}},
       directions({{"D", "input"}, {"EN", "input"}, {"Q", "output"}, {"QN", "output"}}),
       Json{{"D", context.inputBits(*this, 0, 1)},
@@ -624,7 +624,7 @@ void JKFlipFlop::serializeYosys(SerializationContext& context) const
   const auto& q  = requireScalarBus(*this, false, 0);
   const auto& qn = requireScalarBus(*this, false, 1);
   context.addCell(
-      "jkff", SILICON::yosys::cells::Jkff,
+      "jkff", SILICON::yosys::cells::JKFF,
       Json{{"CLK_POLARITY", SerializationContext::parameter(positiveClock(*this), 1)},
            {"SET_POLARITY", SerializationContext::parameter(1, 1)},
            {"CLR_POLARITY", SerializationContext::parameter(1, 1)}},
@@ -650,13 +650,13 @@ void Register::serializeYosys(SerializationContext& context) const
   const auto inputType     = getPropertyValue<std::string>("inputType");
   const auto outputType    = getPropertyValue<std::string>("outputType");
   if (!widthProperty || *widthProperty <= 1 || !inputType || !outputType
-      || (*inputType != ParallelType && *inputType != SerialType)
-      || (*outputType != ParallelType && *outputType != SerialType)) {
+      || (*inputType != PARALLEL_TYPE && *inputType != SERIAL_TYPE)
+      || (*outputType != PARALLEL_TYPE && *outputType != SERIAL_TYPE)) {
     throw std::runtime_error("Cannot export malformed 'Register': invalid properties");
   }
   const auto width          = static_cast<std::size_t>(*widthProperty);
-  const bool parallelIn     = *inputType == ParallelType;
-  const bool parallelOut    = *outputType == ParallelType;
+  const bool parallelIn     = *inputType == PARALLEL_TYPE;
+  const bool parallelOut    = *outputType == PARALLEL_TYPE;
   const auto expectedInputs = parallelIn && !parallelOut ? 5U : 4U;
   if (inputBuses().size() != expectedInputs || outputBuses().size() != 1)
     throw std::runtime_error("Cannot export malformed 'Register': unexpected bus count");
@@ -683,7 +683,7 @@ void Register::serializeYosys(SerializationContext& context) const
   if (parallelIn && !parallelOut) {
     parameters["LOAD_POLARITY"] = SerializationContext::parameter(1, 1);
     connections["LOAD"]         = context.bits(requireScalarBus(*this, true, 4));
-    context.addCell("piso", SILICON::yosys::cells::Piso, std::move(parameters),
+    context.addCell("piso", SILICON::yosys::cells::PISO, std::move(parameters),
                     directions({{"DATA", "input"},
                                 {"CLK", "input"},
                                 {"EN", "input"},
@@ -694,9 +694,9 @@ void Register::serializeYosys(SerializationContext& context) const
     return;
   }
 
-  const auto cellType = parallelIn    ? SILICON::yosys::cells::Pipo
-                        : parallelOut ? SILICON::yosys::cells::Sipo
-                                      : SILICON::yosys::cells::Siso;
+  const auto cellType = parallelIn    ? SILICON::yosys::cells::PIPO
+                        : parallelOut ? SILICON::yosys::cells::SIPO
+                                      : SILICON::yosys::cells::SISO;
   const auto cellName = parallelIn ? "pipo" : parallelOut ? "sipo" : "siso";
   context.addCell(cellName, cellType, std::move(parameters),
                   directions({{"DATA", "input"},

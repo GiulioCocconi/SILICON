@@ -74,17 +74,17 @@ DiagramInteractionController::DiagramInteractionController(
     ProjectSession& session, EditorWorkspace& workspace, ComponentCatalogOverlay& catalog,
     QUndoStack& history, QObject* parent)
   : QObject(parent),
-    session_(session),
-    workspace_(workspace),
-    catalog_(catalog),
-    undoStack_(history)
+    session(session),
+    workspace(workspace),
+    catalog(catalog),
+    undoStack(history)
 {
 }
 
 bool DiagramInteractionController::copySelectionToClipboard()
 {
   try {
-    const auto payload = workspace_.scene()->serializeSelection();
+    const auto payload = workspace.scene()->serializeSelection();
     if (!hasClipboardItems(payload))
       return false;
 
@@ -93,7 +93,7 @@ bool DiagramInteractionController::copySelectionToClipboard()
                      static_cast<qsizetype>(bson.size()));
 
     auto* mimeData = new QMimeData();
-    mimeData->setData(CircuitSelectionMimeType, bytes);
+    mimeData->setData(CIRCUIT_SELECTION_MIME_TYPE, bytes);
     QApplication::clipboard()->setMimeData(mimeData);
 
     return true;
@@ -104,11 +104,11 @@ bool DiagramInteractionController::copySelectionToClipboard()
 
 void DiagramInteractionController::copy()
 {
-  if (workspace_.isVisualizerActive())
+  if (workspace.isVisualizerActive())
     return;
-  const auto type = SILICON::project::documentTypeForPath(session_.activeDocumentPath);
+  const auto type = SILICON::project::documentTypeForPath(session.activeDocumentPath);
   if (type && SILICON::project::isCodeDocument(*type)) {
-    workspace_.activeCodeEditor()->copy();
+    workspace.activeCodeEditor()->copy();
     return;
   }
   if (!type
@@ -121,11 +121,11 @@ void DiagramInteractionController::copy()
 
 void DiagramInteractionController::cut()
 {
-  if (workspace_.isVisualizerActive())
+  if (workspace.isVisualizerActive())
     return;
-  const auto type = SILICON::project::documentTypeForPath(session_.activeDocumentPath);
+  const auto type = SILICON::project::documentTypeForPath(session.activeDocumentPath);
   if (type && SILICON::project::isCodeDocument(*type)) {
-    workspace_.activeCodeEditor()->cut();
+    workspace.activeCodeEditor()->cut();
     return;
   }
   if (!type
@@ -139,11 +139,11 @@ void DiagramInteractionController::cut()
 
 void DiagramInteractionController::paste()
 {
-  if (workspace_.isVisualizerActive())
+  if (workspace.isVisualizerActive())
     return;
-  const auto type = SILICON::project::documentTypeForPath(session_.activeDocumentPath);
+  const auto type = SILICON::project::documentTypeForPath(session.activeDocumentPath);
   if (type && SILICON::project::isCodeDocument(*type)) {
-    workspace_.activeCodeEditor()->paste();
+    workspace.activeCodeEditor()->paste();
     return;
   }
   if (!type
@@ -152,10 +152,10 @@ void DiagramInteractionController::paste()
     return;
 
   const QMimeData* mimeData = QApplication::clipboard()->mimeData();
-  if (!mimeData || !mimeData->hasFormat(CircuitSelectionMimeType))
+  if (!mimeData || !mimeData->hasFormat(CIRCUIT_SELECTION_MIME_TYPE))
     return;
 
-  const QByteArray bytes = mimeData->data(CircuitSelectionMimeType);
+  const QByteArray bytes = mimeData->data(CIRCUIT_SELECTION_MIME_TYPE);
   if (bytes.isEmpty())
     return;
 
@@ -166,17 +166,17 @@ void DiagramInteractionController::paste()
         reinterpret_cast<const std::uint8_t*>(bytes.data()),
         reinterpret_cast<const std::uint8_t*>(bytes.data() + bytes.size()));
 
-    if (workspace_.scene()->getInteractionMode() != InteractionMode::NORMAL_MODE)
-      workspace_.scene()->setInteractionMode(InteractionMode::NORMAL_MODE);
+    if (workspace.scene()->getInteractionMode() != InteractionMode::NORMAL_MODE)
+      workspace.scene()->setInteractionMode(InteractionMode::NORMAL_MODE);
 
     const QPointF targetOrigin =
-        workspace_.view()->mapToScene(workspace_.view()->mapFromGlobal(QCursor::pos()));
-    if (!workspace_.scene()->insertSelection(payload, guiFactory, coreRegistry,
+        workspace.view()->mapToScene(workspace.view()->mapFromGlobal(QCursor::pos()));
+    if (!workspace.scene()->insertSelection(payload, guiFactory, coreRegistry,
                                              targetOrigin, true))
       return;
 
-    undoStack_.push(new SceneSelectionCommand(
-        workspace_.scene(), workspace_.scene()->serializeSelection(),
+    undoStack.push(new SceneSelectionCommand(
+        workspace.scene(), workspace.scene()->serializeSelection(),
         SceneSelectionCommand::Operation::Add, true));
   } catch (const std::exception&) {
   }
@@ -185,14 +185,14 @@ void DiagramInteractionController::paste()
 void DiagramInteractionController::rotate()
 {
   std::vector<GraphicalComponent*> selectedComponents;
-  for (auto* item : workspace_.scene()->selectedItems()) {
+  for (auto* item : workspace.scene()->selectedItems()) {
     if (auto* component =
             category_cast<GraphicalComponent>(item, ItemCategory::Component)) {
       selectedComponents.push_back(component);
     }
   }
 
-  switch (workspace_.scene()->getInteractionMode()) {
+  switch (workspace.scene()->getInteractionMode()) {
     case InteractionMode::NORMAL_MODE: {
       if (selectedComponents.size() != 1)
         return;
@@ -203,11 +203,11 @@ void DiagramInteractionController::rotate()
       auto newRotation = component->rotation();
       component->setInitialRotation();
       auto rotateCmd = new RotateItemCommand(component, oldRotation, newRotation);
-      undoStack_.push(rotateCmd);
+      undoStack.push(rotateCmd);
       break;
     }
     case InteractionMode::COMPONENT_PLACING_MODE: {
-      workspace_.scene()->getComponentToBeDrawn()->rotate();
+      workspace.scene()->getComponentToBeDrawn()->rotate();
       break;
     }
 
@@ -217,19 +217,19 @@ void DiagramInteractionController::rotate()
 
 void DiagramInteractionController::autoPlace()
 {
-  workspace_.scene()->autoPlaceCircuit();
+  workspace.scene()->autoPlaceCircuit();
 }
 
 void DiagramInteractionController::del()
 {
-  const auto type = SILICON::project::documentTypeForPath(session_.activeDocumentPath);
+  const auto type = SILICON::project::documentTypeForPath(session.activeDocumentPath);
   if (type && SILICON::project::isCodeDocument(*type)) {
-    auto cursor = workspace_.activeCodeEditor()->textCursor();
+    auto cursor = workspace.activeCodeEditor()->textCursor();
     if (cursor.hasSelection())
       cursor.removeSelectedText();
     else
       cursor.deleteChar();
-    workspace_.activeCodeEditor()->setTextCursor(cursor);
+    workspace.activeCodeEditor()->setTextCursor(cursor);
     return;
   }
   if (!type
@@ -238,58 +238,58 @@ void DiagramInteractionController::del()
     return;
 
   auto itemsToDelete =
-      workspace_.scene()->selectedItems()
+      workspace.scene()->selectedItems()
       | std::views::filter([](auto* item) { return item->type() > UNKNOWN; })
       | std::ranges::to<std::vector>();
   if (itemsToDelete.empty())
     return;
 
-  const auto payload = workspace_.scene()->serializeItems(itemsToDelete);
-  workspace_.scene()->removeItems(itemsToDelete);
-  undoStack_.push(new SceneSelectionCommand(
-      workspace_.scene(), payload, SceneSelectionCommand::Operation::Remove, true));
+  const auto payload = workspace.scene()->serializeItems(itemsToDelete);
+  workspace.scene()->removeItems(itemsToDelete);
+  undoStack.push(new SceneSelectionCommand(
+      workspace.scene(), payload, SceneSelectionCommand::Operation::Remove, true));
 }
 
 void DiagramInteractionController::setNormalMode()
 {
-  workspace_.scene()->setInteractionMode(InteractionMode::NORMAL_MODE);
+  workspace.scene()->setInteractionMode(InteractionMode::NORMAL_MODE);
 }
 
 void DiagramInteractionController::setPanMode()
 {
-  workspace_.scene()->setInteractionMode(InteractionMode::PAN_MODE);
+  workspace.scene()->setInteractionMode(InteractionMode::PAN_MODE);
 }
 
 void DiagramInteractionController::setWireCreationMode()
 {
-  workspace_.scene()->setInteractionMode(InteractionMode::WIRE_CREATION_MODE);
+  workspace.scene()->setInteractionMode(InteractionMode::WIRE_CREATION_MODE);
 }
 
 void DiagramInteractionController::setSimulationMode()
 {
-  const auto type = SILICON::project::documentTypeForPath(session_.activeDocumentPath);
+  const auto type = SILICON::project::documentTypeForPath(session.activeDocumentPath);
   if (!type
       || SILICON::project::categoryOf(*type)
              != SILICON::project::DocumentCategory::Diagram)
     return;
 
-  workspace_.scene()->setInteractionMode(InteractionMode::SIMULATION_MODE);
+  workspace.scene()->setInteractionMode(InteractionMode::SIMULATION_MODE);
 }
 
 void DiagramInteractionController::setComponentPlacingMode()
 {
-  workspace_.scene()->setInteractionMode(InteractionMode::COMPONENT_PLACING_MODE);
+  workspace.scene()->setInteractionMode(InteractionMode::COMPONENT_PLACING_MODE);
 }
 
 void DiagramInteractionController::showComponentCatalog()
 {
-  catalog_.setGeometry(workspace_.view()->viewport()->rect());
-  catalog_.open();
+  catalog.setGeometry(workspace.view()->viewport()->rect());
+  catalog.open();
 }
 
 void DiagramInteractionController::cancelCurrentInteraction()
 {
-  workspace_.scene()->cancelCurrentInteraction();
+  workspace.scene()->cancelCurrentInteraction();
 }
 
 }  // namespace SILICON::ui

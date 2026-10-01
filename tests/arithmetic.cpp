@@ -69,9 +69,9 @@ TEST(ArithmeticTest, ExtenderSupportsUnsignedSignedAndNarrowingModes)
     return output.getCurrentValue();
   };
 
-  EXPECT_EQ(evaluate(3, 5, std::string(Extender::UnsignedMode), 6), valueFor(5, 6));
-  EXPECT_EQ(evaluate(3, 5, std::string(Extender::SignedMode), 6), valueFor(5, 30));
-  EXPECT_EQ(evaluate(5, 3, std::string(Extender::SignedMode), 29), valueFor(3, 5));
+  EXPECT_EQ(evaluate(3, 5, std::string(Extender::UNSIGNED_MODE), 6), valueFor(5, 6));
+  EXPECT_EQ(evaluate(3, 5, std::string(Extender::SIGNED_MODE), 6), valueFor(5, 30));
+  EXPECT_EQ(evaluate(5, 3, std::string(Extender::SIGNED_MODE), 29), valueFor(3, 5));
 }
 
 TEST(ArithmeticTest, ShifterUsesBusValueShiftSemantics)
@@ -89,7 +89,7 @@ TEST(ArithmeticTest, ShifterUsesBusValueShiftSemantics)
   ASSERT_EQ(sim.runUntilIdle(), Simulator::RunResult::Completed);
   EXPECT_EQ(output.getCurrentValue(), valueFor(output, 14));
 
-  shifter->setProperty("mode", std::string(Shifter::LeftMode));
+  shifter->setProperty("mode", std::string(Shifter::LEFT_MODE));
   sim.setBus(amount, valueFor(amount, 1));
   ASSERT_EQ(sim.runUntilIdle(), Simulator::RunResult::Completed);
   EXPECT_EQ(output.getCurrentValue(), valueFor(output, 2));
@@ -121,7 +121,7 @@ TEST(ArithmeticTest, ExtenderPropertiesValidateAndReshapeBuses)
   EXPECT_EQ(extender->getPropertyValue<int>("inSize"), 4);
   EXPECT_EQ(extender->getPropertyValue<int>("outSize"), 8);
   EXPECT_EQ(extender->getPropertyValue<std::string>("mode"),
-            std::string(Extender::UnsignedMode));
+            std::string(Extender::UNSIGNED_MODE));
   EXPECT_TRUE(extender->getInputs().empty());
   EXPECT_TRUE(extender->getOutputs().empty());
   EXPECT_THROW(extender->setProperty("inSize", 0), std::invalid_argument);
@@ -131,11 +131,11 @@ TEST(ArithmeticTest, ExtenderPropertiesValidateAndReshapeBuses)
   EXPECT_THROW((void)Extender(Bus(), Bus(4)), std::invalid_argument);
 
   extender =
-      std::make_shared<Extender>(Bus(3), Bus(5), std::string(Extender::SignedMode));
+      std::make_shared<Extender>(Bus(3), Bus(5), std::string(Extender::SIGNED_MODE));
   EXPECT_EQ(extender->getPropertyValue<int>("inSize"), 3);
   EXPECT_EQ(extender->getPropertyValue<int>("outSize"), 5);
   EXPECT_EQ(extender->getPropertyValue<std::string>("mode"),
-            std::string(Extender::SignedMode));
+            std::string(Extender::SIGNED_MODE));
 
   extender->setProperty("inSize", 4);
   extender->setProperty("outSize", 7);

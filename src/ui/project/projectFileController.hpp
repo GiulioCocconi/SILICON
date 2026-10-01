@@ -46,11 +46,11 @@ signals:
 private:
   void loadProjectContent(const QString& fileName, const QByteArray& fileContent);
 
-  ProjectSession&            session_;
-  EditorWorkspace&           workspace_;
-  ProjectDocumentController& documents_;
-  QUndoStack&                undoStack_;
-  QWidget*                   dialogParent_;
+  ProjectSession&            session;
+  EditorWorkspace&           workspace;
+  ProjectDocumentController& documents;
+  QUndoStack&                undoStack;
+  QWidget*                   dialogParent;
 };
 
 }  // namespace SILICON::ui

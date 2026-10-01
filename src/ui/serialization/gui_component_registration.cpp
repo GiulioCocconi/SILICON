@@ -74,16 +74,16 @@ void registerAllGUIComponents(GUIComponentFactory& factory)
   reg(std::string(ConstantComponent::Type),
       [](QGraphicsItem* p) { return std::make_unique<GraphicalConstant>(p); });
 
-  regMapped(std::string(GraphicalInput::ComponentType),
+  regMapped(std::string(GraphicalInput::COMPONENT_TYPE),
             std::string(DummyInputComponent::Type),
             [](QGraphicsItem* p) { return std::make_unique<GraphicalInput>(p); });
-  regMapped(std::string(GraphicalOutputSingle::ComponentType),
+  regMapped(std::string(GraphicalOutputSingle::COMPONENT_TYPE),
             std::string(DummyOutputComponent::Type),
             [](QGraphicsItem* p) { return std::make_unique<GraphicalOutputSingle>(p); });
-  regMapped(std::string(GraphicalBusInput::ComponentType),
+  regMapped(std::string(GraphicalBusInput::COMPONENT_TYPE),
             std::string(DummyBusInputComponent::Type),
             [](QGraphicsItem* p) { return std::make_unique<GraphicalBusInput>(p); });
-  regMapped(std::string(GraphicalBusOutput::ComponentType),
+  regMapped(std::string(GraphicalBusOutput::COMPONENT_TYPE),
             std::string(DummyBusOutputComponent::Type),
             [](QGraphicsItem* p) { return std::make_unique<GraphicalBusOutput>(p); });
 

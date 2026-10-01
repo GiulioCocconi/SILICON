@@ -32,10 +32,10 @@
 namespace SILICON::ui {
 
 namespace {
-constexpr std::string_view typedValueTypeKey  = "__type";
-constexpr std::string_view typedValueValueKey = "value";
-constexpr std::string_view pathTypeName       = "path";
-constexpr std::string_view shortcutTypeName   = "key_sequence";
+constexpr std::string_view TYPED_VALUE_TYPE_KEY  = "__type";
+constexpr std::string_view TYPED_VALUE_VALUE_KEY = "value";
+constexpr std::string_view PATH_TYPE_NAME       = "path";
+constexpr std::string_view SHORTCUT_TYPE_NAME   = "key_sequence";
 
 QString keyToQString(const toml::key& key)
 {
@@ -45,8 +45,8 @@ QString keyToQString(const toml::key& key)
 
 bool isTypedValueTable(const toml::table& table)
 {
-  const auto* typeNode  = table.get(typedValueTypeKey);
-  const auto* valueNode = table.get(typedValueValueKey);
+  const auto* typeNode  = table.get(TYPED_VALUE_TYPE_KEY);
+  const auto* valueNode = table.get(TYPED_VALUE_VALUE_KEY);
 
   return table.size() == 2 && typeNode != nullptr && valueNode != nullptr
          && typeNode->is_string();
@@ -54,17 +54,17 @@ bool isTypedValueTable(const toml::table& table)
 
 std::optional<QVariant> decodeTypedValueTable(const toml::table& table)
 {
-  const auto* typeNode  = table.get_as<std::string>(typedValueTypeKey);
-  const auto* valueNode = table.get_as<std::string>(typedValueValueKey);
+  const auto* typeNode  = table.get_as<std::string>(TYPED_VALUE_TYPE_KEY);
+  const auto* valueNode = table.get_as<std::string>(TYPED_VALUE_VALUE_KEY);
   if (typeNode == nullptr || valueNode == nullptr) {
     return std::nullopt;
   }
 
-  if (*typeNode == pathTypeName) {
+  if (*typeNode == PATH_TYPE_NAME) {
     return QVariant::fromValue(std::filesystem::path(valueNode->get()));
   }
 
-  if (*typeNode == shortcutTypeName) {
+  if (*typeNode == SHORTCUT_TYPE_NAME) {
     return QVariant::fromValue(QKeySequence(QString::fromStdString(valueNode->get()),
                                             QKeySequence::PortableText));
   }
@@ -127,8 +127,8 @@ bool populateSettingsMap(const toml::table& table, QSettings::SettingsMap& map,
 toml::table encodeTypedStringValue(std::string_view typeName, const QString& value)
 {
   toml::table table;
-  table.insert_or_assign(typedValueTypeKey, std::string(typeName));
-  table.insert_or_assign(typedValueValueKey, value.toStdString());
+  table.insert_or_assign(TYPED_VALUE_TYPE_KEY, std::string(typeName));
+  table.insert_or_assign(TYPED_VALUE_VALUE_KEY, value.toStdString());
   return table;
 }
 
@@ -156,7 +156,7 @@ bool insertVariantNode(toml::table& table, const QString& key, const QVariant& v
   // to preserve their QVariant type on readback.
   if (metaTypeId == qMetaTypeId<std::filesystem::path>()) {
     const auto typedValue = encodeTypedStringValue(
-        pathTypeName,
+        PATH_TYPE_NAME,
         QString::fromStdString(value.value<std::filesystem::path>().generic_string()));
     table.insert_or_assign(tomlKey, typedValue);
     return true;
@@ -164,7 +164,7 @@ bool insertVariantNode(toml::table& table, const QString& key, const QVariant& v
 
   if (metaTypeId == qMetaTypeId<QKeySequence>()) {
     const auto typedValue = encodeTypedStringValue(
-        shortcutTypeName,
+        SHORTCUT_TYPE_NAME,
         value.value<QKeySequence>().toString(QKeySequence::PortableText));
     table.insert_or_assign(tomlKey, typedValue);
     return true;
@@ -272,7 +272,7 @@ CommonSettingsValues readCommonSettings(const QSettings& settings)
 
 SILICON::ui::theme::Mode themeModeFromText(const QString& value)
 {
-  return value == SILICON::ui::settings::DarkTheme ? SILICON::ui::theme::Mode::Dark
+  return value == SILICON::ui::settings::DARK_THEME ? SILICON::ui::theme::Mode::Dark
                                             : SILICON::ui::theme::Mode::Light;
 }
 

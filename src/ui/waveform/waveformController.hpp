@@ -44,12 +44,12 @@ private:
   /** @brief Hides the viewer and leaves the scene in a non-simulating state. */
   void closeViewer();
 
-  DiagramScene&     scene_;
-  QAction&          toggleAction_;
-  QDialog*          window_ = nullptr;
-  waveform::Viewer* viewer_ = nullptr;
-  QString           activeDocumentPath_;
-  bool              activeIsDiagram_ = false;
+  DiagramScene&     scene;
+  QAction&          toggleAction;
+  QDialog*          window = nullptr;
+  waveform::Viewer* viewer = nullptr;
+  QString           activeDocumentPath;
+  bool              activeIsDiagram = false;
 };
 
 }  // namespace SILICON::ui

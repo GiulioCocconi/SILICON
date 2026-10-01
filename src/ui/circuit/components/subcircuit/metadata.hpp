@@ -36,7 +36,7 @@ namespace SILICON::ui {
 using namespace SILICON::core;
 
 /** @brief Default subcircuit rectangle size in persisted grid units. */
-inline constexpr int GraphicalSubcircuitDefaultSize = 8;
+inline constexpr int GRAPHICAL_SUBCIRCUIT_DEFAULT_SIZE = 8;
 
 /**
  * @brief Visual metadata for one subcircuit boundary port.
@@ -62,8 +62,8 @@ struct GraphicalSubcircuitPortMetadata {
  */
 struct GraphicalSubcircuitMetadata {
   /** @brief Rectangle dimensions in pixels. */
-  QSize widthHeight{GraphicalSubcircuitDefaultSize * DiagramScene::GRID_SIZE,
-                    GraphicalSubcircuitDefaultSize * DiagramScene::GRID_SIZE};
+  QSize widthHeight{GRAPHICAL_SUBCIRCUIT_DEFAULT_SIZE * DiagramScene::GRID_SIZE,
+                    GRAPHICAL_SUBCIRCUIT_DEFAULT_SIZE * DiagramScene::GRID_SIZE};
   /** @brief Input boundary ports in display order. */
   std::vector<GraphicalSubcircuitPortMetadata> inputs;
   /** @brief Output boundary ports in display order. */

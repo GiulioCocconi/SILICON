@@ -82,8 +82,8 @@ SettingsWindow::SettingsWindow(const QString& appName, QVector<ShortcutSetting> 
   resize(560, 520);
 
   themeCombo = new QComboBox(this);
-  themeCombo->addItem(tr("Light"), SILICON::ui::settings::LightTheme);
-  themeCombo->addItem(tr("Dark"), SILICON::ui::settings::DarkTheme);
+  themeCombo->addItem(tr("Light"), SILICON::ui::settings::LIGHT_THEME);
+  themeCombo->addItem(tr("Dark"), SILICON::ui::settings::DARK_THEME);
 
   maxSimulationStepsSpinBox = new QSpinBox(this);
   maxSimulationStepsSpinBox->setRange(1, std::numeric_limits<int>::max());

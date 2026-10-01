@@ -42,8 +42,8 @@ std::shared_ptr<Register> makeRegister()
 
 QString registerLabel(const std::string& inputType, const std::string& outputType)
 {
-  const QString inputPrefix = inputType == Register::ParallelType ? "Pi" : "Si";
-  const QString outputSuffix = outputType == Register::ParallelType ? "Po" : "So";
+  const QString inputPrefix = inputType == Register::PARALLEL_TYPE ? "Pi" : "Si";
+  const QString outputSuffix = outputType == Register::PARALLEL_TYPE ? "Po" : "So";
   return inputPrefix + outputSuffix + "\nRegister";
 }
 
@@ -118,10 +118,10 @@ void GraphicalRegister::updateLayout()
 {
   const std::string inputType =
       associatedComponent->getPropertyValue<std::string>("inputType")
-          .value_or(std::string(Register::ParallelType));
+          .value_or(std::string(Register::PARALLEL_TYPE));
   const std::string outputType =
       associatedComponent->getPropertyValue<std::string>("outputType")
-          .value_or(std::string(Register::ParallelType));
+          .value_or(std::string(Register::PARALLEL_TYPE));
 
   updateLayout(inputType, outputType);
 }
@@ -131,10 +131,10 @@ void GraphicalRegister::updateLayout(const std::string& inputType,
 {
   setItemShape(new RegisterShape(registerLabel(inputType, outputType)));
 
-  const bool needsLoad = inputType == Register::ParallelType && outputType == Register::SerialType;
+  const bool needsLoad = inputType == Register::PARALLEL_TYPE && outputType == Register::SERIAL_TYPE;
 
-  const QString dataInput = inputType == Register::ParallelType ? "d" : "si";
-  const QString dataOutput = outputType == Register::ParallelType ? "q" : "so";
+  const QString dataInput = inputType == Register::PARALLEL_TYPE ? "d" : "si";
+  const QString dataOutput = outputType == Register::PARALLEL_TYPE ? "q" : "so";
 
   std::vector<PortPair> inputs{PortPair{dataInput, QPoint(-20, 20)},
                                PortPair{"clk", QPoint(-20, 40)},
@@ -158,7 +158,7 @@ std::string GraphicalRegister::applyInputType(const std::string& inputType)
   const std::string appliedInputType = getComponentAsRegister()->setInputType(inputType);
   updateLayout(appliedInputType,
                associatedComponent->getPropertyValue<std::string>("outputType")
-                   .value_or(std::string(Register::ParallelType)));
+                   .value_or(std::string(Register::PARALLEL_TYPE)));
   return appliedInputType;
 }
 
@@ -167,7 +167,7 @@ std::string GraphicalRegister::applyOutputType(const std::string& outputType)
   const std::string appliedOutputType =
       getComponentAsRegister()->setOutputType(outputType);
   updateLayout(associatedComponent->getPropertyValue<std::string>("inputType")
-                   .value_or(std::string(Register::ParallelType)),
+                   .value_or(std::string(Register::PARALLEL_TYPE)),
                appliedOutputType);
   return appliedOutputType;
 }
@@ -182,10 +182,10 @@ void GraphicalRegister::setComponent(const Component_ptr& component)
   getComponentAsRegister()->setSize(component->getPropertyValue<int>("size").value_or(2));
   getComponentAsRegister()->setInputType(
       component->getPropertyValue<std::string>("inputType")
-          .value_or(std::string(Register::ParallelType)));
+          .value_or(std::string(Register::PARALLEL_TYPE)));
   getComponentAsRegister()->setOutputType(
       component->getPropertyValue<std::string>("outputType")
-          .value_or(std::string(Register::ParallelType)));
+          .value_or(std::string(Register::PARALLEL_TYPE)));
   updateLayout();
 }
 

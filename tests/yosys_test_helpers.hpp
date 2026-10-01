@@ -361,10 +361,10 @@ registerWithMode(const bool parallelInput, const bool parallelOutput, const int 
       Bus(static_cast<unsigned short>(width)), std::make_shared<Wire>(),
       std::make_shared<Wire>(), std::make_shared<Wire>(),
       Bus(static_cast<unsigned short>(width)));
-  reg->setProperty("inputType", std::string(parallelInput ? Register::ParallelType
-                                                          : Register::SerialType));
-  reg->setProperty("outputType", std::string(parallelOutput ? Register::ParallelType
-                                                            : Register::SerialType));
+  reg->setProperty("inputType", std::string(parallelInput ? Register::PARALLEL_TYPE
+                                                          : Register::SERIAL_TYPE));
+  reg->setProperty("outputType", std::string(parallelOutput ? Register::PARALLEL_TYPE
+                                                            : Register::SERIAL_TYPE));
   return reg;
 }
 

@@ -52,11 +52,11 @@ namespace {
       {BusValueFormat::Bin, "01"},
   };
 
-  bool satisfiesAlphabet(const std::string_view digits, const BusValueFormat format)
+  bool satisfiesAlphabet(const std::string_view DIGITS, const BusValueFormat format)
   {
     const auto alphabet = formatAlphabet.at(format);
 
-    return !digits.empty() && std::ranges::all_of(digits, [alphabet](const char digit) {
+    return !DIGITS.empty() && std::ranges::all_of(DIGITS, [alphabet](const char digit) {
       return alphabet.contains(toupper(digit));
     });
   };
@@ -95,18 +95,18 @@ namespace {
       if (!startsWithIgnoreCase(value, prefix))
         continue;
 
-      const auto digits = value.substr(prefix.size());
-      if (satisfiesAlphabet(digits, format))
-        return {format, digits};
+      const auto DIGITS = value.substr(prefix.size());
+      if (satisfiesAlphabet(DIGITS, format))
+        return {format, DIGITS};
     }
 
     for (const auto& [format, _] : formatAlphabet) {
       if (formatPrefix.contains(format))
         continue;
 
-      auto digits = value;
-      if (satisfiesAlphabet(digits, format))
-        return {format, digits};
+      auto DIGITS = value;
+      if (satisfiesAlphabet(DIGITS, format))
+        return {format, DIGITS};
     }
     return {BusValueFormat::Unknown, {}};
   }
@@ -150,7 +150,7 @@ namespace {
   }
 
   std::string groupedBase(const std::string_view rawBits, const int groupSize,
-                          const std::string_view digits)
+                          const std::string_view DIGITS)
   {
     if (std::ranges::all_of(rawBits, [](const char bit) { return bit == '0'; }))
       return "0";
@@ -167,7 +167,7 @@ namespace {
           std::ranges::fold_left(chunk, 0, [](const int acc, const char bit) {
             return (acc << 1) | (bit - '0');
           });
-      result.push_back(digits[static_cast<std::size_t>(value)]);
+      result.push_back(DIGITS[static_cast<std::size_t>(value)]);
     }
 
     const auto firstNonZero = result.find_first_not_of('0');
@@ -192,14 +192,14 @@ namespace {
     return value < base ? std::optional(value) : std::nullopt;
   }
 
-  [[nodiscard]] std::optional<std::uint64_t> parseMagnitude(const std::string_view digits,
+  [[nodiscard]] std::optional<std::uint64_t> parseMagnitude(const std::string_view DIGITS,
                                                             const unsigned         base,
                                                             const std::uint64_t maximum)
   {
-    if (digits.empty())
+    if (DIGITS.empty())
       return std::nullopt;
     std::uint64_t result = 0;
-    for (const char character : digits) {
+    for (const char character : DIGITS) {
       const auto digit = digitValue(character, base);
       if (!digit || *digit > maximum || result > (maximum - *digit) / base)
         return std::nullopt;
@@ -210,12 +210,12 @@ namespace {
 
   [[nodiscard]] std::string unsignedToBase(std::uint64_t value, const unsigned base)
   {
-    constexpr std::string_view digits = "0123456789ABCDEF";
+    constexpr std::string_view DIGITS = "0123456789ABCDEF";
     if (value == 0)
       return "0";
     std::string result;
     while (value != 0) {
-      result.push_back(digits[static_cast<std::size_t>(value % base)]);
+      result.push_back(DIGITS[static_cast<std::size_t>(value % base)]);
       value /= base;
     }
     std::ranges::reverse(result);
@@ -327,12 +327,12 @@ BusValue busValueFromBits(const std::string_view bits)
   if (bits.empty())
     return {};
 
-  const auto [format, digits] = getFormat(bits);
+  const auto [format, DIGITS] = getFormat(bits);
   // Only valid formats are those which satisfy the raw alphabet
-  if (format != BusValueFormat::Raw && !satisfiesAlphabet(digits, BusValueFormat::Raw))
+  if (format != BusValueFormat::Raw && !satisfiesAlphabet(DIGITS, BusValueFormat::Raw))
     throw std::invalid_argument("Raw bus values may contain only 0, 1, X, or E");
 
-  return digits | std::views::reverse | std::views::transform([](const char digit) {
+  return DIGITS | std::views::reverse | std::views::transform([](const char digit) {
            return static_cast<State>(upper(digit));
          })
          | std::ranges::to<BusValue>();
@@ -385,24 +385,24 @@ std::string formatValue(const BusValue& value, const BusValueFormat format,
 
 ParsedBusValue valueFromStr(const std::string_view value)
 {
-  const auto [format, digits] = getFormat(value);
+  const auto [format, DIGITS] = getFormat(value);
   BusValue result;
 
   switch (format) {
     case BusValueFormat::Raw:
-      result = digits | std::views::reverse | std::views::transform([](const char digit) {
+      result = DIGITS | std::views::reverse | std::views::transform([](const char digit) {
                  return static_cast<State>(upper(digit));
                })
                | std::ranges::to<BusValue>();
       break;
     case BusValueFormat::Bin:
-      result = digits | std::views::reverse | std::views::transform([](const char digit) {
+      result = DIGITS | std::views::reverse | std::views::transform([](const char digit) {
                  return digit == '1' ? State::HIGH : State::LOW;
                })
                | std::ranges::to<BusValue>();
       break;
     case BusValueFormat::Hex:
-      for (const char digit : digits | std::views::reverse) {
+      for (const char digit : DIGITS | std::views::reverse) {
         const char normalized = upper(digit);
         const int  parsed = normalized >= 'A' ? normalized - 'A' + 10 : normalized - '0';
         for (int bit = 0; bit < 4; ++bit)
@@ -410,7 +410,7 @@ ParsedBusValue valueFromStr(const std::string_view value)
       }
       break;
     case BusValueFormat::Oct:
-      for (const char digit : digits | std::views::reverse) {
+      for (const char digit : DIGITS | std::views::reverse) {
         const int parsed = digit - '0';
         for (int bit = 0; bit < 3; ++bit)
           result.push_back((parsed >> bit) & 1 ? State::HIGH : State::LOW);
@@ -418,7 +418,7 @@ ParsedBusValue valueFromStr(const std::string_view value)
       break;
     case BusValueFormat::Unsigned:
     case BusValueFormat::Signed: {
-      std::string decimal(digits);
+      std::string decimal(DIGITS);
       bool        nonZero = true;
       while (nonZero) {
         int remainder = 0;

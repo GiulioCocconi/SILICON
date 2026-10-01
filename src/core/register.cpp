@@ -42,12 +42,12 @@ namespace {
 
   unsigned short dataBusSize(const std::string& inputType, const int size)
   {
-    return inputType == Register::ParallelType ? static_cast<unsigned short>(size) : 1;
+    return inputType == Register::PARALLEL_TYPE ? static_cast<unsigned short>(size) : 1;
   }
 
   unsigned short registerOutputBusSize(const std::string& outputType, const int size)
   {
-    return outputType == Register::ParallelType ? static_cast<unsigned short>(size) : 1;
+    return outputType == Register::PARALLEL_TYPE ? static_cast<unsigned short>(size) : 1;
   }
 
 }  // namespace
@@ -69,11 +69,11 @@ Register::Register(Bus data, Wire_ptr clock, Wire_ptr enable, Wire_ptr clear, Bu
   const int inferredSize = static_cast<int>(std::max(initialDataSize, initialOutputSize));
   setProperty("size", std::max(2, inferredSize));
   setProperty("inputType", initialDataSize == 1 && initialOutputSize > 1
-                               ? std::string(SerialType)
-                               : std::string(ParallelType));
+                               ? std::string(SERIAL_TYPE)
+                               : std::string(PARALLEL_TYPE));
   setProperty("outputType", initialOutputSize == 1 && initialDataSize > 1
-                                ? std::string(SerialType)
-                                : std::string(ParallelType));
+                                ? std::string(SERIAL_TYPE)
+                                : std::string(PARALLEL_TYPE));
 }
 
 int Register::configuredSize() const
@@ -83,32 +83,32 @@ int Register::configuredSize() const
 
 std::string Register::configuredInputType() const
 {
-  return getPropertyValue<std::string>("inputType").value_or(std::string(ParallelType));
+  return getPropertyValue<std::string>("inputType").value_or(std::string(PARALLEL_TYPE));
 }
 
 std::string Register::configuredOutputType() const
 {
-  return getPropertyValue<std::string>("outputType").value_or(std::string(ParallelType));
+  return getPropertyValue<std::string>("outputType").value_or(std::string(PARALLEL_TYPE));
 }
 
 bool Register::parallelInput() const
 {
-  return configuredInputType() == ParallelType;
+  return configuredInputType() == PARALLEL_TYPE;
 }
 
 bool Register::parallelOutput() const
 {
-  return configuredOutputType() == ParallelType;
+  return configuredOutputType() == PARALLEL_TYPE;
 }
 
 void Register::initializeProperties()
 {
   defineUnconnectedInputDefault(busIndex(Inputs::Clear), State::LOW);
   defineProperty("delay", 0);
-  defineStringListProperty("inputType", std::string(ParallelType),
-                           {std::string(ParallelType), std::string(SerialType)});
-  defineStringListProperty("outputType", std::string(ParallelType),
-                           {std::string(ParallelType), std::string(SerialType)});
+  defineStringListProperty("inputType", std::string(PARALLEL_TYPE),
+                           {std::string(PARALLEL_TYPE), std::string(SERIAL_TYPE)});
+  defineStringListProperty("outputType", std::string(PARALLEL_TYPE),
+                           {std::string(PARALLEL_TYPE), std::string(SERIAL_TYPE)});
   defineProperty("size", 2);
 
   setPropertyCallback("delay", [](const PropertyValue& value) {
@@ -165,7 +165,7 @@ void Register::reshapeBuses(const int size, const std::string& inputType,
                             const std::string& outputType)
 {
   std::vector<Bus> newInputs = inputs;
-  newInputs.resize(inputType == ParallelType && outputType == SerialType ? 5 : 4);
+  newInputs.resize(inputType == PARALLEL_TYPE && outputType == SERIAL_TYPE ? 5 : 4);
   newInputs[busIndex(Inputs::Data)].setSize(dataBusSize(inputType, size));
   newInputs[busIndex(Inputs::Clock)].setSize(1);
   newInputs[busIndex(Inputs::Enable)].setSize(1);

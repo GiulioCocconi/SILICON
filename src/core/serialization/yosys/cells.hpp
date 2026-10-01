@@ -21,29 +21,29 @@
 
 namespace SILICON::yosys::cells {
 
-inline constexpr std::string_view Rom       = "SILICON_ROM";
-inline constexpr std::string_view Logic     = "SILICON_LOGIC";
-inline constexpr std::string_view Compare   = "SILICON_COMPARE";
-inline constexpr std::string_view Shift     = "SILICON_SHIFT";
-inline constexpr std::string_view Dff       = "SILICON_DFF";
-inline constexpr std::string_view Dffe      = "SILICON_DFFE";
-inline constexpr std::string_view Dlatch    = "SILICON_DLATCH";
-inline constexpr std::string_view Dffsr     = "SILICON_DFFSR";
-inline constexpr std::string_view Dffsre    = "SILICON_DFFSRE";
-inline constexpr std::string_view Jkff      = "SILICON_JKFF";
-inline constexpr std::string_view HalfAdder = "SILICON_HALF_ADDER";
-inline constexpr std::string_view FullAdder = "SILICON_FULL_ADDER";
-inline constexpr std::string_view Adder     = "SILICON_ADDER";
-inline constexpr std::string_view Pipo      = "SILICON_PIPO";
-inline constexpr std::string_view Piso      = "SILICON_PISO";
-inline constexpr std::string_view Sipo      = "SILICON_SIPO";
-inline constexpr std::string_view Siso      = "SILICON_SISO";
+inline constexpr std::string_view ROM        = "SILICON_ROM";
+inline constexpr std::string_view LOGIC      = "SILICON_LOGIC";
+inline constexpr std::string_view COMPARE    = "SILICON_COMPARE";
+inline constexpr std::string_view SHIFT      = "SILICON_SHIFT";
+inline constexpr std::string_view DFF        = "SILICON_DFF";
+inline constexpr std::string_view DFFE       = "SILICON_DFFE";
+inline constexpr std::string_view DLATCH     = "SILICON_DLATCH";
+inline constexpr std::string_view DFFSR      = "SILICON_DFFSR";
+inline constexpr std::string_view DFFSRE     = "SILICON_DFFSRE";
+inline constexpr std::string_view JKFF       = "SILICON_JKFF";
+inline constexpr std::string_view HALF_ADDER = "SILICON_HALF_ADDER";
+inline constexpr std::string_view FULL_ADDER = "SILICON_FULL_ADDER";
+inline constexpr std::string_view ADDER      = "SILICON_ADDER";
+inline constexpr std::string_view PIPO       = "SILICON_PIPO";
+inline constexpr std::string_view PISO       = "SILICON_PISO";
+inline constexpr std::string_view SIPO       = "SILICON_SIPO";
+inline constexpr std::string_view SISO       = "SILICON_SISO";
 
 }  // namespace SILICON::yosys::cells
 
 namespace SILICON::yosys::attributes {
 
 /** Verilog memory attribute naming the project binary document used by a ROM. */
-inline constexpr std::string_view BinaryDocument = "silicon_mem_slug";
+inline constexpr std::string_view BINARY_DOCUMENT = "silicon_mem_slug";
 
 }  // namespace SILICON::yosys::attributes

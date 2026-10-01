@@ -53,7 +53,7 @@ private:
     Factory factory;
   };
 
-  std::map<std::string, Entry, std::less<>> types_;
+  std::map<std::string, Entry, std::less<>> types;
 };
 
 std::string_view componentCategoryName(ComponentCategory category);

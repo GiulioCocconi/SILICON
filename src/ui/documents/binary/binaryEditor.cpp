@@ -44,7 +44,7 @@ namespace SILICON::ui {
 
 namespace {
 
-  constexpr std::size_t BytesPerRow = 16;
+  constexpr std::size_t BYTES_PER_ROW = 16;
 
   [[nodiscard]] QFont monospacedFont()
   {
@@ -252,9 +252,9 @@ protected:
         target = std::min(byteCount - 1, (target / bytesPerRow + 1) * bytesPerRow - 1);
         break;
       default: {
-        constexpr auto shortcutModifiers =
+        constexpr auto SHORTCUT_MODIFIERS =
             Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier;
-        if (!(event->modifiers() & shortcutModifiers)) {
+        if (!(event->modifiers() & SHORTCUT_MODIFIERS)) {
           const auto text = event->text().toUpper();
           if (text.size() == 1) {
             const QChar character = text.front();
@@ -294,7 +294,7 @@ private:
       ++requiredOffsetDigits;
     offsetDigits = std::max<std::size_t>(8, requiredOffsetDigits);
 
-    bytesPerRow = BytesPerRow;
+    bytesPerRow = BYTES_PER_ROW;
 
     const auto rowCount =
         byteCount == 0 ? std::size_t{0} : (byteCount + bytesPerRow - 1) / bytesPerRow;

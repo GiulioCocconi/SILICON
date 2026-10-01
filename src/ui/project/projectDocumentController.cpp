@@ -32,27 +32,27 @@ ProjectDocumentController::ProjectDocumentController(
     ProjectSession& session, EditorWorkspace& workspace, ProjectTree& tree,
     ComponentCatalogOverlay& catalog, QUndoStack& history, QWidget* dialogParent)
   : QObject(dialogParent),
-    session_(session),
-    workspace_(workspace),
+    session(session),
+    workspace(workspace),
     projectTree(&tree),
-    catalog_(catalog),
+    catalog(catalog),
     undoStack(&history),
-    dialogParent_(dialogParent)
+    dialogParent(dialogParent)
 {
 }
 
 const std::string& ProjectDocumentController::currentDocumentPath() const noexcept
 {
-  return session_.activeDocumentPath;
+  return session.activeDocumentPath;
 }
 
 bool ProjectDocumentController::activateDocument(const std::string& documentPath)
 {
   if (!SILICON::project::documentTypeForPath(documentPath)
-      || !session_.projectContext.documents().contains(documentPath))
+      || !session.projectContext.documents().contains(documentPath))
     return false;
 
-  if (documentPath == session_.activeDocumentPath) {
+  if (documentPath == session.activeDocumentPath) {
     selectDocument(documentPath);
     return true;
   }
@@ -72,17 +72,17 @@ void ProjectDocumentController::restoreProjectDocuments(
   // Circuit payloads resolve their subcircuits against the project store, so the snapshot
   // has to be published before it is deserialized. Both the store and the active path are
   // put back when the snapshot cannot be loaded, leaving the workspace on its document.
-  const auto previousDocuments = session_.projectContext.documents().getDocuments();
-  const auto previousActive    = session_.activeDocumentPath;
+  const auto previousDocuments = session.projectContext.documents().getDocuments();
+  const auto previousActive    = session.activeDocumentPath;
 
-  session_.projectContext.setDocuments(documents);
-  session_.activeDocumentPath = activePath;
+  session.projectContext.setDocuments(documents);
+  session.activeDocumentPath = activePath;
   try {
-    const auto prepared = workspace_.prepareDocument(*active);
-    workspace_.activateDocument(*prepared);
+    const auto prepared = workspace.prepareDocument(*active);
+    workspace.activateDocument(*prepared);
   } catch (...) {
-    session_.projectContext.setDocuments(previousDocuments);
-    session_.activeDocumentPath = previousActive;
+    session.projectContext.setDocuments(previousDocuments);
+    session.activeDocumentPath = previousActive;
     throw;
   }
 
@@ -94,10 +94,10 @@ void ProjectDocumentController::restoreProjectDocuments(
 
 void ProjectDocumentController::notifyActiveDocumentActivated()
 {
-  const auto type = SILICON::project::documentTypeForPath(session_.activeDocumentPath);
+  const auto type = SILICON::project::documentTypeForPath(session.activeDocumentPath);
   const auto category = type ? SILICON::project::categoryOf(*type)
                              : SILICON::project::DocumentCategory::Code;
-  emit       activeDocumentChanged(QString::fromStdString(session_.activeDocumentPath),
+  emit       activeDocumentChanged(QString::fromStdString(session.activeDocumentPath),
                                    category);
 }
 
@@ -111,7 +111,7 @@ void ProjectDocumentController::reportLoadFailure(
 {
   const auto noun = documentTypeName(type);
   SILICON::ui::inputDialog::critical(
-      dialogParent_, tr("%1 Switch Error").arg(noun),
+      dialogParent, tr("%1 Switch Error").arg(noun),
       tr("Failed to load the selected %1:\n%2")
           .arg(noun.toLower(), QString::fromStdString(reason)));
 }
@@ -119,29 +119,29 @@ void ProjectDocumentController::reportLoadFailure(
 bool ProjectDocumentController::switchToDocument(const std::string& path,
                                                  const bool         selectInTree)
 {
-  const auto& store  = session_.projectContext.documents();
+  const auto& store  = session.projectContext.documents();
   const auto* target = store.find(path);
   if (!target)
     return false;
 
-  if (path == session_.activeDocumentPath) {
+  if (path == session.activeDocumentPath) {
     if (selectInTree)
       selectDocument(path);
     return true;
   }
 
   const auto type = target->getType();
-  catalog_.hide();
+  catalog.hide();
 
-  if (workspace_.scene()->getInteractionMode() != InteractionMode::NORMAL_MODE)
-    workspace_.scene()->setInteractionMode(InteractionMode::NORMAL_MODE);
+  if (workspace.scene()->getInteractionMode() != InteractionMode::NORMAL_MODE)
+    workspace.scene()->setInteractionMode(InteractionMode::NORMAL_MODE);
 
   try {
-    workspace_.flushActiveDocument();
+    workspace.flushActiveDocument();
   } catch (const std::exception& e) {
     const auto noun = documentTypeName(type);
     SILICON::ui::inputDialog::warning(
-        dialogParent_, tr("%1 Switch Error").arg(noun),
+        dialogParent, tr("%1 Switch Error").arg(noun),
         tr("Failed to save the current document before switching:\n%1").arg(e.what()));
     return false;
   }
@@ -154,18 +154,18 @@ bool ProjectDocumentController::switchToDocument(const std::string& path,
   // malformed payload leaves the current document loaded and the active path untouched.
   std::shared_ptr<EditorWorkspace::PreparedDocument> prepared;
   try {
-    prepared = workspace_.prepareDocument(*target);
+    prepared = workspace.prepareDocument(*target);
   } catch (const std::exception& e) {
     reportLoadFailure(type, e.what());
     return false;
   }
 
-  const auto previousPath     = session_.activeDocumentPath;
-  session_.activeDocumentPath = path;
+  const auto previousPath     = session.activeDocumentPath;
+  session.activeDocumentPath = path;
   try {
-    workspace_.activateDocument(*prepared);
+    workspace.activateDocument(*prepared);
   } catch (const std::exception& e) {
-    session_.activeDocumentPath = previousPath;
+    session.activeDocumentPath = previousPath;
     reportLoadFailure(type, e.what());
     return false;
   }
@@ -179,20 +179,20 @@ bool ProjectDocumentController::switchToDocument(const std::string& path,
 
 void ProjectDocumentController::removeDocument(const std::string& path)
 {
-  const auto& store    = session_.projectContext.documents();
+  const auto& store    = session.projectContext.documents();
   const auto* document = store.find(path);
   if (!document)
     return;
 
-  if (session_.activeDocumentPath == path) {
-    const auto fallback = session_.firstCircuitPath(path);
+  if (session.activeDocumentPath == path) {
+    const auto fallback = session.firstCircuitPath(path);
     if (!fallback || !switchToDocument(*fallback, true))
       return;
   }
 
-  session_.projectContext.removeDocument(path);
+  session.projectContext.removeDocument(path);
   rebuildTree();
-  selectDocument(session_.activeDocumentPath);
+  selectDocument(session.activeDocumentPath);
   emit projectDocumentsChanged();
 }
 
@@ -200,17 +200,17 @@ void ProjectDocumentController::insertDocument(
     SILICON::project::Document document, const std::optional<std::ptrdiff_t> insertAt,
     const bool activate)
 {
-  const auto& store = session_.projectContext.documents();
+  const auto& store = session.projectContext.documents();
   const auto  path  = document.getPath();
   if (store.contains(path))
     return;
 
   if (insertAt)
-    session_.projectContext.insertDocument(
+    session.projectContext.insertDocument(
         std::move(document),
         static_cast<std::size_t>(std::max<std::ptrdiff_t>(0, *insertAt)));
   else
-    session_.projectContext.upsertDocument(std::move(document));
+    session.projectContext.upsertDocument(std::move(document));
 
   rebuildTree();
   emit projectDocumentsChanged();
@@ -220,11 +220,11 @@ void ProjectDocumentController::insertDocument(
 
 void ProjectDocumentController::rebuildTree()
 {
-  projectDocumentPolicy::ensureProjectDocuments(session_.projectContext);
-  const auto project = session_.currentProjectInfo.value_or(
-      projectDocumentPolicy::defaultProjectInfo(session_.currentFileName));
-  const auto& store = session_.projectContext.documents();
-  projectTree->rebuild(project, store.getDocuments(), session_.activeDocumentPath);
+  projectDocumentPolicy::ensureProjectDocuments(session.projectContext);
+  const auto project = session.currentProjectInfo.value_or(
+      projectDocumentPolicy::defaultProjectInfo(session.currentFileName));
+  const auto& store = session.projectContext.documents();
+  projectTree->rebuild(project, store.getDocuments(), session.activeDocumentPath);
 }
 
 }  // namespace SILICON::ui

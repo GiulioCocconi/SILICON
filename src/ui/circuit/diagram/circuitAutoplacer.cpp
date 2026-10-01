@@ -56,7 +56,7 @@ namespace {
 
   using ComponentMap   = std::unordered_map<const Component*, GraphicalLogicComponent*>;
   using OrientationMap = IoOrientationMap;
-  constexpr double ComponentClearance = 2.0 * DiagramScene::GRID_SIZE;
+  constexpr double COMPONENT_CLEARANCE = 2.0 * DiagramScene::GRID_SIZE;
 
   QRectF movedComponentObstacle(GraphicalLogicComponent* component,
                                 const QPointF& newPosition, const int padding,
@@ -89,7 +89,7 @@ namespace {
 
   bool hasComponentClearance(const QRectF& candidate, std::span<const QRectF> accepted)
   {
-    return detail::hasBoundsClearance(candidate, accepted, ComponentClearance);
+    return detail::hasBoundsClearance(candidate, accepted, COMPONENT_CLEARANCE);
   }
 
   std::vector<GraphicalLogicComponent*>
@@ -187,7 +187,7 @@ namespace {
       }
 
       const auto lanePlacement =
-          detail::placeBoundaryIoInLanes(side, laneItems, accepted, ComponentClearance,
+          detail::placeBoundaryIoInLanes(side, laneItems, accepted, COMPONENT_CLEARANCE,
                                          obstaclePadding, DiagramScene::GRID_SIZE);
       for (std::size_t i = 0; i < ios.size(); ++i) {
         placements.at(ios[i]) = DiagramScene::snapToGrid(lanePlacement.positions[i]);
@@ -296,12 +296,12 @@ namespace {
       std::size_t                connectionCount = 0;
     };
 
-    constexpr std::array    portSides = {PortSide::LEFT, PortSide::RIGHT, PortSide::UP,
+    constexpr std::array    PORT_SIDES = {PortSide::LEFT, PortSide::RIGHT, PortSide::UP,
                                          PortSide::DOWN};
     std::vector<FanInGroup> groups;
 
     for (GraphicalLogicComponent* target : orderedComponents(placements, false)) {
-      for (const PortSide side : portSides) {
+      for (const PortSide side : PORT_SIDES) {
         std::vector<OrderedSource> sources;
         std::size_t                connectionCount = 0;
         for (const RoutableConnection& connection : connections) {
@@ -403,7 +403,7 @@ namespace {
         const QRectF  bounds   = movedComponentObstacle(component, position, 0);
         if (proposals.contains(component)
             && !detail::boundsLieOutsideTarget(group.side, bounds, targetBounds,
-                                               ComponentClearance)) {
+                                               COMPONENT_CLEARANCE)) {
           valid = false;
           break;
         }
@@ -461,7 +461,7 @@ namespace {
       const qreal pairCenterY = DiagramScene::snapToGrid(
           (firstBounds.center().y() + secondBounds.center().y()) / 2.0);
       const qreal requiredCenterDistance =
-          firstBounds.height() / 2.0 + secondBounds.height() / 2.0 + ComponentClearance;
+          firstBounds.height() / 2.0 + secondBounds.height() / 2.0 + COMPONENT_CLEARANCE;
       const qreal pairGrid = 2.0 * DiagramScene::GRID_SIZE;
       const qreal centerDistance =
           std::ceil(requiredCenterDistance / pairGrid) * pairGrid;
@@ -542,15 +542,15 @@ namespace {
   OrientationMap
   preferredBoundaryIoOrientations(std::span<const RoutableConnection> connections)
   {
-    constexpr std::array sidePreference = {PortSide::RIGHT, PortSide::LEFT,
+    constexpr std::array SIDE_PREFERENCE = {PortSide::RIGHT, PortSide::LEFT,
                                            PortSide::DOWN, PortSide::UP};
-    std::unordered_map<GraphicalIO*, std::array<std::size_t, sidePreference.size()>>
+    std::unordered_map<GraphicalIO*, std::array<std::size_t, SIDE_PREFERENCE.size()>>
         votes;
 
     auto addVote = [&](GraphicalIO* io, const Port* connectedPort) {
       const PortSide preferredSide = oppositeSide(connectedPort->getDirection());
-      const auto     vote          = std::ranges::find(sidePreference, preferredSide);
-      ++votes[io][static_cast<std::size_t>(std::distance(sidePreference.begin(), vote))];
+      const auto     vote          = std::ranges::find(SIDE_PREFERENCE, preferredSide);
+      ++votes[io][static_cast<std::size_t>(std::distance(SIDE_PREFERENCE.begin(), vote))];
     };
 
     for (const auto& connection : connections) {
@@ -567,7 +567,7 @@ namespace {
     OrientationMap result;
     for (const auto& [io, sideVotes] : votes) {
       const auto winningVote = std::ranges::max_element(sideVotes);
-      result.emplace(io, sidePreference[static_cast<std::size_t>(
+      result.emplace(io, SIDE_PREFERENCE[static_cast<std::size_t>(
                              std::distance(sideVotes.begin(), winningVote))]);
     }
     return result;
@@ -593,7 +593,7 @@ namespace {
     }
 
     OrientationMap   orientations = preferredBoundaryIoOrientations(connections);
-    constexpr double gap          = 4.0 * DiagramScene::GRID_SIZE;
+    constexpr double GAP          = 4.0 * DiagramScene::GRID_SIZE;
 
     QRectF logicBounds;
     bool   hasLogicBounds = false;
@@ -637,16 +637,16 @@ namespace {
       // inserted between mutually connected latch gates and blocking their signal lanes.
       switch (side) {
         case PortSide::RIGHT:
-          ioPosition.rx() += placementBoundary.left() - gap - ioBounds.right();
+          ioPosition.rx() += placementBoundary.left() - GAP - ioBounds.right();
           break;
         case PortSide::LEFT:
-          ioPosition.rx() += placementBoundary.right() + gap - ioBounds.left();
+          ioPosition.rx() += placementBoundary.right() + GAP - ioBounds.left();
           break;
         case PortSide::DOWN:
-          ioPosition.ry() += placementBoundary.top() - gap - ioBounds.bottom();
+          ioPosition.ry() += placementBoundary.top() - GAP - ioBounds.bottom();
           break;
         case PortSide::UP:
-          ioPosition.ry() += placementBoundary.bottom() + gap - ioBounds.top();
+          ioPosition.ry() += placementBoundary.bottom() + GAP - ioBounds.top();
           break;
       }
 
@@ -1181,10 +1181,10 @@ namespace {
       std::span<const RoutableConnection> connections, CircuitAutoplacement best,
       const CircuitAutoplacerOptions& options, std::size_t routingOrder)
   {
-    constexpr int  maxPasses = 2;
+    constexpr int  MAX_PASSES = 2;
     PlacementScore bestScore = scorePlacement(connections, best);
 
-    for (int pass = 0; pass < maxPasses; ++pass) {
+    for (int pass = 0; pass < MAX_PASSES; ++pass) {
       bool                                  improved = false;
       auto                                  targets = alignmentTargets(connections, best);
       std::vector<GraphicalLogicComponent*> components;
@@ -1304,8 +1304,8 @@ CircuitAutoplacer::compute(const Circuit&                            circuit,
   // placement and rotate the order in which libavoid fixes complete nets. Keep this
   // fallback bounded because a structurally unrepresentable topology cannot be fixed
   // by adding space.
-  constexpr int MaxFallbackRoutingAttempts = 64;
-  for (int routingAttempt = 0; !bestScore && routingAttempt < MaxFallbackRoutingAttempts;
+  constexpr int MAX_FALLBACK_ROUTING_ATTEMPTS = 64;
+  for (int routingAttempt = 0; !bestScore && routingAttempt < MAX_FALLBACK_ROUTING_ATTEMPTS;
        ++routingAttempt) {
     if (options.isCancelled && options.isCancelled())
       break;
