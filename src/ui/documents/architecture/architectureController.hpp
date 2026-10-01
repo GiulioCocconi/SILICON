@@ -16,6 +16,8 @@
 namespace SILICON::ui {
 
 class EditorWorkspace;
+class ArchitectureDocumentEditor;
+class DocumentEditor;
 class ProjectDocumentController;
 struct ProjectSession;
 
@@ -43,12 +45,14 @@ signals:
   void visualizerTabSelected();
 
 private:
+  void configureWorkspace(DocumentEditor* editor);
   /** @brief Activates the document owned by a newly selected architecture tab. */
   void handleTabChanged(int index);
 
-  ProjectSession&            session;
-  EditorWorkspace&           workspace;
-  ProjectDocumentController& documents;
+  ProjectSession&             session;
+  EditorWorkspace&            workspace;
+  ArchitectureDocumentEditor* architectureEditor = nullptr;
+  ProjectDocumentController&  documents;
 };
 
 }  // namespace SILICON::ui

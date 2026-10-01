@@ -150,6 +150,8 @@ set(UI_SOURCE_FILES
         ${src_dir}/ui/project/projectDocumentPolicy.cpp
         ${src_dir}/ui/documents/architecture/architectureWorkspace.cpp
         ${src_dir}/ui/documents/architecture/architectureController.cpp
+        ${src_dir}/ui/circuit/editor/circuitEditor.cpp
+        ${src_dir}/ui/documents/documentEditors.cpp
         ${src_dir}/ui/documents/editorWorkspace.cpp
         ${src_dir}/ui/project/projectDocumentController.cpp
         ${src_dir}/ui/project/projectDocumentActions.cpp

@@ -76,7 +76,7 @@ private:
         {"binary", "binary"},
         {"build", "hammer"},
         {"diagram", "layout-template"},
-	{"lock", "lock"},
+        {"lock", "lock"},
         {"box", "box"},
         {"expand", "expand"},
         {"circle-power", "circle-power"},

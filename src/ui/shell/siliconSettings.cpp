@@ -272,8 +272,8 @@ CommonSettingsValues readCommonSettings(const QSettings& settings)
 
 SILICON::ui::theme::Mode themeModeFromText(const QString& value)
 {
-  return value == SILICON::ui::settings::DARK_THEME ? SILICON::ui::theme::Mode::Dark
-                                            : SILICON::ui::theme::Mode::Light;
+  return value == settings::DARK_THEME ? SILICON::ui::theme::Mode::Dark
+                                       : SILICON::ui::theme::Mode::Light;
 }
 
 }  // namespace SILICON::ui

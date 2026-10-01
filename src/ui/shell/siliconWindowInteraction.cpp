@@ -15,6 +15,7 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <ui/circuit/editor/circuitEditor.hpp>
 #include <ui/shell/siliconWindow.hpp>
 
 #include <optional>
@@ -32,14 +33,14 @@ void SiliconWindow::updateStatus() const
 {
   statusBar()->showMessage(
       tr("Interaction Mode: %1")
-          .arg(ui::interactionModeName(workspace->scene()->getInteractionMode())));
+          .arg(ui::interactionModeName(circuitEditor->scene()->getInteractionMode())));
 }
 
 void SiliconWindow::selectionChanged()
 {
   actionSet->updateEditActions();
 
-  if (!workspace->scene()->selectedItems().empty() && projectTree)
+  if (!circuitEditor->scene()->selectedItems().empty() && projectTree)
     projectTree->clearDocumentSelection();
 
   updatePropertyDock();

@@ -33,6 +33,7 @@
 #include <ui/documents/architecture/architectureWorkspace.hpp>
 #include <ui/documents/architecture/sislVisualizer.hpp>
 #include <ui/documents/code/codeEditor.hpp>
+#include <ui/documents/documentEditors.hpp>
 #include <ui/documents/editorWorkspace.hpp>
 #include <ui/project/projectDocumentController.hpp>
 #include <ui/project/projectSession.hpp>
@@ -87,7 +88,16 @@ ArchitectureController::ArchitectureController(ProjectSession&            sessio
                                                QObject*                   parent)
   : QObject(parent), session(session), workspace(workspace), documents(documents)
 {
-  auto* architecture = workspace.architectureWorkspace();
+  connect(&workspace, &EditorWorkspace::editorCreated, this,
+          &ArchitectureController::configureWorkspace);
+}
+
+void ArchitectureController::configureWorkspace(DocumentEditor* editor)
+{
+  auto* architectureEditor = dynamic_cast<ArchitectureDocumentEditor*>(editor);
+  if (!architectureEditor)
+    return;
+  auto* architecture = architectureEditor->workspace();
   architecture->tabBar()->setContextMenuPolicy(Qt::CustomContextMenu);
   connect(architecture->tabBar(), &QWidget::customContextMenuRequested, &documents,
           &ProjectDocumentController::showArchitectureTabContextMenu);
@@ -97,7 +107,9 @@ ArchitectureController::ArchitectureController(ProjectSession&            sessio
 
 void ArchitectureController::handleTabChanged(const int index)
 {
-  auto* architecture = workspace.architectureWorkspace();
+  auto* architecture = architectureEditor ? architectureEditor->workspace() : nullptr;
+  if (!architecture)
+    return;
   if (index < 0)
     return;
 
@@ -136,20 +148,26 @@ void ArchitectureController::visualizeActiveArchitecture()
 {
   if (!isArchitectureDocument(session))
     return;
-  const auto* editor = workspace.activeCodeEditor();
+  const auto* editor =
+      architectureEditor
+          ? architectureEditor->activeCodeEditor(SILICON::project::DocumentType::Sisl)
+          : nullptr;
   if (!editor)
     return;
   const auto isa = buildEditedArchitecture(session.activeDocumentPath, *editor);
   if (!isa)
     return;
-  workspace.architectureWorkspace()->showVisualization(isa->describe());
+  architectureEditor->workspace()->showVisualization(isa->describe());
 }
 
 void ArchitectureController::buildActiveArchitecture()
 {
   if (!isArchitectureDocument(session))
     return;
-  const auto* editor = workspace.activeCodeEditor();
+  const auto* editor =
+      architectureEditor
+          ? architectureEditor->activeCodeEditor(SILICON::project::DocumentType::Sisl)
+          : nullptr;
   if (!editor)
     return;
   if (buildEditedArchitecture(session.activeDocumentPath, *editor))
