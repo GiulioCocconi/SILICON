@@ -11,6 +11,7 @@
 
 #include <stdexcept>
 
+#include <QTabWidget>
 #include <QTextDocument>
 #include <QUndoStack>
 
@@ -132,6 +133,10 @@ void CodeDocumentEditor::deleteSelection()
     cursor.deleteChar();
   codeEditor->setTextCursor(cursor);
 }
+bool CodeDocumentEditor::hasTextEditingCommands() const
+{
+  return true;
+}
 
 BinaryDocumentEditor::BinaryDocumentEditor(ProjectSession& session, QWidget* parent,
                                            std::function<void()> historyChanged)
@@ -228,6 +233,10 @@ ArchitectureDocumentEditor::ArchitectureDocumentEditor(
     QObject::connect(editor, &QPlainTextEdit::redoAvailable, architectureWorkspace,
                      [historyChanged](bool) { historyChanged(); });
   }
+  // Selecting a tab swaps the editor owning the architecture document, and the visualizer
+  // tab replaces editing altogether, so both can change what can be undone.
+  QObject::connect(architectureWorkspace, &QTabWidget::currentChanged,
+                   architectureWorkspace, [historyChanged](int) { historyChanged(); });
 }
 QWidget* ArchitectureDocumentEditor::widget() const noexcept
 {
@@ -280,6 +289,10 @@ bool ArchitectureDocumentEditor::isVisualizerActive() const noexcept
   return architectureWorkspace->isVisualizerActive();
 }
 bool ArchitectureDocumentEditor::isEditable() const
+{
+  return !isVisualizerActive();
+}
+bool ArchitectureDocumentEditor::hasTextEditingCommands() const
 {
   return !isVisualizerActive();
 }

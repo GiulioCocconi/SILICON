@@ -11,9 +11,11 @@
 #include <stdexcept>
 
 #include <QStackedWidget>
+#include <QUndoStack>
 #include <QVBoxLayout>
 
 #include <ui/circuit/editor/circuitEditor.hpp>
+#include <ui/circuit/editor/diagramInteractionController.hpp>
 #include <ui/documents/documentEditors.hpp>
 #include <ui/project/projectSession.hpp>
 
@@ -36,6 +38,8 @@ EditorWorkspace::EditorWorkspace(ProjectSession& session, QWidget* parent)
   layout->setContentsMargins(0, 0, 0, 0);
   layout->addWidget(stack);
   activeDocumentEditor = &circuitEditor();
+  connect(this, &EditorWorkspace::editorCreated, this,
+          [this](DocumentEditor* editor) { editor->setProjectHistory(projectHistory); });
 }
 EditorWorkspace::~EditorWorkspace() = default;
 
@@ -51,8 +55,8 @@ CircuitEditor& EditorWorkspace::circuitEditor()
 CodeDocumentEditor& EditorWorkspace::ensureCodeEditor()
 {
   if (!code) {
-    code = std::make_unique<CodeDocumentEditor>(
-        session, stack, [this] { emit historyAvailabilityChanged(); });
+    code = std::make_unique<CodeDocumentEditor>(session, stack,
+                                                [this] { emit historyStateChanged(); });
     stack->addWidget(code->widget());
     emit editorCreated(code.get());
   }
@@ -62,7 +66,7 @@ BinaryDocumentEditor& EditorWorkspace::ensureBinaryEditor()
 {
   if (!binary) {
     binary = std::make_unique<BinaryDocumentEditor>(
-        session, stack, [this] { emit historyAvailabilityChanged(); });
+        session, stack, [this] { emit historyStateChanged(); });
     stack->addWidget(binary->widget());
     emit editorCreated(binary.get());
   }
@@ -72,7 +76,7 @@ ArchitectureDocumentEditor& EditorWorkspace::ensureArchitectureEditor()
 {
   if (!architecture) {
     architecture = std::make_unique<ArchitectureDocumentEditor>(
-        session, stack, [this] { emit historyAvailabilityChanged(); });
+        session, stack, [this] { emit historyStateChanged(); });
     stack->addWidget(architecture->widget());
     emit editorCreated(architecture.get());
   }
@@ -88,6 +92,45 @@ DocumentEditor& EditorWorkspace::editorFor(SILICON::project::DocumentType type)
     case DocumentCategory::Architecture: return ensureArchitectureEditor();
   }
   throw std::logic_error("Unsupported project document type");
+}
+void EditorWorkspace::setProjectHistory(QUndoStack* history) noexcept
+{
+  projectHistory = history;
+  if (!history)
+    return;
+
+  // Every editor falls back to the project history when its own document has nothing
+  // left to undo, so its state has to be part of the workspace notifications.
+  connect(history, &QUndoStack::canUndoChanged, this,
+          &EditorWorkspace::historyStateChanged);
+  connect(history, &QUndoStack::canRedoChanged, this,
+          &EditorWorkspace::historyStateChanged);
+  if (circuit)
+    circuit->setProjectHistory(history);
+  if (code)
+    code->setProjectHistory(history);
+  if (binary)
+    binary->setProjectHistory(history);
+  if (architecture)
+    architecture->setProjectHistory(history);
+}
+void EditorWorkspace::setCircuitEditingBackend(
+    DiagramInteractionController& interaction) noexcept
+{
+  circuitEditing = &interaction;
+}
+EditorEditState EditorWorkspace::activeEditState() const
+{
+  if (editsActiveCircuit())
+    return circuitEditing ? circuitEditing->editState() : EditorEditState{};
+
+  const bool textCommands = activeDocumentEditor && activeDocumentEditor->isEditable()
+                            && activeDocumentEditor->hasTextEditingCommands();
+  return {.canEditSelection = textCommands, .canPaste = textCommands};
+}
+bool EditorWorkspace::editsActiveCircuit() const noexcept
+{
+  return activeDocumentEditor && activeDocumentEditor == circuit.get();
 }
 bool EditorWorkspace::hasUnsavedChanges() const
 {
@@ -169,23 +212,47 @@ void EditorWorkspace::activateDocument(const PreparedDocument& prepared)
 }
 void EditorWorkspace::copyActiveDocument()
 {
-  if (activeDocumentEditor)
-    activeDocumentEditor->copy();
+  if (!activeDocumentEditor)
+    return;
+  if (editsActiveCircuit()) {
+    if (circuitEditing)
+      circuitEditing->copy();
+    return;
+  }
+  activeDocumentEditor->copy();
 }
 void EditorWorkspace::cutActiveDocument()
 {
-  if (activeDocumentEditor)
-    activeDocumentEditor->cut();
+  if (!activeDocumentEditor)
+    return;
+  if (editsActiveCircuit()) {
+    if (circuitEditing)
+      circuitEditing->cut();
+    return;
+  }
+  activeDocumentEditor->cut();
 }
 void EditorWorkspace::pasteActiveDocument()
 {
-  if (activeDocumentEditor)
-    activeDocumentEditor->paste();
+  if (!activeDocumentEditor)
+    return;
+  if (editsActiveCircuit()) {
+    if (circuitEditing)
+      circuitEditing->paste();
+    return;
+  }
+  activeDocumentEditor->paste();
 }
-void EditorWorkspace::deleteActiveSelection()
+void EditorWorkspace::deleteInActiveDocument()
 {
-  if (activeDocumentEditor)
-    activeDocumentEditor->deleteSelection();
+  if (!activeDocumentEditor)
+    return;
+  if (editsActiveCircuit()) {
+    if (circuitEditing)
+      circuitEditing->del();
+    return;
+  }
+  activeDocumentEditor->deleteSelection();
 }
 void EditorWorkspace::loadDocument(const SILICON::project::Document& document)
 {

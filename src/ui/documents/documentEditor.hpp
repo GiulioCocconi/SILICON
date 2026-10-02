@@ -24,6 +24,13 @@ struct PreparedEditorDocument {
   virtual ~PreparedEditorDocument() = default;
 };
 
+/** Availability of the clipboard, deletion, and rotation commands of an editor. */
+struct EditorEditState {
+  bool canRotate        = false;
+  bool canEditSelection = false;
+  bool canPaste         = false;
+};
+
 /** Operations shared by document editors hosted in EditorWorkspace. */
 class DocumentEditor {
 public:
@@ -45,6 +52,14 @@ public:
   virtual void               paste() {}
   virtual void               deleteSelection() {}
   [[nodiscard]] virtual bool isEditable() const { return true; }
+
+  /**
+   * @brief Whether the editor implements the clipboard and deletion commands.
+   *
+   * Editors over selectable text answer true, while binary and diagram editors own
+   * their commands elsewhere and answer false.
+   */
+  [[nodiscard]] virtual bool hasTextEditingCommands() const { return false; }
   void setProjectHistory(QUndoStack* history) noexcept { projectHistory = history; }
 
 protected:

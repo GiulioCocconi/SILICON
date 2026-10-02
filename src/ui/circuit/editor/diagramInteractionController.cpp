@@ -24,30 +24,29 @@
 #include <stdexcept>
 #include <vector>
 
+#include <QAction>
 #include <QApplication>
 #include <QByteArray>
 #include <QClipboard>
 #include <QCursor>
-#include <QDialog>
 #include <QMimeData>
 #include <QPointF>
 #include <QSignalBlocker>
-#include <QStatusBar>
 #include <QUndoStack>
+#include <QWidget>
 
 #include <nlohmann/json.hpp>
 
 #include <core/serialization/component_registry.hpp>
 #include <ui/circuit/components/graphicalLogicComponent.hpp>
+#include <ui/circuit/components/subcircuit/componentShapeEditor.hpp>
 #include <ui/circuit/components/subcircuit/utils.hpp>
 #include <ui/circuit/diagram/diagramView.hpp>
 #include <ui/circuit/diagram/scene/diagramScene.hpp>
 #include <ui/circuit/diagram/undoCommands.hpp>
 #include <ui/circuit/editor/componentCatalogOverlay.hpp>
-#include <ui/documents/code/codeEditor.hpp>
-#include <ui/project/projectTree.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
-#include <ui/waveform/waveformViewer.hpp>
+#include <ui/shell/inputDialogUtils.hpp>
 
 namespace SILICON::ui {
 using namespace SILICON::core;
@@ -72,13 +71,43 @@ namespace {
 
 DiagramInteractionController::DiagramInteractionController(
     ProjectSession& session, CircuitEditor& circuit, ComponentCatalogOverlay& catalog,
-    QUndoStack& history, QObject* parent)
-  : QObject(parent),
+    QUndoStack& history, QWidget& window)
+  : QObject(&window),
     session(session),
     circuit(circuit),
     catalog(catalog),
-    undoStack(history)
+    undoStack(history),
+    window(window)
 {
+}
+
+void DiagramInteractionController::bindActions(const CircuitActions& actions)
+{
+  connect(actions.rotate, &QAction::triggered, this,
+          &DiagramInteractionController::rotate);
+  connect(actions.autoPlace, &QAction::triggered, this,
+          &DiagramInteractionController::autoPlace);
+  connect(actions.setNormalMode, &QAction::triggered, this,
+          &DiagramInteractionController::setNormalMode);
+  connect(actions.setPanMode, &QAction::triggered, this,
+          &DiagramInteractionController::setPanMode);
+  connect(actions.setWireCreationMode, &QAction::triggered, this,
+          &DiagramInteractionController::setWireCreationMode);
+  connect(actions.setSimulationMode, &QAction::triggered, this,
+          &DiagramInteractionController::setSimulationMode);
+  connect(actions.setComponentPlacingMode, &QAction::triggered, this,
+          &DiagramInteractionController::setComponentPlacingMode);
+  connect(actions.cancelInteraction, &QAction::triggered, this,
+          &DiagramInteractionController::cancelCurrentInteraction);
+  connect(actions.openComponentCatalog, &QAction::triggered, this,
+          &DiagramInteractionController::showComponentCatalog);
+  connect(actions.editSubcircuitShape, &QAction::triggered, this,
+          &DiagramInteractionController::editActiveSubcircuitShape);
+
+  // Both shortcuts only make sense while a component is being placed, so they stay
+  // reachable from anywhere through the main window.
+  window.addAction(actions.setComponentPlacingMode);
+  window.addAction(actions.cancelInteraction);
 }
 
 bool DiagramInteractionController::copySelectionToClipboard()
@@ -104,35 +133,17 @@ bool DiagramInteractionController::copySelectionToClipboard()
 
 void DiagramInteractionController::copy()
 {
-  const auto type = SILICON::project::documentTypeForPath(session.activeDocumentPath);
-  if (!type
-      || SILICON::project::categoryOf(*type)
-             != SILICON::project::DocumentCategory::Diagram)
-    return;
-
   copySelectionToClipboard();
 }
 
 void DiagramInteractionController::cut()
 {
-  const auto type = SILICON::project::documentTypeForPath(session.activeDocumentPath);
-  if (!type
-      || SILICON::project::categoryOf(*type)
-             != SILICON::project::DocumentCategory::Diagram)
-    return;
-
   if (copySelectionToClipboard())
     del();
 }
 
 void DiagramInteractionController::paste()
 {
-  const auto type = SILICON::project::documentTypeForPath(session.activeDocumentPath);
-  if (!type
-      || SILICON::project::categoryOf(*type)
-             != SILICON::project::DocumentCategory::Diagram)
-    return;
-
   const QMimeData* mimeData = QApplication::clipboard()->mimeData();
   if (!mimeData || !mimeData->hasFormat(CIRCUIT_SELECTION_MIME_TYPE))
     return;
@@ -204,12 +215,6 @@ void DiagramInteractionController::autoPlace()
 
 void DiagramInteractionController::del()
 {
-  const auto type = SILICON::project::documentTypeForPath(session.activeDocumentPath);
-  if (!type
-      || SILICON::project::categoryOf(*type)
-             != SILICON::project::DocumentCategory::Diagram)
-    return;
-
   auto itemsToDelete =
       circuit.scene()->selectedItems()
       | std::views::filter([](auto* item) { return item->type() > UNKNOWN; })
@@ -221,6 +226,27 @@ void DiagramInteractionController::del()
   circuit.scene()->removeItems(itemsToDelete);
   undoStack.push(new SceneSelectionCommand(
       circuit.scene(), payload, SceneSelectionCommand::Operation::Remove, true));
+}
+
+void DiagramInteractionController::editActiveSubcircuitShape()
+{
+  if (SILICON::project::documentTypeForPath(session.activeDocumentPath)
+      != SILICON::project::DocumentType::Circuit)
+    return;
+
+  const auto slug = SILICON::project::documentSlugForPath(session.activeDocumentPath);
+  if (!slug)
+    return;
+
+  try {
+    circuit.flush(session.activeDocumentPath);
+    editGraphicalSubcircuitShape(*slug, session.projectContext, &undoStack, &window);
+  } catch (const std::exception& e) {
+    inputDialog::warning(
+        &window, window.tr("Edit shape"),
+        window.tr("Failed to save the active circuit before editing its shape:\n%1")
+            .arg(e.what()));
+  }
 }
 
 void DiagramInteractionController::setNormalMode()
@@ -263,6 +289,23 @@ void DiagramInteractionController::showComponentCatalog()
 void DiagramInteractionController::cancelCurrentInteraction()
 {
   circuit.scene()->cancelCurrentInteraction();
+}
+
+EditorEditState DiagramInteractionController::editState() const
+{
+  const auto interactionMode = circuit.scene()->getInteractionMode();
+  const bool normalMode      = interactionMode == InteractionMode::NORMAL_MODE;
+  const auto selected        = circuit.scene()->selectedItems();
+
+  EditorEditState state;
+  state.canRotate = (normalMode && selected.size() == 1)
+                    || interactionMode == InteractionMode::COMPONENT_PLACING_MODE;
+  state.canEditSelection = normalMode && !selected.empty();
+
+  const auto* clipboardData = QApplication::clipboard()->mimeData();
+  state.canPaste            = normalMode && clipboardData
+                   && clipboardData->hasFormat(CIRCUIT_SELECTION_MIME_TYPE);
+  return state;
 }
 
 }  // namespace SILICON::ui

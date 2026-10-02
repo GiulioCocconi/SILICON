@@ -22,6 +22,7 @@
 #include <string>
 #include <string_view>
 
+#include <QAction>
 #include <QSignalBlocker>
 #include <QTabBar>
 #include <QTabWidget>
@@ -92,6 +93,14 @@ ArchitectureController::ArchitectureController(ProjectSession&            sessio
           &ArchitectureController::configureWorkspace);
 }
 
+void ArchitectureController::bindActions(const ArchitectureActions& actions)
+{
+  connect(actions.build, &QAction::triggered, this,
+          &ArchitectureController::buildActiveArchitecture);
+  connect(actions.visualize, &QAction::triggered, this,
+          &ArchitectureController::visualizeActiveArchitecture);
+}
+
 void ArchitectureController::configureWorkspace(DocumentEditor* editor)
 {
   auto* architectureEditor = dynamic_cast<ArchitectureDocumentEditor*>(editor);
@@ -114,10 +123,8 @@ void ArchitectureController::handleTabChanged(const int index)
   if (index < 0)
     return;
 
-  if (architecture->isVisualizerTab(index)) {
-    emit visualizerTabSelected();
+  if (architecture->isVisualizerTab(index))
     return;
-  }
 
   const auto active = SILICON::project::documentTypeForPath(session.activeDocumentPath);
   if (!active

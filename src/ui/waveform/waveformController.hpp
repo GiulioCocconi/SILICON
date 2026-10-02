@@ -27,11 +27,16 @@ namespace waveform {
   class Viewer;
 }
 
+/** Main-window actions driven by the waveform viewer. */
+struct WaveformActions {
+  QAction* toggleTrace = nullptr;
+};
+
 /** Owns the waveform window and its scene connections. */
 class WaveformController : public QObject {
 public:
   WaveformController(ProjectSession& session, DiagramScene& scene,
-                     ProjectDocumentController& documents, QAction& toggleAction,
+                     ProjectDocumentController& documents, WaveformActions actions,
                      QWidget* window);
   ~WaveformController() override;
 
@@ -43,11 +48,12 @@ private:
                                    SILICON::project::DocumentCategory category);
   /** @brief Hides the viewer and leaves the scene in a non-simulating state. */
   void closeViewer();
+  void setTraceActionChecked(bool checked);
 
   DiagramScene&     scene;
-  QAction&          toggleAction;
-  QDialog*          window = nullptr;
-  waveform::Viewer* viewer = nullptr;
+  QAction*          toggleAction = nullptr;
+  QDialog*          window       = nullptr;
+  waveform::Viewer* viewer       = nullptr;
   QString           activeDocumentPath;
   bool              activeIsDiagram = false;
 };

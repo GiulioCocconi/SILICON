@@ -40,6 +40,7 @@ public:
   void               cut() override;
   void               paste() override;
   void               deleteSelection() override;
+  [[nodiscard]] bool hasTextEditingCommands() const override;
 
 private:
   ProjectSession& session;
@@ -99,6 +100,7 @@ public:
   void               paste() override;
   void               deleteSelection() override;
   [[nodiscard]] bool isEditable() const override;
+  [[nodiscard]] bool hasTextEditingCommands() const override;
 
 private:
   ProjectSession&        session;

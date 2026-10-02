@@ -15,13 +15,16 @@
 #include <core/projectDocument.hpp>
 
 class QStackedWidget;
+class QUndoStack;
 
 namespace SILICON::ui {
 class ArchitectureDocumentEditor;
 class BinaryDocumentEditor;
 class CircuitEditor;
 class CodeDocumentEditor;
+class DiagramInteractionController;
 class DocumentEditor;
+struct EditorEditState;
 struct PreparedEditorDocument;
 struct ProjectSession;
 
@@ -40,6 +43,21 @@ public:
     return activeDocumentEditor;
   }
   [[nodiscard]] bool hasUnsavedChanges() const;
+
+  /** @brief Applies the project-wide history shared by every hosted editor. */
+  void setProjectHistory(QUndoStack* history) noexcept;
+
+  /**
+   * @brief Attaches the backend implementing circuit-only editing commands.
+   *
+   * Circuit documents are edited through @p interaction instead of the generic
+   * document editor interface, which only describes text-like editors.
+   */
+  void setCircuitEditingBackend(DiagramInteractionController& interaction) noexcept;
+
+  /** @brief Availability of the clipboard, deletion, and rotation commands. */
+  [[nodiscard]] EditorEditState activeEditState() const;
+
   [[nodiscard]] bool canUndoActiveDocument() const;
   [[nodiscard]] bool canRedoActiveDocument() const;
   void               resetEditorDirtyState() noexcept;
@@ -50,7 +68,7 @@ public:
   void               copyActiveDocument();
   void               cutActiveDocument();
   void               pasteActiveDocument();
-  void               deleteActiveSelection();
+  void               deleteInActiveDocument();
   [[nodiscard]] std::shared_ptr<PreparedDocument>
        prepareDocument(const SILICON::project::Document& document);
   void activateDocument(const PreparedDocument& prepared);
@@ -58,7 +76,16 @@ public:
 
 signals:
   void activeEditorChanged();
-  void historyAvailabilityChanged();
+
+  /**
+   * @brief Emitted when the active editor's undo/redo availability may have changed.
+   *
+   * Aggregates the history notifications of every hosted editor, of the project-wide
+   * undo stack, and of the architecture tabs, so observers never have to subscribe to
+   * an individual editor.
+   */
+  void historyStateChanged();
+
   void editorCreated(DocumentEditor* editor);
 
 private:
@@ -66,10 +93,13 @@ private:
   CodeDocumentEditor&           ensureCodeEditor();
   BinaryDocumentEditor&         ensureBinaryEditor();
   ArchitectureDocumentEditor&   ensureArchitectureEditor();
+  [[nodiscard]] bool            editsActiveCircuit() const noexcept;
 
   ProjectSession&                             session;
   QStackedWidget*                             stack;
   DocumentEditor*                             activeDocumentEditor = nullptr;
+  DiagramInteractionController*               circuitEditing       = nullptr;
+  QUndoStack*                                 projectHistory       = nullptr;
   std::unique_ptr<CircuitEditor>              circuit;
   std::unique_ptr<CodeDocumentEditor>         code;
   std::unique_ptr<BinaryDocumentEditor>       binary;
