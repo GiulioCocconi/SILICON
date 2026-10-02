@@ -35,11 +35,8 @@ namespace {
 
 WaveformController::WaveformController(ProjectSession& session, DiagramScene& scene,
                                        ProjectDocumentController& documents,
-                                       QAction& toggleAction, QWidget* window)
-  : QObject(window),
-    scene(scene),
-    toggleAction(toggleAction),
-    activeIsDiagram(isDiagramDocument(session))
+                                       QWidget*                   window)
+  : QObject(window), scene(scene), activeIsDiagram(isDiagramDocument(session))
 {
   activeDocumentPath = QString::fromStdString(session.activeDocumentPath);
 
@@ -54,8 +51,7 @@ WaveformController::WaveformController(ProjectSession& session, DiagramScene& sc
   layout->addWidget(this->viewer);
 
   connect(this->window, &QDialog::finished, this, [this] {
-    const QSignalBlocker blocker(&this->toggleAction);
-    this->toggleAction.setChecked(false);
+    setTraceActionChecked(false);
     this->viewer->setEditMode(false);
   });
   connect(&this->scene, &DiagramScene::waveformTraceReset, this->viewer,
@@ -73,6 +69,12 @@ WaveformController::WaveformController(ProjectSession& session, DiagramScene& sc
           &WaveformController::handleActiveDocumentChanged);
 }
 
+void WaveformController::bindActions(const WaveformActions& actions)
+{
+  toggleAction = actions.toggleTrace;
+  connect(toggleAction, &QAction::toggled, this, &WaveformController::toggle);
+}
+
 WaveformController::~WaveformController()
 {
   delete window;
@@ -81,8 +83,7 @@ WaveformController::~WaveformController()
 void WaveformController::toggle(const bool enabled)
 {
   if (enabled && !activeIsDiagram) {
-    const QSignalBlocker blocker(&toggleAction);
-    toggleAction.setChecked(false);
+    setTraceActionChecked(false);
     return;
   }
 
@@ -99,8 +100,8 @@ void WaveformController::handleActiveDocumentChanged(
     const QString& path, const SILICON::project::DocumentCategory category)
 {
   const bool switchedDocument = path != activeDocumentPath;
-  activeDocumentPath         = path;
-  activeIsDiagram            = category == SILICON::project::DocumentCategory::Diagram;
+  activeDocumentPath          = path;
+  activeIsDiagram             = category == SILICON::project::DocumentCategory::Diagram;
 
   if (!activeIsDiagram) {
     // Waveforms only exist for diagram documents: a code, binary, or architecture
@@ -114,14 +115,21 @@ void WaveformController::handleActiveDocumentChanged(
     viewer->resetTrace({}, 0, {});
 }
 
+void WaveformController::setTraceActionChecked(const bool checked)
+{
+  if (!toggleAction)
+    return;
+  const QSignalBlocker blocker(toggleAction);
+  toggleAction->setChecked(checked);
+}
+
 void WaveformController::closeViewer()
 {
   // Closing emits finished(), which already unchecks the action and leaves edit mode.
   if (window->isVisible())
     window->close();
 
-  const QSignalBlocker blocker(&toggleAction);
-  toggleAction.setChecked(false);
+  setTraceActionChecked(false);
   viewer->setEditMode(false);
   scene.setInteractionMode(DiagramScene::InteractionMode::NORMAL_MODE);
 }

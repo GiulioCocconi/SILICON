@@ -9,8 +9,17 @@
 
 #include "circuitEditor.hpp"
 
+#include <cstdint>
+#include <ranges>
 #include <stdexcept>
+#include <vector>
 
+#include <QApplication>
+#include <QByteArray>
+#include <QClipboard>
+#include <QCursor>
+#include <QMimeData>
+#include <QPointF>
 #include <QUndoStack>
 
 #include <nlohmann/json.hpp>
@@ -22,17 +31,38 @@
 #include <ui/circuit/diagram/diagramView.hpp>
 #include <ui/circuit/diagram/scene/diagramScene.hpp>
 #include <ui/circuit/diagram/scene/diagramSceneSerializer.hpp>
+#include <ui/circuit/diagram/undoCommands.hpp>
 #include <ui/project/projectSession.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
 
 namespace SILICON::ui {
 namespace {
+  /** Clipboard format carrying a serialized circuit selection. */
+  constexpr char CIRCUIT_SELECTION_MIME_TYPE[] =
+      "application/vnd.silicon.circuit-selection+bson";
+
   struct PreparedCircuit final : PreparedEditorDocument {
     std::shared_ptr<SceneLoadPlan> plan;
   };
+
+  bool hasClipboardItems(const nlohmann::json& payload)
+  {
+    if (!payload.contains("visual") || !payload["visual"].is_object())
+      return false;
+
+    const auto& visual        = payload["visual"];
+    const bool  hasComponents = visual.contains("components")
+                               && visual["components"].is_array()
+                               && !visual["components"].empty();
+    const bool hasWires = visual.contains("wires") && visual["wires"].is_array()
+                          && !visual["wires"].empty();
+
+    return hasComponents || hasWires;
+  }
 }  // namespace
 
-CircuitEditor::CircuitEditor(ProjectSession& session, QWidget* parent)
+CircuitEditor::CircuitEditor(ProjectSession& session, QWidget* parent,
+                             EditorNotifications notifications)
   : session(session),
     diagramScene(new DiagramScene(parent)),
     diagramView(new DiagramView(parent))
@@ -40,6 +70,15 @@ CircuitEditor::CircuitEditor(ProjectSession& session, QWidget* parent)
   diagramScene->setDocumentStore(&session.projectContext.documents());
   diagramScene->setCircuitResolver(&session.circuitResolver);
   diagramView->setScene(diagramScene);
+
+  // Selection and interaction mode both decide which diagram commands apply, so the scene
+  // reports them through the workspace. The clipboard is not observed here: the workspace
+  // watches it once and this editor only answers what its own contents mean.
+  const auto reportEditState = [notifications] { notifications.editStateChanged(); };
+  QObject::connect(diagramScene, &DiagramScene::selectionChanged, diagramScene,
+                   reportEditState);
+  QObject::connect(diagramScene, &DiagramScene::modeChanged, diagramScene,
+                   reportEditState);
 }
 
 CircuitEditor::~CircuitEditor()
@@ -92,7 +131,7 @@ void CircuitEditor::flush(const std::string& path)
 
 bool CircuitEditor::isDirty() const
 {
-  return undoStack && !undoStack->isClean();
+  return projectHistory && !projectHistory->isClean();
 }
 void CircuitEditor::resetDirtyState() noexcept {}
 void CircuitEditor::reset()
@@ -103,21 +142,120 @@ void CircuitEditor::reset()
 }
 void CircuitEditor::undo()
 {
-  if (undoStack)
-    undoStack->undo();
+  if (projectHistory)
+    projectHistory->undo();
 }
 void CircuitEditor::redo()
 {
-  if (undoStack)
-    undoStack->redo();
+  if (projectHistory)
+    projectHistory->redo();
 }
 bool CircuitEditor::canUndo() const
 {
-  return undoStack && undoStack->canUndo();
+  return projectHistory && projectHistory->canUndo();
 }
 bool CircuitEditor::canRedo() const
 {
-  return undoStack && undoStack->canRedo();
+  return projectHistory && projectHistory->canRedo();
+}
+
+bool CircuitEditor::copySelectionToClipboard()
+{
+  try {
+    const auto payload = diagramScene->serializeSelection();
+    if (!hasClipboardItems(payload))
+      return false;
+
+    const auto bson = nlohmann::json::to_bson(payload);
+    QByteArray bytes(reinterpret_cast<const char*>(bson.data()),
+                     static_cast<qsizetype>(bson.size()));
+
+    auto* mimeData = new QMimeData();
+    mimeData->setData(CIRCUIT_SELECTION_MIME_TYPE, bytes);
+    QApplication::clipboard()->setMimeData(mimeData);
+
+    return true;
+  } catch (const std::exception&) {
+    return false;
+  }
+}
+
+void CircuitEditor::copy()
+{
+  copySelectionToClipboard();
+}
+
+void CircuitEditor::cut()
+{
+  if (copySelectionToClipboard())
+    deleteSelection();
+}
+
+void CircuitEditor::paste()
+{
+  const QMimeData* mimeData = QApplication::clipboard()->mimeData();
+  if (!mimeData || !mimeData->hasFormat(CIRCUIT_SELECTION_MIME_TYPE))
+    return;
+
+  const QByteArray bytes = mimeData->data(CIRCUIT_SELECTION_MIME_TYPE);
+  if (bytes.isEmpty())
+    return;
+
+  try {
+    auto&      guiFactory   = GUIComponentFactory::instance();
+    auto&      coreRegistry = ComponentRegistry::instance();
+    const auto payload      = nlohmann::json::from_bson(
+        reinterpret_cast<const std::uint8_t*>(bytes.data()),
+        reinterpret_cast<const std::uint8_t*>(bytes.data() + bytes.size()));
+
+    if (diagramScene->getInteractionMode() != InteractionMode::NORMAL_MODE)
+      diagramScene->setInteractionMode(InteractionMode::NORMAL_MODE);
+
+    const QPointF targetOrigin =
+        diagramView->mapToScene(diagramView->mapFromGlobal(QCursor::pos()));
+    if (!diagramScene->insertSelection(payload, guiFactory, coreRegistry, targetOrigin,
+                                       true))
+      return;
+
+    if (projectHistory)
+      projectHistory->push(
+          new SceneSelectionCommand(diagramScene, diagramScene->serializeSelection(),
+                                    SceneSelectionCommand::Operation::Add, true));
+  } catch (const std::exception&) {
+  }
+}
+
+void CircuitEditor::deleteSelection()
+{
+  auto itemsToDelete =
+      diagramScene->selectedItems()
+      | std::views::filter([](auto* item) { return item->type() > UNKNOWN; })
+      | std::ranges::to<std::vector>();
+  if (itemsToDelete.empty())
+    return;
+
+  const auto payload = diagramScene->serializeItems(itemsToDelete);
+  diagramScene->removeItems(itemsToDelete);
+  if (projectHistory)
+    projectHistory->push(new SceneSelectionCommand(
+        diagramScene, payload, SceneSelectionCommand::Operation::Remove, true));
+}
+
+EditorEditState CircuitEditor::editState() const
+{
+  const auto interactionMode = diagramScene->getInteractionMode();
+  const bool normalMode      = interactionMode == InteractionMode::NORMAL_MODE;
+  const auto selected        = diagramScene->selectedItems();
+
+  EditorEditState state;
+  state.canCut = state.canCopy = state.canDelete = normalMode && !selected.empty();
+  state.canRotate                                = (normalMode && selected.size() == 1)
+                    || interactionMode == InteractionMode::COMPONENT_PLACING_MODE;
+
+  const auto* clipboardData = QApplication::clipboard()->mimeData();
+  state.canPaste            = normalMode && clipboardData
+                   && clipboardData->hasFormat(CIRCUIT_SELECTION_MIME_TYPE);
+  return state;
 }
 
 }  // namespace SILICON::ui

@@ -10,7 +10,10 @@
 
 #include <stdexcept>
 
+#include <QApplication>
+#include <QClipboard>
 #include <QStackedWidget>
+#include <QUndoStack>
 #include <QVBoxLayout>
 
 #include <ui/circuit/editor/circuitEditor.hpp>
@@ -36,13 +39,24 @@ EditorWorkspace::EditorWorkspace(ProjectSession& session, QWidget* parent)
   layout->setContentsMargins(0, 0, 0, 0);
   layout->addWidget(stack);
   activeDocumentEditor = &circuitEditor();
+  connect(this, &EditorWorkspace::editorCreated, this,
+          [this](DocumentEditor* editor) { editor->setProjectHistory(projectHistory); });
+  // The clipboard is global while the editors answering editState() are local, so it is
+  // observed exactly once here. The active editor still decides what its contents mean.
+  connect(QApplication::clipboard(), &QClipboard::dataChanged, this,
+          &EditorWorkspace::editStateChanged);
 }
 EditorWorkspace::~EditorWorkspace() = default;
+
+EditorNotifications EditorWorkspace::notifications()
+{
+  return {[this] { emit historyStateChanged(); }, [this] { emit editStateChanged(); }};
+}
 
 CircuitEditor& EditorWorkspace::circuitEditor()
 {
   if (!circuit) {
-    circuit = std::make_unique<CircuitEditor>(session, stack);
+    circuit = std::make_unique<CircuitEditor>(session, stack, notifications());
     stack->addWidget(circuit->widget());
     emit editorCreated(circuit.get());
   }
@@ -51,8 +65,7 @@ CircuitEditor& EditorWorkspace::circuitEditor()
 CodeDocumentEditor& EditorWorkspace::ensureCodeEditor()
 {
   if (!code) {
-    code = std::make_unique<CodeDocumentEditor>(
-        session, stack, [this] { emit historyAvailabilityChanged(); });
+    code = std::make_unique<CodeDocumentEditor>(session, stack, notifications());
     stack->addWidget(code->widget());
     emit editorCreated(code.get());
   }
@@ -61,8 +74,7 @@ CodeDocumentEditor& EditorWorkspace::ensureCodeEditor()
 BinaryDocumentEditor& EditorWorkspace::ensureBinaryEditor()
 {
   if (!binary) {
-    binary = std::make_unique<BinaryDocumentEditor>(
-        session, stack, [this] { emit historyAvailabilityChanged(); });
+    binary = std::make_unique<BinaryDocumentEditor>(session, stack, notifications());
     stack->addWidget(binary->widget());
     emit editorCreated(binary.get());
   }
@@ -71,8 +83,8 @@ BinaryDocumentEditor& EditorWorkspace::ensureBinaryEditor()
 ArchitectureDocumentEditor& EditorWorkspace::ensureArchitectureEditor()
 {
   if (!architecture) {
-    architecture = std::make_unique<ArchitectureDocumentEditor>(
-        session, stack, [this] { emit historyAvailabilityChanged(); });
+    architecture =
+        std::make_unique<ArchitectureDocumentEditor>(session, stack, notifications());
     stack->addWidget(architecture->widget());
     emit editorCreated(architecture.get());
   }
@@ -88,6 +100,35 @@ DocumentEditor& EditorWorkspace::editorFor(SILICON::project::DocumentType type)
     case DocumentCategory::Architecture: return ensureArchitectureEditor();
   }
   throw std::logic_error("Unsupported project document type");
+}
+void EditorWorkspace::setProjectHistory(QUndoStack* history) noexcept
+{
+  if (projectHistory == history)
+    return;
+  if (projectHistory)
+    disconnect(projectHistory, nullptr, this, nullptr);
+
+  projectHistory = history;
+  if (projectHistory) {
+    // Every editor falls back to the project history when its own document has nothing
+    // left to undo, so its state has to be part of the workspace notifications.
+    connect(projectHistory, &QUndoStack::canUndoChanged, this,
+            &EditorWorkspace::historyStateChanged);
+    connect(projectHistory, &QUndoStack::canRedoChanged, this,
+            &EditorWorkspace::historyStateChanged);
+  }
+  if (circuit)
+    circuit->setProjectHistory(projectHistory);
+  if (code)
+    code->setProjectHistory(projectHistory);
+  if (binary)
+    binary->setProjectHistory(projectHistory);
+  if (architecture)
+    architecture->setProjectHistory(projectHistory);
+}
+EditorEditState EditorWorkspace::activeEditState() const
+{
+  return activeDocumentEditor ? activeDocumentEditor->editState() : EditorEditState{};
 }
 bool EditorWorkspace::hasUnsavedChanges() const
 {
@@ -182,7 +223,7 @@ void EditorWorkspace::pasteActiveDocument()
   if (activeDocumentEditor)
     activeDocumentEditor->paste();
 }
-void EditorWorkspace::deleteActiveSelection()
+void EditorWorkspace::deleteInActiveDocument()
 {
   if (activeDocumentEditor)
     activeDocumentEditor->deleteSelection();

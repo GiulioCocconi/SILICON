@@ -11,8 +11,6 @@
 
 #include <ui/documents/documentEditor.hpp>
 
-class QUndoStack;
-
 namespace SILICON::ui {
 
 class DiagramScene;
@@ -22,12 +20,12 @@ struct ProjectSession;
 /** Owns the circuit scene and its view. */
 class CircuitEditor final : public DocumentEditor {
 public:
-  CircuitEditor(ProjectSession& session, QWidget* parent);
+  CircuitEditor(ProjectSession& session, QWidget* parent,
+                EditorNotifications notifications);
   ~CircuitEditor() override;
 
   [[nodiscard]] DiagramScene* scene() const noexcept { return diagramScene; }
   [[nodiscard]] DiagramView*  view() const noexcept { return diagramView; }
-  void setUndoStack(QUndoStack* stack) noexcept { undoStack = stack; }
 
   [[nodiscard]] QWidget* widget() const noexcept override;
   [[nodiscard]] std::shared_ptr<PreparedEditorDocument>
@@ -41,12 +39,25 @@ public:
   void               redo() override;
   [[nodiscard]] bool canUndo() const override;
   [[nodiscard]] bool canRedo() const override;
+  void               copy() override;
+  void               cut() override;
+  void               paste() override;
+  void               deleteSelection() override;
+
+  /**
+   * @brief Reports which editing commands the diagram currently accepts.
+   *
+   * Availability follows the scene: the interaction mode, the current selection, and
+   * the clipboard contents this editor put there or can deserialize.
+   */
+  [[nodiscard]] EditorEditState editState() const override;
 
 private:
+  bool copySelectionToClipboard();
+
   ProjectSession& session;
   DiagramScene*   diagramScene;
   DiagramView*    diagramView;
-  QUndoStack*     undoStack = nullptr;
 };
 
 }  // namespace SILICON::ui

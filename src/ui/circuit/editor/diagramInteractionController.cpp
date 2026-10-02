@@ -19,149 +19,63 @@
 #include <ui/circuit/editor/circuitEditor.hpp>
 #include <ui/project/projectSession.hpp>
 
-#include <cstdint>
-#include <ranges>
-#include <stdexcept>
 #include <vector>
 
-#include <QApplication>
-#include <QByteArray>
-#include <QClipboard>
-#include <QCursor>
-#include <QDialog>
-#include <QMimeData>
-#include <QPointF>
+#include <QAction>
 #include <QSignalBlocker>
-#include <QStatusBar>
 #include <QUndoStack>
+#include <QWidget>
 
 #include <nlohmann/json.hpp>
 
 #include <core/serialization/component_registry.hpp>
 #include <ui/circuit/components/graphicalLogicComponent.hpp>
+#include <ui/circuit/components/subcircuit/componentShapeEditor.hpp>
 #include <ui/circuit/components/subcircuit/utils.hpp>
 #include <ui/circuit/diagram/diagramView.hpp>
 #include <ui/circuit/diagram/scene/diagramScene.hpp>
 #include <ui/circuit/diagram/undoCommands.hpp>
 #include <ui/circuit/editor/componentCatalogOverlay.hpp>
-#include <ui/documents/code/codeEditor.hpp>
-#include <ui/project/projectTree.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
-#include <ui/waveform/waveformViewer.hpp>
+#include <ui/shell/inputDialogUtils.hpp>
 
 namespace SILICON::ui {
 using namespace SILICON::core;
 
-namespace {
-  bool hasClipboardItems(const nlohmann::json& payload)
-  {
-    if (!payload.contains("visual") || !payload["visual"].is_object())
-      return false;
-
-    const auto& visual        = payload["visual"];
-    const bool  hasComponents = visual.contains("components")
-                               && visual["components"].is_array()
-                               && !visual["components"].empty();
-    const bool hasWires = visual.contains("wires") && visual["wires"].is_array()
-                          && !visual["wires"].empty();
-
-    return hasComponents || hasWires;
-  }
-
-}  // namespace
-
 DiagramInteractionController::DiagramInteractionController(
     ProjectSession& session, CircuitEditor& circuit, ComponentCatalogOverlay& catalog,
-    QUndoStack& history, QObject* parent)
-  : QObject(parent),
+    QUndoStack& history, QWidget& window)
+  : QObject(&window),
     session(session),
     circuit(circuit),
     catalog(catalog),
-    undoStack(history)
+    undoStack(history),
+    window(window)
 {
 }
 
-bool DiagramInteractionController::copySelectionToClipboard()
+void DiagramInteractionController::bindActions(const CircuitActions& actions)
 {
-  try {
-    const auto payload = circuit.scene()->serializeSelection();
-    if (!hasClipboardItems(payload))
-      return false;
-
-    const auto bson = nlohmann::json::to_bson(payload);
-    QByteArray bytes(reinterpret_cast<const char*>(bson.data()),
-                     static_cast<qsizetype>(bson.size()));
-
-    auto* mimeData = new QMimeData();
-    mimeData->setData(CIRCUIT_SELECTION_MIME_TYPE, bytes);
-    QApplication::clipboard()->setMimeData(mimeData);
-
-    return true;
-  } catch (const std::exception&) {
-    return false;
-  }
-}
-
-void DiagramInteractionController::copy()
-{
-  const auto type = SILICON::project::documentTypeForPath(session.activeDocumentPath);
-  if (!type
-      || SILICON::project::categoryOf(*type)
-             != SILICON::project::DocumentCategory::Diagram)
-    return;
-
-  copySelectionToClipboard();
-}
-
-void DiagramInteractionController::cut()
-{
-  const auto type = SILICON::project::documentTypeForPath(session.activeDocumentPath);
-  if (!type
-      || SILICON::project::categoryOf(*type)
-             != SILICON::project::DocumentCategory::Diagram)
-    return;
-
-  if (copySelectionToClipboard())
-    del();
-}
-
-void DiagramInteractionController::paste()
-{
-  const auto type = SILICON::project::documentTypeForPath(session.activeDocumentPath);
-  if (!type
-      || SILICON::project::categoryOf(*type)
-             != SILICON::project::DocumentCategory::Diagram)
-    return;
-
-  const QMimeData* mimeData = QApplication::clipboard()->mimeData();
-  if (!mimeData || !mimeData->hasFormat(CIRCUIT_SELECTION_MIME_TYPE))
-    return;
-
-  const QByteArray bytes = mimeData->data(CIRCUIT_SELECTION_MIME_TYPE);
-  if (bytes.isEmpty())
-    return;
-
-  try {
-    auto&      guiFactory   = GUIComponentFactory::instance();
-    auto&      coreRegistry = ComponentRegistry::instance();
-    const auto payload      = nlohmann::json::from_bson(
-        reinterpret_cast<const std::uint8_t*>(bytes.data()),
-        reinterpret_cast<const std::uint8_t*>(bytes.data() + bytes.size()));
-
-    if (circuit.scene()->getInteractionMode() != InteractionMode::NORMAL_MODE)
-      circuit.scene()->setInteractionMode(InteractionMode::NORMAL_MODE);
-
-    const QPointF targetOrigin =
-        circuit.view()->mapToScene(circuit.view()->mapFromGlobal(QCursor::pos()));
-    if (!circuit.scene()->insertSelection(payload, guiFactory, coreRegistry, targetOrigin,
-                                          true))
-      return;
-
-    undoStack.push(
-        new SceneSelectionCommand(circuit.scene(), circuit.scene()->serializeSelection(),
-                                  SceneSelectionCommand::Operation::Add, true));
-  } catch (const std::exception&) {
-  }
+  connect(actions.rotate, &QAction::triggered, this,
+          &DiagramInteractionController::rotate);
+  connect(actions.autoPlace, &QAction::triggered, this,
+          &DiagramInteractionController::autoPlace);
+  connect(actions.setNormalMode, &QAction::triggered, this,
+          &DiagramInteractionController::setNormalMode);
+  connect(actions.setPanMode, &QAction::triggered, this,
+          &DiagramInteractionController::setPanMode);
+  connect(actions.setWireCreationMode, &QAction::triggered, this,
+          &DiagramInteractionController::setWireCreationMode);
+  connect(actions.setSimulationMode, &QAction::triggered, this,
+          &DiagramInteractionController::setSimulationMode);
+  connect(actions.setComponentPlacingMode, &QAction::triggered, this,
+          &DiagramInteractionController::setComponentPlacingMode);
+  connect(actions.cancelInteraction, &QAction::triggered, this,
+          &DiagramInteractionController::cancelCurrentInteraction);
+  connect(actions.openComponentCatalog, &QAction::triggered, this,
+          &DiagramInteractionController::showComponentCatalog);
+  connect(actions.editSubcircuitShape, &QAction::triggered, this,
+          &DiagramInteractionController::editActiveSubcircuitShape);
 }
 
 void DiagramInteractionController::rotate()
@@ -202,25 +116,25 @@ void DiagramInteractionController::autoPlace()
   circuit.scene()->autoPlaceCircuit();
 }
 
-void DiagramInteractionController::del()
+void DiagramInteractionController::editActiveSubcircuitShape()
 {
-  const auto type = SILICON::project::documentTypeForPath(session.activeDocumentPath);
-  if (!type
-      || SILICON::project::categoryOf(*type)
-             != SILICON::project::DocumentCategory::Diagram)
+  if (SILICON::project::documentTypeForPath(session.activeDocumentPath)
+      != SILICON::project::DocumentType::Circuit)
     return;
 
-  auto itemsToDelete =
-      circuit.scene()->selectedItems()
-      | std::views::filter([](auto* item) { return item->type() > UNKNOWN; })
-      | std::ranges::to<std::vector>();
-  if (itemsToDelete.empty())
+  const auto slug = SILICON::project::documentSlugForPath(session.activeDocumentPath);
+  if (!slug)
     return;
 
-  const auto payload = circuit.scene()->serializeItems(itemsToDelete);
-  circuit.scene()->removeItems(itemsToDelete);
-  undoStack.push(new SceneSelectionCommand(
-      circuit.scene(), payload, SceneSelectionCommand::Operation::Remove, true));
+  try {
+    circuit.flush(session.activeDocumentPath);
+    editGraphicalSubcircuitShape(*slug, session.projectContext, &undoStack, &window);
+  } catch (const std::exception& e) {
+    inputDialog::warning(
+        &window, window.tr("Edit shape"),
+        window.tr("Failed to save the active circuit before editing its shape:\n%1")
+            .arg(e.what()));
+  }
 }
 
 void DiagramInteractionController::setNormalMode()

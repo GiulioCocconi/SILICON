@@ -157,7 +157,6 @@ set(UI_SOURCE_FILES
         ${src_dir}/ui/project/projectDocumentActions.cpp
         ${src_dir}/ui/project/projectArchitectureActions.cpp
         ${src_dir}/ui/project/projectDocumentConversion.cpp
-        ${src_dir}/ui/shell/siliconWindowActions.cpp
         ${src_dir}/ui/shell/uiUtils.cpp
         ${src_dir}/ui/shell/windowActions.cpp
         ${src_dir}/ui/shell/windowActionsSettings.cpp

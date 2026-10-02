@@ -9,7 +9,6 @@
 
 #pragma once
 
-#include <functional>
 #include <ui/documents/documentEditor.hpp>
 
 namespace SILICON::ui {
@@ -22,24 +21,25 @@ struct ProjectSession;
 class CodeDocumentEditor final : public DocumentEditor {
 public:
   CodeDocumentEditor(ProjectSession& session, QWidget* parent,
-                     std::function<void()> historyChanged);
+                     EditorNotifications notifications);
   [[nodiscard]] CodeEditor* editor() const noexcept { return codeEditor; }
   [[nodiscard]] QWidget*    widget() const noexcept override;
   [[nodiscard]] std::shared_ptr<PreparedEditorDocument>
-                     prepare(const SILICON::project::Document&) override;
-  void               apply(const PreparedEditorDocument&) override;
-  void               flush(const std::string&) override;
-  [[nodiscard]] bool isDirty() const override;
-  void               resetDirtyState() noexcept override;
-  void               reset() override;
-  void               undo() override;
-  void               redo() override;
-  [[nodiscard]] bool canUndo() const override;
-  [[nodiscard]] bool canRedo() const override;
-  void               copy() override;
-  void               cut() override;
-  void               paste() override;
-  void               deleteSelection() override;
+                                prepare(const SILICON::project::Document&) override;
+  void                          apply(const PreparedEditorDocument&) override;
+  void                          flush(const std::string&) override;
+  [[nodiscard]] bool            isDirty() const override;
+  void                          resetDirtyState() noexcept override;
+  void                          reset() override;
+  void                          undo() override;
+  void                          redo() override;
+  [[nodiscard]] bool            canUndo() const override;
+  [[nodiscard]] bool            canRedo() const override;
+  void                          copy() override;
+  void                          cut() override;
+  void                          paste() override;
+  void                          deleteSelection() override;
+  [[nodiscard]] EditorEditState editState() const override;
 
 private:
   ProjectSession& session;
@@ -50,7 +50,7 @@ private:
 class BinaryDocumentEditor final : public DocumentEditor {
 public:
   BinaryDocumentEditor(ProjectSession& session, QWidget* parent,
-                       std::function<void()> historyChanged);
+                       EditorNotifications notifications);
   [[nodiscard]] BinaryEditor* editor() const noexcept { return binaryEditor; }
   [[nodiscard]] QWidget*      widget() const noexcept override;
   [[nodiscard]] std::shared_ptr<PreparedEditorDocument>
@@ -74,7 +74,7 @@ private:
 class ArchitectureDocumentEditor final : public DocumentEditor {
 public:
   ArchitectureDocumentEditor(ProjectSession& session, QWidget* parent,
-                             std::function<void()> historyChanged);
+                             EditorNotifications notifications);
   [[nodiscard]] ArchitectureWorkspace* workspace() const noexcept
   {
     return architectureWorkspace;
@@ -84,21 +84,21 @@ public:
   [[nodiscard]] bool isVisualizerActive() const noexcept;
   [[nodiscard]] QWidget* widget() const noexcept override;
   [[nodiscard]] std::shared_ptr<PreparedEditorDocument>
-                     prepare(const SILICON::project::Document&) override;
-  void               apply(const PreparedEditorDocument&) override;
-  void               flush(const std::string&) override;
-  [[nodiscard]] bool isDirty() const override;
-  void               resetDirtyState() noexcept override;
-  void               reset() override;
-  void               undo() override;
-  void               redo() override;
-  [[nodiscard]] bool canUndo() const override;
-  [[nodiscard]] bool canRedo() const override;
-  void               copy() override;
-  void               cut() override;
-  void               paste() override;
-  void               deleteSelection() override;
-  [[nodiscard]] bool isEditable() const override;
+                                prepare(const SILICON::project::Document&) override;
+  void                          apply(const PreparedEditorDocument&) override;
+  void                          flush(const std::string&) override;
+  [[nodiscard]] bool            isDirty() const override;
+  void                          resetDirtyState() noexcept override;
+  void                          reset() override;
+  void                          undo() override;
+  void                          redo() override;
+  [[nodiscard]] bool            canUndo() const override;
+  [[nodiscard]] bool            canRedo() const override;
+  void                          copy() override;
+  void                          cut() override;
+  void                          paste() override;
+  void                          deleteSelection() override;
+  [[nodiscard]] EditorEditState editState() const override;
 
 private:
   ProjectSession&        session;

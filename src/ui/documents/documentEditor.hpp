@@ -9,6 +9,7 @@
 
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -22,6 +23,23 @@ namespace SILICON::ui {
 /** A detached payload which can be applied after preparation succeeds. */
 struct PreparedEditorDocument {
   virtual ~PreparedEditorDocument() = default;
+};
+
+/** Callbacks an editor uses to report changes to whoever hosts it. */
+struct EditorNotifications {
+  /** @brief The undo/redo availability of the hosted editor may have changed. */
+  std::function<void()> historyChanged;
+  /** @brief The generic editing availability of the hosted editor may have changed. */
+  std::function<void()> editStateChanged;
+};
+
+/** Which of the generic editing commands an editor currently accepts. */
+struct EditorEditState {
+  bool canCut    = false;
+  bool canCopy   = false;
+  bool canPaste  = false;
+  bool canDelete = false;
+  bool canRotate = false;
 };
 
 /** Operations shared by document editors hosted in EditorWorkspace. */
@@ -44,7 +62,14 @@ public:
   virtual void               cut() {}
   virtual void               paste() {}
   virtual void               deleteSelection() {}
-  [[nodiscard]] virtual bool isEditable() const { return true; }
+
+  /**
+   * @brief Reports which generic editing commands the editor currently accepts.
+   *
+   * An editor answers from its own content, so callers never need to know how an
+   * operation is implemented: whether over a text buffer, a hex view, or a diagram.
+   */
+  [[nodiscard]] virtual EditorEditState editState() const { return {}; }
   void setProjectHistory(QUndoStack* history) noexcept { projectHistory = history; }
 
 protected:
