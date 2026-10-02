@@ -25,6 +25,7 @@
 #include <ui/circuit/diagram/scene/diagramScene.hpp>
 #include <ui/project/projectTree.hpp>
 #include <ui/shell/uiUtils.hpp>
+#include <ui/shell/windowActions.hpp>
 
 namespace SILICON::ui {
 using namespace SILICON::core;
@@ -38,8 +39,6 @@ void SiliconWindow::updateStatus() const
 
 void SiliconWindow::selectionChanged()
 {
-  actionSet->updateEditActions();
-
   if (!circuitEditor->scene()->selectedItems().empty() && projectTree)
     projectTree->clearDocumentSelection();
 

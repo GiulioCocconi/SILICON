@@ -14,6 +14,8 @@
 
 #include <core/projectDocument.hpp>
 
+#include <ui/actionGroups.hpp>
+
 class QAction;
 class QDialog;
 class QWidget;
@@ -31,9 +33,11 @@ namespace waveform {
 class WaveformController : public QObject {
 public:
   WaveformController(ProjectSession& session, DiagramScene& scene,
-                     ProjectDocumentController& documents, QAction& toggleAction,
-                     QWidget* window);
+                     ProjectDocumentController& documents, QWidget* window);
   ~WaveformController() override;
+
+  /** @brief Connects the main-window waveform actions to their viewer commands. */
+  void bindActions(const WaveformActions& actions);
 
   void toggle(bool enabled);
 
@@ -43,11 +47,12 @@ private:
                                    SILICON::project::DocumentCategory category);
   /** @brief Hides the viewer and leaves the scene in a non-simulating state. */
   void closeViewer();
+  void setTraceActionChecked(bool checked);
 
   DiagramScene&     scene;
-  QAction&          toggleAction;
-  QDialog*          window = nullptr;
-  waveform::Viewer* viewer = nullptr;
+  QAction*          toggleAction = nullptr;
+  QDialog*          window       = nullptr;
+  waveform::Viewer* viewer       = nullptr;
   QString           activeDocumentPath;
   bool              activeIsDiagram = false;
 };

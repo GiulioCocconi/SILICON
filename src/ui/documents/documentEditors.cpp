@@ -11,6 +11,7 @@
 
 #include <stdexcept>
 
+#include <QTabWidget>
 #include <QTextDocument>
 #include <QUndoStack>
 
@@ -34,9 +35,11 @@ namespace {
 }  // namespace
 
 CodeDocumentEditor::CodeDocumentEditor(ProjectSession& session, QWidget* parent,
-                                       std::function<void()> historyChanged)
+                                       EditorNotifications notifications)
   : session(session), codeEditor(new CodeEditor(parent))
 {
+  const auto& historyChanged   = notifications.historyChanged;
+  const auto& editStateChanged = notifications.editStateChanged;
   QObject::connect(codeEditor->document(), &QTextDocument::modificationChanged,
                    codeEditor, [this](bool modified) {
                      if (modified && codeEditor->fileType())
@@ -46,6 +49,8 @@ CodeDocumentEditor::CodeDocumentEditor(ProjectSession& session, QWidget* parent,
                    [historyChanged](bool) { historyChanged(); });
   QObject::connect(codeEditor, &QPlainTextEdit::redoAvailable, codeEditor,
                    [historyChanged](bool) { historyChanged(); });
+  QObject::connect(codeEditor, &QPlainTextEdit::selectionChanged, codeEditor,
+                   [editStateChanged] { editStateChanged(); });
 }
 QWidget* CodeDocumentEditor::widget() const noexcept
 {
@@ -132,11 +137,20 @@ void CodeDocumentEditor::deleteSelection()
     cursor.deleteChar();
   codeEditor->setTextCursor(cursor);
 }
+EditorEditState CodeDocumentEditor::editState() const
+{
+  const bool hasSelection = codeEditor->textCursor().hasSelection();
+  return {.canCut    = hasSelection,
+          .canCopy   = hasSelection,
+          .canPaste  = codeEditor->canPaste(),
+          .canDelete = hasSelection};
+}
 
 BinaryDocumentEditor::BinaryDocumentEditor(ProjectSession& session, QWidget* parent,
-                                           std::function<void()> historyChanged)
+                                           EditorNotifications notifications)
   : session(session), binaryEditor(new BinaryEditor(parent))
 {
+  const auto& historyChanged = notifications.historyChanged;
   QObject::connect(binaryEditor->history(), &QUndoStack::cleanChanged, binaryEditor,
                    [this](bool clean) {
                      const auto type = SILICON::project::documentTypeForPath(
@@ -216,10 +230,13 @@ bool BinaryDocumentEditor::canRedo() const
          || (projectHistory && projectHistory->canRedo());
 }
 
-ArchitectureDocumentEditor::ArchitectureDocumentEditor(
-    ProjectSession& session, QWidget* parent, std::function<void()> historyChanged)
+ArchitectureDocumentEditor::ArchitectureDocumentEditor(ProjectSession&     session,
+                                                       QWidget*            parent,
+                                                       EditorNotifications notifications)
   : session(session), architectureWorkspace(new ArchitectureWorkspace(parent))
 {
+  const auto& historyChanged   = notifications.historyChanged;
+  const auto& editStateChanged = notifications.editStateChanged;
   QObject::connect(architectureWorkspace, &ArchitectureWorkspace::documentModified,
                    architectureWorkspace, [this] { dirty = true; });
   for (const auto& [type, editor] : architectureWorkspace->editors()) {
@@ -227,7 +244,17 @@ ArchitectureDocumentEditor::ArchitectureDocumentEditor(
                      [historyChanged](bool) { historyChanged(); });
     QObject::connect(editor, &QPlainTextEdit::redoAvailable, architectureWorkspace,
                      [historyChanged](bool) { historyChanged(); });
+    QObject::connect(editor, &QPlainTextEdit::selectionChanged, architectureWorkspace,
+                     [editStateChanged] { editStateChanged(); });
   }
+  // Selecting a tab swaps the editor owning the architecture document, and the visualizer
+  // tab replaces editing altogether, so a tab change alters both what can be undone and
+  // which editing commands apply.
+  QObject::connect(architectureWorkspace, &QTabWidget::currentChanged,
+                   architectureWorkspace, [historyChanged, editStateChanged](int) {
+                     historyChanged();
+                     editStateChanged();
+                   });
 }
 QWidget* ArchitectureDocumentEditor::widget() const noexcept
 {
@@ -279,9 +306,22 @@ bool ArchitectureDocumentEditor::isVisualizerActive() const noexcept
 {
   return architectureWorkspace->isVisualizerActive();
 }
-bool ArchitectureDocumentEditor::isEditable() const
+EditorEditState ArchitectureDocumentEditor::editState() const
 {
-  return !isVisualizerActive();
+  // The visualizer replaces the source editors, so no editing command applies to it.
+  if (isVisualizerActive())
+    return {};
+
+  const auto type   = SILICON::project::documentTypeForPath(session.activeDocumentPath);
+  auto*      editor = type ? activeCodeEditor(*type) : nullptr;
+  if (!editor)
+    return {};
+
+  const bool hasSelection = editor->textCursor().hasSelection();
+  return {.canCut    = hasSelection,
+          .canCopy   = hasSelection,
+          .canPaste  = editor->canPaste(),
+          .canDelete = hasSelection};
 }
 void ArchitectureDocumentEditor::undo()
 {
