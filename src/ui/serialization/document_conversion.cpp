@@ -64,26 +64,26 @@ namespace {
   }
 
 #ifdef __EMSCRIPTEN__
-  constexpr bool             YosysAvailable = false;
-  constexpr std::string_view YosysUnavailableReason =
+  constexpr bool             YOSYS_AVAILABLE = false;
+  constexpr std::string_view YOSYS_UNAVAILABLE_REASON =
       "Conversion requires Yosys and is unavailable in the web build";
 #else
-  constexpr bool             YosysAvailable = true;
-  constexpr std::string_view YosysUnavailableReason{};
+  constexpr bool             YOSYS_AVAILABLE = true;
+  constexpr std::string_view YOSYS_UNAVAILABLE_REASON{};
 #endif
 
-  constexpr std::array Converters{
+  constexpr std::array CONVERTERS{
       DocumentConverter{
           .source            = DocumentType::Circuit,
           .target            = DocumentType::Verilog,
-          .available         = YosysAvailable,
-          .unavailableReason = YosysUnavailableReason,
+          .available         = YOSYS_AVAILABLE,
+          .unavailableReason = YOSYS_UNAVAILABLE_REASON,
       },
       DocumentConverter{
           .source            = DocumentType::Verilog,
           .target            = DocumentType::Circuit,
-          .available         = YosysAvailable,
-          .unavailableReason = YosysUnavailableReason,
+          .available         = YOSYS_AVAILABLE,
+          .unavailableReason = YOSYS_UNAVAILABLE_REASON,
       },
   };
 
@@ -93,16 +93,16 @@ const DocumentConverter* documentConverterFor(const DocumentType source,
                                               const DocumentType target)
 {
   const auto found =
-      std::ranges::find_if(Converters, [source, target](const auto& converter) {
+      std::ranges::find_if(CONVERTERS, [source, target](const auto& converter) {
         return converter.source == source && converter.target == target;
       });
-  return found == Converters.end() ? nullptr : std::to_address(found);
+  return found == CONVERTERS.end() ? nullptr : std::to_address(found);
 }
 
 std::vector<const DocumentConverter*> documentConvertersFor(const DocumentType source)
 {
   std::vector<const DocumentConverter*> result;
-  for (const auto& converter : Converters) {
+  for (const auto& converter : CONVERTERS) {
     if (converter.source == source)
       result.push_back(&converter);
   }

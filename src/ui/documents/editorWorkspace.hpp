@@ -6,87 +6,103 @@
   the Free Software Foundation, either version 3 of the License, or
   (at your option) any later version.
  */
-
 #pragma once
 
 #include <memory>
 
-#include <QStackedWidget>
+#include <QWidget>
 
 #include <core/projectDocument.hpp>
 
+class QStackedWidget;
 class QUndoStack;
 
 namespace SILICON::ui {
-
-class ArchitectureWorkspace;
-class BinaryEditor;
-class CodeEditor;
-class DiagramScene;
-class DiagramView;
+class ArchitectureDocumentEditor;
+class BinaryDocumentEditor;
+class CircuitEditor;
+class CodeDocumentEditor;
+class DiagramInteractionController;
+class DocumentEditor;
+struct EditorEditState;
+struct PreparedEditorDocument;
 struct ProjectSession;
 
-/** Owns the document editor widgets and the scene they share. */
-class EditorWorkspace : public QStackedWidget {
+/** Selects and hosts editors while preserving detached document preparation. */
+class EditorWorkspace : public QWidget {
+  Q_OBJECT
 public:
-  /** @brief Document deserialized ahead of time, detached from the editor widgets. */
   class PreparedDocument;
 
   explicit EditorWorkspace(ProjectSession& session, QWidget* parent = nullptr);
   ~EditorWorkspace() override;
 
-  [[nodiscard]] DiagramScene* scene() const noexcept { return scene_; }
-  [[nodiscard]] DiagramView*  view() const noexcept { return view_; }
-  [[nodiscard]] CodeEditor*   codeEditor() const noexcept { return codeEditor_; }
-  [[nodiscard]] BinaryEditor* binaryEditor() const noexcept { return binaryEditor_; }
-  [[nodiscard]] ArchitectureWorkspace* architectureWorkspace() const noexcept
+  CircuitEditor&                circuitEditor();
+  [[nodiscard]] DocumentEditor* activeEditor() const noexcept
   {
-    return architectureWorkspace_;
+    return activeDocumentEditor;
   }
-  void setUndoStack(QUndoStack* stack) noexcept { undoStack_ = stack; }
-  [[nodiscard]] CodeEditor* activeCodeEditor() const noexcept;
-  [[nodiscard]] bool        isVisualizerActive() const noexcept;
-  [[nodiscard]] bool        hasUnsavedChanges() const;
-  void                      resetEditorDirtyState() noexcept;
-  void                      reset();
-  void                      undoActiveDocument();
-  void                      redoActiveDocument();
-  void                      flushActiveDocument();
+  [[nodiscard]] bool hasUnsavedChanges() const;
+
+  /** @brief Applies the project-wide history shared by every hosted editor. */
+  void setProjectHistory(QUndoStack* history) noexcept;
 
   /**
-   * @brief Deserializes @p document without disturbing the current editor state.
+   * @brief Attaches the backend implementing circuit-only editing commands.
    *
-   * Circuit payloads are deserialized into a detached scene plan and architecture
-   * documents into a detached tab plan, so an invalid document can be rejected while
-   * the previous document stays loaded and visible.
-   *
-   * @param document Document that should become active
-   * @return A plan consumed by @ref activateDocument
-   * @throws std::exception when the document payload is invalid or unsupported
+   * Circuit documents are edited through @p interaction instead of the generic
+   * document editor interface, which only describes text-like editors.
    */
+  void setCircuitEditingBackend(DiagramInteractionController& interaction) noexcept;
+
+  /** @brief Availability of the clipboard, deletion, and rotation commands. */
+  [[nodiscard]] EditorEditState activeEditState() const;
+
+  [[nodiscard]] bool canUndoActiveDocument() const;
+  [[nodiscard]] bool canRedoActiveDocument() const;
+  void               resetEditorDirtyState() noexcept;
+  void               reset();
+  void               undoActiveDocument();
+  void               redoActiveDocument();
+  void               flushActiveDocument();
+  void               copyActiveDocument();
+  void               cutActiveDocument();
+  void               pasteActiveDocument();
+  void               deleteInActiveDocument();
   [[nodiscard]] std::shared_ptr<PreparedDocument>
-  prepareDocument(const SILICON::project::Document& document);
-
-  /**
-   * @brief Replaces the editor contents with a document prepared beforehand.
-   *
-   * @param prepared Plan produced by @ref prepareDocument
-   * @throws std::exception when the prepared document cannot be shown
-   */
+       prepareDocument(const SILICON::project::Document& document);
   void activateDocument(const PreparedDocument& prepared);
-
   void loadDocument(const SILICON::project::Document& document);
 
-private:
-  ProjectSession&        session_;
-  QUndoStack*            undoStack_             = nullptr;
-  DiagramScene*          scene_                 = nullptr;
-  DiagramView*           view_                  = nullptr;
-  CodeEditor*            codeEditor_            = nullptr;
-  BinaryEditor*          binaryEditor_          = nullptr;
-  ArchitectureWorkspace* architectureWorkspace_ = nullptr;
-  bool                   codeDocumentsDirty_    = false;
-  bool                   binaryDocumentsDirty_  = false;
-};
+signals:
+  void activeEditorChanged();
 
+  /**
+   * @brief Emitted when the active editor's undo/redo availability may have changed.
+   *
+   * Aggregates the history notifications of every hosted editor, of the project-wide
+   * undo stack, and of the architecture tabs, so observers never have to subscribe to
+   * an individual editor.
+   */
+  void historyStateChanged();
+
+  void editorCreated(DocumentEditor* editor);
+
+private:
+  [[nodiscard]] DocumentEditor& editorFor(SILICON::project::DocumentType type);
+  CodeDocumentEditor&           ensureCodeEditor();
+  BinaryDocumentEditor&         ensureBinaryEditor();
+  ArchitectureDocumentEditor&   ensureArchitectureEditor();
+  [[nodiscard]] bool            editsActiveCircuit() const noexcept;
+
+  ProjectSession&                             session;
+  QStackedWidget*                             stack;
+  DocumentEditor*                             activeDocumentEditor = nullptr;
+  DiagramInteractionController*               circuitEditing       = nullptr;
+  QUndoStack*                                 projectHistory       = nullptr;
+  std::unique_ptr<CircuitEditor>              circuit;
+  std::unique_ptr<CodeDocumentEditor>         code;
+  std::unique_ptr<BinaryDocumentEditor>       binary;
+  std::unique_ptr<ArchitectureDocumentEditor> architecture;
+};
 }  // namespace SILICON::ui

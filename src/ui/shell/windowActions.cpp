@@ -20,45 +20,27 @@
 #include <algorithm>
 #include <initializer_list>
 #include <optional>
+#include <ranges>
 #include <vector>
 
 #include <QAction>
-#include <QApplication>
-#include <QClipboard>
 #include <QMainWindow>
 #include <QMenu>
 #include <QMenuBar>
-#include <QMimeData>
-#include <QTextDocument>
 #include <QToolBar>
-#include <QUndoStack>
 
-#include <ui/circuit/diagram/scene/diagramScene.hpp>
-#include <ui/circuit/editor/diagramInteractionController.hpp>
-#include <ui/documents/binary/binaryEditor.hpp>
-#include <ui/documents/code/codeEditor.hpp>
+#include <ui/documents/documentEditor.hpp>
 #include <ui/documents/editorWorkspace.hpp>
 #include <ui/project/projectSession.hpp>
 #include <ui/serialization/document_conversion.hpp>
 #include <ui/shell/icons.hpp>
-#include <ui/shell/uiUtils.hpp>
 
 namespace SILICON::ui {
 using namespace SILICON::core;
 
-namespace {
-
-  const SILICON::logging::Logger uiLog("ui");
-
-}  // namespace
-
 WindowActions::WindowActions(QMainWindow& window, ProjectSession& session,
-                             EditorWorkspace& workspace, QUndoStack& history)
-  : QObject(&window),
-    window_(window),
-    session_(session),
-    workspace_(workspace),
-    undoStack_(history)
+                             EditorWorkspace& workspace)
+  : QObject(&window), window(window), session(session), workspace(workspace)
 {
 }
 
@@ -73,138 +55,151 @@ void WindowActions::setActionsEnabled(std::initializer_list<QAction*> actions,
 
 void WindowActions::updateHistoryActions()
 {
-  if (!undoAct || !redoAct)
+  if (!edit.undo || !edit.redo)
     return;
-  if (workspace_.isVisualizerActive()) {
-    undoAct->setEnabled(false);
-    redoAct->setEnabled(false);
-    return;
-  }
-  const auto  type   = activeDocumentType();
-  const auto* editor = type && SILICON::project::isCodeDocument(*type)
-                           ? workspace_.activeCodeEditor()
-                           : nullptr;
-  const bool  binary = type
-                      && SILICON::project::categoryOf(*type)
-                             == SILICON::project::DocumentCategory::Binary;
-  undoAct->setEnabled(undoStack_.canUndo()
-                      || (editor && editor->document()->isUndoAvailable())
-                      || (binary && workspace_.binaryEditor()->history()->canUndo()));
-  redoAct->setEnabled(undoStack_.canRedo()
-                      || (editor && editor->document()->isRedoAvailable())
-                      || (binary && workspace_.binaryEditor()->history()->canRedo()));
+  edit.undo->setEnabled(workspace.canUndoActiveDocument());
+  edit.redo->setEnabled(workspace.canRedoActiveDocument());
+}
+
+void WindowActions::refreshActiveEditorActions()
+{
+  updateEditActions();
+  updateHistoryActions();
+}
+
+void WindowActions::bindEditorActions()
+{
+  connect(edit.undo, &QAction::triggered, &workspace,
+          &EditorWorkspace::undoActiveDocument);
+  connect(edit.redo, &QAction::triggered, &workspace,
+          &EditorWorkspace::redoActiveDocument);
+  connect(edit.cut, &QAction::triggered, &workspace, &EditorWorkspace::cutActiveDocument);
+  connect(edit.copy, &QAction::triggered, &workspace,
+          &EditorWorkspace::copyActiveDocument);
+  connect(edit.paste, &QAction::triggered, &workspace,
+          &EditorWorkspace::pasteActiveDocument);
+  connect(edit.remove, &QAction::triggered, &workspace,
+          &EditorWorkspace::deleteInActiveDocument);
+
+  connect(&workspace, &EditorWorkspace::historyStateChanged, this,
+          &WindowActions::refreshActiveEditorActions);
+  connect(&workspace, &EditorWorkspace::activeEditorChanged, this,
+          &WindowActions::updateHistoryActions);
+
+  refreshActiveEditorActions();
 }
 
 void WindowActions::createMenus()
 {
-  fileMenu = window_.menuBar()->addMenu(tr("&File"));
-  fileMenu->addAction(newAct);
+  fileMenu = window.menuBar()->addMenu(tr("&File"));
+  fileMenu->addAction(project.newProject);
   auto* newMenu = fileMenu->addMenu(Icon("file"), tr("New &Document"));
-  newMenu->addAction(newCircuitAct);
-  newMenu->addAction(newCodeFileAct);
-  newMenu->addAction(newArchitectureAct);
-  newMenu->addAction(newBinaryFileAct);
-  fileMenu->addAction(openAct);
-  fileMenu->addAction(saveAct);
-  fileMenu->addAction(exportImageAct);
-  fileMenu->addAction(toggleWaveformViewerAct);
+  newMenu->addAction(documents.newCircuit);
+  newMenu->addAction(documents.newCodeFile);
+  newMenu->addAction(documents.newArchitecture);
+  newMenu->addAction(documents.newBinaryFile);
+  fileMenu->addAction(project.open);
+  fileMenu->addAction(project.save);
+  fileMenu->addAction(project.exportImage);
+  fileMenu->addAction(waveform.toggleTrace);
   fileMenu->addSeparator();
-  fileMenu->addAction(exitAct);
+  fileMenu->addAction(project.exit);
 
-  editMenu = window_.menuBar()->addMenu(tr("&Edit"));
-  editMenu->addAction(undoAct);
-  editMenu->addAction(redoAct);
+  editMenu = window.menuBar()->addMenu(tr("&Edit"));
+  editMenu->addAction(edit.undo);
+  editMenu->addAction(edit.redo);
   editMenu->addSeparator();
-  editMenu->addAction(cutAct);
-  editMenu->addAction(copyAct);
-  editMenu->addAction(pasteAct);
-  editMenu->addAction(rotateAct);
-  editMenu->addAction(autoPlaceAct);
-  editMenu->addAction(deleteAct);
+  editMenu->addAction(edit.cut);
+  editMenu->addAction(edit.copy);
+  editMenu->addAction(edit.paste);
+  editMenu->addAction(circuit.rotate);
+  editMenu->addAction(circuit.autoPlace);
+  editMenu->addAction(edit.remove);
   editMenu->addSeparator();
-  editMenu->addAction(settingsAct);
+  editMenu->addAction(project.settings);
 
-  helpMenu = window_.menuBar()->addMenu(tr("&Help"));
-  helpMenu->addAction(aboutAct);
+  helpMenu = window.menuBar()->addMenu(tr("&Help"));
+  helpMenu->addAction(project.about);
 }
 
 void WindowActions::createToolBar()
 {
-  toolBar = new QToolBar(&window_);
+  toolBar = new QToolBar(&window);
   toolBar->setAllowedAreas(Qt::TopToolBarArea | Qt::BottomToolBarArea);
   toolBar->setFloatable(false);
 
-  toolBar->addAction(newAct);
-  toolBar->addAction(openAct);
-  toolBar->addAction(saveAct);
+  toolBar->addAction(project.newProject);
+  toolBar->addAction(project.open);
+  toolBar->addAction(project.save);
 
   diagramToolsSeparator = toolBar->addSeparator();
 
-  toolBar->addAction(setNormalModeAct);
-  toolBar->addAction(setPanModeAct);
-  toolBar->addAction(setWireCreationModeAct);
-  toolBar->addAction(setSimulationModeAct);
-  toolBar->addAction(toggleWaveformViewerAct);
+  toolBar->addAction(circuit.setNormalMode);
+  toolBar->addAction(circuit.setPanMode);
+  toolBar->addAction(circuit.setWireCreationMode);
+  toolBar->addAction(circuit.setSimulationMode);
+  toolBar->addAction(waveform.toggleTrace);
 
   documentToolsSeparator = toolBar->addSeparator();
-  toolBar->addAction(openComponentCatalogAct);
-  toolBar->addAction(editSubcircuitShapeAct);
-  toolBar->addAction(codeConversionAct);
-  toolBar->addAction(buildArchitectureAct);
-  toolBar->addAction(visualizeArchitectureAct);
+  toolBar->addAction(circuit.openComponentCatalog);
+  toolBar->addAction(circuit.editSubcircuitShape);
+  toolBar->addAction(documents.codeConversion);
+  toolBar->addAction(architecture.build);
+  toolBar->addAction(architecture.visualize);
 
-  window_.addToolBar(toolBar);
+  window.addToolBar(toolBar);
 }
 
 void WindowActions::updateSubcircuitShapeAction()
 {
-  if (!editSubcircuitShapeAct)
+  if (!circuit.editSubcircuitShape)
     return;
   const bool active = activeDocumentType() == SILICON::project::DocumentType::Circuit;
-  editSubcircuitShapeAct->setVisible(active);
-  editSubcircuitShapeAct->setEnabled(active);
+  circuit.editSubcircuitShape->setVisible(active);
+  circuit.editSubcircuitShape->setEnabled(active);
   updateCodeAction();
 }
 
 std::optional<SILICON::project::DocumentType>
 WindowActions::activeDocumentType() const noexcept
 {
-  return SILICON::project::documentTypeForPath(session_.activeDocumentPath);
+  return SILICON::project::documentTypeForPath(session.activeDocumentPath);
 }
 
 void WindowActions::updateCodeAction()
 {
-  if (!codeConversionAct)
+  if (!documents.codeConversion)
     return;
   const auto* document =
-      session_.projectContext.documents().find(session_.activeDocumentPath);
+      session.projectContext.documents().find(session.activeDocumentPath);
   const auto converters = document ? documentConvertersFor(document->getType())
                                    : std::vector<const DocumentConverter*>{};
   const auto available =
       std::ranges::count_if(converters, [](const DocumentConverter* converter) {
         return converter->available;
       });
-  codeConversionAct->setVisible(!converters.empty());
-  codeConversionAct->setEnabled(available != 0);
-  codeConversionAct->setToolTip(
+  documents.codeConversion->setVisible(!converters.empty());
+  documents.codeConversion->setEnabled(available != 0);
+  documents.codeConversion->setToolTip(
       !converters.empty() && available == 0
           ? QString::fromUtf8(
                 converters.front()->unavailableReason.data(),
                 static_cast<qsizetype>(converters.front()->unavailableReason.size()))
           : QString());
   if (converters.size() == 1) {
-    codeConversionAct->setText(
+    documents.codeConversion->setText(
         tr("Convert to %1").arg(documentTypeName(converters.front()->target)));
   } else if (!converters.empty()) {
-    codeConversionAct->setText(tr("Convert..."));
+    documents.codeConversion->setText(tr("Convert..."));
   }
   const auto type         = activeDocumentType();
   const bool nonGraphical = type
                             && SILICON::project::categoryOf(*type)
                                    != SILICON::project::DocumentCategory::Diagram;
-  setActionsEnabled({setNormalModeAct, setPanModeAct, setWireCreationModeAct,
-                     setSimulationModeAct, toggleWaveformViewerAct,
-                     openComponentCatalogAct, setComponentPlacingModeAct, autoPlaceAct},
+  setActionsEnabled({circuit.setNormalMode, circuit.setPanMode,
+                     circuit.setWireCreationMode, circuit.setSimulationMode,
+                     waveform.toggleTrace, circuit.openComponentCatalog,
+                     circuit.setComponentPlacingMode, circuit.autoPlace},
                     !nonGraphical);
 
   updateDocumentActionVisibility();
@@ -220,26 +215,27 @@ void WindowActions::updateDocumentActionVisibility()
                        && SILICON::project::categoryOf(*type)
                               == SILICON::project::DocumentCategory::Diagram;
 
-  const bool catalogVisible = diagram && openComponentCatalogAct->isEnabled();
-  const bool shapeVisible =
-      editSubcircuitShapeAct->isVisible() && editSubcircuitShapeAct->isEnabled();
+  const bool catalogVisible = diagram && circuit.openComponentCatalog->isEnabled();
+  const bool shapeVisible   = circuit.editSubcircuitShape->isVisible()
+                            && circuit.editSubcircuitShape->isEnabled();
   const bool conversionVisible =
-      codeConversionAct->isVisible() && codeConversionAct->isEnabled();
+      documents.codeConversion->isVisible() && documents.codeConversion->isEnabled();
 
   // QWidget visibility is not authoritative for toolbar actions: Qt may recreate or
   // show the widget again after the shared QAction changes state. Remove unavailable
   // actions from this toolbar and re-add the active group in its canonical order.
   for (auto* action :
-       {diagramToolsSeparator, setNormalModeAct, setPanModeAct, setWireCreationModeAct,
-        setSimulationModeAct, toggleWaveformViewerAct, documentToolsSeparator,
-        openComponentCatalogAct, editSubcircuitShapeAct, codeConversionAct,
-        buildArchitectureAct, visualizeArchitectureAct})
+       {diagramToolsSeparator, circuit.setNormalMode, circuit.setPanMode,
+        circuit.setWireCreationMode, circuit.setSimulationMode, waveform.toggleTrace,
+        documentToolsSeparator, circuit.openComponentCatalog, circuit.editSubcircuitShape,
+        documents.codeConversion, architecture.build, architecture.visualize})
     toolBar->removeAction(action);
 
   if (diagram) {
     toolBar->addAction(diagramToolsSeparator);
-    for (auto* action : {setNormalModeAct, setPanModeAct, setWireCreationModeAct,
-                         setSimulationModeAct, toggleWaveformViewerAct}) {
+    for (auto* action :
+         {circuit.setNormalMode, circuit.setPanMode, circuit.setWireCreationMode,
+          circuit.setSimulationMode, waveform.toggleTrace}) {
       if (action->isEnabled())
         toolBar->addAction(action);
     }
@@ -249,127 +245,108 @@ void WindowActions::updateDocumentActionVisibility()
   if (catalogVisible || shapeVisible || conversionVisible || buildVisible) {
     toolBar->addAction(documentToolsSeparator);
     if (catalogVisible)
-      toolBar->addAction(openComponentCatalogAct);
+      toolBar->addAction(circuit.openComponentCatalog);
     if (shapeVisible)
-      toolBar->addAction(editSubcircuitShapeAct);
+      toolBar->addAction(circuit.editSubcircuitShape);
     if (conversionVisible)
-      toolBar->addAction(codeConversionAct);
+      toolBar->addAction(documents.codeConversion);
     if (buildVisible) {
-      toolBar->addAction(buildArchitectureAct);
-      toolBar->addAction(visualizeArchitectureAct);
+      toolBar->addAction(architecture.build);
+      toolBar->addAction(architecture.visualize);
     }
   }
 }
 
 void WindowActions::createActions()
 {
-  newAct =
-      makeAction(&window_, Icon("file"), tr("&New Project"), tr("Create a new project"));
-  newCircuitAct =
-      makeAction(&window_, categoryIcon(SILICON::project::DocumentType::Circuit),
+  project.newProject =
+      makeAction(&window, Icon("file"), tr("&New Project"), tr("Create a new project"));
+  documents.newCircuit =
+      makeAction(&window, categoryIcon(SILICON::project::DocumentType::Circuit),
                  tr("Circuit"), tr("Create a new circuit document"));
-  newCodeFileAct =
-      makeAction(&window_, categoryIcon(SILICON::project::DocumentType::Verilog),
+  documents.newCodeFile =
+      makeAction(&window, categoryIcon(SILICON::project::DocumentType::Verilog),
                  tr("Code File..."), tr("Create an empty source-code document"));
-  newArchitectureAct = makeAction(&window_, Icon("cpu"), tr("ISA Architecture..."),
-                                  tr("Create a SISL instruction format"));
-  newBinaryFileAct =
-      makeAction(&window_, categoryIcon(SILICON::project::DocumentType::RawBinary),
+  documents.newArchitecture = makeAction(&window, Icon("cpu"), tr("ISA Architecture..."),
+                                         tr("Create a SISL instruction format"));
+  documents.newBinaryFile =
+      makeAction(&window, categoryIcon(SILICON::project::DocumentType::RawBinary),
                  tr("Binary File..."), tr("Create a fixed-size raw binary document"));
-  openAct = makeAction(&window_, Icon("open"), tr("&Open..."),
-                       tr("Open an existing silicon file"));
-  saveAct =
-      makeAction(&window_, Icon("save"), tr("&Save"), tr("Save the project to disk"));
-  exportImageAct = makeAction(&window_, Icon("export"), tr("&Export..."),
-                              tr("Export the circuit as an image"));
-  exitAct  = makeAction(&window_, Icon("xmark"), tr("E&xit"), tr("Exit the application"));
-  cutAct   = makeAction(&window_, Icon("cut"), tr("Cu&t"),
-                        tr("Cut the current selection's contents to the clipboard"));
-  copyAct  = makeAction(&window_, Icon("copy"), tr("&Copy"));
-  pasteAct = makeAction(&window_, Icon("paste"), tr("&Paste"),
-                        tr("Paste the clipboard's contents into the current selection"));
-  rotateAct    = makeAction(&window_, Icon("rotate"), tr("&Rotate"));
-  autoPlaceAct = makeAction(&window_, Icon("rearrange"), tr("&Auto place"),
-                            tr("Automatically place components and reroute wires"));
-  deleteAct    = makeAction(&window_, Icon("delete"), tr("&Delete"),
-                            tr("Delete selected components"));
-  aboutAct     = makeAction(&window_, Icon("info"), tr("&About"),
-                            tr("Show the application's about box"));
-  settingsAct  = makeAction(&window_, Icon("settings"), tr("&Settings..."),
-                            tr("Edit application settings"));
+  project.open = makeAction(&window, Icon("open"), tr("&Open..."),
+                            tr("Open an existing silicon file"));
+  project.save =
+      makeAction(&window, Icon("save"), tr("&Save"), tr("Save the project to disk"));
+  project.exportImage = makeAction(&window, Icon("export"), tr("&Export..."),
+                                   tr("Export the circuit as an image"));
+  project.exit =
+      makeAction(&window, Icon("xmark"), tr("E&xit"), tr("Exit the application"));
+  edit.cut  = makeAction(&window, Icon("cut"), tr("Cu&t"),
+                         tr("Cut the current selection's contents to the clipboard"));
+  edit.copy = makeAction(&window, Icon("copy"), tr("&Copy"));
+  edit.paste =
+      makeAction(&window, Icon("paste"), tr("&Paste"),
+                 tr("Paste the clipboard's contents into the current selection"));
+  circuit.rotate    = makeAction(&window, Icon("rotate"), tr("&Rotate"));
+  circuit.autoPlace = makeAction(&window, Icon("rearrange"), tr("&Auto place"),
+                                 tr("Automatically place components and reroute wires"));
+  edit.remove       = makeAction(&window, Icon("delete"), tr("&Delete"),
+                                 tr("Delete selected components"));
+  project.about     = makeAction(&window, Icon("info"), tr("&About"),
+                                 tr("Show the application's about box"));
+  project.settings  = makeAction(&window, Icon("settings"), tr("&Settings..."),
+                                 tr("Edit application settings"));
 
-  undoAct =
-      makeAction(&window_, Icon("undo"), tr("&Undo"), tr("Undo the last operation"));
-  undoAct->setIcon(Icon("undo"));
-  undoAct->setStatusTip(tr("Undo the last operation"));
+  edit.undo =
+      makeAction(&window, Icon("undo"), tr("&Undo"), tr("Undo the last operation"));
+  edit.redo =
+      makeAction(&window, Icon("redo"), tr("&Redo"), tr("Redo the last operation"));
 
-  redoAct =
-      makeAction(&window_, Icon("redo"), tr("&Redo"), tr("Redo the last operation"));
-  redoAct->setIcon(Icon("redo"));
-  redoAct->setStatusTip(tr("Redo the last operation"));
+  setActionsEnabled({circuit.rotate, edit.cut, edit.copy, edit.remove}, false);
 
-  setActionsEnabled({rotateAct, cutAct, copyAct, deleteAct}, false);
+  circuit.setNormalMode       = new QAction(Icon("mouse-pointer"), "", &window);
+  circuit.setPanMode          = new QAction(Icon("pan"), "", &window);
+  circuit.setWireCreationMode = new QAction(Icon("link"), "", &window);
+  circuit.setSimulationMode   = new QAction(Icon("play"), "", &window);
+  waveform.toggleTrace =
+      makeAction(&window, Icon("chart"), tr("Trace"), tr("Show waveform viewer"));
+  waveform.toggleTrace->setCheckable(true);
+  circuit.cancelInteraction =
+      makeAction(&window, QString(), tr("Cancel the current interaction"));
 
-  setNormalModeAct       = new QAction(Icon("mouse-pointer"), "", &window_);
-  setPanModeAct          = new QAction(Icon("pan"), "", &window_);
-  setWireCreationModeAct = new QAction(Icon("link"), "", &window_);
-  setSimulationModeAct   = new QAction(Icon("play"), "", &window_);
-  toggleWaveformViewerAct =
-      makeAction(&window_, Icon("chart"), tr("Trace"), tr("Show waveform viewer"));
-  toggleWaveformViewerAct->setCheckable(true);
-  cancelInteractionAct =
-      makeAction(&window_, QString(), tr("Cancel the current interaction"));
+  circuit.openComponentCatalog =
+      makeAction(&window, Icon("plus"), "", tr("Open the component catalog"));
+  circuit.editSubcircuitShape =
+      makeAction(&window, Icon("circuit-board"), tr("Edit Shape"),
+                 tr("Edit the active circuit shape"));
+  circuit.editSubcircuitShape->setVisible(false);
+  circuit.editSubcircuitShape->setEnabled(false);
+  documents.codeConversion = makeAction(&window, Icon("code"), tr("Code"));
+  documents.codeConversion->setVisible(false);
+  documents.codeConversion->setEnabled(false);
+  architecture.build     = makeAction(&window, Icon("build"), tr("Build"),
+                                      tr("Compile the current SISL instruction format"));
+  architecture.visualize = makeAction(&window, Icon("diagram"), tr("Visualize"),
+                                      tr("Visualize SISL instruction formats"));
+  circuit.setComponentPlacingMode =
+      makeAction(&window, Icon("plus"), "", tr("Open quick component search"));
 
-  openComponentCatalogAct =
-      makeAction(&window_, Icon("plus"), "", tr("Open the component catalog"));
-  editSubcircuitShapeAct = makeAction(&window_, Icon("circuit-board"), tr("Edit Shape"),
-                                      tr("Edit the active circuit shape"));
-  editSubcircuitShapeAct->setVisible(false);
-  editSubcircuitShapeAct->setEnabled(false);
-  codeConversionAct = makeAction(&window_, Icon("code"), tr("Code"));
-  codeConversionAct->setVisible(false);
-  codeConversionAct->setEnabled(false);
-  buildArchitectureAct     = makeAction(&window_, Icon("build"), tr("Build"),
-                                        tr("Compile the current SISL instruction format"));
-  visualizeArchitectureAct = makeAction(&window_, Icon("diagram"), tr("Visualize"),
-                                        tr("Visualize SISL instruction formats"));
-  setComponentPlacingModeAct =
-      makeAction(&window_, Icon("plus"), "", tr("Open quick component search"));
+  bindEditorActions();
 }
 
 void WindowActions::updateEditActions()
 {
-  if (!rotateAct || !cutAct || !copyAct || !pasteAct || !deleteAct)
+  if (!circuit.rotate || !edit.cut || !edit.copy || !edit.paste || !edit.remove)
     return;
-  if (workspace_.isVisualizerActive()) {
-    setActionsEnabled({rotateAct, cutAct, copyAct, pasteAct, deleteAct}, false);
-    return;
-  }
-
-  const auto type = activeDocumentType();
-  if (!type
-      || SILICON::project::categoryOf(*type)
-             != SILICON::project::DocumentCategory::Diagram) {
-    rotateAct->setEnabled(false);
-    const bool editableText = type && SILICON::project::isCodeDocument(*type);
-    setActionsEnabled({cutAct, copyAct, pasteAct, deleteAct}, editableText);
+  if (!workspace.activeEditor() || !workspace.activeEditor()->isEditable()) {
+    setActionsEnabled({circuit.rotate, edit.cut, edit.copy, edit.paste, edit.remove},
+                      false);
     return;
   }
 
-  const auto interactionMode = workspace_.scene()->getInteractionMode();
-  const auto selected        = workspace_.scene()->selectedItems();
-  const bool hasSelection    = !selected.empty();
-
-  rotateAct->setEnabled(
-      (interactionMode == InteractionMode::NORMAL_MODE && selected.size() == 1)
-      || interactionMode == InteractionMode::COMPONENT_PLACING_MODE);
-
-  const bool canEditSelection =
-      interactionMode == InteractionMode::NORMAL_MODE && hasSelection;
-  setActionsEnabled({cutAct, copyAct, deleteAct}, canEditSelection);
-  const auto* clipboardData = QApplication::clipboard()->mimeData();
-  pasteAct->setEnabled(interactionMode == InteractionMode::NORMAL_MODE && clipboardData
-                       && clipboardData->hasFormat(CircuitSelectionMimeType));
+  const EditorEditState state = workspace.activeEditState();
+  circuit.rotate->setEnabled(state.canRotate);
+  setActionsEnabled({edit.cut, edit.copy, edit.remove}, state.canEditSelection);
+  edit.paste->setEnabled(state.canPaste);
 }
 
 }  // namespace SILICON::ui

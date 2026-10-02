@@ -29,10 +29,10 @@
 namespace SILICON::ui {
 namespace {
 
-  constexpr int ItemKindRole         = Qt::UserRole;
-  constexpr int DocumentTypeRole     = Qt::UserRole + 1;
-  constexpr int PathRole             = Qt::UserRole + 2;
-  constexpr int DocumentCategoryRole = Qt::UserRole + 3;
+  constexpr int ITEM_KIND_ROLE         = Qt::UserRole;
+  constexpr int DOCUMENT_TYPE_ROLE     = Qt::UserRole + 1;
+  constexpr int PATH_ROLE             = Qt::UserRole + 2;
+  constexpr int DOCUMENT_CATEGORY_ROLE = Qt::UserRole + 3;
 
   [[nodiscard]] QString circuitDisplayName(const project::Document& document)
   {
@@ -70,18 +70,18 @@ namespace {
 
   void setKind(QTreeWidgetItem* item, const ProjectTreeItemKind kind)
   {
-    item->setData(0, ItemKindRole, static_cast<int>(kind));
+    item->setData(0, ITEM_KIND_ROLE, static_cast<int>(kind));
   }
 
   void setDocumentType(QTreeWidgetItem* item, const project::DocumentType type)
   {
-    item->setData(0, DocumentTypeRole, static_cast<int>(type));
+    item->setData(0, DOCUMENT_TYPE_ROLE, static_cast<int>(type));
   }
 
   void setDocumentCategory(QTreeWidgetItem* item,
                            const project::DocumentCategory category)
   {
-    item->setData(0, DocumentCategoryRole, static_cast<int>(category));
+    item->setData(0, DOCUMENT_CATEGORY_ROLE, static_cast<int>(category));
   }
 
 }  // namespace
@@ -126,7 +126,7 @@ void ProjectTree::selectDocument(const std::string_view path)
   const auto targetPath =
       QString::fromUtf8(path.data(), static_cast<qsizetype>(path.size()));
   for (QTreeWidgetItemIterator it(this); *it; ++it) {
-    if ((*it)->data(0, PathRole).toString() != targetPath)
+    if ((*it)->data(0, PATH_ROLE).toString() != targetPath)
       continue;
 
     (*it)->setSelected(true);
@@ -181,13 +181,13 @@ std::optional<ProjectTreeDocumentSelection> ProjectTree::selectedDocument() cons
 
 ProjectTreeItemKind ProjectTree::itemKind(const QTreeWidgetItem* item)
 {
-  return static_cast<ProjectTreeItemKind>(item->data(0, ItemKindRole).toInt());
+  return static_cast<ProjectTreeItemKind>(item->data(0, ITEM_KIND_ROLE).toInt());
 }
 
 std::optional<project::DocumentType>
 ProjectTree::itemDocumentType(const QTreeWidgetItem* item)
 {
-  const auto value = item->data(0, DocumentTypeRole);
+  const auto value = item->data(0, DOCUMENT_TYPE_ROLE);
   if (!value.isValid())
     return std::nullopt;
   return static_cast<project::DocumentType>(value.toInt());
@@ -196,7 +196,7 @@ ProjectTree::itemDocumentType(const QTreeWidgetItem* item)
 std::optional<project::DocumentCategory>
 ProjectTree::itemDocumentCategory(const QTreeWidgetItem* item)
 {
-  const auto value = item->data(0, DocumentCategoryRole);
+  const auto value = item->data(0, DOCUMENT_CATEGORY_ROLE);
   if (!value.isValid())
     return std::nullopt;
   return static_cast<project::DocumentCategory>(value.toInt());
@@ -204,7 +204,7 @@ ProjectTree::itemDocumentCategory(const QTreeWidgetItem* item)
 
 std::string ProjectTree::documentPath(const QTreeWidgetItem* item)
 {
-  return item->data(0, PathRole).toString().toStdString();
+  return item->data(0, PATH_ROLE).toString().toStdString();
 }
 
 std::string ProjectTree::architectureName(const QTreeWidgetItem* item)
@@ -252,7 +252,7 @@ void ProjectTree::addSection(QTreeWidgetItem*                         projectIte
       item->setIcon(0, Icon("cpu"));
       setKind(item, ProjectTreeItemKind::Architecture);
       setDocumentType(item, document.getType());
-      item->setData(0, PathRole, QString::fromStdString(document.getPath()));
+      item->setData(0, PATH_ROLE, QString::fromStdString(document.getPath()));
     } else {
       addDocument(section, document);
     }
@@ -266,7 +266,7 @@ void ProjectTree::addDocument(QTreeWidgetItem* parent, const project::Document& 
   item->setIcon(0, categoryIcon(document.getType()));
   setKind(item, ProjectTreeItemKind::Document);
   setDocumentType(item, document.getType());
-  item->setData(0, PathRole, QString::fromStdString(document.getPath()));
+  item->setData(0, PATH_ROLE, QString::fromStdString(document.getPath()));
 }
 
 }  // namespace SILICON::ui

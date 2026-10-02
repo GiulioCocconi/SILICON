@@ -33,8 +33,8 @@ Q_DECLARE_METATYPE(std::filesystem::path)
 namespace SILICON::ui {
 
 namespace settings {
-inline constexpr auto LightTheme = "light";
-inline constexpr auto DarkTheme  = "dark";
+inline constexpr auto LIGHT_THEME = "light";
+inline constexpr auto DARK_THEME  = "dark";
 
 /**
  * @brief Describes a persisted setting entry.
@@ -47,7 +47,7 @@ struct Definition {
 
 inline const Definition Theme = {
     .name         = QStringLiteral("ui/theme"),
-    .defaultValue = QString::fromLatin1(LightTheme),
+    .defaultValue = QString::fromLatin1(LIGHT_THEME),
 };
 
 inline const Definition MaxSimulationSteps = {

@@ -25,10 +25,7 @@
 class QGraphicsItem;
 class QWidget;
 
-
-namespace SILICON::ui {
-
-namespace inputDialog {
+namespace SILICON::ui::inputDialog {
 
 using TextCallback     = std::function<void(const QString&)>;
 using AcceptedCallback = std::function<void()>;
@@ -56,6 +53,4 @@ void warningChoice(QWidget* parent, const QString& title, const QString& text,
                    const QString& primaryText, const QString& secondaryText,
                    ChoiceCallback callback);
 
-}  // namespace inputDialog
-
-}  // namespace SILICON::ui
+}  // namespace SILICON::ui::inputDialog

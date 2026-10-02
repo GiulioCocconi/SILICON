@@ -50,8 +50,8 @@ std::string emptyGraphicalDocumentJson(const SILICON::project::DocumentType type
     scene["graphicalComponent"] =
         nlohmann::ordered_json{{"shape",
                                 {{"type", "rectangle"},
-                                 {"width", GraphicalSubcircuitDefaultSize},
-                                 {"height", GraphicalSubcircuitDefaultSize}}},
+                                 {"width", GRAPHICAL_SUBCIRCUIT_DEFAULT_SIZE},
+                                 {"height", GRAPHICAL_SUBCIRCUIT_DEFAULT_SIZE}}},
                                {"inputs", nlohmann::ordered_json::array()},
                                {"outputs", nlohmann::ordered_json::array()}};
   }

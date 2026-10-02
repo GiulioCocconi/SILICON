@@ -49,7 +49,7 @@ void GUIComponentFactory::registerType(std::string type, Factory factory,
     throw std::invalid_argument("GUI component registration requires a core type");
 
   auto [it, inserted] =
-      factories_.emplace(std::move(type), Entry{std::move(factory), std::move(metadata)});
+      factories.emplace(std::move(type), Entry{std::move(factory), std::move(metadata)});
   if (!inserted) {
     throw std::logic_error(std::string("Duplicate GUI component registration: ")
                            + it->first);
@@ -59,8 +59,8 @@ void GUIComponentFactory::registerType(std::string type, Factory factory,
 std::unique_ptr<GraphicalComponent>
 GUIComponentFactory::create(std::string_view type, QGraphicsItem* parent) const
 {
-  auto it = factories_.find(type);
-  if (it == factories_.end()) {
+  auto it = factories.find(type);
+  if (it == factories.end()) {
     throw std::runtime_error(std::string("Unknown GUI component type: ")
                              + std::string{type});
   }
@@ -74,7 +74,7 @@ GUIComponentFactory::createForCoreType(std::string_view coreType,
   const Entry*     match = nullptr;
   std::string_view matchedGuiType;
 
-  for (const auto& [guiType, entry] : factories_) {
+  for (const auto& [guiType, entry] : factories) {
     if (entry.metadata.coreType != coreType)
       continue;
 
@@ -100,8 +100,8 @@ GUIComponentFactory::createForCoreType(std::string_view coreType,
 std::vector<std::string> GUIComponentFactory::availableTypes() const
 {
   std::vector<std::string> types;
-  types.reserve(factories_.size());
-  for (const auto& [type, _] : factories_) {
+  types.reserve(factories.size());
+  for (const auto& [type, _] : factories) {
     types.push_back(type);
   }
   return types;
@@ -109,14 +109,14 @@ std::vector<std::string> GUIComponentFactory::availableTypes() const
 
 bool GUIComponentFactory::hasType(std::string_view type) const
 {
-  return factories_.contains(type);
+  return factories.contains(type);
 }
 
 const GUIComponentFactory::EntryMetadata&
 GUIComponentFactory::metadata(std::string_view type) const
 {
-  auto it = factories_.find(type);
-  if (it == factories_.end()) {
+  auto it = factories.find(type);
+  if (it == factories.end()) {
     throw std::runtime_error(std::string("Unknown GUI component type: ")
                              + std::string{type});
   }

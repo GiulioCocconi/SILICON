@@ -66,11 +66,11 @@ using namespace SILICON::waveform;
 
 namespace {
 
-  constexpr int rulerHeightPx       = 24;
-  constexpr int traceRowHeightPx    = 28;
-  constexpr int groupHeaderHeightPx = 22;
-  constexpr int signalListWidthPx   = 220;
-  constexpr int waveformLeftInset   = 16;
+  constexpr int RULER_HEIGHT_PX       = 24;
+  constexpr int TRACE_ROW_HEIGHT_PX    = 28;
+  constexpr int GROUP_HEADER_HEIGHT_PX = 22;
+  constexpr int SIGNAL_LIST_WIDTH_PX   = 220;
+  constexpr int WAVEFORM_LEFT_INSET   = 16;
 
   int normalizedIndex(const int index, const int count)
   {
@@ -97,7 +97,7 @@ namespace {
 
   std::pair<int, int> traceBounds(const int rowY)
   {
-    return {rowY + 5, rowY + traceRowHeightPx - 6};
+    return {rowY + 5, rowY + TRACE_ROW_HEIGHT_PX - 6};
   }
 
   QColor colorForTraceValue(const BusValue& value)
@@ -139,15 +139,15 @@ namespace {
 
 SignalListWidget::SignalListWidget(QWidget* parent) : QWidget(parent)
 {
-  setFixedWidth(signalListWidthPx);
+  setFixedWidth(SIGNAL_LIST_WIDTH_PX);
 }
 
 void SignalListWidget::setTrace(const QStringList& signalNames, int inputCount)
 {
   names            = signalNames;
   inputSignalCount = std::clamp<qsizetype>(inputCount, 0, names.size());
-  setMinimumSize(signalListWidthPx, signalAreaHeight());
-  resize(signalListWidthPx, signalAreaHeight());
+  setMinimumSize(SIGNAL_LIST_WIDTH_PX, signalAreaHeight());
+  resize(SIGNAL_LIST_WIDTH_PX, signalAreaHeight());
   update();
 }
 
@@ -169,20 +169,20 @@ void SignalListWidget::setSelectedSignalIndex(const int signalIndex)
 
 int SignalListWidget::signalAreaHeight() const
 {
-  return totalGroupHeaderCount(names.size(), inputSignalCount) * groupHeaderHeightPx
-         + names.size() * traceRowHeightPx;
+  return totalGroupHeaderCount(names.size(), inputSignalCount) * GROUP_HEADER_HEIGHT_PX
+         + names.size() * TRACE_ROW_HEIGHT_PX;
 }
 
 int SignalListWidget::valueColumnX() const
 {
-  return std::max(96, signalListWidthPx * 33 / 50);
+  return std::max(96, SIGNAL_LIST_WIDTH_PX * 33 / 50);
 }
 
 int SignalListWidget::yForSignalRow(int row) const
 {
   return totalGroupHeaderCountBeforeSignal(row, names.size(), inputSignalCount)
-             * groupHeaderHeightPx
-         + row * traceRowHeightPx;
+             * GROUP_HEADER_HEIGHT_PX
+         + row * TRACE_ROW_HEIGHT_PX;
 }
 
 int SignalListWidget::signalRowAt(const QPoint position) const
@@ -192,7 +192,7 @@ int SignalListWidget::signalRowAt(const QPoint position) const
 
   for (int row = 0; row < names.size(); ++row) {
     const int y = yForSignalRow(row);
-    if (position.y() >= y && position.y() < y + traceRowHeightPx)
+    if (position.y() >= y && position.y() < y + TRACE_ROW_HEIGHT_PX)
       return row;
   }
   return -1;
@@ -215,35 +215,35 @@ void SignalListWidget::paintEvent(QPaintEvent* event)
   painter.drawLine(valueX - 8, 0, valueX - 8, height());
 
   auto drawGroup = [&](int y, const QString& label) {
-    painter.fillRect(QRect(0, y, width(), groupHeaderHeightPx), groupColor);
+    painter.fillRect(QRect(0, y, width(), GROUP_HEADER_HEIGHT_PX), groupColor);
     painter.setPen(textColor);
-    painter.drawText(QRect(6, y, width() - 12, groupHeaderHeightPx),
+    painter.drawText(QRect(6, y, width() - 12, GROUP_HEADER_HEIGHT_PX),
                      Qt::AlignVCenter | Qt::AlignLeft, label);
     painter.setPen(gridColor);
-    painter.drawLine(0, y + groupHeaderHeightPx - 1, width(),
-                     y + groupHeaderHeightPx - 1);
+    painter.drawLine(0, y + GROUP_HEADER_HEIGHT_PX - 1, width(),
+                     y + GROUP_HEADER_HEIGHT_PX - 1);
   };
 
   if (hasInputGroup(inputSignalCount))
     drawGroup(0, tr("Inputs"));
   if (hasOutputGroup(names.size(), inputSignalCount))
-    drawGroup(yForSignalRow(inputSignalCount) - groupHeaderHeightPx, tr("Outputs"));
+    drawGroup(yForSignalRow(inputSignalCount) - GROUP_HEADER_HEIGHT_PX, tr("Outputs"));
 
   for (const auto& [row, name] : names | SILICON::views::enumerate) {
     const int     y     = yForSignalRow(static_cast<int>(row));
     const QString value = row < values.size() ? values[row] : QString("x");
 
     if (static_cast<int>(row) == selectedSignalIndex)
-      painter.fillRect(QRect(0, y, width(), traceRowHeightPx), selectedRowColor);
+      painter.fillRect(QRect(0, y, width(), TRACE_ROW_HEIGHT_PX), selectedRowColor);
 
     painter.setPen(textColor);
-    painter.drawText(QRect(6, y, valueX - 18, traceRowHeightPx),
+    painter.drawText(QRect(6, y, valueX - 18, TRACE_ROW_HEIGHT_PX),
                      Qt::AlignVCenter | Qt::AlignLeft, name);
-    painter.drawText(QRect(valueX, y, width() - valueX - 6, traceRowHeightPx),
+    painter.drawText(QRect(valueX, y, width() - valueX - 6, TRACE_ROW_HEIGHT_PX),
                      Qt::AlignVCenter | Qt::AlignLeft, value);
 
     painter.setPen(gridColor);
-    painter.drawLine(0, y + traceRowHeightPx - 1, width(), y + traceRowHeightPx - 1);
+    painter.drawLine(0, y + TRACE_ROW_HEIGHT_PX - 1, width(), y + TRACE_ROW_HEIGHT_PX - 1);
   }
 }
 
@@ -266,7 +266,7 @@ Canvas::Canvas(QWidget* parent) : QWidget(parent)
 {
   setAutoFillBackground(true);
   setMouseTracking(true);
-  setMinimumSize(480, rulerHeightPx);
+  setMinimumSize(480, RULER_HEIGHT_PX);
 }
 
 void Canvas::setTrace(const QStringList& names, const std::vector<Sample>& samples)
@@ -300,11 +300,11 @@ void Canvas::setSignalFormats(const std::vector<SILICON::core::BusValueFormat>& 
 void Canvas::updateCanvasSize()
 {
   const int       width         = std::max(480, xForTime(endTime()) + 160);
-  const qsizetype minimumHeight = rulerHeightPx + traceRowHeightPx;
+  const qsizetype minimumHeight = RULER_HEIGHT_PX + TRACE_ROW_HEIGHT_PX;
   const qsizetype contentHeight =
-      rulerHeightPx
-      + totalGroupHeaderCount(signalNames.size(), inputSignalCount) * groupHeaderHeightPx
-      + signalNames.size() * traceRowHeightPx;
+      RULER_HEIGHT_PX
+      + totalGroupHeaderCount(signalNames.size(), inputSignalCount) * GROUP_HEADER_HEIGHT_PX
+      + signalNames.size() * TRACE_ROW_HEIGHT_PX;
   const qsizetype height = std::max(minimumHeight, contentHeight);
   setMinimumSize(width, height);
   resize(width, height);
@@ -402,32 +402,32 @@ quint64 Canvas::endTime() const
 
 int Canvas::xForTime(const quint64 time) const
 {
-  return waveformLeftInset + std::lround(time * pixelsPerTick);
+  return WAVEFORM_LEFT_INSET + std::lround(time * pixelsPerTick);
 }
 
 quint64 Canvas::timeForX(const int x) const
 {
-  const double rawTime = std::max(0.0, (x - waveformLeftInset) / pixelsPerTick);
+  const double rawTime = std::max(0.0, (x - WAVEFORM_LEFT_INSET) / pixelsPerTick);
   const auto   rounded = static_cast<quint64>(std::llround(rawTime));
   return std::min(rounded, endTime());
 }
 
 int Canvas::yForSignalRow(const int row) const
 {
-  return rulerHeightPx
+  return RULER_HEIGHT_PX
          + totalGroupHeaderCountBeforeSignal(row, signalNames.size(), inputSignalCount)
-               * groupHeaderHeightPx
-         + row * traceRowHeightPx;
+               * GROUP_HEADER_HEIGHT_PX
+         + row * TRACE_ROW_HEIGHT_PX;
 }
 
 int Canvas::signalRowAt(const QPoint position) const
 {
-  if (position.y() < rulerHeightPx)
+  if (position.y() < RULER_HEIGHT_PX)
     return -1;
 
   for (int row = 0; row < signalNames.size(); ++row) {
     const int y = yForSignalRow(row);
-    if (position.y() >= y && position.y() < y + traceRowHeightPx)
+    if (position.y() >= y && position.y() < y + TRACE_ROW_HEIGHT_PX)
       return row;
   }
   return -1;
@@ -459,10 +459,10 @@ void Canvas::paintEvent(QPaintEvent* event)
   const QRect  visibleRect      = event ? event->rect() : rect();
 
   painter.setPen(gridColor);
-  painter.drawLine(0, rulerHeightPx - 1, width(), rulerHeightPx - 1);
+  painter.drawLine(0, RULER_HEIGHT_PX - 1, width(), RULER_HEIGHT_PX - 1);
 
   const auto visibleTimeForX = [this](int x) -> quint64 {
-    return std::max(0.0, (x - waveformLeftInset) / pixelsPerTick);
+    return std::max(0.0, (x - WAVEFORM_LEFT_INSET) / pixelsPerTick);
   };
   if (!traceSamples)
     return;
@@ -507,7 +507,7 @@ void Canvas::paintEvent(QPaintEvent* event)
     painter.setPen(linePen);
     painter.drawLine(x, painter.fontMetrics().height() + 2, x, height());
     painter.setPen(labelPen);
-    painter.drawText(QRect(labelX, 1, labelWidth, rulerHeightPx - 4),
+    painter.drawText(QRect(labelX, 1, labelWidth, RULER_HEIGHT_PX - 4),
                      Qt::AlignHCenter | Qt::AlignTop, label);
   };
 
@@ -535,23 +535,23 @@ void Canvas::paintEvent(QPaintEvent* event)
   }
 
   auto drawGroupSpacer = [&](int y) {
-    painter.fillRect(QRect(0, y, width(), groupHeaderHeightPx), palette().base());
+    painter.fillRect(QRect(0, y, width(), GROUP_HEADER_HEIGHT_PX), palette().base());
     painter.setPen(gridColor);
-    painter.drawLine(0, y + groupHeaderHeightPx - 1, width(),
-                     y + groupHeaderHeightPx - 1);
+    painter.drawLine(0, y + GROUP_HEADER_HEIGHT_PX - 1, width(),
+                     y + GROUP_HEADER_HEIGHT_PX - 1);
   };
 
   if (hasInputGroup(inputSignalCount))
-    drawGroupSpacer(rulerHeightPx);
+    drawGroupSpacer(RULER_HEIGHT_PX);
   if (hasOutputGroup(signalNames.size(), inputSignalCount))
-    drawGroupSpacer(yForSignalRow(inputSignalCount) - groupHeaderHeightPx);
+    drawGroupSpacer(yForSignalRow(inputSignalCount) - GROUP_HEADER_HEIGHT_PX);
 
   for (int row = 0; row < signalNames.size(); ++row) {
     const int y = yForSignalRow(row);
     if (row == selectedSignalIndex)
-      painter.fillRect(QRect(0, y, width(), traceRowHeightPx), selectedRowColor);
+      painter.fillRect(QRect(0, y, width(), TRACE_ROW_HEIGHT_PX), selectedRowColor);
     painter.setPen(gridColor);
-    painter.drawLine(0, y + traceRowHeightPx - 1, width(), y + traceRowHeightPx - 1);
+    painter.drawLine(0, y + TRACE_ROW_HEIGHT_PX - 1, width(), y + TRACE_ROW_HEIGHT_PX - 1);
   }
 
   const int editSignalIndex =
@@ -570,7 +570,7 @@ void Canvas::paintEvent(QPaintEvent* event)
     const int     y              = yForSignalRow(editSignalIndex);
     const QColor  selectionColor = ThemeEngine::getColor("SILICON_BLUE");
     painter.fillRect(
-        QRect(std::min(x0, x1), y, std::max(2, std::abs(x1 - x0)), traceRowHeightPx),
+        QRect(std::min(x0, x1), y, std::max(2, std::abs(x1 - x0)), TRACE_ROW_HEIGHT_PX),
         selectionColor.lighter(170));
 
     const QPen selectionPen(selectionColor, 2);
@@ -801,7 +801,7 @@ Viewer::Viewer(QWidget* parent) : QWidget(parent)
   labelLayout->setSpacing(0);
 
   const auto labelRulerSpacer = new QWidget(labelPane);
-  labelRulerSpacer->setFixedHeight(rulerHeightPx);
+  labelRulerSpacer->setFixedHeight(RULER_HEIGHT_PX);
   labelLayout->addWidget(labelRulerSpacer);
 
   signalList      = new SignalListWidget();
@@ -825,7 +825,7 @@ Viewer::Viewer(QWidget* parent) : QWidget(parent)
   splitter->setCollapsible(1, false);
   splitter->setStretchFactor(0, 0);
   splitter->setStretchFactor(1, 1);
-  labelPane->setFixedWidth(signalListWidthPx);
+  labelPane->setFixedWidth(SIGNAL_LIST_WIDTH_PX);
   root->addWidget(splitter);
 
   const auto zoomToolBar = makeToolBar();

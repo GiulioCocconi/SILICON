@@ -97,7 +97,7 @@ int main(const int argc, char** argv)
       return 2;
     }
 
-    constexpr std::string_view moduleName = "three_flip_flops";
+    constexpr std::string_view MODULE_NAME = "three_flip_flops";
     const auto                 inputPath  = std::filesystem::absolute(
         argc >= 2 ? std::filesystem::path(argv[1]) : "silicon_three_flip_flops.v");
     const auto outputPath =
@@ -117,19 +117,19 @@ int main(const int argc, char** argv)
                          "proc\n"
                          "opt\n"
                          "write_json {}\n",
-                         yosysQuote(inputPath), moduleName, yosysQuote(sourceJsonPath)),
+                         yosysQuote(inputPath), MODULE_NAME, yosysQuote(sourceJsonPath)),
              "Yosys failed to lower the input Verilog to JSON");
 
     const auto circuit =
-        SILICON::yosys::deserialize(readFile(sourceJsonPath), moduleName);
-    writeFile(siliconJsonPath, SILICON::yosys::serialize(circuit, moduleName));
+        SILICON::yosys::deserialize(readFile(sourceJsonPath), MODULE_NAME);
+    writeFile(siliconJsonPath, SILICON::yosys::serialize(circuit, MODULE_NAME));
 
     runYosys(exportScriptPath,
              std::format("read_json {}\n"
                          "hierarchy -check -top {}\n"
                          "opt\n"
                          "write_verilog -noattr {}\n",
-                         yosysQuote(siliconJsonPath), moduleName,
+                         yosysQuote(siliconJsonPath), MODULE_NAME,
                          yosysQuote(temporaryVerilog)),
              "Yosys failed to emit Verilog from Silicon's JSON");
 

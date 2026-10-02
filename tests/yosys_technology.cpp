@@ -21,9 +21,9 @@
 
 TEST(YosysToolTest, MapsVerilogToSiliconTechnologyCells)
 {
-  const auto mappedTypes = [](const std::string_view source, const std::string_view top) {
+  const auto mappedTypes = [](const std::string_view SOURCE, const std::string_view top) {
     return cellTypes(onlyModule(nlohmann::json::parse(
-        SILICON::yosys::serialize(importVerilog(source, top), top))));
+        SILICON::yosys::serialize(importVerilog(SOURCE, top), top))));
   };
 
   EXPECT_EQ(mappedTypes(R"(
@@ -169,12 +169,12 @@ TEST(YosysToolTest, MapsVerilogToSiliconTechnologyCells)
 
 TEST(YosysToolTest, ImportedTechnologyCellsPreserveRepresentativeBehavior)
 {
-  constexpr std::string_view latchSource = R"(
+  constexpr std::string_view LATCH_SOURCE = R"(
     module top(input d, input en, output reg q);
       always @* if (en) q <= d;
     endmodule
   )";
-  auto latchCircuit = std::make_shared<Circuit>(importVerilog(latchSource, "top"));
+  auto latchCircuit = std::make_shared<Circuit>(importVerilog(LATCH_SOURCE, "top"));
   auto latch        = findComponent<DLatch>(*latchCircuit);
   ASSERT_TRUE(latch);
   Simulator latchSimulator(latchCircuit);
@@ -196,14 +196,14 @@ TEST(YosysToolTest, ImportedTechnologyCellsPreserveRepresentativeBehavior)
   EXPECT_EQ(latch->outputBuses()[0][0]->getCurrentState(), State::HIGH);
 
   const auto simulateDff = [](const std::string_view edge) {
-    const auto source = std::format(
+    const auto SOURCE = std::format(
         R"(
           module top(input d, input clk, output reg q);
             always @({} clk) q <= d;
           endmodule
         )",
         edge);
-    auto circuit = std::make_shared<Circuit>(importVerilog(source, "top"));
+    auto circuit = std::make_shared<Circuit>(importVerilog(SOURCE, "top"));
     auto dff     = findComponent<DFlipFlop>(*circuit);
     if (!dff)
       throw std::runtime_error("Mapped D flip-flop was not reconstructed");
@@ -223,12 +223,12 @@ TEST(YosysToolTest, ImportedTechnologyCellsPreserveRepresentativeBehavior)
   simulateDff("posedge");
   simulateDff("negedge");
 
-  constexpr std::string_view enabledSource = R"(
+  constexpr std::string_view ENABLED_SOURCE = R"(
     module top(input d, input en, input clk, output reg q);
       always @(posedge clk) if (en) q <= d;
     endmodule
   )";
-  auto enabledCircuit = std::make_shared<Circuit>(importVerilog(enabledSource, "top"));
+  auto enabledCircuit = std::make_shared<Circuit>(importVerilog(ENABLED_SOURCE, "top"));
   auto dffe           = findComponent<EFlipFlop>(*enabledCircuit);
   ASSERT_TRUE(dffe);
   Simulator enabledSimulator(enabledCircuit);
@@ -256,12 +256,12 @@ TEST(YosysToolTest, ImportedTechnologyCellsPreserveRepresentativeBehavior)
       Simulator::RunResult::Completed);
   EXPECT_EQ(dffe->outputBuses()[0][0]->getCurrentState(), State::HIGH);
 
-  constexpr std::string_view adderSource = R"(
+  constexpr std::string_view ADDER_SOURCE = R"(
     module top(input [3:0] a, input [3:0] b, output [4:0] y);
       assign y = a + b;
     endmodule
   )";
-  auto adderCircuit = std::make_shared<Circuit>(importVerilog(adderSource, "top"));
+  auto adderCircuit = std::make_shared<Circuit>(importVerilog(ADDER_SOURCE, "top"));
   std::map<std::string, std::shared_ptr<DummyBusInputComponent>> inputs;
   std::shared_ptr<DummyBusOutputComponent>                       output;
   for (const auto vertex :
@@ -458,7 +458,7 @@ TEST(YosysToolTest, ExportsParseableStructuralVerilog)
 
 TEST(VerilogPostprocessingTest, NormalizesPortsAndInlinesGeneratedNets)
 {
-  constexpr std::string_view raw = R"(module top(a, y);
+  constexpr std::string_view RAW = R"(module top(a, y);
   input a;
   output y;
   wire a;
@@ -469,7 +469,7 @@ TEST(VerilogPostprocessingTest, NormalizesPortsAndInlinesGeneratedNets)
 endmodule
 )";
 
-  const auto normalized = SILICON::verilog::postprocess(raw);
+  const auto normalized = SILICON::verilog::postprocess(RAW);
   EXPECT_NE(normalized.find("module top(input a, output y);"), std::string::npos);
   EXPECT_EQ(normalized.find("wire a;"), std::string::npos);
   EXPECT_EQ(normalized.find("wire y;"), std::string::npos);
@@ -528,30 +528,30 @@ TEST(YosysToolTest, ExportsTwoInputNorWithoutIntermediateNets)
 
 TEST(YosysToolTest, ImportsVectorDffAsRegister)
 {
-  constexpr std::string_view source = R"(
+  constexpr std::string_view SOURCE = R"(
     module top(input clk, input [3:0] d, output reg [3:0] q);
       always @(posedge clk) q <= d;
     endmodule
   )";
 
-  const Circuit imported = importVerilog(source, "top");
+  const Circuit imported = importVerilog(SOURCE, "top");
   const auto    reg      = findComponent<Register>(imported);
   ASSERT_TRUE(reg);
   EXPECT_EQ(reg->getPropertyValue<int>("size"), 4);
   EXPECT_EQ(reg->getPropertyValue<std::string>("inputType"),
-            std::optional<std::string>(Register::ParallelType));
+            std::optional<std::string>(Register::PARALLEL_TYPE));
   EXPECT_EQ(reg->getPropertyValue<std::string>("outputType"),
-            std::optional<std::string>(Register::ParallelType));
+            std::optional<std::string>(Register::PARALLEL_TYPE));
 }
 
 TEST(YosysToolTest, VerilogCircuitVerilogRoundTripPreservesBehavior)
 {
-  constexpr std::string_view source       = R"(
+  constexpr std::string_view SOURCE       = R"(
     module top(input [1:0] a, output y);
       assign y = a[0] & a[1];
     endmodule
   )";
-  const auto                 firstCircuit = importVerilog(source, "top");
+  const auto                 firstCircuit = importVerilog(SOURCE, "top");
   EXPECT_EQ(componentTypes(firstCircuit).count("WireSplitter"), 1);
   EXPECT_EQ(componentTypes(firstCircuit).count("WireMerger"), 0);
   const auto roundTrippedVerilog = SILICON::verilog::write(firstCircuit, "top");
@@ -582,25 +582,25 @@ TEST(YosysToolTest, VerilogCircuitVerilogRoundTripPreservesBehavior)
 
   for (std::uint64_t value = 0; value < 4; ++value) {
     SCOPED_TRACE(std::format("input {}", value));
-    EXPECT_EQ(evaluate(importVerilog(source, "top"), value),
+    EXPECT_EQ(evaluate(importVerilog(SOURCE, "top"), value),
               evaluate(importVerilog(roundTrippedVerilog, "top"), value));
   }
 }
 
 TEST(YosysToolTest, VerilogConversionNamesCircuitAfterSelectedModule)
 {
-  const SILICON::project::Document source{
+  const SILICON::project::Document SOURCE{
       "code/design.v",
       "module inverter(input a, output y); assign y = ~a; endmodule\n"
       "module alu(input a, output y); inverter child(.a(a), .y(y)); endmodule\n"};
-  const std::vector<SILICON::project::Document> documents{source};
+  const std::vector<SILICON::project::Document> documents{SOURCE};
   SILICON::project::ProjectContext              project;
   project.setDocuments(documents);
   SILICON::project::ProjectCircuitResolver resolver{
       project, SILICON::core::ComponentRegistry::instance()};
 
   auto prepared = SILICON::conversion::prepareDocumentConversion(
-      source, SILICON::project::DocumentType::Circuit, documents,
+      SOURCE, SILICON::project::DocumentType::Circuit, documents,
       SILICON::core::ComponentRegistry::instance(), resolver);
   ASSERT_EQ(prepared.choices.size(), 2);
 
@@ -623,10 +623,10 @@ TEST(YosysToolTest, CircuitConversionPreservesModulePortsAndLogic)
                     std::make_shared<DummyOutputComponent>(Bus{wire}, "signal_out")},
       false);
 
-  const SILICON::project::Document source{
+  const SILICON::project::Document SOURCE{
       "circuits/passthrough.json",
       nlohmann::json{{"circuit", nlohmann::json::parse(circuit.serialize())}}.dump()};
-  const std::vector<SILICON::project::Document> documents{source};
+  const std::vector<SILICON::project::Document> documents{SOURCE};
   SILICON::project::ProjectContext              project;
   project.setDocuments(documents);
   auto registry = ComponentRegistry::empty();
@@ -634,7 +634,7 @@ TEST(YosysToolTest, CircuitConversionPreservesModulePortsAndLogic)
   SILICON::project::ProjectCircuitResolver resolver{project, registry};
 
   auto prepared = SILICON::conversion::prepareDocumentConversion(
-      source, SILICON::project::DocumentType::Verilog, documents, registry, resolver);
+      SOURCE, SILICON::project::DocumentType::Verilog, documents, registry, resolver);
   const auto converted = prepared.execute({});
 
   ASSERT_EQ(converted.documents.size(), 1);

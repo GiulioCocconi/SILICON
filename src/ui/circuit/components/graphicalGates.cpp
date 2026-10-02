@@ -40,9 +40,9 @@ GraphicalGate::GraphicalGate(const std::shared_ptr<Gate> gate, QGraphicsItem* sh
 
   inputVec.emplace_back("b", QPoint(-20, 30));
 
-  constexpr auto outputPoint = QPoint(80, 20);
+  constexpr auto OUTPUT_POINT = QPoint(80, 20);
 
-  setPorts(inputVec, {PortPair{"o", outputPoint}});
+  setPorts(inputVec, {PortPair{"o", OUTPUT_POINT}});
 }
 
 GraphicalNot::GraphicalNot(QGraphicsItem* parent)

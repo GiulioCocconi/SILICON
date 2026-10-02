@@ -39,8 +39,8 @@ using namespace SILICON::core;
 
 namespace {
 
-constexpr ItemCategory InputCategory  = ItemCategory::IO | ItemCategory::Input;
-constexpr ItemCategory OutputCategory = ItemCategory::IO | ItemCategory::Output;
+constexpr ItemCategory INPUT_CATEGORY  = ItemCategory::IO | ItemCategory::Input;
+constexpr ItemCategory OUTPUT_CATEGORY = ItemCategory::IO | ItemCategory::Output;
 
 [[nodiscard]] int gridToPixels(const int value)
 {
@@ -102,9 +102,9 @@ enum class BoundaryRole { None, Input, Output };
   auto role = BoundaryRole::None;
   if (GUIComponentFactory::instance().hasType(type)) {
     auto component = GUIComponentFactory::instance().create(type);
-    if (hasCategory(component.get(), InputCategory))
+    if (hasCategory(component.get(), INPUT_CATEGORY))
       role = BoundaryRole::Input;
-    else if (hasCategory(component.get(), OutputCategory))
+    else if (hasCategory(component.get(), OUTPUT_CATEGORY))
       role = BoundaryRole::Output;
   }
 
@@ -415,8 +415,8 @@ parseGraphicalSubcircuitMetadata(std::string_view sceneJson)
 
     GraphicalSubcircuitMetadata metadata;
     metadata.widthHeight = QSize(
-        gridToPixels(std::max(1, shape.value("width", GraphicalSubcircuitDefaultSize))),
-        gridToPixels(std::max(1, shape.value("height", GraphicalSubcircuitDefaultSize))));
+        gridToPixels(std::max(1, shape.value("width", GRAPHICAL_SUBCIRCUIT_DEFAULT_SIZE))),
+        gridToPixels(std::max(1, shape.value("height", GRAPHICAL_SUBCIRCUIT_DEFAULT_SIZE))));
 
     if (const auto inputs = graphical.find("inputs");
         inputs != graphical.end() && inputs->is_array()) {

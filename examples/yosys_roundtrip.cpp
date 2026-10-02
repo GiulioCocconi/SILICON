@@ -38,8 +38,8 @@ using namespace SILICON::extra;
 
 namespace {
 
-constexpr auto CounterWidth = 4;
-constexpr auto TopModule    = "counter";
+constexpr auto COUNTER_WIDTH = 4;
+constexpr auto TOP_MODULE    = "counter";
 
 [[nodiscard]] Component_ptr constant(Wire_ptr output, const State value)
 {
@@ -64,9 +64,9 @@ void writeFile(const std::filesystem::path& path, const std::string_view content
 
 [[nodiscard]] Circuit makeCounterCircuit()
 {
-  Bus count(CounterWidth);
-  Bus increment(CounterWidth);
-  Bus nextCount(CounterWidth);
+  Bus count(COUNTER_WIDTH);
+  Bus increment(COUNTER_WIDTH);
+  Bus nextCount(COUNTER_WIDTH);
 
   auto clock  = std::make_shared<Wire>();
   auto enable = std::make_shared<Wire>();
@@ -113,7 +113,7 @@ int main()
     };
 
     const Circuit     counter = makeCounterCircuit();
-    const std::string verilog = SILICON::verilog::write(counter, TopModule, options);
+    const std::string verilog = SILICON::verilog::write(counter, TOP_MODULE, options);
 
     const auto verilogPath =
         std::filesystem::current_path() / "yosys_roundtrip_counter.v";
@@ -124,7 +124,7 @@ int main()
     const std::string importedSource = readFile(verilogPath);
     const auto        importedJson   = SILICON::verilog::read(importedSource, options);
     const auto        restored       = SILICON::yosys::deserialize(
-        SILICON::yosys::elaborateHierarchy(importedJson, options), TopModule);
+        SILICON::yosys::elaborateHierarchy(importedJson, options), TOP_MODULE);
     writeFile(circuitJsonPath, restored.serialize());
 
     std::cout << "Exported SILICON counter to " << verilogPath << '\n';
@@ -132,7 +132,7 @@ int main()
               << '\n';
     std::cout << "Original circuit: " << componentCount(counter) << " components\n";
     std::cout << "Restored circuit: " << componentCount(restored) << " components\n";
-    std::cout << "Roundtrip completed for top module '" << TopModule << "'\n";
+    std::cout << "Roundtrip completed for top module '" << TOP_MODULE << "'\n";
   } catch (const std::exception& error) {
     std::cerr << "yosys_roundtrip failed: " << error.what() << '\n';
     return EXIT_FAILURE;

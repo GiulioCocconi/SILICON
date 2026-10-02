@@ -13,11 +13,21 @@
 
 #include <core/projectDocument.hpp>
 
+class QAction;
+
 namespace SILICON::ui {
 
 class EditorWorkspace;
+class ArchitectureDocumentEditor;
+class DocumentEditor;
 class ProjectDocumentController;
 struct ProjectSession;
+
+/** Main-window actions driven by the architecture subsystem. */
+struct ArchitectureActions {
+  QAction* build     = nullptr;
+  QAction* visualize = nullptr;
+};
 
 /** Coordinates the architecture editor tabs, builds, and the ISA visualizer. */
 class ArchitectureController : public QObject {
@@ -27,28 +37,24 @@ public:
   ArchitectureController(ProjectSession& session, EditorWorkspace& workspace,
                          ProjectDocumentController& documents, QObject* parent = nullptr);
 
+  /** @brief Connects the main-window architecture actions to their commands. */
+  void bindActions(const ArchitectureActions& actions);
+
   /** @brief Compiles the active architecture document, reporting build diagnostics. */
   void buildActiveArchitecture();
 
   /** @brief Opens the visualizer tab for the active architecture document. */
   void visualizeActiveArchitecture();
 
-signals:
-  /**
-   * @brief Emitted when the architecture view changed without a document switch.
-   *
-   * Selecting the visualizer tab changes which editor owns the workspace without
-   * activating another document, so action state has to be refreshed explicitly.
-   */
-  void visualizerTabSelected();
-
 private:
+  void configureWorkspace(DocumentEditor* editor);
   /** @brief Activates the document owned by a newly selected architecture tab. */
   void handleTabChanged(int index);
 
-  ProjectSession&            session_;
-  EditorWorkspace&           workspace_;
-  ProjectDocumentController& documents_;
+  ProjectSession&             session;
+  EditorWorkspace&            workspace;
+  ArchitectureDocumentEditor* architectureEditor = nullptr;
+  ProjectDocumentController&  documents;
 };
 
 }  // namespace SILICON::ui

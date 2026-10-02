@@ -35,8 +35,8 @@
 namespace SILICON::project {
 namespace {
 
-  constexpr std::string_view MetadataPath = "metadata.json";
-  constexpr std::string_view ProjectPath  = "project.json";
+  constexpr std::string_view METADATA_PATH = "metadata.json";
+  constexpr std::string_view PROJECT_PATH  = "project.json";
 
   template <auto Fn> struct ZipDeleter {
     template <typename T> void operator()(T* ptr) const noexcept
@@ -162,7 +162,7 @@ namespace {
   {
     std::vector<std::string> entries;
     enumerateZipEntries(archive, [&](const std::string_view name) {
-      if (name == "mimetype" || name == MetadataPath || name == ProjectPath)
+      if (name == "mimetype" || name == METADATA_PATH || name == PROJECT_PATH)
         return;
 
       if (name.ends_with('/')) {
@@ -213,12 +213,12 @@ namespace {
   [[nodiscard]] ProjectMetadata parseMetadata(zip_t* archive)
   {
     const auto json =
-        nlohmann::json::parse(readEntry(archive, std::string(MetadataPath)));
+        nlohmann::json::parse(readEntry(archive, std::string(METADATA_PATH)));
     ProjectMetadata metadata{
-        .formatVersion  = requireField<int>(json, "formatVersion", MetadataPath),
-        .siliconVersion = requireField<std::string>(json, "siliconVersion", MetadataPath),
-        .creationDate   = requireField<std::string>(json, "creationDate", MetadataPath),
-        .lastModify     = requireField<std::string>(json, "lastModify", MetadataPath)};
+        .formatVersion  = requireField<int>(json, "formatVersion", METADATA_PATH),
+        .siliconVersion = requireField<std::string>(json, "siliconVersion", METADATA_PATH),
+        .creationDate   = requireField<std::string>(json, "creationDate", METADATA_PATH),
+        .lastModify     = requireField<std::string>(json, "lastModify", METADATA_PATH)};
 
     if (metadata.formatVersion != FORMAT_VERSION)
       throw std::runtime_error(std::format(
@@ -229,13 +229,13 @@ namespace {
 
   [[nodiscard]] ProjectInfo parseProjectInfo(zip_t* archive)
   {
-    const auto json = nlohmann::json::parse(readEntry(archive, std::string(ProjectPath)));
+    const auto json = nlohmann::json::parse(readEntry(archive, std::string(PROJECT_PATH)));
     if (!json.is_object() || json.size() != 2 || !json.contains("name")
         || !json.contains("description"))
       throw std::runtime_error("project.json must contain only name and description");
-    return ProjectInfo{.name = requireField<std::string>(json, "name", ProjectPath),
+    return ProjectInfo{.name = requireField<std::string>(json, "name", PROJECT_PATH),
                        .description =
-                           requireField<std::string>(json, "description", ProjectPath)};
+                           requireField<std::string>(json, "description", PROJECT_PATH)};
   }
 
   [[nodiscard]] nlohmann::ordered_json metadataToJson(const ProjectMetadata& m)
@@ -310,9 +310,9 @@ void writeProjectFile(const std::filesystem::path& path, const ProjectFile& proj
   }
 
   addEntry(archive.get(), "mimetype", MIME_TYPE, true);
-  addEntry(archive.get(), std::string(MetadataPath),
+  addEntry(archive.get(), std::string(METADATA_PATH),
            metadataToJson(projectFile.metadata).dump(2));
-  addEntry(archive.get(), std::string(ProjectPath),
+  addEntry(archive.get(), std::string(PROJECT_PATH),
            projectInfoToJson(projectFile.project).dump(2));
 
   for (const auto& document : projectFile.documents)

@@ -120,7 +120,7 @@ TEST(YosysTest, EncodesDeclaredUnconnectedInputDefault)
 TEST(YosysTest, ExtenderLowersToPosAndRoundTripsWithItsModeAndWidths)
 {
   auto extender =
-      std::make_shared<Extender>(Bus(3), Bus(6), std::string(Extender::SignedMode));
+      std::make_shared<Extender>(Bus(3), Bus(6), std::string(Extender::SIGNED_MODE));
   auto exported = exportComponent(extender);
   EXPECT_EQ(cellTypes(onlyModule(exported)), std::multiset<std::string>{"$pos"});
 
@@ -138,7 +138,7 @@ TEST(YosysTest, ExtenderLowersToPosAndRoundTripsWithItsModeAndWidths)
   EXPECT_EQ(restored->getPropertyValue<int>("inSize"), 3);
   EXPECT_EQ(restored->getPropertyValue<int>("outSize"), 6);
   EXPECT_EQ(restored->getPropertyValue<std::string>("mode"),
-            std::string(Extender::SignedMode));
+            std::string(Extender::SIGNED_MODE));
   EXPECT_EQ(cellTypes(onlyModule(
                 nlohmann::json::parse(SILICON::yosys::serialize(imported, "top")))),
             (std::multiset<std::string>{"$pos", "$pos"}));
@@ -177,7 +177,7 @@ TEST(YosysTest, ComparatorLowersToNativeComparisonCellsAndRoundTrips)
   GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
 #endif
 
-  static constexpr std::array modes{
+  static constexpr std::array MODES{
       std::pair<std::string_view, std::string_view>{"==", "$eq"},
       std::pair<std::string_view, std::string_view>{"<", "$lt"},
       std::pair<std::string_view, std::string_view>{"<=", "$le"},
@@ -185,7 +185,7 @@ TEST(YosysTest, ComparatorLowersToNativeComparisonCellsAndRoundTrips)
       std::pair<std::string_view, std::string_view>{">=", "$ge"},
   };
 
-  for (const auto& [mode, cellType] : modes) {
+  for (const auto& [mode, cellType] : MODES) {
     SCOPED_TRACE(mode);
     auto comparator = std::make_shared<Comparator>(std::array<Bus, 2>{Bus(5), Bus(5)},
                                                    std::make_shared<Wire>());
@@ -328,9 +328,9 @@ TEST(YosysTest, CustomTechnologyCellsRoundTripToNativeComponents)
 
   for (const auto& [mode, isSigned, cellType] :
        std::array<std::tuple<std::string_view, bool, std::string_view>, 3>{
-           {{Shifter::LeftMode, false, "$shl"},
-            {Shifter::RightMode, false, "$shr"},
-            {Shifter::RightMode, true, "$sshr"}}}) {
+           {{Shifter::LEFT_MODE, false, "$shl"},
+            {Shifter::RIGHT_MODE, false, "$shr"},
+            {Shifter::RIGHT_MODE, true, "$sshr"}}}) {
     auto shifter = std::make_shared<Shifter>(Bus(5), Bus(3), Bus(5));
     shifter->setProperty("mode", std::string(mode));
     shifter->setProperty("signed", isSigned);
@@ -349,13 +349,13 @@ TEST(YosysTest, CustomTechnologyCellsRoundTripToNativeComponents)
     bool             parallelOutput;
     std::string_view cellType;
   };
-  static constexpr std::array registerModes{
+  static constexpr std::array REGISTER_MODES{
       RegisterMode{true, true, "SILICON_PIPO"},
       RegisterMode{true, false, "SILICON_PISO"},
       RegisterMode{false, true, "SILICON_SIPO"},
       RegisterMode{false, false, "SILICON_SISO"},
   };
-  for (const auto& mode : registerModes) {
+  for (const auto& mode : REGISTER_MODES) {
     SCOPED_TRACE(mode.cellType);
     const auto  reg = registerWithMode(mode.parallelInput, mode.parallelOutput);
     const auto  registerDesign = exportComponent(reg);
@@ -377,11 +377,11 @@ TEST(YosysTest, CustomTechnologyCellsRoundTripToNativeComponents)
     ASSERT_TRUE(importedRegister);
     EXPECT_EQ(importedRegister->getPropertyValue<int>("size"), 4);
     EXPECT_EQ(importedRegister->getPropertyValue<std::string>("inputType"),
-              std::optional<std::string>(mode.parallelInput ? Register::ParallelType
-                                                            : Register::SerialType));
+              std::optional<std::string>(mode.parallelInput ? Register::PARALLEL_TYPE
+                                                            : Register::SERIAL_TYPE));
     EXPECT_EQ(importedRegister->getPropertyValue<std::string>("outputType"),
-              std::optional<std::string>(mode.parallelOutput ? Register::ParallelType
-                                                             : Register::SerialType));
+              std::optional<std::string>(mode.parallelOutput ? Register::PARALLEL_TYPE
+                                                             : Register::SERIAL_TYPE));
   }
 }
 

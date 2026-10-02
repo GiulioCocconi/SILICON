@@ -73,7 +73,7 @@ private:
     qsizetype end;
   };
 
-  static constexpr std::size_t StyleCount = 13;
+  static constexpr std::size_t STYLE_COUNT = 13;
 
   [[nodiscard]] const QTextCharFormat& format(CodeSyntaxStyle style) const;
   [[nodiscard]] static RegionEnd       findRegionEnd(const QString& text, qsizetype from,
@@ -85,7 +85,7 @@ private:
   std::vector<CompiledKeywordGroup>       keywordGroups;
   std::vector<CompiledMatchRule>          matchRules;
   std::vector<CompiledRegionRule>         regionRules;
-  std::array<QTextCharFormat, StyleCount> formats;
+  std::array<QTextCharFormat, STYLE_COUNT> formats;
 };
 
 }  // namespace SILICON::ui

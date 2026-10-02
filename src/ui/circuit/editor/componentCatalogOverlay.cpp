@@ -52,10 +52,10 @@ namespace SILICON::ui {
 
   namespace {
 
-    constexpr int CatalogPreviewPadding            = 8;
-    constexpr int CatalogCategoryRowHeight         = 32;
-    constexpr int CatalogMinimumComponentRowHeight = 32;
-    constexpr int CatalogNameColumnPadding         = 28;
+    constexpr int CATALOG_PREVIEW_PADDING            = 8;
+    constexpr int CATALOG_CATEGORY_ROW_HEIGHT         = 32;
+    constexpr int CATALOG_MINIMUM_COMPONENT_ROW_HEIGHT = 32;
+    constexpr int CATALOG_NAME_COLUMN_PADDING         = 28;
 
     QPixmap componentPreviewPixmap(const ComponentCatalogOverlay::CatalogRow& rowData,
                                    const SILICON::project::DocumentStore&     documents,
@@ -75,8 +75,8 @@ namespace SILICON::ui {
       }
       const QRectF bounds = component->sceneBoundingRect();
       const QSize  size(
-          static_cast<int>(std::ceil(bounds.width())) + 2 * CatalogPreviewPadding,
-          static_cast<int>(std::ceil(bounds.height())) + 2 * CatalogPreviewPadding);
+          static_cast<int>(std::ceil(bounds.width())) + 2 * CATALOG_PREVIEW_PADDING,
+          static_cast<int>(std::ceil(bounds.height())) + 2 * CATALOG_PREVIEW_PADDING);
 
       QPixmap pixmap(size);
       pixmap.fill(Qt::transparent);
@@ -88,7 +88,7 @@ namespace SILICON::ui {
       painter.setRenderHint(QPainter::Antialiasing);
       previewScene.render(
           &painter,
-          QRectF(QPointF(CatalogPreviewPadding, CatalogPreviewPadding), bounds.size()),
+          QRectF(QPointF(CATALOG_PREVIEW_PADDING, CATALOG_PREVIEW_PADDING), bounds.size()),
           bounds, Qt::KeepAspectRatio);
       previewScene.removeItem(component.get());
 
@@ -263,7 +263,7 @@ namespace SILICON::ui {
     const int row = table->rowCount();
     table->insertRow(row);
     table->setSpan(row, 0, 1, 3);
-    table->setRowHeight(row, CatalogCategoryRowHeight);
+    table->setRowHeight(row, CATALOG_CATEGORY_ROW_HEIGHT);
 
     auto* item = new QTableWidgetItem(
         QString::fromStdString(std::string(componentCategoryName(category))));
@@ -286,7 +286,7 @@ namespace SILICON::ui {
     preview->setPixmap(previewPixmap);
     table->setCellWidget(row, 0, preview);
     table->setRowHeight(
-        row, std::max(CatalogMinimumComponentRowHeight, previewPixmap.height()));
+        row, std::max(CATALOG_MINIMUM_COMPONENT_ROW_HEIGHT, previewPixmap.height()));
 
     auto* name =
         new QTableWidgetItem(QString::fromStdString(rowData.metadata.displayName));
@@ -362,7 +362,7 @@ namespace SILICON::ui {
           std::max(nameColumnWidth, fontMetrics.horizontalAdvance(item->text()));
     }
 
-    table->setColumnWidth(1, nameColumnWidth + CatalogNameColumnPadding);
+    table->setColumnWidth(1, nameColumnWidth + CATALOG_NAME_COLUMN_PADDING);
   }
 
   QStringList ComponentCatalogOverlay::searchableFields(const CatalogRow& rowData)

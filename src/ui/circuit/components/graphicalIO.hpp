@@ -144,7 +144,7 @@ signals:
 class GraphicalInput : public GraphicalIO {
   Q_OBJECT
 public:
-  static constexpr std::string_view ComponentType = "Input";
+  static constexpr std::string_view COMPONENT_TYPE = "Input";
 
   explicit GraphicalInput(QGraphicsItem* parent = nullptr);
 
@@ -154,7 +154,7 @@ public:
   /** @return The standard string identifier for this component type. */
   [[nodiscard]] std::string getTypeName() const override
   {
-    return std::string(ComponentType);
+    return std::string(COMPONENT_TYPE);
   }
 
   /**
@@ -209,7 +209,7 @@ private:
 class GraphicalBusInput : public GraphicalIO {
   Q_OBJECT
 public:
-  static constexpr std::string_view ComponentType = "BusInput";
+  static constexpr std::string_view COMPONENT_TYPE = "BusInput";
 
   explicit GraphicalBusInput(QGraphicsItem* parent = nullptr);
 
@@ -217,7 +217,7 @@ public:
 
   [[nodiscard]] std::string getTypeName() const override
   {
-    return std::string(ComponentType);
+    return std::string(COMPONENT_TYPE);
   }
 
   void setComponent(const Component_ptr& component) override;
@@ -261,7 +261,7 @@ private:
 class GraphicalOutputSingle : public GraphicalIO {
   Q_OBJECT
 public:
-  static constexpr std::string_view ComponentType = "Output";
+  static constexpr std::string_view COMPONENT_TYPE = "Output";
 
   explicit GraphicalOutputSingle(QGraphicsItem* parent = nullptr);
 
@@ -269,7 +269,7 @@ public:
 
   [[nodiscard]] std::string getTypeName() const override
   {
-    return std::string(ComponentType);
+    return std::string(COMPONENT_TYPE);
   }
 
   /**
@@ -311,7 +311,7 @@ private:
 class GraphicalBusOutput : public GraphicalIO {
   Q_OBJECT
 public:
-  static constexpr std::string_view ComponentType = "BusOutput";
+  static constexpr std::string_view COMPONENT_TYPE = "BusOutput";
 
   explicit GraphicalBusOutput(QGraphicsItem* parent = nullptr);
 
@@ -319,7 +319,7 @@ public:
 
   [[nodiscard]] std::string getTypeName() const override
   {
-    return std::string(ComponentType);
+    return std::string(COMPONENT_TYPE);
   }
 
   void setComponent(const Component_ptr& component) override;

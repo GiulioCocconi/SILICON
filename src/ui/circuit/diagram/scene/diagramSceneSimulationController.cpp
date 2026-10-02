@@ -54,8 +54,8 @@ using namespace SILICON::waveform::fst;
 
 namespace {
 
-constexpr ItemCategory InputCategory  = ItemCategory::IO | ItemCategory::Input;
-constexpr ItemCategory OutputCategory = ItemCategory::IO | ItemCategory::Output;
+constexpr ItemCategory INPUT_CATEGORY  = ItemCategory::IO | ItemCategory::Input;
+constexpr ItemCategory OUTPUT_CATEGORY = ItemCategory::IO | ItemCategory::Output;
 const SILICON::logging::Logger           simulationUiLog("simulation-ui");
 
 std::string componentNameOr(const Component_ptr& component, const std::string& fallback)
@@ -114,9 +114,9 @@ bool DiagramSceneSimulationController::enterSimulationMode()
   Component_set             coreComps;
 
   for (auto* item : scene.items()) {
-    if (auto* input = category_cast<GraphicalIO>(item, InputCategory))
+    if (auto* input = category_cast<GraphicalIO>(item, INPUT_CATEGORY))
       inputs.push_back(input);
-    else if (auto* output = category_cast<GraphicalIO>(item, OutputCategory))
+    else if (auto* output = category_cast<GraphicalIO>(item, OUTPUT_CATEGORY))
       outputs.push_back(output);
 
     if (const auto* component =
@@ -229,7 +229,7 @@ void DiagramSceneSimulationController::setFstTraceFile(
 void DiagramSceneSimulationController::refreshGraphicalOutputs()
 {
   for (auto* item : scene.items()) {
-    auto* output = category_cast<GraphicalIO>(item, OutputCategory);
+    auto* output = category_cast<GraphicalIO>(item, OUTPUT_CATEGORY);
     if (!output)
       continue;
 
@@ -299,9 +299,9 @@ void DiagramSceneSimulationController::simulateEditedWaveform(
   Component_set             coreComps;
 
   for (auto* item : scene.items()) {
-    if (auto* input = category_cast<GraphicalIO>(item, InputCategory))
+    if (auto* input = category_cast<GraphicalIO>(item, INPUT_CATEGORY))
       inputs.push_back(input);
-    else if (auto* output = category_cast<GraphicalIO>(item, OutputCategory))
+    else if (auto* output = category_cast<GraphicalIO>(item, OUTPUT_CATEGORY))
       outputs.push_back(output);
 
     if (const auto* component =
@@ -576,9 +576,9 @@ DiagramSceneSimulationController::collectTraceConfiguration() const
   std::vector<GraphicalIO*> outputs;
 
   for (auto* item : scene.items()) {
-    if (auto* input = category_cast<GraphicalIO>(item, InputCategory)) {
+    if (auto* input = category_cast<GraphicalIO>(item, INPUT_CATEGORY)) {
       inputs.push_back(input);
-    } else if (auto* output = category_cast<GraphicalIO>(item, OutputCategory)) {
+    } else if (auto* output = category_cast<GraphicalIO>(item, OUTPUT_CATEGORY)) {
       outputs.push_back(output);
     }
   }

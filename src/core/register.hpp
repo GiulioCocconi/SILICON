@@ -29,8 +29,8 @@ namespace SILICON::core {
 class Register : public Component {
 public:
   static constexpr std::string_view Type         = "Register";
-  static constexpr std::string_view ParallelType = "Parallel";
-  static constexpr std::string_view SerialType   = "Serial";
+  static constexpr std::string_view PARALLEL_TYPE = "Parallel";
+  static constexpr std::string_view SERIAL_TYPE   = "Serial";
 
   enum class Inputs : unsigned int {
     Data   = 0,

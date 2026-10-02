@@ -182,7 +182,7 @@ TEST(YosysCanonicalImporterTest, ImportsCanonicalExpressionCellsWithoutYosys)
     }
     if (auto shifter = findComponent<Shifter>(circuit)) {
       EXPECT_EQ(shifter->getPropertyValue<std::string>("mode"),
-                std::string(Shifter::RightMode));
+                std::string(Shifter::RIGHT_MODE));
       EXPECT_TRUE(shifter->getPropertyValue<bool>("signed"));
     }
   }

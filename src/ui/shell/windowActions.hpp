@@ -16,13 +16,15 @@
 #include <QVector>
 
 #include <core/projectDocument.hpp>
+#include <ui/circuit/editor/diagramInteractionController.hpp>
+#include <ui/documents/architecture/architectureController.hpp>
 #include <ui/shell/uiUtils.hpp>
+#include <ui/waveform/waveformController.hpp>
 
 class QAction;
 class QMainWindow;
 class QMenu;
 class QToolBar;
-class QUndoStack;
 
 namespace SILICON::ui {
 class EditorWorkspace;
@@ -32,8 +34,37 @@ struct ShortcutSetting;
 /** Owns main-window actions, menus, shortcuts, and their enabled state. */
 class WindowActions : public QObject {
 public:
-  WindowActions(QMainWindow& window, ProjectSession& session, EditorWorkspace& workspace,
-                QUndoStack& history);
+  /** Project-wide commands: files, application settings, and the about box. */
+  struct ProjectActions {
+    QAction* newProject  = nullptr;
+    QAction* open        = nullptr;
+    QAction* save        = nullptr;
+    QAction* exportImage = nullptr;
+    QAction* exit        = nullptr;
+    QAction* settings    = nullptr;
+    QAction* about       = nullptr;
+  };
+
+  /** Commands adding to, or converting, the documents of a project. */
+  struct DocumentActions {
+    QAction* newCircuit      = nullptr;
+    QAction* newCodeFile     = nullptr;
+    QAction* newArchitecture = nullptr;
+    QAction* newBinaryFile   = nullptr;
+    QAction* codeConversion  = nullptr;
+  };
+
+  /** Clipboard, history, and deletion commands of the active editor. */
+  struct EditActions {
+    QAction* undo   = nullptr;
+    QAction* redo   = nullptr;
+    QAction* cut    = nullptr;
+    QAction* copy   = nullptr;
+    QAction* paste  = nullptr;
+    QAction* remove = nullptr;
+  };
+
+  WindowActions(QMainWindow& window, ProjectSession& session, EditorWorkspace& workspace);
 
   void createActions();
   void createMenus();
@@ -63,91 +94,33 @@ public:
   /** @brief Help menu. */
   QMenu* helpMenu = nullptr;
 
-  /** @brief Creates a new project. */
-  QAction* newAct             = nullptr;
-  QAction* newCircuitAct      = nullptr;
-  QAction* newCodeFileAct     = nullptr;
-  QAction* newArchitectureAct = nullptr;
-  QAction* newBinaryFileAct   = nullptr;
+  /** @brief Commands owned by the project and application shell. */
+  ProjectActions project;
 
-  /** @brief Opens an existing project. */
-  QAction* openAct = nullptr;
+  /** @brief Commands owned by the project document workflow. */
+  DocumentActions documents;
 
-  /** @brief Saves the current project. */
-  QAction* saveAct = nullptr;
+  /** @brief Commands owned by the active editor, whatever its kind. */
+  EditActions edit;
 
-  /** @brief Exports the current diagram image. */
-  QAction* exportImageAct = nullptr;
+  /** @brief Commands owned by the circuit editor. */
+  CircuitActions circuit;
 
-  /** @brief Closes the application window. */
-  QAction* exitAct = nullptr;
+  /** @brief Commands owned by the architecture subsystem. */
+  ArchitectureActions architecture;
 
-  /** @brief Cuts the current selection. */
-  QAction* cutAct = nullptr;
-
-  /** @brief Copies the current selection. */
-  QAction* copyAct = nullptr;
-
-  /** @brief Pastes a copied selection. */
-  QAction* pasteAct = nullptr;
-
-  /** @brief Rotates selected components. */
-  QAction* rotateAct = nullptr;
-
-  /** @brief Automatically places components and reroutes wires. */
-  QAction* autoPlaceAct = nullptr;
-
-  /** @brief Deletes the current selection. */
-  QAction* deleteAct = nullptr;
-
-  /** @brief Opens the about dialog. */
-  QAction* aboutAct = nullptr;
-
-  /** @brief Opens the settings dialog. */
-  QAction* settingsAct = nullptr;
-
-  /** @brief Activates normal editing mode. */
-  QAction* setNormalModeAct = nullptr;
-
-  /** @brief Activates panning mode. */
-  QAction* setPanModeAct = nullptr;
-
-  /** @brief Activates wire creation mode. */
-  QAction* setWireCreationModeAct = nullptr;
-
-  /** @brief Activates simulation mode. */
-  QAction* setSimulationModeAct = nullptr;
-
-  /** @brief Toggles the waveform viewer window for the active scene. */
-  QAction* toggleWaveformViewerAct = nullptr;
-
-  /** @brief Cancels the active diagram interaction. */
-  QAction* cancelInteractionAct = nullptr;
-
-  /** @brief Opens the component catalog overlay. */
-  QAction* openComponentCatalogAct  = nullptr;
-  QAction* editSubcircuitShapeAct   = nullptr;
-  QAction* codeConversionAct        = nullptr;
-  QAction* buildArchitectureAct     = nullptr;
-  QAction* visualizeArchitectureAct = nullptr;
-
-  /** @brief Activates component placing mode. */
-  QAction* setComponentPlacingModeAct = nullptr;
-
-  /** @brief Undo action created from the shared undo stack. */
-  QAction* undoAct = nullptr;
-
-  /** @brief Redo action created from the shared undo stack. */
-  QAction* redoAct = nullptr;
+  /** @brief Commands owned by the waveform viewer. */
+  WaveformActions waveform;
 
 private:
   [[nodiscard]] QVector<ShortcutSetting> shortcutSettings() const;
+  void                                   bindEditorActions();
+  void                                   refreshActiveEditorActions();
   void                                   syncWasmShortcutCapture();
 
-  QMainWindow&     window_;
-  ProjectSession&  session_;
-  EditorWorkspace& workspace_;
-  QUndoStack&      undoStack_;
+  QMainWindow&     window;
+  ProjectSession&  session;
+  EditorWorkspace& workspace;
 };
 
 }  // namespace SILICON::ui

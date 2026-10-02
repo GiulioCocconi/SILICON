@@ -18,32 +18,7 @@
 #pragma once
 
 #include <QMainWindow>
-#include <QString>
-
-class QAction;
-class QByteArray;
-class QDialog;
-class QDockWidget;
-class QEvent;
-class QCloseEvent;
-class QMenu;
-class QObject;
-class QPoint;
-class QResizeEvent;
-class QStackedWidget;
-class QTabWidget;
-class QToolBar;
-class QUndoStack;
-
-#include <ui/circuit/editor/diagramInteractionController.hpp>
-#include <ui/documents/architecture/architectureController.hpp>
-#include <ui/documents/editorWorkspace.hpp>
-#include <ui/project/projectDocumentController.hpp>
-#include <ui/project/projectFileController.hpp>
 #include <ui/project/projectSession.hpp>
-#include <ui/shell/uiUtils.hpp>
-#include <ui/shell/windowActions.hpp>
-#include <ui/waveform/waveformController.hpp>
 
 #ifdef __EMSCRIPTEN__
   #include <emscripten/html5.h>
@@ -53,19 +28,29 @@ class QUndoStack;
 class QContextMenuEvent;
 #endif
 
-namespace SILICON::core {
-class Circuit;
-}
+class QDockWidget;
+class QEvent;
+class QCloseEvent;
+class QObject;
+class QPoint;
+class QResizeEvent;
+class QUndoStack;
 
 namespace SILICON::ui {
 class AboutDialog;
 class ComponentCatalogOverlay;
+class CircuitEditor;
 class GraphicalLogStream;
 class LogSideView;
 class ProjectTree;
 class PropertyPanel;
-
-struct ShortcutSetting;
+class ArchitectureController;
+class DiagramInteractionController;
+class EditorWorkspace;
+class ProjectDocumentController;
+class ProjectFileController;
+class WaveformController;
+class WindowActions;
 
 /**
  * @brief Main window for the SILICON graphical circuit editor.
@@ -117,8 +102,6 @@ private slots:
   /** @brief Shows the application about dialog. */
   void about() const;
 
-  void editActiveSubcircuitShape();
-
   /** @brief Refreshes the status bar text for the current scene mode. */
   void updateStatus() const;
 
@@ -138,7 +121,7 @@ private slots:
   void updatePropertyDock();
 
 private:
-  /** Connects actions to their command handlers. */
+  /** Connects the application-level actions to their command handlers. */
   void wireActions();
 
   /** @brief Repositions and resizes the component catalog overlay. */
@@ -197,7 +180,8 @@ private:
   /** @brief Adapter that forwards Boost.Log output into the Qt log side view. */
   GraphicalLogStream* graphicalLogStream = nullptr;
 
-  EditorWorkspace* workspace = nullptr;
+  EditorWorkspace* workspace     = nullptr;
+  CircuitEditor*   circuitEditor = nullptr;
 
   /** @brief Floating searchable component catalog, shown over the diagram viewport. */
   ComponentCatalogOverlay* componentCatalogOverlay = nullptr;

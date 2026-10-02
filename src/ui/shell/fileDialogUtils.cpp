@@ -25,10 +25,7 @@
 #include <QObject>
 #include <QWidget>
 
-
-namespace SILICON::ui {
-
-namespace fileDialog {
+namespace SILICON::ui::fileDialog {
 
 void openFileContent(QWidget* parent, const QString& caption, const QString& filter,
                      OpenContentCallback callback)
@@ -82,6 +79,4 @@ std::optional<QString> saveFileContent(QWidget* parent, const QString& caption,
 #endif
 }
 
-}  // namespace fileDialog
-
-}  // namespace SILICON::ui
+}  // namespace SILICON::ui::fileDialog

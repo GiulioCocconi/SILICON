@@ -34,7 +34,7 @@ namespace SILICON::extra {
 using namespace SILICON::core;
 
 namespace {
-  constexpr int MaxSelectionSize = 15;
+  constexpr int MAX_SELECTION_SIZE = 15;
 
   // Converts an N-bit selection bus into the width of a packed one-bit mux/demux bus.
   unsigned short dataWidthForSelectionSize(const int selectionSize)
@@ -54,7 +54,7 @@ namespace {
     if (selectionSize < 1)
       throw std::invalid_argument(std::string(componentName)
                                   + " selectionSize must be at least 1");
-    if (selectionSize > MaxSelectionSize)
+    if (selectionSize > MAX_SELECTION_SIZE)
       throw std::invalid_argument(std::string(componentName)
                                   + " selectionSize is too large");
   }
@@ -64,7 +64,7 @@ namespace {
     if (selection.size() == 0)
       throw std::invalid_argument(std::string(componentName)
                                   + " selection bus must not be empty");
-    if (selection.size() > MaxSelectionSize)
+    if (selection.size() > MAX_SELECTION_SIZE)
       throw std::invalid_argument(std::string(componentName)
                                   + " selection bus is too large");
   }
