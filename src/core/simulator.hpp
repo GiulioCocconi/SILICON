@@ -296,15 +296,43 @@ private:
     State    state = State::ERROR;
   };
 
-  struct StagedSequentialTransition {
+  struct StagedWireTransition {
     Wire_ptr          target;
     State             state = State::ERROR;
     Component_weakPtr source;
   };
 
+  using StagedTransitions = std::unordered_map<PendingTransitionKey,
+                                               StagedWireTransition,
+                                               PendingTransitionKeyHash>;
+
+  struct StagedCyclicWire {
+    State             state = State::ERROR;
+    Component_weakPtr source;
+    Component_weakPtr conflictingSource;
+    bool              written  = false;
+    bool              conflict = false;
+  };
+
+  struct CyclicStaging {
+    // Compiled output-wire slots are reused; only dirty slots are visited at commit.
+    std::vector<Wire_ptr>                 wires;
+    std::unordered_map<uint64_t, std::size_t> indices;
+    std::vector<StagedCyclicWire>         writes;
+    std::vector<std::size_t>             dirtyWires;
+  };
+
   struct ExecutionStep {
+    ExecutionStep(bool cyclic, std::vector<Component_weakPtr> orderedComponents)
+      : isCyclic(cyclic), components(std::move(orderedComponents))
+    {
+      if (isCyclic)
+        cyclicStaging = std::make_unique<CyclicStaging>();
+    }
+
     bool                           isCyclic = false;
     std::vector<Component_weakPtr> components;
+    std::unique_ptr<CyclicStaging> cyclicStaging;
   };
 
   class EvaluationStateGuard;
@@ -329,9 +357,10 @@ private:
       pendingTransitions;
 
   /** @brief Zero-delay sequential writes waiting for the active pass to finish */
-  std::unordered_map<PendingTransitionKey, StagedSequentialTransition,
-                     PendingTransitionKeyHash>
-      stagedSequentialTransitions;
+  StagedTransitions stagedSequentialTransitions;
+
+  /** @brief Active SCC's reusable staging buffer; null outside a cyclic step. */
+  CyclicStaging* activeCyclicStaging = nullptr;
 
   /** @brief Current simulation time */
   uint64_t currentTime = 0;
@@ -354,8 +383,6 @@ private:
   static uint64_t maxSimulationSteps;
   static int      maxTransitionsPerDeltaCycle;
 
-  bool cyclicStateChanged = false;
-
   /**
    * @brief Emits a waveform snapshot when tracing is enabled.
    */
@@ -371,6 +398,12 @@ private:
 
   void stageSequentialWireUpdate(const Wire_ptr& target, State newState,
                                  const Component_weakPtr& source);
+
+  void stageCyclicWireUpdate(const Wire_ptr& target, State newState,
+                             const Component_weakPtr& source);
+
+  [[nodiscard]] bool commitStagedCyclicTransitions(CyclicStaging& staging);
+  void discardStagedCyclicTransitions(CyclicStaging& staging);
 
   [[nodiscard]] std::vector<Bus> commitStagedSequentialTransitions(
       std::unordered_map<uint64_t, State>& previousWireStates);
@@ -391,8 +424,8 @@ private:
                                            const CancellationCheck& isCancelled = {});
 
   [[nodiscard]] bool evaluateExecutionPlan(std::span<const ExecutionStep> steps,
-                                           const Context&                 context,
-                                           const CancellationCheck& isCancelled = {});
+                                           const Context&                  context,
+                                           const CancellationCheck&        isCancelled = {});
 
   [[nodiscard]] bool
   evaluateExecutionStepIndices(std::span<const std::size_t> stepIndices,
@@ -419,8 +452,8 @@ private:
    */
   [[nodiscard]] RunResult
   evaluateExecutionPlanAndTrace(std::span<const ExecutionStep> steps,
-                                const Context&                 context,
-                                const CancellationCheck&       isCancelled = {});
+                                const Context&                  context,
+                                const CancellationCheck&        isCancelled = {});
 };
 
 }  // namespace SILICON::simulation
