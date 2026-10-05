@@ -21,6 +21,7 @@
 #include <core/io.hpp>
 #include <core/simulator.hpp>
 
+#include <functional>
 #include <limits>
 #include <string>
 #include <utility>
@@ -111,7 +112,219 @@ public:
   int                 legacyCallCount = 0;
   std::vector<Record> records;
 };
+
+class DeltaCycleTestComponent : public Component {
+public:
+  using Action = std::function<void(Simulator&, DeltaCycleTestComponent&)>;
+
+  DeltaCycleTestComponent(std::vector<Bus> inputs, std::vector<Bus> outputs,
+                          Action action)
+    : Component(std::move(inputs), std::move(outputs)), action(std::move(action))
+  {
+  }
+
+  std::string_view typeName() const override { return "DeltaCycleTest"; }
+  void simulate(Simulator& sim) override { action(sim, *this); }
+
+private:
+  Action action;
+};
 }  // namespace
+
+TEST(SimulatorTest, CyclicComponentsReadOneSnapshotPerDeltaCycle)
+{
+  auto x = std::make_shared<Wire>(State::LOW);
+  auto y = std::make_shared<Wire>(State::HIGH);
+
+  std::vector<std::pair<State, State>> xReads;
+  std::vector<State>                   yReads;
+  auto xDriver = std::make_shared<DeltaCycleTestComponent>(
+      std::vector<Bus>{Bus{x}, Bus{y}}, std::vector<Bus>{Bus{x}},
+      [&](Simulator& sim, DeltaCycleTestComponent& self) {
+        const auto oldX = x->getCurrentState();
+        const auto oldY = y->getCurrentState();
+        xReads.emplace_back(oldX, oldY);
+        sim.updateWire(x, oldX || oldY, 0, self.weak_from_this());
+      });
+  auto yDriver = std::make_shared<DeltaCycleTestComponent>(
+      std::vector<Bus>{Bus{x}}, std::vector<Bus>{Bus{y}},
+      [&](Simulator& sim, DeltaCycleTestComponent& self) {
+        const auto oldX = x->getCurrentState();
+        yReads.push_back(oldX);
+        sim.updateWire(y, oldX, 0, self.weak_from_this());
+      });
+
+  auto circuit = std::make_shared<Circuit>(Component_set{xDriver, yDriver}, false);
+  Simulator simulator(circuit);
+
+  // x' = x OR y and y' = x: the first commit must be (HIGH, LOW), no matter
+  // which component the execution plan visits first.
+  ASSERT_EQ(xReads.size(), 3);
+  ASSERT_EQ(yReads.size(), 3);
+  EXPECT_EQ(xReads[0], (std::pair{State::LOW, State::HIGH}));
+  EXPECT_EQ(yReads[0], State::LOW);
+  EXPECT_EQ(xReads[1], (std::pair{State::HIGH, State::LOW}));
+  EXPECT_EQ(yReads[1], State::HIGH);
+  EXPECT_EQ(x->getCurrentState(), State::HIGH);
+  EXPECT_EQ(y->getCurrentState(), State::HIGH);
+}
+
+TEST(SimulatorTest, IndependentCyclicStepsKeepSeparateStagingBuffers)
+{
+  auto x = std::make_shared<Wire>(State::LOW);
+  auto y = std::make_shared<Wire>(State::HIGH);
+  auto u = std::make_shared<Wire>(State::HIGH);
+  auto v = std::make_shared<Wire>(State::LOW);
+
+  auto xDriver = std::make_shared<DeltaCycleTestComponent>(
+      std::vector<Bus>{Bus{y}}, std::vector<Bus>{Bus{x}},
+      [x, y](Simulator& sim, DeltaCycleTestComponent& self) {
+        sim.updateWire(x, y->getCurrentState(), 0, self.weak_from_this());
+      });
+  auto yDriver = std::make_shared<DeltaCycleTestComponent>(
+      std::vector<Bus>{Bus{x}}, std::vector<Bus>{Bus{y}},
+      [x, y](Simulator& sim, DeltaCycleTestComponent& self) {
+        sim.updateWire(y, x->getCurrentState() || y->getCurrentState(), 0,
+                       self.weak_from_this());
+      });
+  auto uDriver = std::make_shared<DeltaCycleTestComponent>(
+      std::vector<Bus>{Bus{v}}, std::vector<Bus>{Bus{u}},
+      [u, v](Simulator& sim, DeltaCycleTestComponent& self) {
+        sim.updateWire(u, v->getCurrentState(), 0, self.weak_from_this());
+      });
+  auto vDriver = std::make_shared<DeltaCycleTestComponent>(
+      std::vector<Bus>{Bus{u}}, std::vector<Bus>{Bus{v}},
+      [u, v](Simulator& sim, DeltaCycleTestComponent& self) {
+        sim.updateWire(v, u->getCurrentState() && v->getCurrentState(), 0,
+                       self.weak_from_this());
+      });
+
+  auto circuit = std::make_shared<Circuit>(
+      Component_set{xDriver, yDriver, uDriver, vDriver}, false);
+  Simulator simulator(circuit);
+
+  EXPECT_EQ(x->getCurrentState(), State::HIGH);
+  EXPECT_EQ(y->getCurrentState(), State::HIGH);
+  EXPECT_EQ(u->getCurrentState(), State::LOW);
+  EXPECT_EQ(v->getCurrentState(), State::LOW);
+}
+
+TEST(SimulatorTest, CancelledCyclicPassDiscardsStagedWrites)
+{
+  auto trigger = std::make_shared<Wire>(State::LOW);
+  auto x       = std::make_shared<Wire>(State::LOW);
+  auto y       = std::make_shared<Wire>(State::LOW);
+  int  writes  = 0;
+
+  auto xDriver = std::make_shared<DeltaCycleTestComponent>(
+      std::vector<Bus>{Bus{trigger}, Bus{y}}, std::vector<Bus>{Bus{x}},
+      [&](Simulator& sim, DeltaCycleTestComponent& self) {
+        if (trigger->getCurrentState() == State::HIGH) {
+          ++writes;
+          sim.updateWire(x, State::HIGH, 0, self.weak_from_this());
+        }
+      });
+  auto yDriver = std::make_shared<DeltaCycleTestComponent>(
+      std::vector<Bus>{Bus{x}}, std::vector<Bus>{Bus{y}},
+      [&](Simulator& sim, DeltaCycleTestComponent& self) {
+        if (trigger->getCurrentState() == State::HIGH) {
+          ++writes;
+          sim.updateWire(y, State::HIGH, 0, self.weak_from_this());
+        }
+      });
+
+  auto      circuit = std::make_shared<Circuit>(Component_set{xDriver, yDriver}, false);
+  Simulator simulator(circuit);
+  EXPECT_EQ(simulator.setBus(Bus{trigger}, BusValue{State::HIGH},
+                             [&]() { return writes > 0; }),
+            Simulator::RunResult::Cancelled);
+  EXPECT_EQ(x->getCurrentState(), State::LOW);
+  EXPECT_EQ(y->getCurrentState(), State::LOW);
+
+  EXPECT_EQ(simulator.setBus(Bus{trigger}, BusValue{State::LOW}),
+            Simulator::RunResult::Completed);
+  EXPECT_EQ(x->getCurrentState(), State::LOW);
+  EXPECT_EQ(simulator.setBus(Bus{trigger}, BusValue{State::HIGH}),
+            Simulator::RunResult::Completed);
+  EXPECT_EQ(x->getCurrentState(), State::HIGH);
+  EXPECT_EQ(y->getCurrentState(), State::HIGH);
+}
+
+TEST(SimulatorTest, CyclicConflictingDriversLeaveWireInError)
+{
+  auto x = std::make_shared<Wire>(State::LOW);
+  auto y = std::make_shared<Wire>(State::LOW);
+
+  auto first = std::make_shared<DeltaCycleTestComponent>(
+      std::vector<Bus>{Bus{y}}, std::vector<Bus>{Bus{x}},
+      [x](Simulator& sim, DeltaCycleTestComponent& self) {
+        sim.updateWire(x, State::HIGH, 0, self.weak_from_this());
+      });
+  auto second = std::make_shared<DeltaCycleTestComponent>(
+      std::vector<Bus>{Bus{x}}, std::vector<Bus>{Bus{x}, Bus{y}},
+      [x, y](Simulator& sim, DeltaCycleTestComponent& self) {
+        // This write equals the initial value, but still conflicts with first.
+        sim.updateWire(x, State::LOW, 0, self.weak_from_this());
+        sim.updateWire(y, State::HIGH, 0, self.weak_from_this());
+      });
+
+  x->forceSetCurrentState(State::LOW, second);
+  auto      circuit = std::make_shared<Circuit>(Component_set{first, second}, false);
+  Simulator simulator(circuit);
+
+  EXPECT_EQ(x->getCurrentState(), State::ERROR);
+  EXPECT_EQ(y->getCurrentState(), State::HIGH);
+}
+
+TEST(SimulatorTest, RepeatedCyclicWritesByOneSourceKeepItsLastValue)
+{
+  auto x = std::make_shared<Wire>(State::LOW);
+  auto y = std::make_shared<Wire>(State::LOW);
+
+  auto xDriver = std::make_shared<DeltaCycleTestComponent>(
+      std::vector<Bus>{Bus{y}}, std::vector<Bus>{Bus{x}},
+      [x](Simulator& sim, DeltaCycleTestComponent& self) {
+        sim.updateWire(x, State::LOW, 0, self.weak_from_this());
+        sim.updateWire(x, State::HIGH, 0, self.weak_from_this());
+      });
+  auto yDriver = std::make_shared<DeltaCycleTestComponent>(
+      std::vector<Bus>{Bus{x}}, std::vector<Bus>{Bus{y}},
+      [x, y](Simulator& sim, DeltaCycleTestComponent& self) {
+        sim.updateWire(y, x->getCurrentState(), 0, self.weak_from_this());
+      });
+
+  auto      circuit = std::make_shared<Circuit>(Component_set{xDriver, yDriver}, false);
+  Simulator simulator(circuit);
+  EXPECT_EQ(x->getCurrentState(), State::HIGH);
+  EXPECT_EQ(y->getCurrentState(), State::HIGH);
+}
+
+TEST(SimulatorTest, PositiveDelayInsideSccUsesEventQueue)
+{
+  auto x = std::make_shared<Wire>(State::LOW);
+  auto y = std::make_shared<Wire>(State::LOW);
+
+  auto immediate = std::make_shared<DeltaCycleTestComponent>(
+      std::vector<Bus>{Bus{y}}, std::vector<Bus>{Bus{x}},
+      [x, y](Simulator& sim, DeltaCycleTestComponent& self) {
+        sim.updateWire(x, !y->getCurrentState(), 0, self.weak_from_this());
+      });
+  auto delayed = std::make_shared<DeltaCycleTestComponent>(
+      std::vector<Bus>{Bus{x}}, std::vector<Bus>{Bus{y}},
+      [x, y](Simulator& sim, DeltaCycleTestComponent& self) {
+        sim.updateWire(y, x->getCurrentState(), 5, self.weak_from_this());
+      });
+
+  auto      circuit = std::make_shared<Circuit>(Component_set{immediate, delayed}, false);
+  Simulator simulator(circuit);
+  EXPECT_EQ(x->getCurrentState(), State::HIGH);
+  EXPECT_EQ(y->getCurrentState(), State::LOW);
+  EXPECT_EQ(simulator.run(4), Simulator::RunResult::Completed);
+  EXPECT_EQ(y->getCurrentState(), State::LOW);
+  EXPECT_EQ(simulator.run(1), Simulator::RunResult::Completed);
+  EXPECT_EQ(y->getCurrentState(), State::HIGH);
+  EXPECT_EQ(x->getCurrentState(), State::LOW);
+}
 
 TEST(ConstantComponentTest, DrivesAndResizesBinaryBusValue)
 {

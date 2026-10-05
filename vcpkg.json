@@ -44,6 +44,9 @@
       "name": "boost-process"
     },
     {
+      "name": "boost-scope-exit"
+    },
+    {
       "name": "ogdf"
     },
     {

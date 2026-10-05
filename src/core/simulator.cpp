@@ -22,6 +22,8 @@
 #include <ranges>
 #include <utility>
 
+#include <boost/scope/scope_exit.hpp>
+
 #include <core/component.hpp>
 #include <core/wireUtils.hpp>
 
@@ -381,6 +383,100 @@ void Simulator::stageSequentialWireUpdate(const Wire_ptr& target, const State ne
   stagedSequentialTransitions[key] = {target, newState, source};
 }
 
+void Simulator::stageCyclicWireUpdate(const Wire_ptr& target, const State newState,
+                                      const Component_weakPtr& source)
+{
+  if (!pendingTransitions.empty())
+    pendingTransitions.erase(pendingTransitionKey(target, source));
+
+  auto& staging = *activeCyclicStaging;
+  auto  it      = staging.indices.find(target->getId());
+  if (it == staging.indices.end()) {
+    // Components normally write their declared outputs. Preserve staging for an
+    // undeclared target as well, extending this step's reusable buffer once.
+    const auto index = staging.wires.size();
+    staging.wires.push_back(target);
+    staging.writes.emplace_back();
+    it = staging.indices.emplace(target->getId(), index).first;
+  }
+
+  // Even a write equal to s_k remains marked, so another source cannot hide it.
+  auto& staged = staging.writes[it->second];
+  if (!staged.written) {
+    staged.written = true;
+    staged.source  = source;
+    staged.state   = newState;
+    staging.dirtyWires.push_back(it->second);
+    return;
+  }
+
+  if (staged.source.lock() == source.lock()) {
+    // Repeated writes by one source retain its last value, as the keyed map did.
+    staged.state = newState;
+    return;
+  }
+
+  // Keep the two lowest source addresses so even three or more drivers give
+  // an unowned wire the same owner regardless of evaluation order.
+  if (!staged.conflict) {
+    staged.conflictingSource = source;
+    staged.conflict           = true;
+  }
+
+  const auto before = std::less<const Component*>{};
+  if (before(source.lock().get(), staged.source.lock().get())) {
+    staged.conflictingSource = staged.source;
+    staged.source            = source;
+    return;
+  }
+
+  if (before(source.lock().get(), staged.conflictingSource.lock().get()))
+    staged.conflictingSource = source;
+}
+
+void Simulator::discardStagedCyclicTransitions(CyclicStaging& staging)
+{
+  for (const auto index : staging.dirtyWires) {
+    auto& staged = staging.writes[index];
+    staged.source.reset();
+    staged.conflictingSource.reset();
+    staged.written  = false;
+    staged.conflict = false;
+  }
+  staging.dirtyWires.clear();
+}
+
+bool Simulator::commitStagedCyclicTransitions(CyclicStaging& staging)
+{
+  bool changed = false;
+  for (const auto index : staging.dirtyWires) {
+    const auto& target = staging.wires[index];
+    auto&       staged = staging.writes[index];
+    // All writes were staged, so this is still the wire's state at cycle start.
+    const auto previous = target->getCurrentState();
+
+    if (!staged.conflict) {
+      if (previous != staged.state) {
+        if (activePreviousWireStates)
+          capturePreviousWireState(*activePreviousWireStates, target);
+        target->setCurrentState(staged.state, staged.source);
+      }
+    } else {
+      // Distinct sources claimed the same output in this delta-cycle. Both writes
+      // pass through Wire's ownership check. A fixed source order also makes the
+      // initial owner independent of the SCC's component evaluation order.
+      if (activePreviousWireStates)
+        capturePreviousWireState(*activePreviousWireStates, target);
+      target->setCurrentState(State::ERROR, staged.source);
+      target->setCurrentState(State::ERROR, staged.conflictingSource);
+    }
+
+    changed |= target->getCurrentState() != previous;
+  }
+  discardStagedCyclicTransitions(staging);
+  return changed;
+}
+
 std::vector<Bus> Simulator::commitStagedSequentialTransitions(
     std::unordered_map<uint64_t, State>& previousWireStates)
 {
@@ -396,7 +492,6 @@ std::vector<Bus> Simulator::commitStagedSequentialTransitions(
     capturePreviousWireState(previousWireStates, transition.target);
     transition.target->setCurrentState(transition.state, transition.source);
     changedBuses.push_back(Bus{transition.target});
-    cyclicStateChanged = true;
   }
 
   return changedBuses;
@@ -422,7 +517,7 @@ Simulator::compileExecutionPlan(std::span<const Circuit::SimulationBlock> blocks
     if (!block.isCyclic) {
       for (const auto& weakComp : block.executionOrder) {
         if (auto comp = weakComp.lock())
-          plan.push_back({false, {comp}});
+          plan.emplace_back(false, std::vector<Component_weakPtr>{comp});
       }
       continue;
     }
@@ -435,8 +530,28 @@ Simulator::compileExecutionPlan(std::span<const Circuit::SimulationBlock> blocks
         cyclicComps.push_back(comp);
     }
 
-    if (!cyclicComps.empty())
-      plan.push_back({.isCyclic = true, .components = std::move(cyclicComps)});
+    if (!cyclicComps.empty()) {
+      ExecutionStep step(true, std::move(cyclicComps));
+      auto&         staging = *step.cyclicStaging;
+
+      auto outputWires =
+          step.components
+          | std::views::transform([](const auto& weakComp) { return weakComp.lock(); })
+          | std::views::filter([](const auto& comp) { return comp != nullptr; })
+          | std::views::transform([](const auto& comp) -> const std::vector<Bus>& {
+              return comp->outputBuses();
+            })
+          | std::views::join | std::views::join
+          | std::views::filter([](const auto& wire) { return static_cast<bool>(wire); });
+      for (const auto& wire : outputWires) {
+        const auto index = staging.wires.size();
+        if (staging.indices.emplace(wire->getId(), index).second)
+          staging.wires.push_back(wire);
+      }
+      staging.writes.resize(staging.wires.size());
+      staging.dirtyWires.reserve(staging.wires.size());
+      plan.push_back(std::move(step));
+    }
   }
 
   return plan;
@@ -465,18 +580,27 @@ bool Simulator::evaluateExecutionStep(const ExecutionStep& step, const Context& 
       | std::views::filter([](const auto& comp) { return comp != nullptr; })
       | std::ranges::to<std::vector>();
 
+  auto&       staging               = *step.cyclicStaging;
+  auto* const previousCyclicStaging = activeCyclicStaging;
+  activeCyclicStaging = &staging;
+  boost::scope::scope_exit restoreStaging([&] {
+    discardStagedCyclicTransitions(staging);
+    activeCyclicStaging = previousCyclicStaging;
+  });
+
   for (int i = 0; i < maxTransitionsPerDeltaCycle; ++i) {
     if (cancellationRequested(isCancelled))
       return false;
 
-    cyclicStateChanged = false;
+    // No wire changes during evaluation, so every component reads the same s_k.
+    // Applying the collected writes afterward produces s_(k+1) in one commit.
     for (const auto& comp : cyclicComps) {
       if (cancellationRequested(isCancelled))
         return false;
       comp->simulate(*this, context);
     }
 
-    if (!cyclicStateChanged)
+    if (!commitStagedCyclicTransitions(staging))
       return true;
   }
 
@@ -487,8 +611,8 @@ bool Simulator::evaluateExecutionStep(const ExecutionStep& step, const Context& 
 }
 
 bool Simulator::evaluateExecutionPlan(std::span<const ExecutionStep> steps,
-                                      const Context&                 context,
-                                      const CancellationCheck&       isCancelled)
+                                      const Context&                  context,
+                                      const CancellationCheck&        isCancelled)
 {
   for (const auto& step : steps) {
     if (!evaluateExecutionStep(step, context, isCancelled))
@@ -563,6 +687,11 @@ void Simulator::updateWire(const Wire_ptr& target, const State newState,
     return;
   }
 
+  if (activeCyclicStaging) {
+    stageCyclicWireUpdate(target, newState, source);
+    return;
+  }
+
   pendingTransitions.erase(pendingTransitionKey(target, source));
 
   if (target->getCurrentState() == newState)
@@ -572,7 +701,6 @@ void Simulator::updateWire(const Wire_ptr& target, const State newState,
     capturePreviousWireState(*activePreviousWireStates, target);
 
   target->setCurrentState(newState, source);
-  cyclicStateChanged = true;
 }
 
 void Simulator::updateBus(const Bus& bus, const BusValue& value, const uint64_t delay,
@@ -591,8 +719,8 @@ void Simulator::updateBus(const Bus& bus, const BusValue& value, const uint64_t 
 
 Simulator::RunResult
 Simulator::evaluateExecutionPlanAndTrace(std::span<const ExecutionStep> steps,
-                                         const Context&                 context,
-                                         const CancellationCheck&       isCancelled)
+                                         const Context&                  context,
+                                         const CancellationCheck&        isCancelled)
 {
   if (!evaluateExecutionPlan(steps, context, isCancelled))
     return RunResult::Cancelled;
