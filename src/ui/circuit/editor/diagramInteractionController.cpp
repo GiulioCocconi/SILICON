@@ -60,6 +60,8 @@ void DiagramInteractionController::bindActions(const CircuitActions& actions)
           &DiagramInteractionController::rotate);
   connect(actions.autoPlace, &QAction::triggered, this,
           &DiagramInteractionController::autoPlace);
+  connect(actions.centerView, &QAction::triggered, this,
+          &DiagramInteractionController::centerView);
   connect(actions.setNormalMode, &QAction::triggered, this,
           &DiagramInteractionController::setNormalMode);
   connect(actions.setPanMode, &QAction::triggered, this,
@@ -114,6 +116,11 @@ void DiagramInteractionController::rotate()
 void DiagramInteractionController::autoPlace()
 {
   circuit.scene()->autoPlaceCircuit();
+}
+
+void DiagramInteractionController::centerView()
+{
+  circuit.view()->centerCircuit();
 }
 
 void DiagramInteractionController::editActiveSubcircuitShape()

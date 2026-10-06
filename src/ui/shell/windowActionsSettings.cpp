@@ -181,6 +181,8 @@ QVector<ShortcutSetting> WindowActions::shortcutSettings() const
                QKeySequence(Qt::AltModifier | Qt::Key_R)),
       shortcut(QStringLiteral("keybindings/autoPlace"), tr("Auto place"),
                circuit.autoPlace, QKeySequence(Qt::AltModifier | Qt::Key_L)),
+      shortcut(QStringLiteral("keybindings/centerView"), tr("Center view"),
+               circuit.centerView, QKeySequence(Qt::AltModifier | Qt::Key_C)),
       shortcut(QStringLiteral("keybindings/delete"), tr("Delete"), edit.remove,
                QKeySequence(QKeySequence::Delete)),
       shortcut(QStringLiteral("keybindings/normalMode"), tr("Normal mode"),

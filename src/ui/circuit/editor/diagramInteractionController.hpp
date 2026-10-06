@@ -43,6 +43,7 @@ public:
 
   void rotate();
   void autoPlace();
+  void centerView();
 
   /** @brief Opens the graphical shape editor for the active circuit document. */
   void editActiveSubcircuitShape();

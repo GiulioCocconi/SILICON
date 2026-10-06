@@ -47,6 +47,7 @@ struct EditActions {
 struct CircuitActions {
   QAction* rotate                  = nullptr;
   QAction* autoPlace               = nullptr;
+  QAction* centerView              = nullptr;
   QAction* setNormalMode           = nullptr;
   QAction* setPanMode              = nullptr;
   QAction* setWireCreationMode     = nullptr;

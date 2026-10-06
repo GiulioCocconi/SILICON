@@ -116,6 +116,7 @@ void WindowActions::createMenus()
   editMenu->addAction(edit.paste);
   editMenu->addAction(circuit.rotate);
   editMenu->addAction(circuit.autoPlace);
+  editMenu->addAction(circuit.centerView);
   editMenu->addAction(edit.remove);
   editMenu->addSeparator();
   editMenu->addAction(project.settings);
@@ -198,11 +199,11 @@ void WindowActions::updateCodeAction()
   const bool nonGraphical = type
                             && SILICON::project::categoryOf(*type)
                                    != SILICON::project::DocumentCategory::Diagram;
-  setActionsEnabled({circuit.setNormalMode, circuit.setPanMode,
-                     circuit.setWireCreationMode, circuit.setSimulationMode,
-                     waveform.toggleTrace, circuit.openComponentCatalog,
-                     circuit.setComponentPlacingMode, circuit.autoPlace},
-                    !nonGraphical);
+  setActionsEnabled(
+      {circuit.setNormalMode, circuit.setPanMode, circuit.setWireCreationMode,
+       circuit.setSimulationMode, waveform.toggleTrace, circuit.openComponentCatalog,
+       circuit.setComponentPlacingMode, circuit.autoPlace, circuit.centerView},
+      !nonGraphical);
 
   updateDocumentActionVisibility();
 }
@@ -291,6 +292,8 @@ void WindowActions::createActions()
   circuit.rotate    = makeAction(&window, Icon("rotate"), tr("&Rotate"));
   circuit.autoPlace = makeAction(&window, Icon("rearrange"), tr("&Auto place"),
                                  tr("Automatically place components and reroute wires"));
+  circuit.centerView =
+      makeAction(&window, tr("&Center view"), tr("Center the view on the circuit"));
   edit.remove       = makeAction(&window, Icon("delete"), tr("&Delete"),
                                  tr("Delete selected components"));
   project.about     = makeAction(&window, Icon("info"), tr("&About"),
