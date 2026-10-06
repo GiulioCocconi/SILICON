@@ -20,8 +20,6 @@
 
 #include <algorithm>
 #include <array>
-#include <atomic>
-#include <chrono>
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -45,6 +43,8 @@
   #include <boost/process/v1/child.hpp>
   #include <boost/process/v1/io.hpp>
   #include <boost/process/v1/search_path.hpp>
+  #include <boost/uuid/random_generator.hpp>
+  #include <boost/uuid/uuid_io.hpp>
 
   #if defined(_WIN32)
     #include <windows.h>
@@ -111,15 +111,13 @@ namespace {
   public:
     TemporaryWorkspace()
     {
-      static std::atomic_uint64_t sequence      = 0;
-      const auto                  temporaryRoot = std::filesystem::temp_directory_path();
-      const auto timestamp = std::chrono::steady_clock::now().time_since_epoch().count();
+      const auto temporaryRoot = std::filesystem::temp_directory_path();
+      auto       generateUuid  = boost::uuids::random_generator{};
 
       for (unsigned attempt = 0; attempt < 128; ++attempt) {
         directory =
             temporaryRoot
-            / std::format("silicon_yosys_{}_{}_{}", timestamp,
-                          sequence.fetch_add(1, std::memory_order_relaxed), attempt);
+            / std::format("silicon_yosys_{}", boost::uuids::to_string(generateUuid()));
         std::error_code error;
         if (std::filesystem::create_directory(directory, error))
           return;

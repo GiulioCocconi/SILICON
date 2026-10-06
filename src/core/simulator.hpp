@@ -16,6 +16,7 @@
  */
 
 #pragma once
+#include <boost/dynamic_bitset.hpp>
 #include <core/circuit.hpp>
 #include <core/component.hpp>
 #include <core/siliconFst.hpp>
@@ -285,6 +286,8 @@ public:
   [[nodiscard]] static int      getMaxTransitionsPerDeltaCycle();
 
 private:
+  using ExecutionStepSet = boost::dynamic_bitset<>;
+
   using PendingTransitionKey = std::pair<uint64_t, std::uintptr_t>;
 
   struct PendingTransitionKeyHash {
@@ -346,8 +349,8 @@ private:
   /** @brief Compiled component/SCC execution plan in topological order */
   std::vector<ExecutionStep> executionPlan;
 
-  /** @brief Cached downstream execution step indices for each input wire ID */
-  std::unordered_map<uint64_t, std::vector<std::size_t>> forwardExecutionStepsByWire;
+  /** @brief Cached downstream execution-step membership for each input wire ID */
+  std::unordered_map<uint64_t, ExecutionStepSet> forwardExecutionStepsByWire;
 
   /** @brief Priority queue of timed events sorted by time */
   std::priority_queue<TimedEvent, std::vector<TimedEvent>, std::greater<>> eventQueue;
@@ -427,17 +430,11 @@ private:
                                            const Context&                  context,
                                            const CancellationCheck&        isCancelled = {});
 
-  [[nodiscard]] bool
-  evaluateExecutionStepIndices(std::span<const std::size_t> stepIndices,
-                               const Context&               context,
-                               const CancellationCheck&     isCancelled = {});
+  [[nodiscard]] bool evaluateExecutionSteps(const ExecutionStepSet&  steps,
+                                            const Context&           context,
+                                            const CancellationCheck& isCancelled = {});
 
-  [[nodiscard]] RunResult
-  evaluateExecutionStepIndicesAndTrace(std::span<const std::size_t> stepIndices,
-                                       const Context&               context,
-                                       const CancellationCheck&     isCancelled = {});
-
-  [[nodiscard]] std::vector<std::size_t>
+  [[nodiscard]] ExecutionStepSet
   getForwardExecutionSteps(std::span<const Bus> changedBuses) const;
 
   [[nodiscard]] RunResult

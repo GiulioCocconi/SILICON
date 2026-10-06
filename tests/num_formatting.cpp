@@ -157,6 +157,34 @@ TEST(NumFormattingTest, SupportsValuesWiderThanMachineIntegers)
   EXPECT_EQ(wide, BusValue(65, State::HIGH));
 }
 
+TEST(NumFormattingTest, RoundTripsArbitraryPrecisionValuesAcrossNumericBases)
+{
+  const std::string decimal =
+      "115792089237316195423570985008687907853269984665640564039457584007913129639935";
+  const auto value = BusValue(256, State::HIGH);
+
+  EXPECT_EQ(formatValue(value, BusValueFormat::Unsigned), decimal);
+  EXPECT_EQ(valueFromStr(decimal).value, value);
+  EXPECT_EQ(valueFromStr("000" + decimal).value, value);
+
+  const auto hex = valueFromStr("0x" + std::string(64, 'F'));
+  EXPECT_EQ(hex.format, BusValueFormat::Hex);
+  EXPECT_EQ(hex.value, value);
+  EXPECT_EQ(formatValue(hex.value, BusValueFormat::Hex), "0x" + std::string(64, 'F'));
+
+  const auto octal = valueFromStr("0o" + std::string(86, '7'));
+  EXPECT_EQ(octal.format, BusValueFormat::Oct);
+  EXPECT_EQ(octal.value.size(), 258);
+  EXPECT_EQ(formatValue(octal.value, BusValueFormat::Oct), "0o" + std::string(86, '7'));
+}
+
+TEST(NumFormattingTest, PreservesExplicitBaseWidthsWhenParsingLeadingZeroes)
+{
+  EXPECT_EQ(valueFromStr("0b0001").value, busValueFromBits("0001"));
+  EXPECT_EQ(valueFromStr("0x01").value, busValueFromBits("00000001"));
+  EXPECT_EQ(valueFromStr("0o01").value, busValueFromBits("000001"));
+}
+
 TEST(NumFormattingTest, FormatsMachineIntegersWithoutBusValues)
 {
   EXPECT_EQ(formatInteger(0xf3, BusValueFormat::Signed, 8), "-13");
@@ -181,4 +209,6 @@ TEST(NumFormattingTest, ParsesWidthLimitedMachineIntegers)
   EXPECT_FALSE(parseInteger("128", BusValueFormat::Signed, 8));
   EXPECT_FALSE(parseInteger("256", BusValueFormat::Unsigned, 8));
   EXPECT_FALSE(parseInteger("0b102", BusValueFormat::Bin, 8));
+  EXPECT_FALSE(parseInteger("1", BusValueFormat::Raw, 8));
+  EXPECT_FALSE(parseInteger("1", BusValueFormat::Unknown, 8));
 }

@@ -17,20 +17,26 @@
 
 #include "num_formatting.hpp"
 
+#include <boost/multiprecision/cpp_int.hpp>
+#include <boost/multiprecision/cpp_int/import_export.hpp>
+
 #include <algorithm>
 #include <cctype>
 #include <format>
-#include <limits>
+#include <ios>
+#include <iterator>
 #include <map>
 #include <ranges>
 #include <stdexcept>
 #include <utility>
+#include <vector>
 
 #include <core/wireUtils.hpp>
-#include <utils/ranges_wrapper.hpp>
 
 namespace SILICON::core {
 namespace {
+
+  using BigInt = boost::multiprecision::cpp_int;
 
   const std::map<BusValueFormat, std::string> formatPrefix{
       {BusValueFormat::Signed, "-"},
@@ -111,115 +117,75 @@ namespace {
     return {BusValueFormat::Unknown, {}};
   }
 
-  // Arbitrary-precision Horner's method for converting unbounded binary strings.
-  void decimalMultiplyByTwoAndAdd(std::string& value, const int add)
+  BigInt parseMagnitude(const std::string_view DIGITS, const BusValueFormat format)
   {
-    int carry = add;
-    for (char& digit : value | std::views::reverse) {
-      const int expanded = (digit - '0') * 2 + carry;
-      digit              = static_cast<char>('0' + expanded % 10);
-      carry              = expanded / 10;
-    }
-    if (carry != 0)
-      value.insert(value.begin(), static_cast<char>('0' + carry));
-  }
+    if (format == BusValueFormat::Bin) {
+      std::vector<unsigned char> bits;
+      bits.reserve(DIGITS.size());
+      std::ranges::transform(DIGITS, std::back_inserter(bits),
+                             [](const char bit) { return bit == '1'; });
 
-  std::string parseKnownBits(const std::string_view rawBits)
-  {
-    std::string value = "0";
-    for (const char bit : rawBits)
-      decimalMultiplyByTwoAndAdd(value, bit - '0');
-    return value;
-  }
-
-  std::string twosComplementMagnitude(const std::string_view rawBits)
-  {
-    std::string magnitude =
-        rawBits
-        | std::views::transform([](const char bit) { return bit == '1' ? '0' : '1'; })
-        | std::ranges::to<std::string>();
-
-    for (char& bit : magnitude | std::views::reverse) {
-      if (bit == '0') {
-        bit = '1';
-        break;
-      }
-      bit = '0';
-    }
-    return parseKnownBits(magnitude);
-  }
-
-  std::string groupedBase(const std::string_view rawBits, const int groupSize,
-                          const std::string_view DIGITS)
-  {
-    if (std::ranges::all_of(rawBits, [](const char bit) { return bit == '0'; }))
-      return "0";
-
-    const std::size_t padding =
-        (static_cast<std::size_t>(groupSize) - rawBits.size() % groupSize)
-        % static_cast<std::size_t>(groupSize);
-    std::string padded(padding, '0');
-    padded += rawBits;
-
-    std::string result;
-    for (const auto chunk : padded | SILICON::views::chunk(groupSize)) {
-      const int value =
-          std::ranges::fold_left(chunk, 0, [](const int acc, const char bit) {
-            return (acc << 1) | (bit - '0');
-          });
-      result.push_back(DIGITS[static_cast<std::size_t>(value)]);
+      BigInt result;
+      boost::multiprecision::import_bits(result, bits.begin(), bits.end(), 1, true);
+      return result;
     }
 
-    const auto firstNonZero = result.find_first_not_of('0');
-    return firstNonZero == std::string::npos ? "0" : result.substr(firstNonZero);
-  }
+    auto firstNonZero = DIGITS.find_first_not_of('0');
+    if (firstNonZero == std::string_view::npos)
+      return 0;
 
-  [[nodiscard]] std::uint64_t widthMask(const std::size_t width)
-  {
-    return width == 64 ? std::numeric_limits<std::uint64_t>::max()
-                       : (std::uint64_t{1} << width) - 1;
-  }
-
-  [[nodiscard]] std::optional<unsigned> digitValue(const char     character,
-                                                   const unsigned base)
-  {
-    const char     normalized = upper(character);
-    const unsigned value      = normalized >= '0' && normalized <= '9'
-                                    ? static_cast<unsigned>(normalized - '0')
-                                : normalized >= 'A' && normalized <= 'F'
-                                    ? static_cast<unsigned>(normalized - 'A' + 10)
-                                    : base;
-    return value < base ? std::optional(value) : std::nullopt;
-  }
-
-  [[nodiscard]] std::optional<std::uint64_t> parseMagnitude(const std::string_view DIGITS,
-                                                            const unsigned         base,
-                                                            const std::uint64_t maximum)
-  {
-    if (DIGITS.empty())
-      return std::nullopt;
-    std::uint64_t result = 0;
-    for (const char character : DIGITS) {
-      const auto digit = digitValue(character, base);
-      if (!digit || *digit > maximum || result > (maximum - *digit) / base)
-        return std::nullopt;
-      result = result * base + *digit;
+    std::string encoded(DIGITS.substr(firstNonZero));
+    switch (format) {
+      case BusValueFormat::Hex: encoded.insert(0, "0x"); break;
+      case BusValueFormat::Oct: encoded.insert(0, "0"); break;
+      case BusValueFormat::Signed:
+      case BusValueFormat::Unsigned: break;
+      default: throw std::invalid_argument("Invalid integer input format");
     }
+
+    return BigInt(encoded);
+  }
+
+  BigInt unsignedValue(const BusValue& value)
+  {
+    std::vector<unsigned char> bits;
+    bits.reserve(value.size());
+    std::ranges::transform(value, std::back_inserter(bits),
+                           [](const State state) { return state == State::HIGH; });
+
+    BigInt result;
+    boost::multiprecision::import_bits(result, bits.begin(), bits.end(), 1, false);
     return result;
   }
 
-  [[nodiscard]] std::string unsignedToBase(std::uint64_t value, const unsigned base)
+  BusValue busValueFromMagnitude(const BigInt& value, const std::size_t width)
   {
-    constexpr std::string_view DIGITS = "0123456789ABCDEF";
-    if (value == 0)
-      return "0";
-    std::string result;
-    while (value != 0) {
-      result.push_back(DIGITS[static_cast<std::size_t>(value % base)]);
-      value /= base;
-    }
-    std::ranges::reverse(result);
+    BusValue                   result(width, State::LOW);
+    std::vector<unsigned char> bits;
+    boost::multiprecision::export_bits(value, std::back_inserter(bits), 1, false);
+
+    std::ranges::transform(bits, result.begin(), [](const unsigned char bit) {
+      return bit == 0 ? State::LOW : State::HIGH;
+    });
     return result;
+  }
+
+  std::size_t magnitudeWidth(const BigInt& value)
+  {
+    return value == 0 ? 1
+                      : static_cast<std::size_t>(boost::multiprecision::msb(value)) + 1;
+  }
+
+  std::string formatBigInt(const BigInt& value, const BusValueFormat format)
+  {
+    switch (format) {
+      case BusValueFormat::Signed:
+      case BusValueFormat::Unsigned: return value.str();
+      case BusValueFormat::Hex:
+        return value.str(0, std::ios_base::hex | std::ios_base::uppercase);
+      case BusValueFormat::Oct: return value.str(0, std::ios_base::oct);
+      default: throw std::invalid_argument("Invalid integer output format");
+    }
   }
 
 }  // namespace
@@ -230,26 +196,25 @@ std::string formatInteger(std::uint64_t value, const BusValueFormat format,
   if (bitWidth == 0 || bitWidth > 64)
     throw std::invalid_argument("Integer bit width must be between 1 and 64");
 
-  const auto mask = widthMask(bitWidth);
-  value &= mask;
+  const BigInt modulus = BigInt{1} << bitWidth;
+  BigInt       number  = BigInt{value} & (modulus - 1);
 
   switch (format) {
     case BusValueFormat::Signed: {
-      const bool negative = (value & (std::uint64_t{1} << (bitWidth - 1))) != 0;
-      if (!negative)
-        return unsignedToBase(value, 10);
-      const auto magnitude = ((~value) & mask) + 1;
-      return "-" + unsignedToBase(magnitude, 10);
+      if ((number & (BigInt{1} << (bitWidth - 1))) != 0)
+        number -= modulus;
+      return formatBigInt(number, format);
     }
-    case BusValueFormat::Unsigned: return unsignedToBase(value, 10);
+    case BusValueFormat::Unsigned: return formatBigInt(number, format);
     case BusValueFormat::Bin: {
-      auto result = unsignedToBase(value, 2);
-      if (result.size() < bitWidth)
-        result.insert(result.begin(), bitWidth - result.size(), '0');
-      return result;
+      const auto bits = busValueFromMagnitude(number, bitWidth);
+      return bits | std::views::reverse | std::views::transform([](const State state) {
+               return static_cast<char>(std::to_underlying(state));
+             })
+             | std::ranges::to<std::string>();
     }
-    case BusValueFormat::Oct: return unsignedToBase(value, 8);
-    case BusValueFormat::Hex: return unsignedToBase(value, 16);
+    case BusValueFormat::Oct:
+    case BusValueFormat::Hex: return formatBigInt(number, format);
     case BusValueFormat::Raw:
     case BusValueFormat::Unknown:
       throw std::invalid_argument("Invalid integer output format");
@@ -267,43 +232,49 @@ std::optional<std::uint64_t> parseInteger(std::string_view     text,
   if (text.empty())
     return std::nullopt;
 
-  const auto mask = widthMask(bitWidth);
+  const BigInt modulus = BigInt{1} << bitWidth;
   if (format == BusValueFormat::Signed) {
     bool negative = false;
     if (text.front() == '+' || text.front() == '-') {
       negative = text.front() == '-';
       text.remove_prefix(1);
     }
-    const auto positiveMaximum =
-        bitWidth == 64
-            ? static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())
-            : (std::uint64_t{1} << (bitWidth - 1)) - 1;
-    const auto negativeMaximum = std::uint64_t{1} << (bitWidth - 1);
-    const auto magnitude =
-        parseMagnitude(text, 10, negative ? negativeMaximum : positiveMaximum);
-    if (!magnitude)
+    if (!satisfiesAlphabet(text, format))
       return std::nullopt;
-    return negative ? ((~*magnitude) + 1) & mask : *magnitude;
-  }
 
-  unsigned base = 0;
-  switch (format) {
-    case BusValueFormat::Unsigned: base = 10; break;
-    case BusValueFormat::Bin: base = 2; break;
-    case BusValueFormat::Oct: base = 8; break;
-    case BusValueFormat::Hex: base = 16; break;
-    default: return std::nullopt;
+    BigInt value = parseMagnitude(text, format);
+    if (negative)
+      value = -value;
+
+    const BigInt minimum = -(BigInt{1} << (bitWidth - 1));
+    const BigInt maximum = (BigInt{1} << (bitWidth - 1)) - 1;
+    if (value < minimum || value > maximum)
+      return std::nullopt;
+    if (value < 0)
+      value += modulus;
+    return value.convert_to<std::uint64_t>();
   }
 
   if (format == BusValueFormat::Unsigned && text.front() == '+')
     text.remove_prefix(1);
+
+  if (format != BusValueFormat::Unsigned && format != BusValueFormat::Bin
+      && format != BusValueFormat::Oct && format != BusValueFormat::Hex)
+    return std::nullopt;
+
   if (format == BusValueFormat::Bin && startsWithIgnoreCase(text, "0b"))
     text.remove_prefix(2);
   else if (format == BusValueFormat::Oct && startsWithIgnoreCase(text, "0o"))
     text.remove_prefix(2);
   else if (format == BusValueFormat::Hex && startsWithIgnoreCase(text, "0x"))
     text.remove_prefix(2);
-  return parseMagnitude(text, base, mask);
+
+  if (!satisfiesAlphabet(text, format))
+    return std::nullopt;
+  const BigInt value = parseMagnitude(text, format);
+  if (value >= modulus)
+    return std::nullopt;
+  return value.convert_to<std::uint64_t>();
 }
 
 BusValue maxValueForBusWidth(const std::size_t width)
@@ -357,21 +328,20 @@ std::string formatValue(const BusValue& value, const BusValueFormat format,
   if (format == BusValueFormat::Raw || mustBeRaw)
     return rawStr;
 
-  std::string res;
+  const BigInt unsignedNumber = unsignedValue(value);
+  std::string  res;
   switch (format) {
     case BusValueFormat::Hex:
-      res = groupedBase(rawStr, 4, formatAlphabet.at(format));
-      break;
-    case BusValueFormat::Oct:
-      res = groupedBase(rawStr, 3, formatAlphabet.at(format));
-      break;
+    case BusValueFormat::Oct: res = formatBigInt(unsignedNumber, format); break;
     case BusValueFormat::Bin: res = rawStr; break;
-    case BusValueFormat::Unsigned: res = parseKnownBits(rawStr); break;
-    case BusValueFormat::Signed:
-      res = value.back() == State::HIGH
-                ? formatPrefix.at(format) + twosComplementMagnitude(rawStr)
-                : parseKnownBits(rawStr);
+    case BusValueFormat::Unsigned: res = formatBigInt(unsignedNumber, format); break;
+    case BusValueFormat::Signed: {
+      const BigInt signedNumber = value.back() == State::HIGH
+                                      ? unsignedNumber - (BigInt{1} << value.size())
+                                      : unsignedNumber;
+      res                       = formatBigInt(signedNumber, format);
       break;
+    }
     case BusValueFormat::Raw:
     case BusValueFormat::Unknown: throw std::invalid_argument("Invalid output format");
   }
@@ -396,43 +366,18 @@ ParsedBusValue valueFromStr(const std::string_view value)
                | std::ranges::to<BusValue>();
       break;
     case BusValueFormat::Bin:
-      result = DIGITS | std::views::reverse | std::views::transform([](const char digit) {
-                 return digit == '1' ? State::HIGH : State::LOW;
-               })
-               | std::ranges::to<BusValue>();
+      result = busValueFromMagnitude(parseMagnitude(DIGITS, format), DIGITS.size());
       break;
     case BusValueFormat::Hex:
-      for (const char digit : DIGITS | std::views::reverse) {
-        const char normalized = upper(digit);
-        const int  parsed = normalized >= 'A' ? normalized - 'A' + 10 : normalized - '0';
-        for (int bit = 0; bit < 4; ++bit)
-          result.push_back((parsed >> bit) & 1 ? State::HIGH : State::LOW);
-      }
+      result = busValueFromMagnitude(parseMagnitude(DIGITS, format), DIGITS.size() * 4);
       break;
     case BusValueFormat::Oct:
-      for (const char digit : DIGITS | std::views::reverse) {
-        const int parsed = digit - '0';
-        for (int bit = 0; bit < 3; ++bit)
-          result.push_back((parsed >> bit) & 1 ? State::HIGH : State::LOW);
-      }
+      result = busValueFromMagnitude(parseMagnitude(DIGITS, format), DIGITS.size() * 3);
       break;
     case BusValueFormat::Unsigned:
     case BusValueFormat::Signed: {
-      std::string decimal(DIGITS);
-      bool        nonZero = true;
-      while (nonZero) {
-        int remainder = 0;
-        nonZero       = false;
-
-        for (char& digit : decimal) {
-          const int expanded = digit - '0' + remainder * 10;
-          digit              = static_cast<char>(expanded / 2 + '0');
-          remainder          = expanded % 2;
-          if (digit != '0')
-            nonZero = true;
-        }
-        result.push_back(remainder != 0 ? State::HIGH : State::LOW);
-      }
+      const BigInt magnitude = parseMagnitude(DIGITS, format);
+      result = busValueFromMagnitude(magnitude, magnitudeWidth(magnitude));
 
       if (format == BusValueFormat::Signed) {
         result.push_back(State::LOW);
