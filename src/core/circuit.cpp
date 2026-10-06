@@ -21,7 +21,7 @@
 #include <cstdint>
 #include <format>
 #include <ranges>
-#include <unordered_set>
+#include <stdexcept>
 
 #include <core/component.hpp>
 #include <core/serialization/component_registry.hpp>
@@ -30,6 +30,7 @@
 
 #include <logging/logger.hpp>
 
+#include <boost/dynamic_bitset.hpp>
 #include <boost/graph/strong_components.hpp>
 #include <boost/graph/topological_sort.hpp>
 
@@ -40,6 +41,21 @@ namespace SILICON::core {
 namespace {
 
   const SILICON::logging::Logger circuitLog("circuit");
+
+  using CircuitVertexSet = boost::dynamic_bitset<>;
+
+  [[nodiscard]] bool markVisited(CircuitVertexSet& visited, const VertexDescriptor vertex)
+  {
+    const auto index = static_cast<std::size_t>(vertex);
+    if (index >= visited.size())
+      throw std::logic_error(
+          "Circuit vertex index exceeds the reachability set size");
+    if (visited.test(index))
+      return false;
+
+    visited.set(index);
+    return true;
+  }
 
   [[nodiscard]] std::string interfacePortName(const PortRole    role,
                                               const std::size_t index)
@@ -528,9 +544,9 @@ std::vector<CircuitConnection> Circuit::getConnections() const
 
 Circuit Circuit::getBackwardsSubgraph(const Bus& targetOutput) const
 {
-  Component_set                        coiComponents;
-  std::vector<VertexDescriptor>        stack;
-  std::unordered_set<VertexDescriptor> visited;
+  Component_set                 coiComponents;
+  std::vector<VertexDescriptor> stack;
+  CircuitVertexSet              visited(boost::num_vertices(graph));
 
   auto valid_target_wires = targetOutput | std::views::filter([](const auto& w) {
                               return static_cast<bool>(w);
@@ -551,9 +567,8 @@ Circuit Circuit::getBackwardsSubgraph(const Bus& targetOutput) const
           return std::ranges::contains(out_wires, wire);  // C++23
         });
 
-    if (drivesWire) {
+    if (drivesWire && markVisited(visited, v)) {
       stack.push_back(v);
-      visited.insert(v);
     }
   }
 
@@ -568,7 +583,7 @@ Circuit Circuit::getBackwardsSubgraph(const Bus& targetOutput) const
 
     for (auto edge : boost::make_iterator_range(boost::in_edges(v, graph))) {
       VertexDescriptor sourceVertex = boost::source(edge, graph);
-      if (visited.insert(sourceVertex).second) {
+      if (markVisited(visited, sourceVertex)) {
         stack.push_back(sourceVertex);
       }
     }
@@ -579,9 +594,9 @@ Circuit Circuit::getBackwardsSubgraph(const Bus& targetOutput) const
 
 Circuit Circuit::getForwardSubgraph(const Bus& sourceInput) const
 {
-  Component_set                        focComponents;
-  std::vector<VertexDescriptor>        stack;
-  std::unordered_set<VertexDescriptor> visited;
+  Component_set                 focComponents;
+  std::vector<VertexDescriptor> stack;
+  CircuitVertexSet              visited(boost::num_vertices(graph));
 
   auto valid_source_wires = sourceInput | std::views::filter([](const auto& w) {
                               return static_cast<bool>(w);
@@ -592,7 +607,7 @@ Circuit Circuit::getForwardSubgraph(const Bus& sourceInput) const
       if (auto cPtr = weakComp.lock()) {
         auto it = componentToVertex.find(cPtr.get());
 
-        if (it != componentToVertex.end() && visited.insert(it->second).second) {
+        if (it != componentToVertex.end() && markVisited(visited, it->second)) {
           stack.push_back(it->second);
         }
       }
@@ -609,7 +624,7 @@ Circuit Circuit::getForwardSubgraph(const Bus& sourceInput) const
 
     for (auto edge : boost::make_iterator_range(boost::out_edges(v, graph))) {
       VertexDescriptor targetVertex = boost::target(edge, graph);
-      if (visited.insert(targetVertex).second) {
+      if (markVisited(visited, targetVertex)) {
         stack.push_back(targetVertex);
       }
     }

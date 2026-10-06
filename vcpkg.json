@@ -35,16 +35,25 @@
       "version>=": "0.1.0"
     },
     {
+      "name": "boost-dynamic-bitset"
+    },
+    {
       "name": "boost-graph"
     },
     {
       "name": "boost-log"
     },
     {
+      "name": "boost-multiprecision"
+    },
+    {
       "name": "boost-process"
     },
     {
       "name": "boost-scope-exit"
+    },
+    {
+      "name": "boost-uuid"
     },
     {
       "name": "ogdf"

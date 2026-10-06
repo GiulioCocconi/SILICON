@@ -232,10 +232,11 @@ endif ()
 
 # GCC 15+ reports false positives in boost::multiprecision headers
 # (aggressive-loop-optimizations and array-bounds) when using -O3.
-# These are triggered by sislVisualizer.cpp which uses SISL's Integer type (cpp_int).
+# These are triggered by translation units that use Boost.Multiprecision cpp_int.
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU"
     AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 15)
     set_source_files_properties(
+            ${src_dir}/utils/num_formatting.cpp
             ${src_dir}/ui/documents/architecture/sislVisualizer.cpp
             PROPERTIES COMPILE_OPTIONS -Wno-error=aggressive-loop-optimizations\;-Wno-error=array-bounds)
 endif ()

@@ -17,7 +17,6 @@
 
 #include "simulator.hpp"
 
-
 #include <algorithm>
 #include <ranges>
 #include <utility>
@@ -224,6 +223,8 @@ void Simulator::recompile()
       successors.push_back(targetIt->second);
   }
 
+  // Direct listeners are normally a sparse subset of the plan, so retain a compact
+  // vector here. The transitive cones below are dense enough to benefit from bitsets.
   std::unordered_map<uint64_t, std::vector<std::size_t>> seedStepsByWire;
   for (const auto vertex : boost::make_iterator_range(boost::vertices(graph))) {
     const auto comp = graph[vertex].component;
@@ -245,7 +246,7 @@ void Simulator::recompile()
     }
   }
 
-  std::unordered_map<std::vector<std::size_t>, std::vector<std::size_t>, StepVectorHash>
+  std::unordered_map<std::vector<std::size_t>, ExecutionStepSet, StepVectorHash>
       affectedStepsBySeedSet;
   affectedStepsBySeedSet.reserve(seedStepsByWire.size());
   for (auto& [wireId, seedSteps] : seedStepsByWire) {
@@ -257,26 +258,33 @@ void Simulator::recompile()
       continue;
     }
 
-    std::vector<std::size_t> stack(seedSteps.begin(), seedSteps.end());
-    std::vector<char>        visited(executionPlan.size(), false);
-
-    while (!stack.empty()) {
-      const auto stepIndex = stack.back();
-      stack.pop_back();
-
-      if (stepIndex >= executionPlan.size() || visited[stepIndex])
-        continue;
-
-      visited[stepIndex] = true;
-      for (const auto successor : stepGraph[stepIndex])
-        stack.push_back(successor);
+    ExecutionStepSet affectedSteps(executionPlan.size());
+    ExecutionStepSet frontier(executionPlan.size());
+    for (const auto stepIndex : seedSteps) {
+      if (stepIndex >= frontier.size())
+        throw std::logic_error(
+            "Execution-plan seed index exceeds the compiled plan size");
+      frontier.set(stepIndex);
     }
+    while (frontier.any()) {
+      affectedSteps |= frontier;
 
-    std::vector<std::size_t> affectedSteps;
-    affectedSteps.reserve(executionPlan.size());
-    for (std::size_t i = 0; i < visited.size(); ++i) {
-      if (visited[i])
-        affectedSteps.push_back(i);
+      ExecutionStepSet successors(executionPlan.size());
+      for (auto stepIndex = frontier.find_first(); stepIndex != ExecutionStepSet::npos;
+           stepIndex      = frontier.find_next(stepIndex)) {
+        if (stepIndex >= stepGraph.size())
+          throw std::logic_error(
+              "Forward-cone index exceeds the compiled step graph size");
+        for (const auto successor : stepGraph[stepIndex]) {
+          if (successor >= successors.size())
+            throw std::logic_error(
+                "Forward-cone successor exceeds the compiled plan size");
+          successors.set(successor);
+        }
+      }
+
+      successors &= ~affectedSteps;
+      frontier = std::move(successors);
     }
 
     auto [insertedAffectedSteps, _inserted] =
@@ -621,36 +629,26 @@ bool Simulator::evaluateExecutionPlan(std::span<const ExecutionStep> steps,
   return true;
 }
 
-bool Simulator::evaluateExecutionStepIndices(std::span<const std::size_t> stepIndices,
-                                             const Context&               context,
-                                             const CancellationCheck&     isCancelled)
+bool Simulator::evaluateExecutionSteps(const ExecutionStepSet&  steps,
+                                       const Context&           context,
+                                       const CancellationCheck& isCancelled)
 {
-  for (const auto stepIndex : stepIndices) {
-    if (stepIndex >= executionPlan.size())
-      continue;
+  if (steps.size() != executionPlan.size())
+    throw std::logic_error(
+        "Execution-step set size does not match the compiled plan size");
 
+  for (auto stepIndex = steps.find_first(); stepIndex != ExecutionStepSet::npos;
+       stepIndex      = steps.find_next(stepIndex)) {
     if (!evaluateExecutionStep(executionPlan[stepIndex], context, isCancelled))
       return false;
   }
   return true;
 }
 
-Simulator::RunResult
-Simulator::evaluateExecutionStepIndicesAndTrace(std::span<const std::size_t> stepIndices,
-                                                const Context&               context,
-                                                const CancellationCheck&     isCancelled)
-{
-  if (!evaluateExecutionStepIndices(stepIndices, context, isCancelled))
-    return RunResult::Cancelled;
-
-  emitTraceSnapshot();
-  return RunResult::Completed;
-}
-
-std::vector<std::size_t>
+Simulator::ExecutionStepSet
 Simulator::getForwardExecutionSteps(std::span<const Bus> changedBuses) const
 {
-  std::vector<std::size_t> steps;
+  ExecutionStepSet steps(executionPlan.size());
 
   for (const auto& bus : changedBuses) {
     for (const auto& wire : bus) {
@@ -661,13 +659,13 @@ Simulator::getForwardExecutionSteps(std::span<const Bus> changedBuses) const
       if (it == forwardExecutionStepsByWire.end())
         continue;
 
-      steps.insert(steps.end(), it->second.begin(), it->second.end());
+      if (it->second.size() != executionPlan.size())
+        throw std::logic_error(
+            "Cached forward-cone size does not match the compiled plan size");
+      steps |= it->second;
     }
   }
 
-  std::ranges::sort(steps);
-  const auto [uniqueBegin, uniqueEnd] = std::ranges::unique(steps);
-  steps.erase(uniqueBegin, uniqueEnd);
   return steps;
 }
 
@@ -740,7 +738,7 @@ Simulator::RunResult Simulator::evaluateForwardConeAndTrace(
                                              enableSequentialStaging);
 
   try {
-    const auto completed = evaluateExecutionStepIndices(steps, context, isCancelled);
+    const auto completed = evaluateExecutionSteps(steps, context, isCancelled);
     if (!completed) {
       stagedSequentialTransitions.clear();
       return RunResult::Cancelled;
@@ -758,7 +756,7 @@ Simulator::RunResult Simulator::evaluateForwardConeAndTrace(
           Context{false, stagedChangedBuses, std::move(stagedPreviousWireStates)};
       const auto stagedSteps = getForwardExecutionSteps(stagedChangedBuses);
       evaluationState.setActivePreviousWireStates(&stagedContext.previousWireStates);
-      if (!evaluateExecutionStepIndices(stagedSteps, stagedContext, isCancelled)) {
+      if (!evaluateExecutionSteps(stagedSteps, stagedContext, isCancelled)) {
         return RunResult::Cancelled;
       }
     }
