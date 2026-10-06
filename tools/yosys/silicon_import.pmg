@@ -224,3 +224,44 @@ code lanes
 		lanes[lane.first] = lane.second;
 	accept;
 endcode
+
+// memory_dff can leave an enabled address register and its feedback mux in
+// front of a synchronous ROM read port. The matcher proves all wiring and
+// exclusivity requirements; foldMemrdAddress() performs the rewrite.
+pattern memrd_address
+
+udata <pool<Cell*>> selected_cells
+
+match mem
+	select mem->type == $mem_v2
+	select param(mem, \WR_PORTS).as_int() == 0
+	select param(mem, \RD_PORTS).as_int() == 1
+	select param(mem, \RD_CLK_ENABLE).as_int() == 1
+	select mem->getPort(\RD_EN) == SigSpec(State::S1)
+	filter selected_cells.count(mem)
+endmatch
+
+match mux
+	select mux->type == $mux
+	index <SigSpec> port(mux, \Y) === port(mem, \RD_ADDR)
+	filter selected_cells.count(mux)
+	filter param(mux, \WIDTH).as_int() == GetSize(port(mem, \RD_ADDR))
+	filter nusers(port(mem, \RD_ADDR)) == 2
+endmatch
+
+match reg
+	select reg->type == $dffe
+	select param(reg, \EN_POLARITY).as_int() == 1
+	index <SigSpec> port(reg, \Q) === port(mux, \A)
+	index <SigSpec> port(reg, \D) === port(mux, \B)
+	index <SigSpec> port(reg, \EN) === port(mux, \S)
+	index <SigSpec> port(reg, \CLK) === port(mem, \RD_CLK)
+	filter selected_cells.count(reg)
+	filter param(reg, \WIDTH).as_int() == GetSize(port(mem, \RD_ADDR))
+	filter param(reg, \CLK_POLARITY).as_int() == param(mem, \RD_CLK_POLARITY).as_int()
+	filter nusers(port(reg, \Q)) == 2
+endmatch
+
+code
+	accept;
+endcode
