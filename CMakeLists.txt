@@ -398,8 +398,12 @@ if (UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
 endif ()
 qt_standard_project_setup()
 
+set(app_icon_resource_windows "${resources_dir}/app_icon.rc")
+
+
 qt_add_executable(SILICON
-        ${src_dir}/main.cpp)
+        ${src_dir}/main.cpp
+	${app_icon_resource_windows})
 
 target_sources(SILICON
         PRIVATE
