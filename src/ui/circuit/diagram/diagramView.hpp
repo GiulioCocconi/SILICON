@@ -36,6 +36,8 @@ protected:
   void wheelEvent(QWheelEvent* event) override;
 
 public slots:
+  /** @brief Pans the viewport so the circuit's bounds are centered. */
+  void centerCircuit();
   void modeChanged(InteractionMode mode);
 
 private:

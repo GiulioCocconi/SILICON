@@ -92,6 +92,12 @@ void DiagramView::updateZoom()
   scale(FACTOR, FACTOR);
 }
 
+void DiagramView::centerCircuit()
+{
+  const auto* currentScene = scene();
+  centerOn(currentScene ? currentScene->itemsBoundingRect().center() : QPointF{});
+}
+
 void DiagramView::modeChanged(InteractionMode mode)
 {
   // TODO: Set items flags using this->items()

@@ -20,6 +20,7 @@
 #include <QCursor>
 #include <QMimeData>
 #include <QPointF>
+#include <QTimer>
 #include <QUndoStack>
 
 #include <nlohmann/json.hpp>
@@ -110,6 +111,10 @@ void CircuitEditor::apply(const PreparedEditorDocument& prepared)
   diagramScene->clear(false, false);
   diagramScene->setSubcircuitDocumentMode(true);
   diagramScene->applyDeserialize(circuit->plan);
+
+  // The editor can be hidden while another document type is active. Center after the
+  // workspace has made this view current, when its viewport has its final geometry.
+  QTimer::singleShot(0, diagramView, &DiagramView::centerCircuit);
 }
 
 void CircuitEditor::flush(const std::string& path)
@@ -139,6 +144,7 @@ void CircuitEditor::reset()
   diagramScene->clear();
   diagramScene->setDocumentCircuit(std::make_shared<SILICON::core::Circuit>());
   diagramScene->setSubcircuitDocumentMode(false);
+  QTimer::singleShot(0, diagramView, &DiagramView::centerCircuit);
 }
 void CircuitEditor::undo()
 {
