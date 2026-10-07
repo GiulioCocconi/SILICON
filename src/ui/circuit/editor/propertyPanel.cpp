@@ -17,8 +17,6 @@
 
 #include "propertyPanel.hpp"
 
-#include <utils/num_formatting.hpp>
-
 #include <algorithm>
 #include <limits>
 #include <memory>
@@ -33,20 +31,23 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDockWidget>
+#include <QFocusEvent>
 #include <QFormLayout>
 #include <QGraphicsItem>
 #include <QLabel>
 #include <QLineEdit>
+#include <QPlainTextEdit>
 #include <QSpinBox>
+#include <QSizePolicy>
 #include <QTimer>
 #include <QWidget>
+
+#include <utils/num_formatting.hpp>
 
 #include <ui/circuit/diagram/scene/diagramScene.hpp>
 #include <ui/shell/inputDialogUtils.hpp>
 #include <ui/circuit/diagram/undoCommands.hpp>
 #include <ui/circuit/components/graphicalLogicComponent.hpp>
-#include <QFocusEvent>
-#include <QPlainTextEdit>
 #include <ui/project/projectDocumentPolicy.hpp>
 #include <ui/project/projectTree.hpp>
 
@@ -54,6 +55,14 @@ namespace SILICON::ui {
 using namespace SILICON::core;
 
 namespace {
+QLabel* wrappingLabel(QString text, QWidget* parent)
+{
+  auto* label = new QLabel(std::move(text), parent);
+  label->setWordWrap(true);
+  label->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+  return label;
+}
+
 class DescriptionEdit : public QPlainTextEdit {
 public:
   using QPlainTextEdit::QPlainTextEdit;
@@ -105,7 +114,11 @@ void PropertyPanel::refresh()
   // 1. Assign the container immediately.
   // QDockWidget::setWidget automatically deletes the previous widget.
   auto* container = new QWidget();
+  // This dock shares its width with the document dock; its form must not raise the
+  // configured minimum width of the entire dock column.
+  container->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
   auto* layout    = new QFormLayout(container);
+  layout->setRowWrapPolicy(QFormLayout::WrapLongRows);
   propertyDock->setWidget(container);
 
   // 2. Gather selected logic components cleanly
@@ -120,8 +133,9 @@ void PropertyPanel::refresh()
 
   if (selectedNodes.empty()) {
     if (!selectedProjectItem) {
-      layout->addRow(new QLabel(tr("Select a project, circuit, or one or more "
-                                   "components\nto view properties.")));
+      layout->addRow(wrappingLabel(tr("Select a project, circuit, or one or more "
+                                         "components to view properties."),
+                                   container));
       return;
     }
 
@@ -132,7 +146,8 @@ void PropertyPanel::refresh()
           : *itemCategory == SILICON::project::DocumentCategory::Architecture
               ? tr("architecture")
               : tr("binary file");
-      layout->addRow(new QLabel(tr("Select a %1 to view its properties.").arg(noun)));
+      layout->addRow(
+          wrappingLabel(tr("Select a %1 to view its properties.").arg(noun), container));
       return;
     }
 
@@ -199,8 +214,8 @@ void PropertyPanel::refresh()
       };
     }
 
-    layout->addRow(tr("Name"), nameEdit);
-    layout->addRow(tr("Description"), descriptionEdit);
+    layout->addRow(wrappingLabel(tr("Name"), container), nameEdit);
+    layout->addRow(wrappingLabel(tr("Description"), container), descriptionEdit);
     return;
   }
 
@@ -218,7 +233,8 @@ void PropertyPanel::refresh()
   }
 
   if (commonProps.empty()) {
-    layout->addRow(new QLabel(tr("No common configurable\nproperties among selection.")));
+    layout->addRow(wrappingLabel(
+        tr("No common configurable properties among selection."), container));
     return;
   }
 
@@ -279,7 +295,7 @@ void PropertyPanel::refresh()
           applyProperty(key, state == Qt::Checked);
         });
 
-        layout->addRow(QString::fromStdString(key), checkBox);
+        layout->addRow(wrappingLabel(QString::fromStdString(key), container), checkBox);
       } else if constexpr (std::is_same_v<T, int>) {
         auto*         spinBox = new PropertySpinBox(container);
         constexpr int MIN_VAL = std::numeric_limits<int>::min();
@@ -300,7 +316,7 @@ void PropertyPanel::refresh()
           applyProperty(key, val);
         });
 
-        layout->addRow(QString::fromStdString(key), spinBox);
+        layout->addRow(wrappingLabel(QString::fromStdString(key), container), spinBox);
       } else if constexpr (std::is_same_v<T, std::string>) {
         const auto stringOptions =
             selectedNodes.front()->getComponent()->getStringPropertyOptions(key);
@@ -325,7 +341,7 @@ void PropertyPanel::refresh()
                     applyProperty(key, text.toStdString());
                   });
 
-          layout->addRow(QString::fromStdString(key), comboBox);
+          layout->addRow(wrappingLabel(QString::fromStdString(key), container), comboBox);
           return;
         }
 
@@ -345,7 +361,7 @@ void PropertyPanel::refresh()
           lineEdit->setModified(false);
         });
 
-        layout->addRow(QString::fromStdString(key), lineEdit);
+        layout->addRow(wrappingLabel(QString::fromStdString(key), container), lineEdit);
       } else if constexpr (std::is_same_v<T, BusValue>) {
         auto* lineEdit = new QLineEdit(container);
         if (isMixed)
@@ -367,7 +383,7 @@ void PropertyPanel::refresh()
           }
         });
 
-        layout->addRow(QString::fromStdString(key), lineEdit);
+        layout->addRow(wrappingLabel(QString::fromStdString(key), container), lineEdit);
       }
     };
 

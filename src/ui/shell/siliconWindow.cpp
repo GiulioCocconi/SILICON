@@ -110,24 +110,24 @@ SiliconWindow::SiliconWindow()
   layout->setContentsMargins(5, 5, 5, 5);
   centralWidget->setLayout(layout);
 
-  componentsDock = new QDockWidget(this);
-  propertyDock   = new QDockWidget(this);
-  logDock        = new QDockWidget(this);
+  documentDock = new QDockWidget(this);
+  propertyDock = new QDockWidget(this);
+  logDock      = new QDockWidget(this);
 
-  addDockWidget(Qt::LeftDockWidgetArea, componentsDock);
+  addDockWidget(Qt::LeftDockWidgetArea, documentDock);
   addDockWidget(Qt::LeftDockWidgetArea, propertyDock);
   addDockWidget(Qt::BottomDockWidgetArea, logDock);
 
   propertyDock->setFeatures(QDockWidget::DockWidgetMovable);
-  componentsDock->setFeatures(QDockWidget::DockWidgetMovable);
+  documentDock->setFeatures(QDockWidget::DockWidgetMovable);
   logDock->setFeatures(QDockWidget::DockWidgetMovable);
   logDock->setAllowedAreas(Qt::BottomDockWidgetArea | Qt::TopDockWidgetArea);
 
   propertyDock->setWindowTitle("Properties");
-  componentsDock->setWindowTitle("Project");
+  documentDock->setWindowTitle("Project");
   logDock->setWindowTitle("Logs");
 
-  splitDockWidget(componentsDock, propertyDock, Qt::Vertical);
+  splitDockWidget(documentDock, propertyDock, Qt::Vertical);
 
   workspace     = new EditorWorkspace(projectSession, centralWidget);
   circuitEditor = &workspace->circuitEditor();
@@ -203,7 +203,7 @@ SiliconWindow::SiliconWindow()
           &LogSideView::appendLine, Qt::QueuedConnection);
   graphicalLogStream->attachToBoostLog();
 
-  resizeDocks({componentsDock, propertyDock}, {320, 260}, Qt::Vertical);
+  resizeDocks({documentDock, propertyDock}, {320, 260}, Qt::Vertical);
   resizeDocks({logDock}, {180}, Qt::Vertical);
 
   setWindowTitle(tr("SILICON"));
@@ -300,7 +300,7 @@ void SiliconWindow::resizeEvent(QResizeEvent* event)
   const int currentWidth  = event->size().width();
   const int currentHeight = event->size().height();
 
-  const int minWidth = currentWidth / 10;
+  const int minWidth = std::min(288, currentWidth / 4);
   const int maxWidth = currentWidth / 2;
 
   const int minHeight = currentHeight / 3;
@@ -311,7 +311,7 @@ void SiliconWindow::resizeEvent(QResizeEvent* event)
     widget->setMinimumHeight(minHeight);
   };
 
-  configureSizeConstraints(componentsDock);
+  configureSizeConstraints(documentDock);
   configureSizeConstraints(propertyDock);
 
   logDock->setMinimumWidth(160);
@@ -411,8 +411,8 @@ SiliconWindow::~SiliconWindow()
 
 void SiliconWindow::initializeProjectTree()
 {
-  projectTree = new ProjectTree(componentsDock);
-  componentsDock->setWidget(projectTree);
+  projectTree = new ProjectTree(documentDock);
+  documentDock->setWidget(projectTree);
 
   connect(projectTree, &QTreeWidget::itemSelectionChanged, this,
           &SiliconWindow::projectTreeSelectionChanged);

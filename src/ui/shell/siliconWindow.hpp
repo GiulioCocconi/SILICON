@@ -155,8 +155,8 @@ private:
   bool handleWasmEscapeKey();
 #endif
 
-  /** @brief Dock containing the project circuit tree. */
-  QDockWidget* componentsDock = nullptr;
+  /** @brief Dock containing the project document tree. */
+  QDockWidget* documentDock = nullptr;
 
   /** @brief Dock containing the current property editor. */
   QDockWidget* propertyDock = nullptr;
