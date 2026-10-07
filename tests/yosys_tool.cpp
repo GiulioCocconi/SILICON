@@ -622,6 +622,57 @@ TEST(YosysToolTest, KeepsRomAddressRegisterWithExternalConsumer)
   #endif
 }
 
+TEST(YosysToolTest, KeepsRomAddressRegisterWithResetOrInitialization)
+{
+  #ifndef SILICON_TEST_YOSYS_PLUGIN_PATH
+  GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
+  #else
+  constexpr std::string_view SOURCE = R"(
+    module top(input clk, input en, input rst, input [1:0] addr,
+               output [7:0] data);
+      reg [1:0] saved_addr;
+      reg [7:0] rom [0:3];
+      initial begin
+        rom[0] = 8'h12; rom[1] = 8'h34;
+        rom[2] = 8'h56; rom[3] = 8'h78;
+      end
+      always @(posedge clk) if (en) saved_addr <= addr;
+      assign data = rom[saved_addr];
+    endmodule
+  )";
+
+  constexpr std::array cases{
+      std::pair{"read_arst", "connect -port rom RD_ARST rst\n"
+                              "setparam -set RD_ARST_VALUE 8'h00 rom\n"},
+      std::pair{"read_srst", "connect -port rom RD_SRST rst\n"
+                              "setparam -set RD_SRST_VALUE 8'h00 rom\n"},
+      std::pair{"read_init", "setparam -set RD_INIT_VALUE 8'h00 rom\n"},
+      std::pair{"address_init", "setattr -set init 2'bx1 saved_addr\n"}};
+
+  for (const auto& [name, change] : cases) {
+    SCOPED_TRACE(name);
+    EXPECT_NO_THROW(runPluginScript(
+        SOURCE,
+        std::format("hierarchy -check -top top\n"
+                    "proc\n"
+                    "memory_collect\n"
+                    "opt -nosdff\n"
+                    "memory_dff\n"
+                    "select -assert-count 1 top/t:$dffe\n"
+                    "select -assert-count 1 top/t:$mux\n"
+                    "cd top\n"
+                    "{}"
+                    "cd\n"
+                    "silicon_memrd_address\n"
+                    "select -assert-count 1 top/t:$dffe\n"
+                    "select -assert-count 1 top/t:$mux\n"
+                    "select -assert-count 1 top/t:$mem_v2\n",
+                    change),
+        name));
+  }
+  #endif
+}
+
 TEST(YosysToolTest, LowersPriorityMuxCellsBeforeImport)
 {
   constexpr std::string_view SOURCE = R"(

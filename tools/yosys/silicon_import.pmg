@@ -227,7 +227,9 @@ endcode
 
 // memory_dff can leave an enabled address register and its feedback mux in
 // front of a synchronous ROM read port. The matcher proves all wiring and
-// exclusivity requirements; foldMemrdAddress() performs the rewrite.
+// exclusivity requirements. Reset and initialization must be absent because
+// the address register and the memory read register observe them differently.
+// foldMemrdAddress() performs the rewrite.
 pattern memrd_address
 
 udata <pool<Cell*>> selected_cells
@@ -238,6 +240,9 @@ match mem
 	select param(mem, \RD_PORTS).as_int() == 1
 	select param(mem, \RD_CLK_ENABLE).as_int() == 1
 	select mem->getPort(\RD_EN) == SigSpec(State::S1)
+	select port(mem, \RD_ARST) == SigSpec(State::S0)
+	select port(mem, \RD_SRST) == SigSpec(State::S0)
+	select param(mem, \RD_INIT_VALUE).is_fully_undef_x_only()
 	filter selected_cells.count(mem)
 endmatch
 
@@ -259,6 +264,7 @@ match reg
 	filter selected_cells.count(reg)
 	filter param(reg, \WIDTH).as_int() == GetSize(port(mem, \RD_ADDR))
 	filter param(reg, \CLK_POLARITY).as_int() == param(mem, \RD_CLK_POLARITY).as_int()
+	filter !hasDefinedInit(port(reg, \Q), module, sigmap)
 	filter nusers(port(reg, \Q)) == 2
 endmatch
 
