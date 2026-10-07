@@ -15,6 +15,7 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "kernel/ffinit.h"
 #include "kernel/register.h"
 #include "kernel/rtlil.h"
 #include "kernel/sigtools.h"
@@ -31,6 +32,13 @@ PRIVATE_NAMESPACE_BEGIN
 
 constexpr int MAX_DECODED_SELECTOR_WIDTH = 10;
 constexpr int DECODER_DENSITY_FACTOR    = 4;
+
+// Init attributes may be attached to an alias of the register output.
+bool hasDefinedInit(const RTLIL::SigSpec& signal, RTLIL::Module* module,
+                    const SigMap& sigmap)
+{
+  return !FfInitVals(&sigmap, module)(signal).is_fully_undef_x_only();
+}
 
 #include "silicon_import_pm.h"
 
