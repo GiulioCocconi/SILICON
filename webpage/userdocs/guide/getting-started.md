@@ -9,6 +9,10 @@ SILICON is an open source application for designing and simulating digital circu
 3. Pick the release or nightly build for your platform.
 4. Start SILICON from the downloaded package.
 
+To run SILICON in a browser, use **Run SILICON online** on the website or
+choose **Stable** or **Unstable** on the Download page. Stable is recommended
+when available; Unstable runs the latest successful main snapshot.
+
 ::: tip
 SILICON is currently pre-alpha software. Prefer saving small projects often while testing new workflows.
 :::

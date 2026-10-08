@@ -7,25 +7,16 @@ on:
         required: false
         type: string
         default: "Release"
-      publish:
-        required: true
-        type: boolean
+      checkout_ref:
+        required: false
+        type: string
+      build_version:
+        required: false
+        type: string
       package_name:
         required: true
         type: string
       package_version:
-        required: true
-        type: string
-      cloudsmith_owner:
-        required: true
-        type: string
-      cloudsmith_repo:
-        required: true
-        type: string
-      cloudsmith_oidc_namespace:
-        required: true
-        type: string
-      cloudsmith_oidc_service_slug:
         required: true
         type: string
 
@@ -38,6 +29,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
 
       - name: Install Emscripten
         uses: mymindstorm/setup-emsdk@v14
@@ -73,11 +66,17 @@ jobs:
 
       - name: Configure CMake
         shell: bash
+        env:
+          BUILD_VERSION: ${{ inputs.build_version }}
+          BUILD_TYPE: ${{ inputs.build_type }}
         run: |
-          # Replace this section if the project's real Qt for WASM configure step changes.
+          version_args=()
+          if [[ -n "${BUILD_VERSION}" ]]; then
+            version_args+=("-DSILICON_VERSION=${BUILD_VERSION}")
+          fi
           chmod +x ~/work/SILICON/Qt/6.11.0/wasm_singlethread/bin/qt-cmake
-          ~/work/SILICON/Qt/6.11.0/wasm_singlethread/bin/qt-cmake -Bbuild -G Ninja
-          emcmake cmake -G Ninja -DCMAKE_BUILD_TYPE=${{ inputs.build_type }} -Bbuild
+          ~/work/SILICON/Qt/6.11.0/wasm_singlethread/bin/qt-cmake -Bbuild -G Ninja "-DCMAKE_BUILD_TYPE=${BUILD_TYPE}" "${version_args[@]}"
+          emcmake cmake -G Ninja "-DCMAKE_BUILD_TYPE=${BUILD_TYPE}" -Bbuild "${version_args[@]}"
 
       - name: Build
         shell: bash
@@ -107,33 +106,3 @@ jobs:
           name: wasm-package
           path: out/*.zip
           retention-days: 1
-
-  publish:
-    if: inputs.publish
-    name: Publish WASM to Cloudsmith
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - name: Download packaged WASM artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: wasm-package
-          path: out
-
-      - name: Authenticate with Cloudsmith
-        uses: cloudsmith-io/cloudsmith-cli-action@v3
-        with:
-          oidc-namespace: ${{ inputs.cloudsmith_oidc_namespace }}
-          oidc-service-slug: ${{ inputs.cloudsmith_oidc_service_slug }}
-
-      - name: Publish WASM raw package
-        shell: bash
-        run: |
-          cloudsmith push raw \
-            "${{ inputs.cloudsmith_owner }}/${{ inputs.cloudsmith_repo }}" \
-            "out/${{ inputs.package_name }}-${{ inputs.package_version }}.zip" \
-            --name "${{ inputs.package_name }}" \
-            --version "${{ inputs.package_version }}"

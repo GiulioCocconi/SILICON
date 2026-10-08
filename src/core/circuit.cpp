@@ -823,10 +823,6 @@ Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry
 {
   const auto j = nlohmann::json::parse(jsonStr);
 
-  if (j.value("version", "") != SILICON_VERSION) {
-    throw std::runtime_error(std::format("The version must be {}", SILICON_VERSION));
-  }
-
   std::unordered_map<uint64_t, Wire_ptr> wireMap;
 
   const auto deserializeBusList = [&wireMap](const nlohmann::json& busListJson) {

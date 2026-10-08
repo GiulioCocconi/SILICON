@@ -1093,17 +1093,6 @@ TEST(CircuitTest, DeserializeMultiWireBus)
   EXPECT_EQ(numVertices, 2);
 }
 
-TEST(CircuitTest, DeserializeInvalidVersionThrows)
-{
-  ComponentRegistry registry;
-  registerAllComponents(registry);
-
-  std::string json =
-      R"({"version": "invalid_version", "components": [], "name": "test"})";
-
-  EXPECT_THROW((void)Circuit::deserialize(json, registry), std::runtime_error);
-}
-
 TEST(CircuitTest, DeserializeHalfAdder)
 {
   ComponentRegistry registry;

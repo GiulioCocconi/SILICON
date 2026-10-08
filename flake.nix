@@ -56,20 +56,22 @@ outputs = { self, nixpkgs, flake-utils, git-hooks, sisl }:
           };
         };
 
+        lightCIPackages = with pkgs; [
+          (python3.withPackages (pp: with pp; [ pygithub ]))
+          git-cliff
+        ];
+
         devPackages = with pkgs; [
-          (python3.withPackages (pp: with pp; [ pygithub rich ]))
           vulkan-headers
           libxkbcommon.dev
           clang-tools
+          doxygen
           gdb
           ddd
-          valgrind
-          surelog
           opencode
-          doxygen
 	  codex
           graphviz
-        ];
+        ] ++ lightCIPackages;
 
         libraries = with pkgs; [
           gtest.dev
@@ -80,22 +82,13 @@ outputs = { self, nixpkgs, flake-utils, git-hooks, sisl }:
           pegtl
           nlohmann_json
           tomlplusplus
-	  ogdf
+	        ogdf
         ];
-
-	# TODO: Remove when NixPkgs PR 559059 gets to unstable
-        # The pinned Yosys package installs yosys-config with an
-        # /usr/bin/env shebang, which is unavailable in pure Nix builds.
-        yosysConfig = pkgs.writeShellScriptBin "yosys-config" ''
-          exec ${pkgs.bash}/bin/bash ${pkgs.yosys}/bin/yosys-config "$@"
-        '';
 
         nativeInputs = with pkgs; [
           cmake
           ninja
           python3
-          yosysConfig
-          # Required by the Yosys JSON import validation test.
           yosys
         ];
 
@@ -103,7 +96,7 @@ outputs = { self, nixpkgs, flake-utils, git-hooks, sisl }:
 
         mkSilicon = { release ? false }: pkgs.stdenv.mkDerivation {
             pname = "SILICON";
-            version = "0.1.0-pre-alpha";
+            version = "0.1.0-beta.1";
 
             src = ./.;
 
@@ -114,7 +107,6 @@ outputs = { self, nixpkgs, flake-utils, git-hooks, sisl }:
             cmakeFlags = [
               "-DSILICON_USE_VCPKG=OFF"
               "-DUSING_NIX=ON"
-              "-DSILICON_YOSYS_CONFIG_EXECUTABLE=${yosysConfig}/bin/yosys-config"
             ] ++ pkgs.lib.optionals release [
               "-DCMAKE_BUILD_TYPE=Release"
               "-DSILICON_ENABLE_SANITIZERS=OFF"
@@ -132,6 +124,11 @@ outputs = { self, nixpkgs, flake-utils, git-hooks, sisl }:
       in
         {
           devShells = {
+            lightCI = pkgs.mkShell {
+              name = "SILICON-light-CI";
+              packages = lightCIPackages;
+            };
+
             default = pkgs.mkShell {
               name = "SILICON-dev";
               packages = devPackages ++ libraries ++ nativeInputs ++ [ sislPackage ] ++ preCommitCheck.enabledPackages;

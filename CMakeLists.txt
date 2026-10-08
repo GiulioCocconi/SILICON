@@ -14,9 +14,19 @@
 #  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 cmake_minimum_required(VERSION 3.31)
 
+# Persistent version is updated by ci/semver.py. CI may override the full
+# runtime version for snapshots without changing project metadata.
+set(SILICON_VERSION "0.1.0-beta.1" CACHE STRING "Full SILICON version")
+if (NOT SILICON_VERSION MATCHES "^([0-9]+)\\.([0-9]+)\\.([0-9]+)(-(alpha|beta|rc)\\.[0-9]+|-dev\\.[0-9a-f]+)?$")
+    message(FATAL_ERROR "Invalid SILICON_VERSION: ${SILICON_VERSION}")
+endif ()
+set(SILICON_VERSION_CORE "${CMAKE_MATCH_1}.${CMAKE_MATCH_2}.${CMAKE_MATCH_3}")
+set(SILICON_FULL_VERSION "${SILICON_VERSION}")
+
 project("SILICON"
-        VERSION 0.1.0 # As defined at semver.org
+        VERSION ${SILICON_VERSION_CORE}
         LANGUAGES CXX)
+set(SILICON_VERSION ${SILICON_FULL_VERSION})
 
 include(GNUInstallDirs)
 include(InstallRequiredSystemLibraries)
@@ -187,7 +197,7 @@ add_compile_definitions(
         SILICON_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
         SILICON_VERSION_MINOR=${PROJECT_VERSION_MINOR}
         SILICON_VERSION_PATCH=${PROJECT_VERSION_PATCH}
-        SILICON_VERSION="${PROJECT_VERSION}"
+        SILICON_VERSION="${SILICON_VERSION}"
         SILICON_DEBUG=$<CONFIG:Debug>
 )
 
@@ -205,7 +215,6 @@ elseif (UNIX)
     add_compile_options(-Wall -Wextra -Wno-unused-parameter -Wno-return-type)
 elseif (WIN32 AND MINGW)
     add_compile_options(-Wall -Wextra -Wno-unused-parameter)
-
 elseif (EMSCRIPTEN)
     add_link_options(--emrun)
 endif ()
