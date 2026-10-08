@@ -42,13 +42,21 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       build_type: ${{ steps.meta.outputs.build_type }}
-      publish_wasm: ${{ steps.meta.outputs.publish_wasm }}
-      publish_windows: ${{ steps.meta.outputs.publish_windows }}
+      publish: ${{ steps.meta.outputs.publish }}
       snapshot_version: ${{ steps.meta.outputs.snapshot_version }}
+      build_version: ${{ steps.meta.outputs.build_version }}
+      source_sha: ${{ steps.meta.outputs.source_sha }}
       wasm_package_name: ${{ steps.meta.outputs.wasm_package_name }}
       windows_package_name: ${{ steps.meta.outputs.windows_package_name }}
       cloudsmith_repo: ${{ steps.meta.outputs.cloudsmith_repo }}
     steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Install Nix
+        uses: nixbuild/nix-quick-install-action@v35
+      - name: Check persistent versions
+        run: nix develop .#lightCI --command python ci/semver.py --check
       - id: meta
         shell: bash
         run: |
@@ -57,38 +65,41 @@ jobs:
             echo "wasm_package_name=wasm-${{ github.event.pull_request.number }}" >> "${GITHUB_OUTPUT}"
             echo "windows_package_name=windows-${{ github.event.pull_request.number }}" >> "${GITHUB_OUTPUT}"
             echo "snapshot_version=${{ github.event.pull_request.head.sha }}" >> "${GITHUB_OUTPUT}"
+            echo "build_version=" >> "${GITHUB_OUTPUT}"
+            echo "source_sha=${{ github.event.pull_request.head.sha }}" >> "${GITHUB_OUTPUT}"
             echo "cloudsmith_repo=${{ vars.CLOUDSMITH_PR_REPO }}" >> "${GITHUB_OUTPUT}"
 
             if [[ "${{ github.event.pull_request.head.repo.fork }}" == "true" ]]; then
-              echo "publish_wasm=false" >> "${GITHUB_OUTPUT}"
-              echo "publish_windows=false" >> "${GITHUB_OUTPUT}"
+              echo "publish=false" >> "${GITHUB_OUTPUT}"
             else
-              echo "publish_wasm=true" >> "${GITHUB_OUTPUT}"
-              echo "publish_windows=true" >> "${GITHUB_OUTPUT}"
+              echo "publish=true" >> "${GITHUB_OUTPUT}"
             fi
           else
-            short_sha="${GITHUB_SHA::7}"
+            version="$(nix develop .#lightCI --command python ci/release.py unstable-version)"
             echo "build_type=Release" >> "${GITHUB_OUTPUT}"
             echo "wasm_package_name=silicon-unstable-wasm" >> "${GITHUB_OUTPUT}"
             echo "windows_package_name=silicon-unstable-windows" >> "${GITHUB_OUTPUT}"
-            echo "snapshot_version=v${short_sha}-unstable" >> "${GITHUB_OUTPUT}"
+            echo "snapshot_version=${version}" >> "${GITHUB_OUTPUT}"
+            echo "build_version=${version}" >> "${GITHUB_OUTPUT}"
+            echo "source_sha=${GITHUB_SHA}" >> "${GITHUB_OUTPUT}"
             echo "cloudsmith_repo=${{ vars.CLOUDSMITH_RELEASE_REPO }}" >> "${GITHUB_OUTPUT}"
-            echo "publish_wasm=true" >> "${GITHUB_OUTPUT}"
-            echo "publish_windows=true" >> "${GITHUB_OUTPUT}"
+            echo "publish=true" >> "${GITHUB_OUTPUT}"
           fi
 
   build-linux:
     name: Linux (Nix)
+    needs: prepare
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.source_sha }}
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v23
+        uses: nixbuild/nix-quick-install-action@v35
 
       - name: Build with Nix
         shell: bash
@@ -104,31 +115,72 @@ jobs:
     needs: prepare
     uses: ./.github/workflows/reusable-build-wasm.yml
     with:
+      checkout_ref: ${{ needs.prepare.outputs.source_sha }}
       build_type: ${{ needs.prepare.outputs.build_type }}
-      publish: ${{ needs.prepare.outputs.publish_wasm == 'true' }}
+      build_version: ${{ needs.prepare.outputs.build_version }}
       package_name: ${{ needs.prepare.outputs.wasm_package_name }}
       package_version: ${{ needs.prepare.outputs.snapshot_version }}
-      cloudsmith_owner: ${{ vars.CLOUDSMITH_OWNER }}
-      cloudsmith_repo: ${{ needs.prepare.outputs.cloudsmith_repo }}
-      cloudsmith_oidc_namespace: ${{ vars.CLOUDSMITH_OIDC_NAMESPACE }}
-      cloudsmith_oidc_service_slug: ${{ vars.CLOUDSMITH_OIDC_SERVICE_SLUG }}
     permissions:
       contents: read
-      id-token: write
 
   windows-snapshot:
     name: Windows snapshot
     needs: prepare
     uses: ./.github/workflows/reusable-build-windows.yml
     with:
+      checkout_ref: ${{ needs.prepare.outputs.source_sha }}
       build_type: ${{ needs.prepare.outputs.build_type }}
-      publish: ${{ needs.prepare.outputs.publish_windows == 'true' }}
+      build_version: ${{ needs.prepare.outputs.build_version }}
       package_name: ${{ needs.prepare.outputs.windows_package_name }}
       package_version: ${{ needs.prepare.outputs.snapshot_version }}
-      cloudsmith_owner: ${{ vars.CLOUDSMITH_OWNER }}
-      cloudsmith_repo: ${{ needs.prepare.outputs.cloudsmith_repo }}
-      cloudsmith_oidc_namespace: ${{ vars.CLOUDSMITH_OIDC_NAMESPACE }}
-      cloudsmith_oidc_service_slug: ${{ vars.CLOUDSMITH_OIDC_SERVICE_SLUG }}
     permissions:
       contents: read
+
+  publish:
+    if: needs.prepare.outputs.publish == 'true'
+    needs: [prepare, build-linux, wasm-snapshot, windows-snapshot]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.source_sha }}
+      - name: Install Nix
+        uses: nixbuild/nix-quick-install-action@v35
+      - uses: actions/download-artifact@v8
+        with:
+          name: wasm-package
+          path: out
+      - uses: actions/download-artifact@v8
+        with:
+          name: windows-package
+          path: out
+      - uses: cloudsmith-io/cloudsmith-cli-action@v3
+        with:
+          oidc-namespace: ${{ vars.CLOUDSMITH_OIDC_NAMESPACE }}
+          oidc-service-slug: ${{ vars.CLOUDSMITH_OIDC_SERVICE_SLUG }}
+      - name: Publish snapshot packages
+        shell: bash
+        env:
+          OWNER: ${{ vars.CLOUDSMITH_OWNER }}
+          REPO: ${{ needs.prepare.outputs.cloudsmith_repo }}
+          VERSION: ${{ needs.prepare.outputs.snapshot_version }}
+          WASM_NAME: ${{ needs.prepare.outputs.wasm_package_name }}
+          WINDOWS_NAME: ${{ needs.prepare.outputs.windows_package_name }}
+        run: |
+          nix develop .#lightCI --command python ci/publish_packages.py cloudsmith "${OWNER}" "${REPO}" "${WASM_NAME}" "${VERSION}" "out/${WASM_NAME}-${VERSION}.zip"
+          nix develop .#lightCI --command python ci/publish_packages.py cloudsmith "${OWNER}" "${REPO}" "${WINDOWS_NAME}" "${VERSION}" "out/${WINDOWS_NAME}-${VERSION}.zip"
+
+  deploy-pages:
+    if: github.event_name == 'push'
+    needs: [prepare, publish]
+    uses: ./.github/workflows/reusable-deploy-pages.yml
+    with:
+      checkout_ref: ${{ needs.prepare.outputs.source_sha }}
+      unstable_version: ${{ needs.prepare.outputs.snapshot_version }}
+    permissions:
+      contents: read
+      pages: write
       id-token: write

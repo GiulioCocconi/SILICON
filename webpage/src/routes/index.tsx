@@ -3,6 +3,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 import siliconLogo from "@/assets/silicon-icon.svg";
 import demoGif from "@/assets/demo.gif";
+import { defaultWasmChannel, useWasmChannels } from "@/wasmChannels";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -73,8 +74,8 @@ const links = [
     color: "var(--silicon-orange)",
   },
   {
-    href: "wasm/",
-    label: "Try online",
+    href: "#/download",
+    label: "Run SILICON online",
     sub: "SILICON in the browser",
     color: "var(--silicon-blue)",
   },
@@ -94,6 +95,15 @@ const links = [
 ];
 
 function Index() {
+  const channels = useWasmChannels();
+  const onlineChannel = channels[defaultWasmChannel]
+    ? defaultWasmChannel
+    : channels.unstable
+      ? "unstable"
+      : channels.stable
+        ? "stable"
+        : null;
+
   return (
     <div className="min-h-screen overflow-x-hidden">
       <SiteHeader />
@@ -133,7 +143,13 @@ function Index() {
           {links.map((l) => (
             <a
               key={l.label}
-              href={l.href}
+              href={
+                l.label === "Run SILICON online"
+                  ? onlineChannel
+                    ? `wasm/${onlineChannel}/`
+                    : "#/download"
+                  : l.href
+              }
               target={l.external ? "_blank" : undefined}
               rel={l.external ? "noreferrer" : undefined}
               className="silicon-card p-4 block min-w-0"

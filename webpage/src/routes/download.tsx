@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
+import { useWasmChannels } from "@/wasmChannels";
 
 export const Route = createFileRoute("/download")({
   head: () => ({
@@ -36,8 +37,8 @@ const packages = [
     key: "release",
     title: "Windows release",
     badge: "stable",
-    packageName: "silicon-release-windows",
-    description: "Recommended for normal use. Published when a GitHub release is published.",
+    packageName: "silicon-stable-windows",
+    description: "Recommended for normal use. Published after a stable release succeeds.",
     color: "var(--silicon-green)",
   },
   {
@@ -119,6 +120,7 @@ ninja -C build
 ./build/SILICON`;
 
 function Download() {
+  const wasmChannels = useWasmChannels();
   const [loadingPackage, setLoadingPackage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -159,9 +161,7 @@ function Download() {
         <section className="page-shell hero-section">
           <div className="grid lg:grid-cols-[1fr_360px] gap-10 items-start">
             <div>
-              <div className="hero-kicker mono bg-[var(--silicon-blue)]">
-                Cloudsmith artifacts
-              </div>
+              <div className="hero-kicker mono bg-[var(--silicon-blue)]">Cloudsmith artifacts</div>
               <h1 className="hero-title font-display">
                 Download <br className="hidden sm:block" />
                 <span
@@ -245,6 +245,46 @@ function Download() {
               </article>
             ))}
           </div>
+
+          <section className="mt-12">
+            <h2 className="section-title font-display mb-6">Run SILICON online</h2>
+            <div className="grid md:grid-cols-2 gap-6">
+              <article className="silicon-card card-pad">
+                <h3 className="card-title font-display mb-2">Stable</h3>
+                <p className="text-muted-foreground mb-5">
+                  Latest stable release. Recommended for normal use.
+                </p>
+                {wasmChannels.stable ? (
+                  <a
+                    className="silicon-btn"
+                    href="wasm/stable/"
+                    style={{ backgroundColor: "var(--silicon-green)" }}
+                  >
+                    Launch stable
+                  </a>
+                ) : (
+                  <p className="mono text-sm">No stable online release is available yet.</p>
+                )}
+              </article>
+              <article className="silicon-card card-pad">
+                <h3 className="card-title font-display mb-2">Unstable</h3>
+                <p className="text-muted-foreground mb-5">
+                  Latest successful main snapshot. New changes may be less tested.
+                </p>
+                {wasmChannels.unstable ? (
+                  <a
+                    className="silicon-btn"
+                    href="wasm/unstable/"
+                    style={{ backgroundColor: "var(--silicon-orange)" }}
+                  >
+                    Launch unstable
+                  </a>
+                ) : (
+                  <p className="mono text-sm">No unstable online build is available yet.</p>
+                )}
+              </article>
+            </div>
+          </section>
 
           <div className="mt-8 max-w-3xl">
             <p className="text-sm text-muted-foreground leading-relaxed">

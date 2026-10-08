@@ -5,6 +5,11 @@ snapshot packaging, releases, and documentation deployment. A green local build
 is necessary, but CI also validates commit history and platform-specific paths
 that may not exist on your machine.
 
+Linux CI jobs that run release, policy, formatting, and publication scripts use
+`nix develop .#lightCI --command ...`. This lightweight flake shell supplies
+Python (including PyGithub) and git-cliff without installing them separately in
+each workflow. Platform builds keep their own build environments.
+
 ## Pull-request checks
 
 The following workflows run when a pull request is opened, updated, or reopened.
@@ -62,20 +67,29 @@ trying to fix a skipped documentation-only snapshot build.
 
 ## What runs after merge
 
-Every push to `main` starts the GitHub Pages workflow. It:
+Code and build-system changes on `main` start Linux/Nix, Windows, and WASM
+validation. The Windows and WASM ZIPs are built once from the exact main commit
+and handed to the publication job as GitHub Actions artifacts.
 
-1. builds a Release WASM application;
-2. generates Doxygen API documentation;
-3. builds the React website and VitePress user documentation with Bun;
-4. assembles those outputs into one Pages artifact; and
-5. deploys the artifact to GitHub Pages.
+The main snapshot version is `X.Y.Z-dev.<short-sha>`, calculated by
+`python ci/release.py unstable-version`. It is passed to CMake as
+`SILICON_VERSION`, so the running application reports it. The dev version is
+never committed into CMake/vcpkg/Nix and is never tagged. Once all builds pass,
+the ZIPs are published to `silicon-unstable-windows` and
+`silicon-unstable-wasm` in the Cloudsmith release repository using OIDC.
 
-Code and build-system changes matching the snapshot path filters also start
-Release snapshot builds. Main-branch Windows and WASM packages are versioned from
-the short commit SHA as `v<sha>-unstable` and published to the configured
-Cloudsmith release repository under `silicon-unstable-windows` and
-`silicon-unstable-wasm`. This is the downloadable nightly/unstable channel; it is
-not the same as the local Debug build in the README.
+Only after the unstable WASM package is published does the snapshot workflow
+deploy Pages. Pages downloads existing `silicon-stable-wasm` and
+`silicon-unstable-wasm` packages into `/wasm/stable/` and `/wasm/unstable/`.
+Website/documentation-only pushes deploy Pages directly using the latest
+published packages; they never rebuild SILICON. `WASM_DEFAULT_CHANNEL` chooses
+the generic online action's preferred channel (`stable` by default). If no
+stable package exists, the website offers the unstable channel instead.
+Either WASM channel may be absent when Pages selects the latest available
+packages; an explicitly requested version must exist. Downloads are checked
+against Cloudsmith's SHA-256 before extraction. Pages deployment checks that
+its source commit is still the current `main` commit, so an older queued run
+fails instead of replacing a newer site.
 
 When an internal, merged pull request had Cloudsmith preview packages, the cleanup
 workflow deletes its Windows and WASM previews. A separate workflow removes the
@@ -83,14 +97,40 @@ closed pull request's GitHub Actions caches.
 
 ## Releases and dependency updates
 
-Publishing a GitHub release triggers Release Windows and WASM packages only when
-the tag matches one of these forms:
+Maintainers use **Actions → Release → Run workflow**:
 
-```text
-v1.2.3
-v1.2.3-rc.1
-v1.2.3-beta.1
-```
+1. Choose `prepare` and `stable` or `beta` (or `rc`).
+2. Review and edit the generated release preparation PR, then merge it to `main`.
+3. Choose `publish` and the matching channel. Do not type a version.
+
+Preparation calls `ci/release.py next <channel>` to calculate the version,
+updates CMake/vcpkg/Nix with `ci/semver.py`, and opens a branch named
+`release/vX.Y.Z...`. A stable preparation also updates `CHANGELOG.md` with
+git-cliff. Beta and RC preparations put incremental git-cliff notes in the PR
+body but leave the persistent changelog alone.
+
+Publication verifies that the exact `main` commit is the merge of the matching
+`release/vX.Y.Z...` preparation PR and validates the merged metadata before building.
+Linux/Nix, Windows, and WASM use the same reviewed commit SHA. After successful
+builds/tests it creates an annotated tag, a **draft** GitHub Release, publishes
+the exact ZIPs to Cloudsmith through OIDC, uploads those same ZIPs and
+`SHA256SUMS` to GitHub, and finally publishes the Release. A failed Cloudsmith
+publication leaves the GitHub Release as a draft. Stable publication then
+refreshes `/wasm/stable/`; beta/RC publication does not.
+Retries skip Cloudsmith packages and GitHub assets whose SHA-256 already matches;
+an existing artifact with different contents fails publication. The reviewed
+commit must still be current `main` when Pages is deployed.
+
+| Channel | Version | Persistent metadata | GitHub | Cloudsmith |
+| --- | --- | --- | --- | --- |
+| Unstable | `X.Y.Z-dev.<sha>` | Unchanged; never tagged | None | `silicon-unstable-*` |
+| Beta | `X.Y.Z-beta.N` | Committed; beta tags ignored as changelog boundaries | Tagged prerelease, not latest | `silicon-prerelease-*` |
+| Stable | `X.Y.Z` | Committed; `CHANGELOG.md` updated | Tagged stable latest release | `silicon-stable-*` |
+
+`python ci/semver.py --check` runs in ordinary snapshot CI and release
+preparation/publication. Version drift fails before builds. The full version
+comes from the CMake cache variable `SILICON_VERSION`; `project(VERSION ...)`
+receives only its numeric core.
 
 Dependabot checks vcpkg and GitHub Actions dependencies weekly. Its configured
 commit prefixes follow the repository convention: `chore(vcpkg):` and

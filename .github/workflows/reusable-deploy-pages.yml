@@ -1,0 +1,94 @@
+name: Reusable Pages deployment
+
+on:
+  workflow_call:
+    inputs:
+      checkout_ref:
+        type: string
+        required: false
+      stable_version:
+        type: string
+        required: false
+      unstable_version:
+        type: string
+        required: false
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
+      - name: Install Nix
+        uses: nixbuild/nix-quick-install-action@v35
+      - name: Install Doxygen
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y doxygen graphviz
+      - name: Generate API documentation
+        run: doxygen Doxyfile
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.22
+      - name: Install webpage dependencies
+        working-directory: webpage
+        run: bun install --frozen-lockfile
+      - name: Build webpage and user documentation
+        working-directory: webpage
+        env:
+          VITE_CLOUDSMITH_OWNER: ${{ vars.CLOUDSMITH_OWNER }}
+          VITE_CLOUDSMITH_RELEASE_REPO: ${{ vars.CLOUDSMITH_RELEASE_REPO }}
+          VITE_WASM_DEFAULT_CHANNEL: ${{ vars.WASM_DEFAULT_CHANNEL || 'stable' }}
+        run: bun run build:all
+      - name: Assemble site
+        run: |
+          mkdir -p dist/internaldocs
+          cp -r docs/html/. dist/internaldocs/
+          cp -r webpage/dist/. dist/
+      - name: Install published WASM packages
+        env:
+          CLOUDSMITH_OWNER: ${{ vars.CLOUDSMITH_OWNER }}
+          CLOUDSMITH_RELEASE_REPO: ${{ vars.CLOUDSMITH_RELEASE_REPO }}
+          STABLE_VERSION: ${{ inputs.stable_version }}
+          UNSTABLE_VERSION: ${{ inputs.unstable_version }}
+        run: |
+          nix develop .#lightCI --command python ci/fetch_wasm_packages.py \
+            --stable-version "${STABLE_VERSION}" \
+            --unstable-version "${UNSTABLE_VERSION}"
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          name: github-pages-${{ github.run_id }}
+          path: ./dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
+      - name: Install Nix
+        uses: nixbuild/nix-quick-install-action@v35
+      - name: Verify Pages source is current main
+        env:
+          EXPECTED_SHA: ${{ inputs.checkout_ref || github.sha }}
+        run: nix develop .#lightCI --command python ci/check_pages_ref.py "${EXPECTED_SHA}"
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
+        with:
+          artifact_name: github-pages-${{ github.run_id }}

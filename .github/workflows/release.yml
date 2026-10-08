@@ -1,0 +1,248 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Prepare a reviewed PR or publish its merged version
+        required: true
+        type: choice
+        options: [prepare, publish]
+      channel:
+        description: Release channel
+        required: true
+        type: choice
+        options: [stable, beta, rc]
+
+concurrency:
+  group: release-${{ inputs.operation }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: inputs.operation == 'prepare'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      # The installed App needs Contents and Pull requests write access.
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+      - name: Fetch release tags
+        run: git fetch --tags origin
+      - name: Install Nix
+        uses: nixbuild/nix-quick-install-action@v35
+      - name: Prepare metadata and release notes
+        id: release
+        env:
+          GIT_CLIFF_LOG: error
+        run: nix develop .#lightCI --command python ci/release_tasks.py prepare "${{ inputs.channel }}"
+      - name: Validate preparation
+        run: |
+          nix develop .#lightCI --command python ci/semver.py --check
+          git diff --check
+          nix develop .#lightCI --command python -m py_compile ci/semver.py ci/release.py ci/release_tasks.py
+      - name: Create release preparation PR
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          BRANCH: ${{ steps.release.outputs.branch }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "${BRANCH}"
+          git add CMakeLists.txt vcpkg.json flake.nix
+          if [[ "${{ inputs.channel }}" == "stable" ]]; then
+            git add CHANGELOG.md
+          fi
+          git commit -s --allow-empty -m "chore(release): prepare v${VERSION}"
+          git push origin "${BRANCH}"
+          gh pr create --base main --head "${BRANCH}" \
+            --title "chore(release): prepare v${VERSION}" \
+            --body-file release-pr-body.md
+
+  validate:
+    if: inputs.operation == 'publish'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      sha: ${{ steps.release.outputs.sha }}
+      tag: ${{ steps.release.outputs.tag }}
+      tag_exists: ${{ steps.release.outputs.tag_exists }}
+      draft_exists: ${{ steps.release.outputs.draft_exists }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Fetch release tags
+        run: git fetch --tags origin
+      - name: Install Nix
+        uses: nixbuild/nix-quick-install-action@v35
+      - name: Validate reviewed release state
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GIT_CLIFF_LOG: error
+        run: nix develop .#lightCI --command python ci/release_tasks.py validate "${{ inputs.channel }}"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-notes
+          path: release-notes.md
+          retention-days: 1
+
+  linux:
+    if: inputs.operation == 'publish'
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+      - uses: nixbuild/nix-quick-install-action@v35
+      - name: Validate Linux release build
+        run: nix build --print-build-logs '.#release'
+
+  windows:
+    if: inputs.operation == 'publish'
+    needs: validate
+    uses: ./.github/workflows/reusable-build-windows.yml
+    with:
+      checkout_ref: ${{ needs.validate.outputs.sha }}
+      build_type: Release
+      build_version: ${{ needs.validate.outputs.version }}
+      package_name: silicon-${{ inputs.channel == 'stable' && 'stable' || 'prerelease' }}-windows
+      package_version: ${{ needs.validate.outputs.version }}
+    permissions:
+      contents: read
+
+  wasm:
+    if: inputs.operation == 'publish'
+    needs: validate
+    uses: ./.github/workflows/reusable-build-wasm.yml
+    with:
+      checkout_ref: ${{ needs.validate.outputs.sha }}
+      build_type: Release
+      build_version: ${{ needs.validate.outputs.version }}
+      package_name: silicon-${{ inputs.channel == 'stable' && 'stable' || 'prerelease' }}-wasm
+      package_version: ${{ needs.validate.outputs.version }}
+    permissions:
+      contents: read
+
+  publish:
+    if: inputs.operation == 'publish'
+    needs: [validate, linux, windows, wasm]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+          fetch-depth: 0
+      - name: Install Nix
+        uses: nixbuild/nix-quick-install-action@v35
+      - uses: actions/download-artifact@v8
+        with:
+          name: windows-package
+          path: out
+      - uses: actions/download-artifact@v8
+        with:
+          name: wasm-package
+          path: out
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-notes
+          path: .
+      - name: Verify assets and create checksums
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+          PACKAGE_CHANNEL: ${{ inputs.channel == 'stable' && 'stable' || 'prerelease' }}
+        run: |
+          test -f "out/silicon-${PACKAGE_CHANNEL}-windows-${VERSION}.zip"
+          test -f "out/silicon-${PACKAGE_CHANNEL}-wasm-${VERSION}.zip"
+          cd out
+          sha256sum *.zip > SHA256SUMS
+      - name: Verify main still points at reviewed commit
+        env:
+          RELEASE_SHA: ${{ needs.validate.outputs.sha }}
+        run: |
+          git fetch origin main --tags
+          test "$(git rev-parse origin/main)" = "${RELEASE_SHA}"
+      - name: Create annotated tag and draft GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.validate.outputs.tag }}
+          RELEASE_SHA: ${{ needs.validate.outputs.sha }}
+          CHANNEL: ${{ inputs.channel }}
+          TAG_EXISTS: ${{ needs.validate.outputs.tag_exists }}
+          DRAFT_EXISTS: ${{ needs.validate.outputs.draft_exists }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [[ "${TAG_EXISTS}" != "true" ]]; then
+            git tag -a "${TAG}" "${RELEASE_SHA}" -m "SILICON ${TAG}"
+            git push origin "refs/tags/${TAG}"
+          fi
+          if [[ "${DRAFT_EXISTS}" != "true" ]]; then
+            release_flags=(--draft --verify-tag --target "${RELEASE_SHA}" --latest=false --title "SILICON ${TAG}" --notes-file release-notes.md)
+            if [[ "${CHANNEL}" != "stable" ]]; then
+              release_flags+=(--prerelease)
+            fi
+            gh release create "${TAG}" "${release_flags[@]}"
+          fi
+      - uses: cloudsmith-io/cloudsmith-cli-action@v3
+        with:
+          oidc-namespace: ${{ vars.CLOUDSMITH_OIDC_NAMESPACE }}
+          oidc-service-slug: ${{ vars.CLOUDSMITH_OIDC_SERVICE_SLUG }}
+      - name: Publish exact ZIPs to Cloudsmith
+        env:
+          OWNER: ${{ vars.CLOUDSMITH_OWNER }}
+          REPO: ${{ vars.CLOUDSMITH_RELEASE_REPO }}
+          VERSION: ${{ needs.validate.outputs.version }}
+          PACKAGE_CHANNEL: ${{ inputs.channel == 'stable' && 'stable' || 'prerelease' }}
+        run: |
+          for platform in windows wasm; do
+            name="silicon-${PACKAGE_CHANNEL}-${platform}"
+            file="out/${name}-${VERSION}.zip"
+            nix develop .#lightCI --command python ci/publish_packages.py cloudsmith "${OWNER}" "${REPO}" "${name}" "${VERSION}" "${file}"
+          done
+      - name: Attach exact ZIPs and publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TAG: ${{ needs.validate.outputs.tag }}
+          CHANNEL: ${{ inputs.channel }}
+        run: |
+          nix develop .#lightCI --command python ci/publish_packages.py github-assets "${REPOSITORY}" "${TAG}" out/*.zip out/SHA256SUMS
+          if [[ "${CHANNEL}" == "stable" ]]; then
+            gh release edit "${TAG}" --draft=false --latest --prerelease=false
+          else
+            gh release edit "${TAG}" --draft=false --latest=false --prerelease
+          fi
+
+  deploy-pages:
+    if: inputs.operation == 'publish' && inputs.channel == 'stable'
+    needs: [validate, publish]
+    uses: ./.github/workflows/reusable-deploy-pages.yml
+    with:
+      checkout_ref: ${{ needs.validate.outputs.sha }}
+      stable_version: ${{ needs.validate.outputs.version }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
