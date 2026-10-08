@@ -20,21 +20,31 @@ from pathlib import Path
 
 def packages(owner: str, repo: str, name: str):
     query = urllib.parse.quote(f"format:raw AND name:^{name}$")
+    page_size = 100
     for page in range(1, 51):
         url = (
             f"https://api.cloudsmith.io/packages/{owner}/{repo}/"
-            f"?query={query}&page={page}&page_size=100"
+            f"?query={query}&page={page}&page_size={page_size}"
         )
         with urllib.request.urlopen(url, timeout=30) as response:
             payload = json.load(response)
+            page_total = response.headers.get("X-Pagination-PageTotal")
         entries = payload if isinstance(payload, list) else payload.get("data", [])
         if not entries:
             return
         for item in entries:
             if item.get("name") == name and item.get("cdn_url"):
                 yield item
-        if isinstance(payload, dict) and "next" in payload and not payload["next"]:
+        if page_total is not None:
+            if page >= int(page_total):
+                return
+        elif isinstance(payload, dict) and "next" in payload:
+            if not payload["next"]:
+                return
+        elif len(entries) < page_size:
             return
+        else:
+            raise RuntimeError(f"Missing Cloudsmith pagination headers while resolving {name}")
     raise RuntimeError(f"Too many Cloudsmith pages while resolving {name}")
 
 
