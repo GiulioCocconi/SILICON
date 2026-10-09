@@ -108,26 +108,33 @@ def prepare(channel: str) -> None:
 
 
 def reviewed_pr(repository: str, head: str, version: str, channel: str) -> int:
-    """Require the exact merge on main to come from our preparation branch."""
+    """Find the release preparation PR merged into the expected commit."""
+    owner = repository.split("/", 1)[0]
+    branch = f"release/v{version}"
+
     prs = json.loads(run(
-        "gh", "api", f"repos/{repository}/commits/{head}/pulls?per_page=100",
+        "gh", "api", "-X", "GET", f"repos/{repository}/pulls",
+        "-f", "state=closed",
+        "-f", f"head={owner}:{branch}",
+        "-f", "per_page=100",
     ))
-    matching = [
-        pr for pr in prs
-        if pr.get("merged_at")
-        and pr.get("merge_commit_sha") == head
-        and (pr.get("base") or {}).get("ref") == "main"
-        and (pr.get("head") or {}).get("ref") == f"release/v{version}"
-        and ((pr.get("head") or {}).get("repo") or {}).get("full_name") == repository
-        and f"- Channel: `{channel}`" in (pr.get("body") or "")
-        and f"- Calculated version: `{version}`" in (pr.get("body") or "")
-    ]
-    if len(matching) != 1:
-        raise release.ReleaseError(
-            f"Commit {head} must be the merge of one reviewed release/v{version} "
-            f"preparation PR for {channel}"
-        )
-    return matching[0]["number"]
+
+    for pr in prs:
+        body = pr.get("body") or ""
+        if (
+            pr.get("merged_at")
+            and pr.get("merge_commit_sha") == head
+            and pr["base"]["ref"] == "main"
+            and pr["head"]["repo"]["full_name"] == repository
+            and f"- Channel: `{channel}`" in body
+            and f"- Calculated version: `{version}`" in body
+        ):
+            return pr["number"]
+
+    raise release.ReleaseError(
+        f"Commit {head} must be the merge of one reviewed "
+        f"{branch} preparation PR for {channel}"
+    )
 
 
 def validate(channel: str) -> None:
