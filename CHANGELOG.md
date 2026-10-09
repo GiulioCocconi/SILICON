@@ -1,0 +1,256 @@
+## [0.1.0] - 2026-10-09
+
+### 🚀 Features
+
+- *(ui/circuit)* Add circuit centering on load
+- *(yosys)* Round-trip initialized ROMs as binary documents
+- Add SISL integration
+- Add Shift component
+- *(core)* Add signed bus shift helper
+- *(arithmetic)* Add four-state comparator component
+- *(project)* Add document import and export
+- *(project)* Add reference-safe document renaming
+- *(core)* Add ROM
+- *(code)* Add auto-indenter
+- *(code)* Migrate to Qt syntax highlighting
+- *(yosys)* Support multi-file verilog
+- *(binary)* Support editable binary project documents
+- *(yosys)* Support hierarchical project subcircuits
+- *(yosys)* Fold decoded case statements into a single wide multiplexer
+- *(constant)* Support multi-bit constants and a graphical representation
+- *(usability)* Add file save dialog
+- *(ui/wirePlacement)* Enable zoom in wirePlacing mode
+- *(ui/wirePlacement)* End wire creation when wire is complete
+- *(autoplacer)* Make circuit autoplacement direction and wire-aware.
+- *(arithmetic)* Add complementer component
+- *(yosys)* Export standalone behavioral Verilog
+- *(yosys)* HDL -> GraphicalCircuit
+- *(autoplacer)* New autoplacer
+- *(libavoid)* Harden orthogonal net routing
+- *(yosys)* Export wide muxes as readable case statements
+- *(yosys)* Recover decoder and mux structures during import
+- *(core)* Add D-latch component
+- *(yosys)* Add Verilog integration
+- *(yosys)* Optimize structural Verilog readability and add round-trip examples
+- *(yosys)* Integrate external Yosys executable via `boost::process`
+- *(yosys)* Implement native Yosys netlist serialization and deserialization
+- *(subcircuit)* Implement reusable subcircuits and runtime elaboration
+- *(project format)* Introduce zip-based project archives and multi-circuit document store
+- *(webpage)* Add wasm deployment
+- *(logiFlow)* Add registers
+- Add Multiplexer, Demultiplexer, and Decoder components
+- Add component catalog and metadata
+- *(circuit)* Add component level mapping and refactor topological sort
+- *(ui)* Add graphical flip-flop components
+- *(core)* Add edge-triggered flip-flop components
+- *(simulator)* Add context-aware reactive evaluation
+- Add input waveform editing and automated simulation mode
+- *(waveform)* Selection logic + formatting
+- Add IO port orientation property
+- Add graphical arithmetic components and dynamic N-bit adder resizing
+- Add strict input size validation and visual error reporting
+- *(ui)* New Gate svgs
+- *(ui)* Add optional port name rendering and refactor port direction logic
+- *(logiflow)* Add graphical bus inputs and outputs
+- *(ui)* Make component property edits undoable
+- *(core)* Add bitwise support for logic gates
+- *(docs)* New internal docs interface
+- *(ui)* Add size property to ports and display it using slashes
+- *(autoplacer)* Add libavoid & use it to auto avoid components when drawing wires
+- *(ui)* Add dark theme colors
+- *(ui)* Add toml settings
+- *(ui)* Add `newFile` action
+- *(logging)* Add Boost logger and Qt log side view
+- *(ui)* Add BSON clipboard copy and paste
+- *(webpage/userdocs)* Add user docs page
+- *(webpage)* Add download page with navigation
+- *(ui)* Add live waveform viewer
+- *(core)* Add FST simulation tracing
+- *(ui)* Add name property to outputs
+- *(core/fst)* Add modern RAII-based libfst wrapper
+- *(webpage)* Add demo gif
+- *(ui)* Implement save and load functionality for circuits
+- *(ui)* Add undo/redo support for rotate action
+- *(ui)* Add undo/redo support for moving components and wire points
+- *(LogiFlow UI)* Add properties panel
+- Theming
+- *(ui)* Using Lucide icons
+- New webpage!
+- *(ui)* Add unknown value output handling
+- *(core)* Add component authorization tracking for wire/bus state changes
+- Add UNKNOWN state for cyclic circuits simulation
+- *(core)* Add a properties map to components
+- Add serialization for core circuits
+- *(circuit)* Add a function that splits circuits in dag and non-dag subnets
+- *(circuit)* Add Boost Graph-based circuit representation
+- New wire logic
+- *(ui)* Make `GraphicalWires` draggable
+- *(waveform)* Add FST library
+
+### 🐛 Bug Fixes
+
+- *(ui)* Display properties correctly
+- *(ci)* Release preparation PR validation
+- 404 error
+- *(ui/circuitEditor)* Docks minimum dimensions are now consistent
+- *(yosys)* Only fold ROM address register without reset or init
+- *(simulator)* Make cyclic SCC evaluation synchronous
+- *(mingw)* Split monolithic yosys.cpp to fix Windows MinGW build
+- *(build)* Save vcpkg cache even when build fails
+- Memory leak
+- *(autoplacer)* Improve and unify HDL circuit placement
+- *(yosys)* Preserve logical gate and vector NOT semantics
+- *(yosys)* Read multi-bit $bmux lanes independently
+- *(codeEditor)* Line numbers resize when font size changes
+- Build failures (Nix release & WASM)
+- *(binaryEditor)* Offset width build failure on 32-bit platforms
+- *(yosys)* Fold single-use generated scalars into consuming assignments
+- *(graphicalIO)* Component port position is calculated after bus width
+- *(waveform)* Normalize values before change detection
+- *(core)* Preserve signed semantics when resizing parsed bus values
+- *(autoplacer)* Improve fallback routing and ordered fan-in layout
+- *(yosys)* Only use `simplemap` with scalar gates
+- *(graphicalWire)* Authoritative wire identity during deserialization/autoplacement
+- *(yosys)* Restore zero-extended outputs as unsigned extenders
+- *(waveform)* Only snap at timestamp of selected track
+- *(libavoid)* Harden routing and improve orthogonal wire geometry.
+- Make icons HD
+- Null pointer dereference
+- GCC bug lead to build failure
+- *(core)* Wire ids kept increasing with each serialization
+- *(ci)* Webpage action
+- *(wasm)* Dialogs & context menu, shortcuts
+- Font memory leak
+- *(core/flipflops)* Reset state when new simulation is requested
+- *(arithmetic)* Handle unknown states with bitwise carry propagation
+- Use-after-free when fusing graphical wire segments
+- *(waveformViewer)* Improve bus handling
+- Input initial value propagation
+- *(core)* UB when size was >= 32
+- Bounding rect for bus inputs
+- *(graphicalWire)* Crashed when dragging points resulted in less vertices
+- *(build)* Release workflow
+- *(windows build)* Fix DLLs copying in debug builds
+- *(docs)* Ignore vendored libs
+- *(ui/csb)* Fixed CSB strange behiavour
+- *(ui/trace)* Reset trace when clearing the scene
+- *(ui)* Use titleLabel for AboutDialog title
+- *(ui)* Stabilize scene item lifetime and selection undo flows
+- *(ui)* Glitch while moving
+- *(windows)* Disable font hinting
+- *(windows)* Shouldn't spawn console when is a Release build
+- *(ci)* PR cleanup
+- QUndoStack commands execute only one time
+- *(circuit)* Component vertex ID mismatch
+- *(serialization)* Handle Graphical I/O components
+- *(core)* Ensure component properties are initialized during deserialization
+- Fix colliding status bug
+- *(ui)* Set Side docks minimum and maximum width/height
+- Reject negative delays
+- Set SVG colours to be consistent with the palette
+- *(wireUtils)* Use size property in simulate, UNKNOWN state when unconnected
+- *(core, GraphicalWireUitls)* Fix crash when placing WireUtils
+- Simulator.run now stops only at empty queue
+- *(core,ui)* Handle UNKNOWN state in bus operations and fix circuit initialization
+- Add removeComponent method to Circuit
+- Add properties to the deserializer
+- Non-deterministic circuit test failures
+- *(utils)* Remove debug print message
+- *(ui)* Vectorize text on input/output components
+- Crash when deleting with pure virtual method called
+- Prevent UBSan crash on `LogiFlowWindow` destruction
+- *(ui)* Removed Wire management from `DiagramScene`
+- *(WireManager)* More robust segment topology management
+- *(GraphicalWire)* Correct segment fusing
+- *(`GraphicalWire`)* Resolve heap-use-after-free
+- Fix idea config
+- Clear selection when changing interaction mode
+- Fix crash that occured when deleting wires
+- Fixed a bug in the WireSegment placement
+- Remove cache from nix build because it fills up the storage
+- Addressed some bugs in `graphicalWire`
+- *(ci)* Crash when trying to report already formatted code
+- *(ci)* Bug in `format-code.py`
+- *(ci)* Formatting of diff in `format-code.py`
+- *(ci)* Build on push only when it's _really_ needed
+- Fix a bug in the `Bus` logic
+- *(test)* Display the `State` enum members correctly
+- *(ci)* Add condition to set-label job for pull requests
+- *(ci)* Make the build action run on push to main
+
+### ⚙️ Miscellaneous Tasks
+
+- New release automations
+- Update README
+- *(nix)* Update
+- *(ci)* Bump DeterminateSystems/nix-installer-action from 22 to 23
+- *(legal)* Fix legal things
+- Add OGDF lib
+- *(ci)* Bump actions/setup-python from 6 to 7
+- *(vcpkg)* Bump github.com/microsoft/vcpkg
+- *(ci)* Bump cloudsmith-io/cloudsmith-cli-action from 2 to 3
+- *(vcpkg)* Bump github.com/microsoft/vcpkg
+- Update README
+- *(benchmarks)* Add standalone simulation performance benchmarks
+- *(ci)* Bump actions/checkout from 6 to 7
+- *(ci)* Bump actions/cache from 5 to 6
+- *(vcpkg)* Bump github.com/microsoft/vcpkg from master to 2026.06.01
+- *(ci)* Bump actions/download-artifact from 6 to 8
+- Add artifact packaging and release workflows
+- *(nix)* Update flake
+- *(webpage)* Misc frontpage changes
+- *(webpage flake)* Add python3 and opencode
+- *(vcpkg)* Bump github.com/microsoft/vcpkg from master to 2026.04.27
+- *(ci)* Bump actions/upload-pages-artifact from 3 to 5
+- *(ci)* Bump actions/deploy-pages from 4 to 5
+- *(ci)* Bump actions/checkout from 4 to 6
+- Add concurrency control to `build` workflow
+- *(flake)* Update
+- Remove debug
+- *(jetbrains)* Add a new source file template
+- *(ci)* Bump actions/github-script from 8 to 9
+- *(ci)* Bump DeterminateSystems/nix-installer-action from 21 to 22
+- *(GraphicalWire)* Add safety assertions to wire segment operations
+- *(vcpkg)* Bump github.com/microsoft/vcpkg from master to 2026.03.18
+- *(vcpkg)* Bump github.com/microsoft/vcpkg from master to 2026.02.27
+- *(ci)* Bump actions/upload-artifact from 6 to 7
+- *(changelog)* Add changelog generation script
+- Update `.gitignore`
+- Fix idea config
+- *(vcpkg)* Bump github.com/microsoft/vcpkg from master to 2026.01.16
+- Add a workflow to clear the cache on closed PRs
+- *(ci)* Bump mymindstorm/setup-emsdk from 13 to 14
+- *(ci)* Bump actions/upload-artifact from 4 to 6
+- *(nix)* Remove `shell.nix`
+- *(docs)* Update README to work with flakes
+- Update CONTRIBUTING.md for clarity and detail
+- Removed files that shouldn't be tracked
+- *(legal)* Add copyright to `diagramView`
+- *(ci)* Bump tj-actions/changed-files from 41 to 47
+- *(ci)* Bump actions/setup-python from 5 to 6
+- *(ci)* Bump actions/cache from 4 to 5
+- *(ci)* Bump actions/checkout from 4 to 6
+- Stop polluting GitHub linguist module with libfst files
+- Add `CODEOWNERS`
+- *(legal)* Add missing licenses to about and listed them
+- Add running tests to CI
+- Remove Nix Cache and begin caching vcpkg binaries
+- *(clion)* Set Ninja as default generator
+- *(legal)* Added edit statement required by the apache license
+- Added GitHub action to format code
+- Add `git-clang-format` from LLVM
+- *(git)* Removed git hooks
+- Use merge-base to calculate the base ref
+- *(ci)* Add `build.yml`
+- *(ci)* Do not check for bots usernames in AUTHORS.md
+- *(ci)* Bump actions/checkout from 4 to 6
+- *(ci)* Bump actions/github-script from 7 to 8
+- *(vcpkg)* Bump github.com/microsoft/vcpkg from master to 2025.12.12
+- *(ci)* Add commit message prefixes for dependabot updates
+- *(ci)* Configure Dependabot for vcpkg and GitHub Actions
+- *(ci)* New features for the pr-compliance
+- *(ci)* Improved pr-compliance check
+- *(ci)* Add PR compliance check workflow
+
+
+
