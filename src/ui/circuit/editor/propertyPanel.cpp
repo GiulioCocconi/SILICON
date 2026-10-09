@@ -59,7 +59,8 @@ QLabel* wrappingLabel(QString text, QWidget* parent)
 {
   auto* label = new QLabel(std::move(text), parent);
   label->setWordWrap(true);
-  label->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+  // QFormLayout needs the label's width hint to reserve space or wrap the row.
+  label->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
   return label;
 }
 
