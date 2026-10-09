@@ -96,7 +96,7 @@ outputs = { self, nixpkgs, flake-utils, git-hooks, sisl }:
 
         mkSilicon = { release ? false }: pkgs.stdenv.mkDerivation {
             pname = "SILICON";
-            version = "0.1.0-beta.1";
+            version = "0.1.0-beta.2";
 
             src = ./.;
 

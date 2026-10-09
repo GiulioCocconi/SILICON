@@ -16,7 +16,7 @@ cmake_minimum_required(VERSION 3.31)
 
 # Persistent version is updated by ci/semver.py. CI may override the full
 # runtime version for snapshots without changing project metadata.
-set(SILICON_VERSION "0.1.0-beta.1" CACHE STRING "Full SILICON version")
+set(SILICON_VERSION "0.1.0-beta.2" CACHE STRING "Full SILICON version")
 if (NOT SILICON_VERSION MATCHES "^([0-9]+)\\.([0-9]+)\\.([0-9]+)(-(alpha|beta|rc)\\.[0-9]+|-dev\\.[0-9a-f]+)?$")
     message(FATAL_ERROR "Invalid SILICON_VERSION: ${SILICON_VERSION}")
 endif ()
