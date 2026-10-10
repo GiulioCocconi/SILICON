@@ -45,6 +45,13 @@ void configureOrthogonalRouter(Avoid::Router& router, qreal gridSize);
 /** @brief Returns whether every consecutive route segment is axis-aligned. */
 [[nodiscard]] bool isOrthogonalRoute(std::span<const QPointF> points);
 
+/** @brief Detects crossings, touches, or retraced portions within one route. */
+[[nodiscard]] bool orthogonalRouteSelfIntersects(std::span<const QPointF> points);
+
+/** Returns whether a route enters the interior of any obstacle rectangle. */
+[[nodiscard]] bool orthogonalRouteCrossesObstacleInterior(
+    std::span<const QPointF> route, std::span<const QRectF> obstacles);
+
 /** @brief Returns whether @p point lies on an orthogonal polyline. */
 [[nodiscard]] bool pointOnOrthogonalRoute(QPointF point, std::span<const QPointF> route);
 

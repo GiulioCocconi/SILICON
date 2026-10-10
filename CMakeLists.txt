@@ -126,6 +126,7 @@ set(UI_SOURCE_FILES
         ${src_dir}/ui/circuit/diagram/graphicalWire.cpp
         ${src_dir}/ui/circuit/diagram/wireManager.cpp
         ${src_dir}/ui/circuit/diagram/wireRouting.cpp
+        ${src_dir}/ui/circuit/diagram/interactiveWireRouter.cpp
         ${src_dir}/ui/waveform/waveformViewer.cpp
         ${src_dir}/ui/circuit/diagram/graphicalComponent.cpp
         ${src_dir}/ui/circuit/diagram/graphicalItem.cpp

@@ -20,6 +20,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -44,6 +45,7 @@
 #include <core/siliconWaveform.hpp>
 
 #include <ui/circuit/diagram/wireManager.hpp>
+#include <ui/circuit/diagram/scene/diagramSceneEdit.hpp>
 #include <ui/circuit/editor/componentSearchBox.hpp>
 
 namespace SILICON::project {
@@ -60,6 +62,8 @@ class DocumentNavigator;
 class GraphicalComponent;
 class GraphicalItem;
 class GraphicalWireSegment;
+class InteractiveWireRouter;
+struct RoutedSegment;
 class GUIComponentFactory;
 class SceneLoadPlan;
 
@@ -221,6 +225,17 @@ public:
   [[nodiscard]] QUndoStack*              getUndoStack() const { return undoStack; }
   [[nodiscard]] WireManager&             getWireManager() { return wireManager; }
   [[nodiscard]] const WireManager&       getWireManager() const { return wireManager; }
+  /** Mouse edit lifecycle used by GraphicalWireSegment's hit tested handles. */
+  bool beginWireDrag(GraphicalWireSegment* segment, QPointF scenePos, QPointF localPos);
+  void updateWireDrag(GraphicalWireSegment* segment, QPointF scenePos);
+  void finishWireDrag(GraphicalWireSegment* segment);
+  void cancelWireDrag();
+  [[nodiscard]] bool isDraggingWire(const GraphicalWireSegment* segment) const;
+  /** Complete the active component gesture and return its wire snapshots. */
+  [[nodiscard]] std::vector<WireRouteChange> finishComponentDrag();
+  void applyWireRouteChanges(std::span<const WireRouteChange> changes, bool useAfter);
+  void applyItemMoves(std::span<const ItemPositionChange> moves,
+                      std::span<const WireRouteChange> wires, bool useAfter);
   [[nodiscard]] std::shared_ptr<Circuit> getCircuit() const { return circuit; }
 
   /** @brief Replaces the derived topology cache. */
@@ -491,6 +506,7 @@ private:
    * @brief Lifecycle helper methods for interaction modes.
    */
   [[nodiscard]] bool isWireCompletionPoint(QPointF scenePoint) const;
+  void               updateWirePreview(QPointF scenePoint);
   void               finalizeWireCreation();
   void               enterComponentPlacingMode();
   void               exitComponentPlacingMode();
@@ -540,6 +556,37 @@ private:
 
   /** @brief Wire manager for wire topology */
   WireManager wireManager;
+
+  [[nodiscard]] std::unique_ptr<InteractiveWireRouter> makeInteractiveRouter() const;
+  void beginComponentDrag();
+  void updateComponentDrag();
+  void cancelComponentDrag();
+  void applyRoutingPreview(const std::vector<RoutedSegment>& routes);
+
+  struct RouteEditState {
+    std::vector<std::pair<GraphicalWireSegment*, std::vector<QPointF>>> originals;
+    std::vector<std::unique_ptr<WireManager::Edit>> edits;
+    void capture(WireManager& manager);
+    void commit(WireManager& manager);
+    [[nodiscard]] std::vector<WireRouteChange> changes() const;
+  };
+
+  struct ComponentDragState {
+    std::unique_ptr<InteractiveWireRouter> router;
+    std::vector<std::pair<GraphicalComponent*, QPointF>> initialPositions;
+    std::vector<std::pair<GraphicalComponent*, QPointF>> validPositions;
+    RouteEditState routes;
+  } componentDrag;
+
+  struct WireDragState {
+    enum class Type { Point, Edge };
+    GraphicalWireSegment* segment = nullptr;
+    Type type = Type::Point;
+    size_t index = 0;
+    QPointF start;
+    std::unique_ptr<InteractiveWireRouter> router;
+    RouteEditState routes;
+  } wireDrag;
 
   /** @brief Last placed component type for repeat placement */
   std::string lastPlacedComponentType;

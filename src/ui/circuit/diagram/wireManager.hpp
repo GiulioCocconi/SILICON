@@ -20,9 +20,11 @@
 #include <functional>
 #include <memory>
 #include <span>
+#include <utility>
 #include <vector>
 
 #include <QPointF>
+#include <QRectF>
 
 #include <core/wire.hpp>
 
@@ -44,10 +46,8 @@ struct RoutedWire {
  *
  * Responsibilities:
  *   - Owns all GraphicalWires.
- *   - Merge: when two segments' endpoints collide, their GraphicalWires are
- *     unified. If the segments are collinear (aligned), they are merged into a
- *     single segment. Otherwise, the two segments remain separate but share the
- *     same GraphicalWire (the one with the larger bus size is kept).
+ *   - Merge compatible connected segments into a common GraphicalWire. Aligned
+ *     continuations can be fused during creation.
  *   - Split: Uses Graph Theory (Breadth-First Search) to group segments into
  *     connected components. If a wire breaks into multiple isolated components,
  *     they are split into new GraphicalWires.
@@ -55,6 +55,33 @@ struct RoutedWire {
 
 class WireManager {
 public:
+  /** A preview edit commits topology once, or restores its original route on cancel. */
+  class Edit {
+  public:
+    Edit(WireManager& manager, GraphicalWireSegment* segment);
+    ~Edit();
+    Edit(const Edit&) = delete;
+    Edit& operator=(const Edit&) = delete;
+    void commit();
+    void cancel();
+
+  private:
+    WireManager* manager;
+    GraphicalWireSegment* segment;
+    std::vector<QPointF> originalPoints;
+    QRectF originalBounds;
+  };
+
+  class Batch {
+  public:
+    explicit Batch(WireManager& manager) : manager(manager) { ++manager.batchDepth; }
+    ~Batch() { manager.finishBatch(); }
+    Batch(const Batch&) = delete;
+    Batch& operator=(const Batch&) = delete;
+  private:
+    WireManager& manager;
+  };
+
   WireManager() = default;
   ~WireManager() { clear(); }
 
@@ -79,15 +106,14 @@ public:
   // removed.
   void removeSegment(GraphicalWireSegment* segment);
 
-  // Called after a segment has been moved (e.g. by point dragging).
-  // Checks endpoint collisions with all other segments, performs merge or split
-  // as needed, and refreshes junctions across the complete scene.
-  void updateSegmentTopology(GraphicalWireSegment* segment);
+  // Resolves connectivity for one changed segment using scene-neighbor queries.
+  // Geometry edits use Edit to preserve existing net membership at crossings.
+  void updateSegmentTopology(GraphicalWireSegment* segment, bool allowFusion = true,
+                             bool allowNetMerge = true);
 
   // Merge: Unify the GraphicalWires of two segments whose endpoints collide.
   // If the segments are aligned (collinear), they are fused into one segment.
-  // Otherwise they stay separate but share the GraphicalWire with the larger
-  // bus size.
+  // Otherwise they stay separate but share a compatible GraphicalWire.
   void merge(GraphicalWireSegment* a, GraphicalWireSegment* b);
 
   // Recalculate the junction flags for a specific segment
@@ -138,6 +164,10 @@ public:
    */
   void notifyTopologyChanged() const
   {
+    if (batchDepth) {
+      pendingNotification = true;
+      return;
+    }
     if (onTopologyChanged) {
       onTopologyChanged();
     }
@@ -151,6 +181,9 @@ private:
 
   /** @brief Callback invoked when wire topology changes (splits, merges, drags) */
   std::function<void()> onTopologyChanged;
+  unsigned int batchDepth = 0;
+  mutable bool pendingNotification = false;
+  std::vector<std::pair<GraphicalWireSegment*, QRectF>> pendingEdits;
 
   // Merge all wires from `src` into `dst`, then destroy `src`.
   void mergeWires(GraphicalWire* dst, GraphicalWire* src);
@@ -161,6 +194,10 @@ private:
   // Uses BFS to determine if a wire's segments have become disconnected.
   // Returns true if a split occurred, false otherwise.
   bool evaluateWireSplits(GraphicalWire* wire);
+
+  void calculateJunctionsIn(const QRectF& sceneBounds) const;
+  void calculateJunctionsFor(std::span<GraphicalWireSegment* const> segments) const;
+  void finishBatch();
 };
 
 }  // namespace SILICON::ui

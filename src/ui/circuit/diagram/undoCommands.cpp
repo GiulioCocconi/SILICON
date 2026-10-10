@@ -26,7 +26,6 @@
 #include <ui/documents/documentNavigator.hpp>
 #include <ui/circuit/diagram/graphicalComponent.hpp>
 #include <ui/circuit/diagram/graphicalItem.hpp>
-#include <ui/circuit/diagram/wireManager.hpp>
 #include <ui/circuit/components/graphicalLogicComponent.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
 
@@ -68,12 +67,6 @@ namespace {
     return scene->findGraphicalItemByUiId(uiId);
   }
 
-  GraphicalWireSegment* findWireSegment(DiagramScene* scene, const uint64_t uiId)
-  {
-    return category_cast<GraphicalWireSegment>(findItem(scene, uiId),
-                                               ItemCategory::WireSegment);
-  }
-
   GraphicalComponent* findComponent(DiagramScene* scene, const uint64_t uiId)
   {
     return category_cast<GraphicalComponent>(findItem(scene, uiId),
@@ -113,27 +106,17 @@ void MoveItemCommand::addItemMove(GraphicalItem* item, const QPointF& oldPos,
 {
   if (!item)
     return;
-
-  // Commands store scene + uiId instead of raw item pointers so undo survives
-  // delete/recreate cycles triggered by selection-level commands.
-  auto* scene = itemScene(item);
+  if (!scene)
+    scene = itemScene(item);
   if (documentPath.empty())
     documentPath = activeDocumentPath(scene);
-  moves.push_back({scene, item->getUiId(), oldPos, newPos});
+  moves.push_back({item->getUiId(), oldPos, newPos});
 }
 
 void MoveItemCommand::undo()
 {
-  if (!moves.empty() && !activateDocument(moves.front().scene, documentPath))
-    return;
-
-  for (const auto& move : moves) {
-    if (auto* item = findItem(move.scene, move.uiId)) {
-      item->setPos(move.oldPos);
-      item->setInitialPosition();
-      item->updateTopology();
-    }
-  }
+  if (scene && activateDocument(scene, documentPath))
+    scene->applyItemMoves(moves, wireMoves, false);
 }
 
 void MoveItemCommand::redo()
@@ -142,53 +125,33 @@ void MoveItemCommand::redo()
     skipInitialRedo = false;
     return;
   }
-
-  if (!moves.empty() && !activateDocument(moves.front().scene, documentPath))
-    return;
-
-  for (const auto& move : moves) {
-    if (auto* item = findItem(move.scene, move.uiId)) {
-      item->setPos(move.newPos);
-      item->setInitialPosition();
-      item->updateTopology();
-    }
-  }
+  if (scene && activateDocument(scene, documentPath))
+    scene->applyItemMoves(moves, wireMoves, true);
 }
 
-// --- MoveWirePointCommand ---
+// --- EditWireRouteCommand ---
 
-MoveWirePointCommand::MoveWirePointCommand(GraphicalWireSegment* segment,
-                                           const size_t pointIndex, const QPointF& oldPos,
-                                           const QPointF& newPos, QUndoCommand* parent)
+EditWireRouteCommand::EditWireRouteCommand(GraphicalWireSegment* segment,
+                                           std::vector<WireRouteChange> routeChanges,
+                                           const bool movedEdge, QUndoCommand* parent)
   : QUndoCommand(parent),
     scene(itemScene(segment)),
     documentPath(activeDocumentPath(scene)),
-    uiId(segment ? segment->getUiId() : 0),
-    pointIndex(pointIndex),
-    oldPos(oldPos),
-    newPos(newPos)
+    changes(std::move(routeChanges))
 {
-  setText("Move Wire Point");
+  setText(movedEdge ? "Move Wire Segment" : "Move Wire Bend");
 }
 
-void MoveWirePointCommand::undo()
+void EditWireRouteCommand::undo()
 {
   if (!activateDocument(scene, documentPath))
     return;
 
-  if (auto* segment = findWireSegment(scene, uiId)) {
-    segment->movePointTo(pointIndex, oldPos);
-
-    // Update topology for point modification
-    if (auto* wire = segment->getGraphicalWire()) {
-      if (auto* manager = wire->getManager()) {
-        manager->updateSegmentTopology(segment);
-      }
-    }
-  }
+  if (scene)
+    scene->applyWireRouteChanges(changes, false);
 }
 
-void MoveWirePointCommand::redo()
+void EditWireRouteCommand::redo()
 {
   if (skipInitialRedo) {
     skipInitialRedo = false;
@@ -198,16 +161,8 @@ void MoveWirePointCommand::redo()
   if (!activateDocument(scene, documentPath))
     return;
 
-  if (auto* segment = findWireSegment(scene, uiId)) {
-    segment->movePointTo(pointIndex, newPos);
-
-    // Update topology for point modification
-    if (auto* wire = segment->getGraphicalWire()) {
-      if (auto* manager = wire->getManager()) {
-        manager->updateSegmentTopology(segment);
-      }
-    }
-  }
+  if (scene)
+    scene->applyWireRouteChanges(changes, true);
 }
 
 // --- RotateItemCommand ---

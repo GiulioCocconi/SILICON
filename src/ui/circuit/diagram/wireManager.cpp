@@ -33,6 +33,79 @@
 namespace SILICON::ui {
 using namespace SILICON::core;
 
+WireManager::Edit::Edit(WireManager& owner, GraphicalWireSegment* editedSegment)
+  : manager(&owner), segment(editedSegment), originalPoints(editedSegment->getPoints()),
+    originalBounds(editedSegment->sceneBoundingRect())
+{}
+
+WireManager::Edit::~Edit() { cancel(); }
+
+void WireManager::Edit::cancel()
+{
+  if (!manager)
+    return;
+  segment->setPoints(std::move(originalPoints));
+  manager = nullptr;
+}
+
+void WireManager::Edit::commit()
+{
+  if (!manager)
+    return;
+  if (!isOrthogonalRoute(segment->getPoints())) {
+    cancel();
+    throw std::invalid_argument("A committed wire route must be orthogonal");
+  }
+  if (segment->getPoints() == originalPoints) {
+    manager = nullptr;
+    return;
+  }
+  Batch batch(*manager);
+  auto& pending = manager->pendingEdits;
+  const auto it = std::ranges::find_if(pending, [this](const auto& edit) {
+    return edit.first == segment;
+  });
+  if (it == pending.end())
+    pending.emplace_back(segment, originalBounds);
+  else
+    it->second = it->second.united(originalBounds);
+  manager = nullptr;
+}
+
+void WireManager::finishBatch()
+{
+  if (batchDepth > 1) {
+    --batchDepth;
+    return;
+  }
+  const bool changed = !pendingEdits.empty() || pendingNotification;
+  std::vector<std::shared_ptr<GraphicalWire>> affectedWires;
+  for (const auto& [segment, bounds] : pendingEdits) {
+    auto* wire = segment->getGraphicalWire();
+    const auto found = std::ranges::find_if(affectedWires, [wire](const auto& item) {
+      return item.get() == wire;
+    });
+    if (found != affectedWires.end())
+      continue;
+    const auto managed = std::ranges::find_if(managedWires, [wire](const auto& item) {
+      return item.get() == wire;
+    });
+    if (managed != managedWires.end())
+      affectedWires.push_back(*managed);
+  }
+  for (const auto& wire : affectedWires)
+    evaluateWireSplits(wire.get());
+  for (const auto& [segment, bounds] : pendingEdits)
+    calculateJunctions(segment);
+  for (const auto& [segment, bounds] : pendingEdits)
+    calculateJunctionsIn(bounds);
+  pendingEdits.clear();
+  batchDepth = 0;
+  pendingNotification = false;
+  if (changed)
+    notifyTopologyChanged();
+}
+
 void WireManager::clear()
 {
   // Detach segments without side-effects (avoids creating new wires during
@@ -47,6 +120,8 @@ void WireManager::clear()
 
   allSegments.clear();
   managedWires.clear();
+  pendingEdits.clear();
+  pendingNotification = false;
 }
 
 void WireManager::clearSegments(QGraphicsScene& scene)
@@ -134,17 +209,23 @@ void WireManager::addSegment(GraphicalWireSegment* segment, const bool updateTop
 
   if (std::ranges::find(allSegments, segment) != allSegments.end())
     return;
+  if (!isOrthogonalRoute(segment->getPoints()))
+    throw std::invalid_argument("A committed wire route must be orthogonal");
 
   allSegments.push_back(segment);
 
   // If the segment has no wire yet, create one
   if (!segment->getGraphicalWire()) {
     auto wire = createWire(1);
-    segment->setGraphicalWire(wire.get());
+    segment->setGraphicalWire(wire.get(), false);
   }
 
-  if (updateTopology)
+  if (updateTopology) {
+    Batch edit(*this);
     updateSegmentTopology(segment);
+    calculateJunctions(segment);
+    notifyTopologyChanged();
+  }
 }
 
 void WireManager::removeSegment(GraphicalWireSegment* segment)
@@ -152,6 +233,7 @@ void WireManager::removeSegment(GraphicalWireSegment* segment)
   if (!segment)
     throw std::invalid_argument("removeSegment() called with null segment");
 
+  const QRectF oldBounds = segment->sceneBoundingRect();
   std::erase(allSegments, segment);
 
   auto* wire = segment->getGraphicalWire();
@@ -167,11 +249,12 @@ void WireManager::removeSegment(GraphicalWireSegment* segment)
   // The wire still has other segments. Removing this segment might have
   // broken the remaining wire into multiple pieces. Evaluate it!
   evaluateWireSplits(wire);
-  calculateJunctions();  // TODO: OPTIMIZE
+  calculateJunctionsIn(oldBounds);
   notifyTopologyChanged();
 }
 
-void WireManager::updateSegmentTopology(GraphicalWireSegment* segment)
+void WireManager::updateSegmentTopology(GraphicalWireSegment* segment,
+                                        const bool allowFusion, const bool allowNetMerge)
 {
   if (!segment)
     throw std::invalid_argument("updateSegmentTopology() called with null segment");
@@ -182,7 +265,7 @@ void WireManager::updateSegmentTopology(GraphicalWireSegment* segment)
   bool hasTopologyChanged = false;
 
   // --- 1. FUSION PHASE ---
-  while (true) {
+  while (allowFusion) {
     const auto neighbors = segmentNeighbors(segment);
     auto it = std::ranges::find_if(neighbors, [&](const GraphicalWireSegment* sibling) {
       return segment != sibling && segment->isAlignedWith(sibling);
@@ -203,6 +286,8 @@ void WireManager::updateSegmentTopology(GraphicalWireSegment* segment)
       | std::ranges::to<std::vector>();
 
   for (GraphicalWireSegment* sibling : unmergedNeighbors) {
+    if (!allowNetMerge)
+      break;
     merge(segment, sibling);
     hasTopologyChanged = true;
   }
@@ -213,12 +298,10 @@ void WireManager::updateSegmentTopology(GraphicalWireSegment* segment)
       hasTopologyChanged = true;
   }
 
-  // Geometry changes can invalidate a marker on a segment that is no longer in the
-  // moved segment's neighborhood. Recalculate globally so former junction members
-  // are cleared as well.
-  calculateJunctions();
+  if (!batchDepth)
+    calculateJunctions(segment);
 
-  if (hasTopologyChanged)
+  if (hasTopologyChanged && !batchDepth)
     notifyTopologyChanged();
 }
 
@@ -243,8 +326,7 @@ void WireManager::merge(GraphicalWireSegment* a, GraphicalWireSegment* b)
 
 void WireManager::calculateJunctions() const
 {
-  for (auto* segment : allSegments)
-    calculateJunctions(segment, false);
+  calculateJunctionsFor(allSegments);
 }
 
 void WireManager::calculateJunctions(GraphicalWireSegment* segment,
@@ -258,27 +340,48 @@ void WireManager::calculateJunctions(GraphicalWireSegment* segment,
   const auto neighborhood =
       includeNeighborhood ? segmentNeighbors(segment) : std::vector{segment};
 
-  for (const auto neighbor : neighborhood) {
-    neighbor->setFirstPointJunction(false);
-    neighbor->setLastPointJunction(false);
+  calculateJunctionsFor(neighborhood);
+}
 
-    const QPointF firstScene = neighbor->mapToScene(neighbor->firstPoint());
-    const QPointF lastScene  = neighbor->mapToScene(neighbor->lastPoint());
-
-    // A junction needs at least three distinct incident wire arms. Merely joining
-    // two routed paths is a bend or a continuation and must not leave a dot behind
-    // after a branch is detached.
-    std::vector<std::vector<QPointF>> wireRoutes;
-    for (const auto* other : allSegments) {
-      if (other && !other->empty()
-          && other->getGraphicalWire() == neighbor->getGraphicalWire())
-        wireRoutes.push_back(other->getScenePoints());
+void WireManager::calculateJunctionsFor(
+    const std::span<GraphicalWireSegment* const> segments) const
+{
+  std::map<GraphicalWire*, std::vector<std::vector<QPointF>>> routesByWire;
+  for (auto* segment : segments) {
+    if (!segment || segment->empty() || !segment->getGraphicalWire())
+      continue;
+    auto* wire = segment->getGraphicalWire();
+    if (routesByWire.contains(wire))
+      continue;
+    auto& routes = routesByWire[wire];
+    routes.reserve(wire->getSegments().size());
+    for (const auto* member : wire->getSegments()) {
+      if (member && !member->empty())
+        routes.push_back(member->getScenePoints());
     }
-    neighbor->setFirstPointJunction(
-        orthogonalRouteIncidentArmCount(firstScene, wireRoutes) >= 3);
-    neighbor->setLastPointJunction(orthogonalRouteIncidentArmCount(lastScene, wireRoutes)
-                                   >= 3);
   }
+  for (auto* segment : segments) {
+    if (!segment || segment->empty() || !segment->getGraphicalWire())
+      continue;
+    const auto& routes = routesByWire.at(segment->getGraphicalWire());
+    segment->setFirstPointJunction(orthogonalRouteIncidentArmCount(
+        segment->mapToScene(segment->firstPoint()), routes) >= 3);
+    segment->setLastPointJunction(orthogonalRouteIncidentArmCount(
+        segment->mapToScene(segment->lastPoint()), routes) >= 3);
+  }
+}
+
+void WireManager::calculateJunctionsIn(const QRectF& sceneBounds) const
+{
+  if (allSegments.empty() || !allSegments.front()->scene())
+    return;
+  std::vector<GraphicalWireSegment*> affected;
+  for (auto* item : allSegments.front()->scene()->items(sceneBounds)) {
+    auto* segment = category_cast<GraphicalWireSegment>(item, ItemCategory::WireSegment);
+    if (segment && std::ranges::find(allSegments, segment) != allSegments.end())
+      affected.push_back(segment);
+  }
+  calculateJunctionsFor(affected);
 }
 
 bool WireManager::evaluateWireSplits(GraphicalWire* wire)
@@ -286,14 +389,17 @@ bool WireManager::evaluateWireSplits(GraphicalWire* wire)
   if (!wire || wire->empty())
     return false;
 
-  auto segments = wire->getSegments() | std::views::filter([&](auto* segment) {
-                    return std::ranges::find(allSegments, segment) != allSegments.end();
-                  })
-                  | std::ranges::to<std::vector>();
+  // Scene registration order determines which connected component retains the bus.
+  auto segments = allSegments | std::views::filter([&](auto* segment) {
+                    return segment->getGraphicalWire() == wire;
+                  }) | std::ranges::to<std::vector>();
 
   // A wire with 0 or 1 segments cannot be split
   if (segments.size() <= 1)
     return false;
+  const bool useSceneQueries = std::ranges::all_of(segments, [](const auto* segment) {
+    return segment->scene() != nullptr;
+  });
 
   // Track the connected components (islands of touching segments)
   std::vector<std::vector<GraphicalWireSegment*>> wireGroups;
@@ -315,8 +421,10 @@ bool WireManager::evaluateWireSplits(GraphicalWire* wire)
       queue.pop();
       currentGroup.push_back(curr);
 
-      for (auto* sibling : segments) {
-        if (!visited.contains(sibling) && segmentsTouching(curr, sibling)) {
+      const auto neighbors = useSceneQueries ? segmentNeighbors(curr) : segments;
+      for (auto* sibling : neighbors) {
+        if (sibling->getGraphicalWire() == wire && !visited.contains(sibling)
+            && (useSceneQueries || segmentsTouching(curr, sibling))) {
           visited.insert(sibling);
           queue.push(sibling);
         }
@@ -338,7 +446,7 @@ bool WireManager::evaluateWireSplits(GraphicalWire* wire)
     auto newWire = createWire(busSize);
     for (auto* seg : wireGroups[i]) {
       wire->removeSegment(seg);
-      seg->setGraphicalWire(newWire.get());
+      seg->setGraphicalWire(newWire.get(), false);
     }
   }
 
@@ -351,9 +459,16 @@ GraphicalWireSegment*
 WireManager::segmentAtPoint(QPointF                     scenePoint,
                             const GraphicalWireSegment* ignoredSegment) const
 {
-  for (auto* seg : allSegments) {
+  if (allSegments.empty() || !allSegments.front()->scene())
+    return nullptr;
+  const QRectF query(scenePoint - QPointF(5, 5), QSizeF(10, 10));
+  for (auto* item : allSegments.front()->scene()->items(query)) {
+    auto* seg = category_cast<GraphicalWireSegment>(item, ItemCategory::WireSegment);
+    if (!seg || seg == ignoredSegment
+        || std::ranges::find(allSegments, seg) == allSegments.end())
+      continue;
     const QPointF localPt = seg->mapFromScene(scenePoint);
-    if (seg->isPointOnPath(localPt) && seg != ignoredSegment)
+    if (seg->isPointOnPath(localPt))
       return seg;
   }
   return nullptr;
@@ -410,7 +525,7 @@ void WireManager::mergeWires(GraphicalWire* dst, GraphicalWire* src)
   const auto segsCopy = src->getSegments();  // copy to avoid iterator invalidation
   for (auto* seg : segsCopy) {
     src->removeSegment(seg);
-    seg->setGraphicalWire(dst);
+    seg->setGraphicalWire(dst, false);
   }
 
   // Destroy the now-empty source wire

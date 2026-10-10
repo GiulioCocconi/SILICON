@@ -18,7 +18,6 @@
 #include "diagramScene.hpp"
 
 #include <algorithm>
-#include <map>
 #include <ranges>
 #include <span>
 #include <stdexcept>
@@ -29,8 +28,6 @@
 #include <QMessageBox>
 #include <QProgressDialog>
 
-#include <boost/graph/graph_traits.hpp>
-
 #include <utils/ranges_wrapper.hpp>
 
 #include <ui/circuit/components/graphicalIO.hpp>
@@ -40,13 +37,13 @@
 #include <ui/circuit/diagram/enums.hpp>
 #include <ui/circuit/diagram/graphicalComponent.hpp>
 #include <ui/circuit/diagram/graphicalWire.hpp>
+#include <ui/circuit/diagram/interactiveWireRouter.hpp>
 #include <ui/circuit/diagram/scene/diagramSceneSerializer.hpp>
 #include <ui/circuit/diagram/scene/diagramSceneSimulationController.hpp>
 #include <ui/circuit/diagram/undoCommands.hpp>
 #include <ui/circuit/diagram/wireRouting.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
 #include <ui/shell/theme.hpp>
-#include <utils/num_formatting.hpp>
 
 namespace SILICON::ui {
 using namespace SILICON::core;
@@ -176,6 +173,251 @@ QPoint DiagramScene::snapToGrid(const QPointF point)
   return {snapToGrid(point.x()), snapToGrid(point.y())};
 }
 
+std::unique_ptr<InteractiveWireRouter> DiagramScene::makeInteractiveRouter() const
+{
+  std::vector<RoutingComponent> components;
+  for (auto* item : items()) {
+    auto* component = category_cast<GraphicalComponent>(item, ItemCategory::Component);
+    if (!component)
+      continue;
+    RoutingComponent input{.id = component->getUiId(),
+                           .bounds = component->mapToScene(component->collisionRectForWires())
+                                         .boundingRect().normalized(),
+                           .ports = {}};
+    for (const auto* port : component->getInputPorts())
+      input.ports.push_back(component->mapToScene(port->getPosition()));
+    for (const auto* port : component->getOutputPorts())
+      input.ports.push_back(component->mapToScene(port->getPosition()));
+    components.push_back(std::move(input));
+  }
+  std::vector<RoutingSegment> segments;
+  for (const auto* segment : wireManager.getSegments()) {
+    if (segment && !segment->empty() && segment->getGraphicalWire())
+      segments.push_back({segment->getUiId(),
+                          reinterpret_cast<uintptr_t>(segment->getGraphicalWire()),
+                          segment->getScenePoints()});
+  }
+  return std::make_unique<InteractiveWireRouter>(std::move(components),
+                                                   std::move(segments), GRID_SIZE);
+}
+
+void DiagramScene::applyRoutingPreview(const std::vector<RoutedSegment>& routes)
+{
+  for (const auto& route : routes) {
+    auto* segment = category_cast<GraphicalWireSegment>(
+        findGraphicalItemByUiId(route.id), ItemCategory::WireSegment);
+    if (!segment)
+      continue;
+    std::vector<QPointF> local;
+    local.reserve(route.points.size());
+    for (const QPointF point : route.points)
+      local.push_back(segment->mapFromScene(point));
+    if (local != segment->getPoints())
+      segment->setPoints(std::move(local));
+  }
+}
+
+void DiagramScene::RouteEditState::capture(WireManager& manager)
+{
+  for (auto* segment : manager.getSegments()) {
+    if (!segment || segment->empty())
+      continue;
+    originals.emplace_back(segment, segment->getPoints());
+    edits.push_back(std::make_unique<WireManager::Edit>(manager, segment));
+  }
+}
+
+void DiagramScene::RouteEditState::commit(WireManager& manager)
+{
+  WireManager::Batch batch(manager);
+  for (auto& edit : edits)
+    edit->commit();
+}
+
+std::vector<WireRouteChange> DiagramScene::RouteEditState::changes() const
+{
+  std::vector<WireRouteChange> changes;
+  for (const auto& [segment, before] : originals) {
+    if (segment->getPoints() != before)
+      changes.push_back({segment->getUiId(), before, segment->getPoints()});
+  }
+  return changes;
+}
+
+void DiagramScene::beginComponentDrag()
+{
+  cancelComponentDrag();
+  for (auto* item : selectedItems()) {
+    if (auto* component = category_cast<GraphicalComponent>(item, ItemCategory::Component)) {
+      componentDrag.initialPositions.emplace_back(component, component->pos());
+      componentDrag.validPositions.emplace_back(component, component->pos());
+    }
+  }
+  if (componentDrag.initialPositions.empty())
+    return;
+  componentDrag.router = makeInteractiveRouter();
+  componentDrag.routes.capture(wireManager);
+}
+
+void DiagramScene::updateComponentDrag()
+{
+  if (!componentDrag.router)
+    return;
+  if (std::ranges::all_of(componentDrag.validPositions, [](const auto& entry) {
+        return entry.first->pos() == entry.second;
+      }))
+    return;
+  std::vector<ComponentRouteMove> moves;
+  for (const auto& [component, initial] : componentDrag.initialPositions) {
+    if (component->pos() != initial)
+      moves.push_back({component->getUiId(),
+                       component->mapToScene(component->collisionRectForWires())
+                           .boundingRect().normalized()});
+  }
+  const auto routes = componentDrag.router->routeComponents(moves);
+  if (!routes) {
+    const bool collisionChecks = itemCollisionChecksEnabled();
+    setItemCollisionChecksEnabled(false);
+    for (const auto& [component, position] : componentDrag.validPositions)
+      component->setPos(position);
+    setItemCollisionChecksEnabled(collisionChecks);
+    return;
+  }
+  applyRoutingPreview(*routes);
+  for (auto& [component, position] : componentDrag.validPositions)
+    position = component->pos();
+}
+
+std::vector<WireRouteChange> DiagramScene::finishComponentDrag()
+{
+  if (!componentDrag.router)
+    return {};
+  auto changes = componentDrag.routes.changes();
+  componentDrag.routes.commit(wireManager);
+  componentDrag = {};
+  return changes;
+}
+
+void DiagramScene::cancelComponentDrag()
+{
+  if (!componentDrag.router)
+    return;
+  const bool collisionChecks = itemCollisionChecksEnabled();
+  setItemCollisionChecksEnabled(false);
+  for (const auto& [component, position] : componentDrag.initialPositions) {
+    component->setPos(position);
+    component->setInitialPosition();
+  }
+  setItemCollisionChecksEnabled(collisionChecks);
+  componentDrag = {};
+}
+
+bool DiagramScene::beginWireDrag(GraphicalWireSegment* segment,
+                                 const QPointF scenePos, const QPointF localPos)
+{
+  if (!segment || currentInteractionMode != InteractionMode::NORMAL_MODE ||
+      !segment->getGraphicalWire() || !segment->getGraphicalWire()->getManager())
+    return false;
+  cancelWireDrag();
+  const auto& points = segment->getPoints();
+  const auto bend = segment->pointIndexAt(localPos);
+  const bool dragBend = bend && *bend > 0 && *bend + 1 < points.size();
+  const auto edge = dragBend ? std::optional<size_t>{} : segment->edgeIndexAt(localPos);
+  if (!dragBend && !edge)
+    return false;
+
+  wireDrag.segment = segment;
+  wireDrag.type = dragBend ? WireDragState::Type::Point : WireDragState::Type::Edge;
+  wireDrag.index = dragBend ? *bend : *edge;
+  wireDrag.start = snapToGrid(scenePos);
+  wireDrag.router = makeInteractiveRouter();
+  wireDrag.routes.capture(wireManager);
+  return true;
+}
+
+bool DiagramScene::isDraggingWire(const GraphicalWireSegment* segment) const
+{
+  return wireDrag.segment == segment && wireDrag.router != nullptr;
+}
+
+void DiagramScene::updateWireDrag(GraphicalWireSegment* segment, const QPointF scenePos)
+{
+  if (!isDraggingWire(segment))
+    return;
+  QPointF delta = snapToGrid(scenePos) - wireDrag.start;
+  const auto& original = std::ranges::find_if(wireDrag.routes.originals,
+      [segment](const auto& entry) { return entry.first == segment; })->second;
+  if (wireDrag.type == WireDragState::Type::Edge) {
+    if (original[wireDrag.index].y() == original[wireDrag.index + 1].y())
+      delta.setX(0);
+    else
+      delta.setY(0);
+  }
+  if (delta.isNull()) {
+    for (const auto& [member, points] : wireDrag.routes.originals)
+      if (member->getPoints() != points)
+        member->setPoints(points);
+    return;
+  }
+  std::optional<std::vector<RoutedSegment>> routes;
+  if (wireDrag.type == WireDragState::Type::Point)
+    routes = wireDrag.router->routeWireBend(segment->getUiId(), wireDrag.index,
+                                            segment->mapToScene(original[wireDrag.index]) + delta);
+  else
+    routes = wireDrag.router->routeWireEdge(segment->getUiId(), wireDrag.index, delta);
+  if (routes)
+    applyRoutingPreview(*routes);
+}
+
+void DiagramScene::finishWireDrag(GraphicalWireSegment* segment)
+{
+  if (!isDraggingWire(segment))
+    return;
+  auto changes = wireDrag.routes.changes();
+  const bool movedEdge = wireDrag.type == WireDragState::Type::Edge;
+  wireDrag.routes.commit(wireManager);
+  wireDrag = {};
+  if (!changes.empty() && undoStack)
+    undoStack->push(new EditWireRouteCommand(segment, std::move(changes), movedEdge));
+}
+
+void DiagramScene::cancelWireDrag()
+{
+  wireDrag = {};
+}
+
+void DiagramScene::applyWireRouteChanges(std::span<const WireRouteChange> changes,
+                                         const bool useAfter)
+{
+  WireManager::Batch batch(wireManager);
+  for (const auto& change : changes) {
+    auto* segment = category_cast<GraphicalWireSegment>(
+        findGraphicalItemByUiId(change.uiId), ItemCategory::WireSegment);
+    if (!segment)
+      continue;
+    WireManager::Edit edit(wireManager, segment);
+    segment->setPoints(useAfter ? change.after : change.before);
+    edit.commit();
+  }
+}
+
+void DiagramScene::applyItemMoves(std::span<const ItemPositionChange> moves,
+                                  std::span<const WireRouteChange> wires,
+                                  const bool useAfter)
+{
+  const bool collisionChecks = itemCollisionChecksEnabled();
+  setItemCollisionChecksEnabled(false);
+  for (const auto& move : moves) {
+    if (auto* item = findGraphicalItemByUiId(move.uiId)) {
+      item->setPos(useAfter ? move.after : move.before);
+      item->setInitialPosition();
+      item->updateTopology();
+    }
+  }
+  applyWireRouteChanges(wires, useAfter);
+  setItemCollisionChecksEnabled(collisionChecks);
+}
+
 void DiagramScene::drawBackground(QPainter* painter, const QRectF& rect)
 {
   painter->fillRect(rect, ThemeEngine::getColor("SILICON_BACKGROUND"));
@@ -202,6 +444,14 @@ void DiagramScene::setInteractionMode(InteractionMode mode)
 
 bool DiagramScene::cancelCurrentInteraction()
 {
+  if (wireDrag.router) {
+    cancelWireDrag();
+    return true;
+  }
+  if (componentDrag.router) {
+    cancelComponentDrag();
+    return true;
+  }
   if (currentInteractionMode == InteractionMode::NORMAL_MODE)
     return false;
 
@@ -211,6 +461,8 @@ bool DiagramScene::cancelCurrentInteraction()
 
 void DiagramScene::setInteractionMode(const InteractionMode newMode, const bool force)
 {
+  cancelWireDrag();
+  cancelComponentDrag();
   const auto currentMode = getInteractionMode();
   if (currentMode == newMode && !force)
     return;
@@ -257,7 +509,16 @@ void DiagramScene::finalizeWireCreation()
     auto* finalizedSegment = wireSegmentToBeDrawn;
     // Always register the segment so the WireManager tracks it for junctions
     // and collision detection
-    wireManager.addSegment(finalizedSegment);
+    try {
+      wireManager.addSegment(finalizedSegment);
+    } catch (const std::invalid_argument& error) {
+      removeItem(finalizedSegment);
+      delete finalizedSegment;
+      wireSegmentToBeDrawn = nullptr;
+      QMessageBox::warning(views().isEmpty() ? nullptr : views().first(),
+                           "Cannot connect wire", error.what());
+      return;
+    }
 
     if (auto* undoStack = getUndoStack()) {
       undoStack->push(new SceneSelectionCommand(this, serializeItems({finalizedSegment}),
@@ -291,6 +552,30 @@ bool DiagramScene::isWireCompletionPoint(const QPointF scenePoint) const
   }
 
   return false;
+}
+
+void DiagramScene::updateWirePreview(const QPointF scenePoint)
+{
+  if (!wireSegmentToBeDrawn)
+    return;
+
+  constexpr qreal MARGIN = GRID_SIZE / 2.0;
+  std::vector<QRectF> obstacles;
+  for (auto* item : items()) {
+    const auto* component =
+        category_cast<GraphicalComponent>(item, ItemCategory::Component);
+    if (!component)
+      continue;
+    obstacles.push_back(component->mapToScene(component->collisionRectForWires())
+                            .boundingRect().adjusted(-MARGIN, -MARGIN, MARGIN, MARGIN));
+  }
+
+  const QPointF lastPoint =
+      wireSegmentToBeDrawn->mapToScene(wireSegmentToBeDrawn->lastPoint());
+  auto route = core::routeOrthogonalWire(lastPoint, scenePoint, obstacles, GRID_SIZE);
+  if (!route.empty())
+    route.erase(route.begin());
+  wireSegmentToBeDrawn->setShowPoints(route);
 }
 
 void DiagramScene::exitComponentPlacingMode()
@@ -357,36 +642,7 @@ void DiagramScene::mouseMoveEvent(QGraphicsSceneMouseEvent* mouseEvent)
       // Let's wait the user to start drawing the wire
       if (!wireSegmentToBeDrawn)
         break;
-
-      auto wireRoutingObstacles = [this]() {
-        // HELPER: Get the obstacles for autorouting
-        constexpr float     MARGIN = GRID_SIZE / 2.0;
-        std::vector<QRectF> obstacles;
-
-        for (auto* item : items()) {
-          const auto* component =
-              category_cast<GraphicalComponent>(item, ItemCategory::Component);
-          if (!component)
-            continue;
-
-          obstacles.push_back(component->mapToScene(component->collisionRectForWires())
-                                  .boundingRect()
-                                  .adjusted(-MARGIN, -MARGIN, MARGIN, MARGIN));
-        }
-
-        return obstacles;
-      };
-
-      const QPointF lastPoint =
-          wireSegmentToBeDrawn->mapToScene(wireSegmentToBeDrawn->lastPoint());
-
-      auto route = SILICON::core::routeOrthogonalWire(lastPoint, cursorPos,
-                                                      wireRoutingObstacles(), GRID_SIZE);
-
-      if (!route.empty())
-        route.erase(route.begin());
-
-      wireSegmentToBeDrawn->setShowPoints(route);
+      updateWirePreview(cursorPos);
       break;
     }
     case InteractionMode::NORMAL_MODE:
@@ -395,6 +651,8 @@ void DiagramScene::mouseMoveEvent(QGraphicsSceneMouseEvent* mouseEvent)
     default: throw std::logic_error("Unhandled InteractionMode in mouseMoveEvent");
   }
   QGraphicsScene::mouseMoveEvent(mouseEvent);
+  if (currentInteractionMode == InteractionMode::NORMAL_MODE)
+    updateComponentDrag();
 }
 
 void DiagramScene::mousePressEvent(QGraphicsSceneMouseEvent* mouseEvent)
@@ -431,13 +689,14 @@ void DiagramScene::mousePressEvent(QGraphicsSceneMouseEvent* mouseEvent)
         wireSegmentToBeDrawn = new GraphicalWireSegment(cursorPos);
         addItem(wireSegmentToBeDrawn);
       } else {
+        updateWirePreview(cursorPos);
         wireSegmentToBeDrawn->addPoints();
         const QPointF endpoint =
             wireSegmentToBeDrawn->mapToScene(wireSegmentToBeDrawn->lastPoint());
 
         // Intermediate clicks remain available for routing bends. A port or existing
         // wire completes the route while wire creation mode stays ready for another.
-        if (isWireCompletionPoint(endpoint))
+        if (endpoint == cursorPos && isWireCompletionPoint(endpoint))
           finalizeWireCreation();
       }
       break;
@@ -458,6 +717,15 @@ void DiagramScene::mousePressEvent(QGraphicsSceneMouseEvent* mouseEvent)
     default: throw std::logic_error("Unhandled InteractionMode in mousePressEvent");
   }
   QGraphicsScene::mousePressEvent(mouseEvent);
+  if (currentInteractionMode == InteractionMode::NORMAL_MODE &&
+      mouseEvent->button() == Qt::LeftButton) {
+    for (auto* item = mouseGrabberItem(); item; item = item->parentItem()) {
+      if (category_cast<GraphicalComponent>(item, ItemCategory::Component)) {
+        beginComponentDrag();
+        break;
+      }
+    }
+  }
 }
 
 void DiagramScene::keyPressEvent(QKeyEvent* event)
@@ -816,6 +1084,9 @@ void DiagramScene::removeItems(const std::vector<QGraphicsItem*>& sceneItems)
   if (sceneItems.empty())
     return;
 
+  cancelWireDrag();
+  cancelComponentDrag();
+  WireManager::Batch edit(wireManager);
   clearSelection();
 
   // Remove everything from the scene before deleting objects so scene callbacks never
@@ -826,8 +1097,6 @@ void DiagramScene::removeItems(const std::vector<QGraphicsItem*>& sceneItems)
   for (auto* item : sceneItems)
     delete item;
 
-  // Deletion can invalidate junction markers just as much as insertion can.
-  wireManager.calculateJunctions();
   updateSceneAfterEdit();
 }
 
@@ -846,6 +1115,8 @@ void DiagramScene::updateSceneAfterEdit()
 
 void DiagramScene::clear(const bool clearUndoStack, const bool clearLogs)
 {
+  cancelWireDrag();
+  cancelComponentDrag();
   setInteractionMode(InteractionMode::NORMAL_MODE);
 
   if (componentToBeDrawn) {
@@ -872,6 +1143,8 @@ void DiagramScene::clear(const bool clearUndoStack, const bool clearLogs)
 
 DiagramScene::~DiagramScene()
 {
+  cancelWireDrag();
+  cancelComponentDrag();
   // QGraphicsScene deletes remaining items from the base destructor. Break the back
   // references first so GraphicalItem teardown cannot touch DiagramScene state after
   // our members have already started dying.

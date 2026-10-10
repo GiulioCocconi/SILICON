@@ -28,6 +28,7 @@
 
 #include <core/component.hpp>
 #include <ui/circuit/diagram/graphicalWire.hpp>
+#include <ui/circuit/diagram/scene/diagramSceneEdit.hpp>
 
 namespace SILICON::ui {
   using namespace SILICON::core;
@@ -76,26 +77,26 @@ namespace SILICON::ui {
     }
 
     void addItemMove(GraphicalItem* item, const QPointF& oldPos, const QPointF& newPos);
+    void setWireMoves(std::vector<WireRouteChange> changes)
+    {
+      wireMoves = std::move(changes);
+    }
 
     void undo() override;
     void redo() override;
 
   private:
-    struct ItemMove {
-      DiagramScene* scene;
-      uint64_t      uiId;
-      QPointF       oldPos;
-      QPointF       newPos;
-    };
-    std::vector<ItemMove> moves;
+    DiagramScene* scene = nullptr;
+    std::vector<ItemPositionChange> moves;
+    std::vector<WireRouteChange> wireMoves;
     std::string           documentPath;
     bool                  skipInitialRedo = true;
   };
 
-  class MoveWirePointCommand : public QUndoCommand {
+  class EditWireRouteCommand : public QUndoCommand {
   public:
-    explicit MoveWirePointCommand(GraphicalWireSegment* segment, size_t pointIndex,
-                                  const QPointF& oldPos, const QPointF& newPos,
+    explicit EditWireRouteCommand(GraphicalWireSegment* segment,
+                                  std::vector<WireRouteChange> changes, bool movedEdge,
                                   QUndoCommand* parent = nullptr);
 
     void undo() override;
@@ -104,10 +105,7 @@ namespace SILICON::ui {
   private:
     DiagramScene* scene;
     std::string   documentPath;
-    uint64_t      uiId;
-    size_t        pointIndex;
-    QPointF       oldPos;
-    QPointF       newPos;
+    std::vector<WireRouteChange> changes;
     bool          skipInitialRedo = true;
   };
 
