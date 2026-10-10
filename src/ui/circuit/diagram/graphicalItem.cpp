@@ -85,6 +85,8 @@ void GraphicalItem::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
   if (!ds)
     return;
 
+  auto wireMoves = ds->finishComponentDrag();
+
   if (this->isColliding())
     this->setCollidingStatus(NOT_COLLIDING);
 
@@ -103,7 +105,11 @@ void GraphicalItem::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
   }
 
   if (itemsActuallyMoved) {
-    undoStack->push(moveCmd);
+    moveCmd->setWireMoves(std::move(wireMoves));
+    if (undoStack)
+      undoStack->push(moveCmd);
+    else
+      delete moveCmd;
   } else {
     delete moveCmd;
   }
@@ -214,6 +220,9 @@ QVariant GraphicalItem::itemChange(GraphicsItemChange change, const QVariant& va
       }
 
       // Extract the component and colliding segment
+      // Connected and crossed wires are routed by libavoid during the drag.
+      if (hasCategory(this, ItemCategory::Component))
+        continue;
       auto        collidingComponent = *(componentsInPair.begin());
       auto        collidingSegment   = *(segmentsInPair.begin());
       const auto* collidingWire      = collidingSegment->getGraphicalWire();

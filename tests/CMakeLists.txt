@@ -35,6 +35,8 @@ add_executable(yosys_tests yosys_rom.cpp yosys_cells.cpp yosys_legalization.cpp 
 add_executable(libavoid_tests libavoid.cpp boundaryIoPlacement.cpp
         ${CMAKE_SOURCE_DIR}/src/ui/circuit/diagram/boundaryIoPlacement.cpp
         ${CMAKE_SOURCE_DIR}/src/ui/circuit/diagram/wireRouting.cpp)
+target_sources(libavoid_tests PRIVATE
+        ${CMAKE_SOURCE_DIR}/src/ui/circuit/diagram/interactiveWireRouter.cpp)
 
 foreach (target logic_tests register_tests memory_tests arithmetic_tests multiplexer_tests utils_tests num_formatting_tests libfst_tests fstwrapper_tests silicon_waveform_tests project_file_tests project_document_tests project_dependency_graph_tests circuit_tests factory_tests subcircuit_tests logger_tests yosys_tests)
     set_target_properties(${target} PROPERTIES

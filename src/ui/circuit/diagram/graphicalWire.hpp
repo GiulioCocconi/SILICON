@@ -185,13 +185,11 @@ private:
  * @brief The visible, selectable polyline wire on the diagram scene.
  *
  * GraphicalWireSegment is a QGraphicsItem representing a polyline wire
- * drawn on the diagram. It supports interactive point dragging,
- * automatic junction detection, and orthogonal (horizontal/vertical)
- * path maintenance.
+ * drawn on the diagram. It stores and paints orthogonal route geometry and exposes
+ * hit-tested bend and edge handles to DiagramScene's interaction state.
  *
  * Junctions occur where an endpoint meets at least three distinct wire arms.
- * Individual points can be highlighted and dragged to reshape
- * the wire while maintaining orthogonality.
+ * Individual bends can be highlighted while a scene edit previews the route.
  *
  * @see GraphicalWire
  */
@@ -215,6 +213,9 @@ public:
 
   /** @brief Gets the shape for hit testing */
   [[nodiscard]] QPainterPath shape() const override;
+
+  /** @brief Narrow painted centerline used by component collision checks. */
+  [[nodiscard]] QPainterPath centerlineShape() const;
 
   /** @brief Gets the bounding rectangle */
   [[nodiscard]] QRectF boundingRect() const override;
@@ -273,7 +274,7 @@ public:
   /**
    * @brief Replaces all points at once.
    *
-   * Used by WireManager during aligned merge operations.
+   * Used for route previews, undo/redo, and aligned merge operations.
    *
    * @param newPoints The new points vector
    */
@@ -283,17 +284,10 @@ public:
    * @brief Gets the index of the point nearest to localPos.
    *
    * @param localPos The position to check
-   * @return Index of nearest point, or -1 if none within grab radius
+   * @return Index of nearest point, or no value outside the grab radius
    */
-  [[nodiscard]] int pointIndexAt(QPointF localPos) const;
-
-  /**
-   * @brief Moves a point and adjusts adjacent points for orthogonality.
-   *
-   * @param index The point index to move
-   * @param newLocalPos The new position
-   */
-  void movePointTo(size_t index, QPointF newLocalPos);
+  [[nodiscard]] std::optional<size_t>       pointIndexAt(QPointF localPos) const;
+  [[nodiscard]] std::optional<size_t>       edgeIndexAt(QPointF localPos) const;
 
   /** @brief Checks if first endpoint is a junction */
   [[nodiscard]] bool isFirstPointJunction() const { return firstJunction; }
@@ -327,6 +321,7 @@ public:
   void detachFromWire() { graphicalWire = nullptr; }
 
   void updateTopology() override;
+  void modeChanged(InteractionMode mode) override;
 
   ~GraphicalWireSegment() override;
 
@@ -367,14 +362,8 @@ private:
   /** @brief Junction flag for last endpoint */
   bool lastJunction = false;
 
-  /** @brief Currently dragged point index */
-  int dragPointIndex = -1;
-
-  /** @brief Starting position of point drag */
-  QPointF dragStartPos;
-
   /** @brief Currently hovered point index */
-  int hoveredPointIndex = -1;
+  std::optional<size_t> hoveredPointIndex = std::nullopt;
 
   /** @brief Updates the internal path shapes */
   void updatePath();

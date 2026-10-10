@@ -115,7 +115,7 @@ QPainterPath GraphicalWire::shape() const
   QPainterPath combinedPath;
 
   for (const auto segment : segments)
-    combinedPath.addPath(segment->mapToScene(segment->shape()).simplified());
+    combinedPath.addPath(segment->mapToScene(segment->centerlineShape()).simplified());
 
   return combinedPath;
 }
@@ -207,25 +207,18 @@ void GraphicalWireSegment::addPoints()
     return;
   }
 
-  // Check for self intersection
-  const QPainterPathStroker stroker;
-  const auto                showStroke   = stroker.createStroke(showPath);
-  auto                      intersection = shape().intersected(showStroke);
-
-  // Exclude the last point of path
-  QPainterPath exclusionZone;
-  exclusionZone.addEllipse(lastPoint(), 1, 1);
-  intersection = intersection.subtracted(exclusionZone);
-
-  if (intersection.isEmpty()) {
-    for (auto pt : this->showPoints)
-      this->points.push_back(pt);
-    this->showPoints = {};
-    updatePath();
-  } else {
-    qDebug() << "[GraphicalWireSegment] addPoints: self-intersecting wire detected, "
+  std::vector<QPointF> proposed = points;
+  proposed.insert(proposed.end(), showPoints.begin(), showPoints.end());
+  proposed = canonicalizeOrthogonalRoute(std::move(proposed));
+  if (!isOrthogonalRoute(proposed) || orthogonalRouteSelfIntersects(proposed)) {
+    qDebug() << "[GraphicalWireSegment] addPoints: invalid or self-intersecting route, "
                 "points NOT added";
+    return;
   }
+
+  points = std::move(proposed);
+  showPoints.clear();
+  updatePath();
 }
 
 void GraphicalWireSegment::updatePath()
@@ -276,8 +269,7 @@ void GraphicalWireSegment::paint(QPainter*                       painter,
   if (isSelected()) {
     painter->setPen(Qt::NoPen);
     for (size_t i = 0; i < points.size(); ++i) {
-      // Compare size_t to safely avoid signed/unsigned compiler warnings
-      const bool hovered = (i == static_cast<size_t>(hoveredPointIndex));
+      const bool hovered = hoveredPointIndex && i == *hoveredPointIndex;
       painter->setBrush(hovered ? QColor(255, 80, 80) : QColor(200, 60, 60, 160));
       painter->drawEllipse(points[i], POINT_RADIUS, POINT_RADIUS);
     }
@@ -353,7 +345,13 @@ QRectF GraphicalWireSegment::boundingRect() const
 QPainterPath GraphicalWireSegment::shape() const
 {
   QPainterPathStroker stroker;
+  stroker.setWidth(2 * GRAB_RADIUS);
   return stroker.createStroke(this->path);
+}
+
+QPainterPath GraphicalWireSegment::centerlineShape() const
+{
+  return QPainterPathStroker().createStroke(path);
 }
 
 bool GraphicalWireSegment::isPointOnPath(const QPointF point) const
@@ -383,46 +381,30 @@ void GraphicalWireSegment::setPoints(std::vector<QPointF> newPoints)
   updatePath();
 }
 
-int GraphicalWireSegment::pointIndexAt(const QPointF localPos) const
+std::optional<size_t> GraphicalWireSegment::pointIndexAt(const QPointF localPos) const
 {
-  for (size_t i = 0; i < points.size(); i++) {
+  for (size_t i = 0; i < points.size(); ++i) {
     if (QLineF(localPos, points[i]).length() <= GRAB_RADIUS)
       return i;
   }
-  return -1;
+  return std::nullopt;
 }
 
-void GraphicalWireSegment::movePointTo(const size_t index, QPointF newLocalPos)
+std::optional<size_t> GraphicalWireSegment::edgeIndexAt(const QPointF localPos) const
 {
-  if (index >= points.size())
-    return;
-
-  newLocalPos = DiagramScene::snapToGrid(newLocalPos);
-
-  const QPointF oldPos = points[index];
-  points[index]        = newLocalPos;
-
-  // Helper lambda to maintain horizontal/vertical orthogonality for adjacent points
-  auto alignAdjacent = [&](QPointF& adj) {
-    const bool wasHorizontal =
-        std::abs(adj.y() - oldPos.y()) <= std::abs(adj.x() - oldPos.x());
-
-    if (wasHorizontal) {
-      adj.setY(newLocalPos.y());
-    } else {
-      adj.setX(newLocalPos.x());
-    }
-  };
-
-  // Adjust previous and next points if they exist
-  if (index > 0) {
-    alignAdjacent(points[index - 1]);
+  for (std::size_t i = 0; i + 1 < points.size(); ++i) {
+    const QLineF edge(points[i], points[i + 1]);
+    if (edge.length() == 0)
+      continue;
+    const QPointF direction = edge.p2() - edge.p1();
+    const qreal projection = QPointF::dotProduct(localPos - edge.p1(), direction)
+                             / QPointF::dotProduct(direction, direction);
+    if (projection < 0 || projection > 1)
+      continue;
+    if (QLineF(localPos, edge.p1() + direction * projection).length() <= GRAB_RADIUS)
+      return i;
   }
-  if (index + 1 < points.size()) {
-    alignAdjacent(points[index + 1]);
-  }
-
-  updatePath();
+  return std::nullopt;
 }
 
 void GraphicalWireSegment::setFirstPointJunction(bool v)
@@ -496,10 +478,9 @@ bool GraphicalWireSegment::isAlignedWith(const GraphicalWireSegment* other) cons
 void GraphicalWireSegment::mousePressEvent(QGraphicsSceneMouseEvent* event)
 {
   if (event->button() == Qt::LeftButton) {
-    const QPointF localPos = event->pos();
-    dragPointIndex         = pointIndexAt(localPos);
-    if (dragPointIndex >= 0) {
-      dragStartPos = points[dragPointIndex];
+    auto* ds = qobject_cast<DiagramScene*>(scene());
+    if (ds && ds->beginWireDrag(this, event->scenePos(), event->pos())) {
+      setSelected(true);
       event->accept();
       return;
     }
@@ -509,9 +490,9 @@ void GraphicalWireSegment::mousePressEvent(QGraphicsSceneMouseEvent* event)
 
 void GraphicalWireSegment::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
 {
-  if (dragPointIndex >= 0 && isSelected()) {
-    movePointTo(dragPointIndex, event->pos());
-    update();
+  auto* ds = qobject_cast<DiagramScene*>(scene());
+  if (ds && ds->isDraggingWire(this)) {
+    ds->updateWireDrag(this, event->scenePos());
     event->accept();
     return;
   }
@@ -520,50 +501,60 @@ void GraphicalWireSegment::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
 
 void GraphicalWireSegment::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
 {
-  GraphicalItem::mouseReleaseEvent(event);
-
-  if (event->button() != Qt::LeftButton) {
+  auto* ds = qobject_cast<DiagramScene*>(scene());
+  if (!ds || !ds->isDraggingWire(this)) {
+    GraphicalItem::mouseReleaseEvent(event);
     return;
   }
-
-  const auto ds = qobject_cast<DiagramScene*>(scene());
-  if (!ds)
+  if (event->button() != Qt::LeftButton)
     return;
-
-  auto draggedPointIndex = dragPointIndex;
-  dragPointIndex         = -1;
-
-  if (draggedPointIndex >= static_cast<int>(points.size()))
-    return;
-
-  if (draggedPointIndex >= 0) {
-    const QPointF newPos = points[draggedPointIndex];
-    if (newPos != dragStartPos) {
-      const auto undoStack = ds->getUndoStack();
-      const auto moveCmd =
-          new MoveWirePointCommand(this, draggedPointIndex, dragStartPos, newPos);
-      undoStack->push(moveCmd);
-    }
-  }
-
-  if (graphicalWire && graphicalWire->getManager()) {
-    graphicalWire->getManager()->updateSegmentTopology(this);
-  }
+  ds->finishWireDrag(this);
+  event->accept();
 }
 
 void GraphicalWireSegment::hoverMoveEvent(QGraphicsSceneHoverEvent* event)
 {
-  const int newHovered = pointIndexAt(event->pos());
+  auto* ds = qobject_cast<DiagramScene*>(scene());
+  if (!ds || ds->getInteractionMode() != InteractionMode::NORMAL_MODE) {
+    unsetCursor();
+    GraphicalItem::hoverMoveEvent(event);
+    return;
+  }
+
+  auto newHovered = pointIndexAt(event->pos());
+  if (newHovered && (*newHovered == 0 || *newHovered + 1 == points.size()))
+    newHovered.reset();
   if (newHovered != hoveredPointIndex) {
     hoveredPointIndex = newHovered;
     update();
   }
 
+  const auto edgeIndex = edgeIndexAt(event->pos());
+  if (newHovered)
+    setCursor(Qt::SizeAllCursor);
+  else if (edgeIndex)
+    setCursor(points[*edgeIndex].y() == points[*edgeIndex + 1].y()
+                  ? Qt::SizeVerCursor : Qt::SizeHorCursor);
+  else
+    unsetCursor();
+
   GraphicalItem::hoverMoveEvent(event);
+}
+
+void GraphicalWireSegment::modeChanged(const InteractionMode mode)
+{
+  GraphicalItem::modeChanged(mode);
+  unsetCursor();
+  if (mode != InteractionMode::NORMAL_MODE && hoveredPointIndex.has_value()) {
+    hoveredPointIndex = std::nullopt;
+    update();
+  }
 }
 
 GraphicalWireSegment::~GraphicalWireSegment()
 {
+  if (auto* ds = qobject_cast<DiagramScene*>(scene()); ds && ds->isDraggingWire(this))
+    ds->cancelWireDrag();
   if (!graphicalWire)
     return;
 
