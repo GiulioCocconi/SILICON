@@ -74,6 +74,10 @@ void GraphicalLogicComponent::updatePortSizes()
     outputPorts[i]->setSize(componentOutputs[i].size());
 
   update();
+  if (auto* diagram = qobject_cast<DiagramScene*>(scene());
+      diagram && diagram->getInteractionMode()
+                     != DiagramScene::InteractionMode::SIMULATION_MODE)
+    diagram->requestConnectionsRefresh();
 }
 
 bool GraphicalLogicComponent::acceptsInputPortCount(

@@ -240,6 +240,37 @@ void CircuitEditor::deleteSelection()
   if (itemsToDelete.empty())
     return;
 
+  std::vector<GraphicalWireSegment*> wires;
+  std::vector<QGraphicsItem*> components;
+  for (auto* item : itemsToDelete) {
+    if (auto* wire = category_cast<GraphicalWireSegment>(item, ItemCategory::WireSegment))
+      wires.push_back(wire);
+    else
+      components.push_back(item);
+  }
+  if (!wires.empty()) {
+    QUndoCommand* command = nullptr;
+    if (projectHistory) {
+      if (components.empty()) {
+        command = new WireTopologyCommand(
+            diagramScene, wires, WireTopologyCommand::Operation::Remove);
+      } else {
+        command = new QUndoCommand("Remove Selection");
+        new WireTopologyCommand(diagramScene, wires,
+                                WireTopologyCommand::Operation::Remove, true,
+                                command);
+        new SceneSelectionCommand(diagramScene,
+                                  diagramScene->serializeItems(components),
+                                  SceneSelectionCommand::Operation::Remove,
+                                  true, command);
+      }
+    }
+    diagramScene->removeItems(itemsToDelete);
+    if (projectHistory && command)
+      projectHistory->push(command);
+    return;
+  }
+
   const auto payload = diagramScene->serializeItems(itemsToDelete);
   diagramScene->removeItems(itemsToDelete);
   if (projectHistory)

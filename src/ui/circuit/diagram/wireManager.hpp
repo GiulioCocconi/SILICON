@@ -18,11 +18,18 @@
 #pragma once
 
 #include <functional>
+#include <compare>
+#include <cstdint>
 #include <memory>
+#include <map>
 #include <span>
+#include <utility>
 #include <vector>
 
+#include <boost/graph/adjacency_list.hpp>
+
 #include <QPointF>
+#include <QRectF>
 
 #include <core/wire.hpp>
 
@@ -44,17 +51,127 @@ struct RoutedWire {
  *
  * Responsibilities:
  *   - Owns all GraphicalWires.
- *   - Merge: when two segments' endpoints collide, their GraphicalWires are
- *     unified. If the segments are collinear (aligned), they are merged into a
- *     single segment. Otherwise, the two segments remain separate but share the
- *     same GraphicalWire (the one with the larger bus size is kept).
- *   - Split: Uses Graph Theory (Breadth-First Search) to group segments into
- *     connected components. If a wire breaks into multiple isolated components,
- *     they are split into new GraphicalWires.
+ *   - Group segments when either endpoint touches another segment's route.
+ *   - Split groups when edited geometry separates them.
  */
 
 class WireManager {
 public:
+  enum class Change : uint8_t { None = 0, Geometry = 1, Connectivity = 2, Electrical = 4 };
+  using ChangeCallback = std::function<void(Change)>;
+  enum class VertexKind : uint8_t { FreeEndpoint, Junction, Port };
+  struct PortReference {
+    uint64_t componentId;
+    uint32_t portIndex;
+    bool output;
+    /** @brief Compares references by component identifier, port index, and direction. */
+    auto operator<=>(const PortReference&) const = default;
+  };
+  struct TopologyVertex {
+    uint64_t id;
+    QPointF position;
+    VertexKind kind = VertexKind::FreeEndpoint;
+    std::vector<PortReference> ports;
+  };
+  struct TopologyEdge {
+    uint64_t id;
+    uint64_t segmentId;
+    uint64_t firstVertex;
+    uint64_t lastVertex;
+    std::vector<QPointF> points;
+  };
+  using TopologyVertexMap = std::map<uint64_t, TopologyVertex>;
+  using TopologyEdgeMap = std::map<uint64_t, TopologyEdge>;
+  struct SegmentTopology {
+    uint64_t firstVertex = 0;
+    uint64_t lastVertex = 0;
+    std::vector<std::pair<uint64_t, QPointF>> junctions;
+    std::vector<uint64_t> edgeIds;
+  };
+  struct PortAnchor {
+    uint64_t componentId;
+    uint32_t portIndex;
+    bool output;
+    QPointF position;
+  };
+  using PortAnchorProvider = std::function<std::vector<PortAnchor>()>;
+  struct ExplicitContact {
+    uint64_t targetSegmentId;
+    uint64_t segmentId;
+    bool firstEndpoint;
+  };
+
+  /** @brief Borrows the topology vertex map until the topology is modified. */
+  [[nodiscard]] const TopologyVertexMap& topologyVertices() const { return vertices; }
+  /** @brief Borrows the topology edge map until the topology is modified. */
+  [[nodiscard]] const TopologyEdgeMap& topologyEdges() const { return edges; }
+  /** @brief Borrows segment topology until rebuilt; missing segments return an empty topology. */
+  [[nodiscard]] const SegmentTopology& topologyFor(uint64_t segmentId) const;
+  /** @brief Sets the provider of current component port anchors in scene coordinates. */
+  void setPortAnchors(PortAnchorProvider anchors)
+  { portAnchors = std::move(anchors); }
+  /** @brief Refreshes port references after components enter or leave the scene. */
+  void refreshPortAnchors();
+  /** @brief Derives electrical groups, junctions, and port vertices from segment geometry. */
+  void rebuildFromGeometry();
+  /** A preview edit commits topology once, or restores its original route on cancel. */
+  class Edit {
+  public:
+    /**
+     * @brief Captures a registered segment's original local route for a preview edit.
+     * @param manager Manager owning the segment.
+     * @param segment Non-null registered segment whose route will be edited.
+     */
+    Edit(WireManager& manager, GraphicalWireSegment* segment);
+    /** @brief Cancels an uncommitted edit and suppresses exceptions during cleanup. */
+    ~Edit() noexcept;
+    /** @brief Disables copying of an edit that owns route restoration. */
+    Edit(const Edit&) = delete;
+    /** @brief Disables copy assignment of a route edit. */
+    Edit& operator=(const Edit&) = delete;
+    /**
+     * @brief Validates the preview route and queues its topology rebuild.
+     * @throws std::invalid_argument If the route is not orthogonal and simple or has fewer than two points.
+     * @note Invalid routes are restored; an enclosing batch defers topology reconstruction.
+     */
+    void commit();
+    /** @brief Restores the original local route if the segment is still registered. */
+    void cancel();
+
+  private:
+    WireManager* manager;
+    uint64_t segmentId;
+    std::vector<QPointF> originalPoints;
+  };
+
+  class Batch {
+  public:
+    /** @brief Begins a batch that defers topology rebuilds and change notifications. */
+    explicit Batch(WireManager& manager) : manager(manager) { ++manager.batchDepth; }
+    /** @brief Discards an unfinished batch's pending work without restoring geometry. */
+    ~Batch() noexcept { if (active) manager.discardBatch(); }
+    /** @brief Disables copying of the batch lifecycle guard. */
+    Batch(const Batch&) = delete;
+    /** @brief Disables copy assignment of the batch lifecycle guard. */
+    Batch& operator=(const Batch&) = delete;
+    /** @brief Finishes the batch, rebuilding topology and notifying at the outermost level. */
+    void commit()
+    {
+      if (!active)
+        return;
+      active = false;
+      try {
+        manager.finishBatch();
+      } catch (...) {
+        manager.discardBatch();
+        throw;
+      }
+    }
+  private:
+    WireManager& manager;
+    bool active = true;
+  };
+
   WireManager() = default;
   ~WireManager() { clear(); }
 
@@ -70,25 +187,22 @@ public:
     return managedWires;
   }
 
-  // Register an existing segment. If it has no GraphicalWire, a new one is
-  // created for it. Authoritative deserialization can skip geometric topology
-  // inference so intentional crossings retain their serialized bus identities.
+  // Register an existing segment. A bulk load can defer geometry reconstruction.
   void addSegment(GraphicalWireSegment* segment, bool updateTopology = true);
 
   // Unregister a segment. If its GraphicalWire becomes empty, the wire is
   // removed.
   void removeSegment(GraphicalWireSegment* segment);
-
-  // Called after a segment has been moved (e.g. by point dragging).
-  // Checks endpoint collisions with all other segments, performs merge or split
-  // as needed, and refreshes junctions across the complete scene.
+  // Recalculate membership after changing a segment's route.
   void updateSegmentTopology(GraphicalWireSegment* segment);
 
-  // Merge: Unify the GraphicalWires of two segments whose endpoints collide.
-  // If the segments are aligned (collinear), they are fused into one segment.
-  // Otherwise they stay separate but share the GraphicalWire with the larger
-  // bus size.
-  void merge(GraphicalWireSegment* a, GraphicalWireSegment* b);
+  /**
+   * @brief Rebuilds connectivity after segment positions have been translated.
+   * @param translations Segment identifiers and applied scene displacements.
+   * @return True after processing the translations.
+   */
+  [[nodiscard]] bool commitSegmentTranslations(
+      std::span<const std::pair<uint64_t, QPointF>> translations);
 
   // Recalculate the junction flags for a specific segment
   void calculateJunctions(GraphicalWireSegment* segment,
@@ -107,7 +221,8 @@ public:
   static std::vector<GraphicalWireSegment*>
   segmentNeighbors(GraphicalWireSegment* segment);
 
-  [[nodiscard]] std::vector<GraphicalWireSegment*> getSegments() const
+  /** Borrowed until segments are registered or removed. Copy for mutation loops. */
+  [[nodiscard]] const std::vector<GraphicalWireSegment*>& getSegments() const
   {
     return allSegments;
   }
@@ -124,12 +239,12 @@ public:
                                              const GraphicalWireSegment* other);
 
   /**
-   * @brief Bind an external callback to react to topology events.
-   * By binding this, DiagramScene can automatically map new underlying hardware logic.
+   * @brief Sets the callback for geometry, connectivity, and electrical changes.
+   * @param cb Callback receiving combined change flags; an empty callback disables delivery.
    */
-  void setTopologyChangedCallback(std::function<void()> cb)
+  void setChangedCallback(ChangeCallback cb)
   {
-    onTopologyChanged = std::move(cb);
+    onChanged = std::move(cb);
   }
 
   /**
@@ -138,29 +253,52 @@ public:
    */
   void notifyTopologyChanged() const
   {
-    if (onTopologyChanged) {
-      onTopologyChanged();
-    }
+    notify(Change::Connectivity);
   }
+
+  /** @brief Notifies listeners of an electrical change, deferring delivery within a batch. */
+  void notifyElectricalChanged() const { notify(Change::Electrical); }
 
   void clear();
 
 private:
+  // Parallel edges represent distinct routed pieces between the same contacts.
+  using TopologyGraph = boost::adjacency_list<boost::vecS, boost::vecS,
+                                             boost::undirectedS, uint64_t, uint64_t>;
+  using VertexDescriptor = boost::graph_traits<TopologyGraph>::vertex_descriptor;
+  TopologyGraph topologyGraph;
+  std::map<uint64_t, VertexDescriptor> vertexDescriptors;
+
   std::vector<std::shared_ptr<GraphicalWire>> managedWires;
   std::vector<GraphicalWireSegment*>          allSegments;
 
   /** @brief Callback invoked when wire topology changes (splits, merges, drags) */
-  std::function<void()> onTopologyChanged;
+  ChangeCallback onChanged;
+  unsigned int batchDepth = 0;
+  bool rebuildPending = false;
+  mutable uint8_t pendingChanges = 0;
+  std::vector<uint64_t> pendingEdits;
+  TopologyVertexMap vertices;
+  TopologyEdgeMap edges;
+  std::map<uint64_t, SegmentTopology> segmentTopology;
+  uint64_t nextVertexId = 1;
+  uint64_t nextEdgeId = 1;
+  PortAnchorProvider portAnchors;
 
-  // Merge all wires from `src` into `dst`, then destroy `src`.
-  void mergeWires(GraphicalWire* dst, GraphicalWire* src);
-
-  // Fuse collinear segments
-  void fuseSegments(GraphicalWireSegment* a, GraphicalWireSegment* b);
-
-  // Uses BFS to determine if a wire's segments have become disconnected.
-  // Returns true if a split occurred, false otherwise.
-  bool evaluateWireSplits(GraphicalWire* wire);
+  /** @brief Updates endpoint junction flags for the supplied registered segments. */
+  void calculateJunctionsFor(std::span<GraphicalWireSegment* const> segments) const;
+  /** @brief Finishes one batch level and flushes pending edits and changes at the outermost level. */
+  void finishBatch();
+  /** @brief Drops one batch level and clears pending work when no batch remains. */
+  void discardBatch() noexcept;
+  /** @brief Delivers change flags to the callback or accumulates them in an active batch. */
+  void notify(Change change) const;
+  /** @brief Returns the registered segment with the given identifier, or nullptr. */
+  GraphicalWireSegment* registeredSegment(uint64_t id) const;
+  /** @brief Creates a topology vertex and attaches matching port anchors. */
+  uint64_t createVertex(QPointF position, VertexKind kind = VertexKind::FreeEndpoint);
+  /** @brief Rebuilds graph edges by splitting each segment route at its electrical vertices. */
+  void rebuildTopologyEdges();
 };
 
 }  // namespace SILICON::ui

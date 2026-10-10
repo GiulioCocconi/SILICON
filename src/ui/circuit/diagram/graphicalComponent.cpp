@@ -183,10 +183,14 @@ void GraphicalComponent::setPorts(const std::vector<PortPair>& busToPortInputs,
     this->outputPorts.push_back(p);
     this->setPortLine(p);
   }
+  if (auto* diagram = qobject_cast<DiagramScene*>(scene()))
+    diagram->requestConnectionsRefresh();
 }
 
 void GraphicalComponent::clearPorts()
 {
+  if (auto* diagram = qobject_cast<DiagramScene*>(scene()))
+    diagram->requestConnectionsRefresh();
   prepareGeometryChange();
 
   auto deletePorts = [](std::vector<Port*>& ports) {

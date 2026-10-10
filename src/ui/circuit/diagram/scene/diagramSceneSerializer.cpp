@@ -24,7 +24,6 @@
 #include <limits>
 #include <map>
 #include <memory>
-#include <span>
 #include <stdexcept>
 #include <unordered_map>
 #include <unordered_set>
@@ -180,20 +179,14 @@ namespace {
     auto& wiresJson = payload["visual"]["wires"];
     if (!wiresJson.is_array())
       return;
-
     for (auto& wireJson : wiresJson) {
       if (!wireJson.contains("wireId"))
         continue;
-
-      const auto oldWireId = wireJson["wireId"].get<uint64_t>();
-      auto&      newWireId = wireIdRemap[oldWireId];
-
-      if (newWireId == 0)
-        newWireId = GraphicalItem::generateUiId();
-
-      // Distinct pasted wire groups must not reuse the source bus identity, otherwise
-      // separate copies can be re-merged electrically by later topology reconstruction.
-      wireJson["wireId"] = newWireId;
+      const auto oldId = wireJson["wireId"].get<uint64_t>();
+      auto& newId = wireIdRemap[oldId];
+      if (!newId)
+        newId = GraphicalItem::generateUiId();
+      wireJson["wireId"] = newId;
     }
   }
 
@@ -230,7 +223,7 @@ namespace {
                                                          const QPointF&        offset,
                                                          const bool requireWireId)
   {
-    // Parses visual wire geometry while preserving shared wire IDs within the payload.
+    // Saved wire groups are read for compatibility; geometry determines connectivity.
     std::vector<PendingWireSegment> wires;
 
     const auto visualWires = visual.find("wires");
@@ -239,11 +232,9 @@ namespace {
 
     wires.reserve(visualWires->size());
     uint64_t fallbackWireId = 1;
-
     for (const auto& wireJson : *visualWires) {
       if (!wireJson.contains("wireId") && requireWireId)
         throw std::runtime_error("Wire segment missing wireId");
-
       if (!wireJson.contains("points") || !wireJson["points"].is_array())
         continue;
 
@@ -283,26 +274,22 @@ namespace {
   void addVisualWires(QGraphicsScene& scene, WireManager& wireManager,
                       std::vector<PendingWireSegment> wires, const bool selectInserted)
   {
-    // Recreates wire objects lazily so segments with the same serialized ID share a
-    // bus.
     std::map<uint64_t, std::shared_ptr<GraphicalWire>> wireIdToWire;
-
     for (auto& pending : wires) {
       auto* segment = new GraphicalWireSegment(pending.points.front());
       segment->setUiId(pending.uiId);
       segment->setPoints(std::move(pending.points));
 
-      // Rebuild each serialized wire group exactly once so all of its segments share
-      // the same GraphicalWire and therefore the same logical bus.
       auto& wire = wireIdToWire[pending.wireId];
       if (!wire)
         wire = wireManager.createWire(1);
 
       scene.addItem(segment);
-      segment->setGraphicalWire(wire.get(), false);
+      segment->setGraphicalWire(wire.get());
       wireManager.addSegment(segment, false);
       segment->setSelected(selectInserted);
     }
+    wireManager.rebuildFromGeometry();
   }
 
   std::vector<std::unique_ptr<GraphicalComponent>>
@@ -369,14 +356,11 @@ std::string DiagramSceneSerializer::serialize() const
 {
   uiLogger.info("Serializing the scene...");
   nlohmann::ordered_json   j;
-  std::shared_ptr<Circuit> activeCircuit = scene.getCircuit();
-
-  if (!activeCircuit) {
-    const bool successfullWireCalculation = scene.calculateWiresForComponents();
-
-    if (!successfullWireCalculation)
-      throw std::runtime_error("Cannot serialize!\n Unable to calculate wires!");
-
+  std::shared_ptr<Circuit> activeCircuit;
+  // The visual drawing and current component properties are the source of truth.
+  // refreshConnections leaves invalid nets disconnected, so saving remains safe.
+  static_cast<void>(scene.currentConnectionReport());
+  {
     Component_set coreComps;
     for (auto* item : scene.items()) {
       auto* comp =
@@ -566,14 +550,16 @@ void DiagramSceneSerializer::applyDeserialize(std::shared_ptr<SceneLoadPlan> pla
     return;
   }
 
-  addVisualWires(scene, scene.getWireManager(), std::move(plan->wires), false);
+  const bool hasWires = !plan->wires.empty();
   addVisualComponents(scene, std::move(plan->components), false);
+  addVisualWires(scene, scene.getWireManager(), std::move(plan->wires), false);
 
   // Once a visual scene exists, its grouped wires define the editable topology. Rebuild
   // component connections immediately so bus widths and wire identities agree before
   // the first simulation or export.
   scene.getWireManager().calculateJunctions();
-  scene.updateSceneAfterEdit();
+  if (!hasWires)
+    scene.updateSceneAfterEdit();
 
   scene.setInteractionMode(InteractionMode::NORMAL_MODE);
 }
@@ -631,11 +617,16 @@ bool DiagramSceneSerializer::insertSelection(const nlohmann::json&    payload,
 
   scene.clearSelection();
 
+  const bool hasWires = !pendingWires.empty();
+  const bool hasComponents = !pendingComponents.empty();
   addVisualComponents(scene, std::move(pendingComponents), true);
   addVisualWires(scene, scene.getWireManager(), std::move(pendingWires), true);
+  if (hasComponents)
+    scene.getWireManager().refreshPortAnchors();
 
   scene.getWireManager().calculateJunctions();
-  scene.updateSceneAfterEdit();
+  if (!hasWires)
+    scene.updateSceneAfterEdit();
   return true;
 }
 

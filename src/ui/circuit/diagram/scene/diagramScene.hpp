@@ -18,11 +18,14 @@
 #pragma once
 
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <QCursor>
@@ -36,6 +39,8 @@
 #include <QRect>
 #include <QStringList>
 #include <QUndoStack>
+#include <algorithm>
+#include <ranges>
 
 #include <nlohmann/json.hpp>
 
@@ -44,6 +49,7 @@
 #include <core/siliconWaveform.hpp>
 
 #include <ui/circuit/diagram/wireManager.hpp>
+#include <ui/circuit/diagram/scene/diagramSceneEdit.hpp>
 #include <ui/circuit/editor/componentSearchBox.hpp>
 
 namespace SILICON::project {
@@ -58,10 +64,34 @@ class DiagramSceneSerializer;
 class DiagramSceneSimulationController;
 class DocumentNavigator;
 class GraphicalComponent;
+class Port;
+class GraphicalWire;
 class GraphicalItem;
 class GraphicalWireSegment;
+class InteractiveWireRouter;
+struct RoutedSegment;
 class GUIComponentFactory;
 class SceneLoadPlan;
+
+struct NetConnection {
+  unsigned int width = 1;
+  std::vector<Port*> affectedPorts;
+  std::optional<QString> error;
+
+  /** @brief Returns whether this net has no connection error. */
+  [[nodiscard]] bool isValid() const
+  {
+    return !error.has_value();
+  }
+};
+
+struct ConnectionReport {
+  std::vector<NetConnection> nets;
+  /** @brief Returns whether every net in the report has no connection error. */
+  [[nodiscard]] bool valid() const {
+    return std::ranges::all_of(nets, [](const auto& net) { return net.isValid(); });
+  }
+};
 
 /**
  * @class DiagramScene
@@ -221,6 +251,42 @@ public:
   [[nodiscard]] QUndoStack*              getUndoStack() const { return undoStack; }
   [[nodiscard]] WireManager&             getWireManager() { return wireManager; }
   [[nodiscard]] const WireManager&       getWireManager() const { return wireManager; }
+  /**
+   * @brief Starts dragging the wire handle hit at a local position.
+   * @param segment Segment whose handle is being dragged.
+   * @param scenePos Initial mouse position in scene coordinates.
+   * @param localPos Hit-test position in segment coordinates.
+   * @return True if a handle can be dragged in the current interaction mode.
+   */
+  bool beginWireDrag(GraphicalWireSegment* segment, QPointF scenePos, QPointF localPos);
+  /** @brief Previews the active segment drag at the given scene position. */
+  void updateWireDrag(GraphicalWireSegment* segment, QPointF scenePos);
+  /** @brief Commits the active segment drag and records its undo command. */
+  void finishWireDrag(GraphicalWireSegment* segment);
+  /** @brief Restores original wire routes and clears the active wire drag. */
+  void cancelWireDrag();
+  /** @brief Returns whether the segment owns the active wire drag. */
+  [[nodiscard]] bool isDraggingWire(const GraphicalWireSegment* segment) const;
+  /** @brief Commits the component gesture and returns its before and after wire routes. */
+  [[nodiscard]] std::vector<WireRouteChange> finishComponentDrag();
+  /**
+   * @brief Applies recorded wire routes and rebuilds connectivity.
+   * @param changes Before and after snapshots to apply.
+   * @param useAfter True applies the after state; false applies the before state.
+   * @param endpointEdit Reserved topology snapshot; currently unused.
+   */
+  void applyWireRouteChanges(std::span<const WireRouteChange> changes, bool useAfter,
+                             const WireEndpointEdit& endpointEdit = {});
+  /**
+   * @brief Applies recorded item positions and wire routes and rebuilds connectivity.
+   * @param moves Before and after snapshots to apply.
+   * @param wires Wire route snapshots accompanying the item moves.
+   * @param useAfter True applies the after state; false applies the before state.
+   * @param topology Reserved topology snapshot; currently unused.
+   */
+  void applyItemMoves(std::span<const ItemPositionChange> moves,
+                      std::span<const WireRouteChange> wires, bool useAfter,
+                      const WireEndpointEdit& topology = {});
   [[nodiscard]] std::shared_ptr<Circuit> getCircuit() const { return circuit; }
 
   /** @brief Replaces the derived topology cache. */
@@ -311,6 +377,15 @@ public:
   void                         unregisterGraphicalItem(GraphicalItem* item);
   [[nodiscard]] bool itemCollisionChecksEnabled() const { return isItemCollisionEnabled; }
   void setItemCollisionChecksEnabled(bool enabled) { isItemCollisionEnabled = enabled; }
+  /** @brief Returns whether the component participates in an active component or mixed drag. */
+  [[nodiscard]] bool isDraggingComponent(const GraphicalComponent* component) const;
+  /** @brief Returns whether a wire was attached to the component when its drag began. */
+  [[nodiscard]] bool isWireAttachedToDraggedComponent(
+      const GraphicalComponent* component, const GraphicalWire* wire) const;
+  /** @brief Returns whether the selection includes a wire and a component, or multiple wires. */
+  [[nodiscard]] bool hasWireGroupSelection() const;
+  /** @brief Commits a mixed selection drag and returns topology and net changes for undo. */
+  [[nodiscard]] WireEndpointEdit finishMixedDrag();
 
   /**
    * @brief Deserializes a full scene from JSON.
@@ -436,22 +511,14 @@ public slots:
    */
   void handleInputToggled(Bus targetBus, BusValue value, Component_weakPtr source);
 
-  /**
-   * @brief Calculates wire connections for all components.
-   *
-   * Computes the logical bus connections between components
-   * and wires based on spatial collisions. If assigning a wire bus to a component
-   * input fails, an error message is shown and the partially calculated topology must
-   * not be used to start or refresh simulation.
-   *
-   * @return True when all component inputs and outputs were assigned successfully.
-   */
+  /** Returns the validity of the live scene connection report. */
   [[nodiscard]] bool calculateWiresForComponents();
-
-  /**
-   * @brief Clears visual input-assignment error markers from all ports.
-   */
-  void clearInputAssignmentErrors();
+  /** @brief Returns the cached connection report, refreshing it first when dirty. */
+  const ConnectionReport& currentConnectionReport();
+  /** @brief Marks connections dirty and schedules one refresh on the event loop. */
+  void requestConnectionsRefresh();
+  /** @brief Rebuilds the connection report, logical bindings, and visual error markers. */
+  void refreshConnections();
 
 signals:
   void logsClearRequested();
@@ -491,6 +558,8 @@ private:
    * @brief Lifecycle helper methods for interaction modes.
    */
   [[nodiscard]] bool isWireCompletionPoint(QPointF scenePoint) const;
+  /** @brief Updates the route preview for the wire being drawn toward a scene position. */
+  void               updateWirePreview(QPointF scenePoint);
   void               finalizeWireCreation();
   void               enterComponentPlacingMode();
   void               exitComponentPlacingMode();
@@ -506,6 +575,9 @@ private:
    * @brief Handles mouse press for wire drawing and component placement.
    */
   void mousePressEvent(QGraphicsSceneMouseEvent* mouseEvent) override;
+
+  /** Select only the clicked component or wire after its drag handling finishes. */
+  void mouseReleaseEvent(QGraphicsSceneMouseEvent* mouseEvent) override;
 
   /**
    * @brief Handles key presses for mode changes.
@@ -534,12 +606,96 @@ private:
 
   /** @brief Wire segment being drawn */
   GraphicalWireSegment* wireSegmentToBeDrawn = nullptr;
+  bool wirePreviewRouteValid = true;
 
   /** @brief Component search box */
   ComponentSearchBox* csb = nullptr;
 
   /** @brief Wire manager for wire topology */
   WireManager wireManager;
+  ConnectionReport connectionReport;
+  bool connectionReportDirty = true;
+  bool refreshingConnections = false;
+  bool connectionRefreshScheduled = false;
+  /** @brief Inspects the combined wire group for width and driver compatibility. */
+  [[nodiscard]] NetConnection inspectConnection(const std::vector<GraphicalWire*>& wires) const;
+
+  /** @brief Creates a router snapshot from current components, routes, and electrical vertices. */
+  [[nodiscard]] std::unique_ptr<InteractiveWireRouter> makeInteractiveRouter() const;
+  /** @brief Resolves a scene position to a nearby port, wire, or grid point. */
+  [[nodiscard]] QPointF resolveWireTarget(QPointF scenePoint) const;
+  /** @brief Captures selected component positions, attached wires, and routing geometry. */
+  void beginComponentDrag();
+  /** @brief Previews component moves and restores the last valid positions if routing fails. */
+  void updateComponentDrag();
+  /** @brief Restores original component positions and wire geometry. */
+  void cancelComponentDrag();
+  /** @brief Captures item positions, attached wires, and topology for a mixed selection drag. */
+  void beginMixedDrag();
+  /** @brief Validates mixed selection movement and retains the last valid positions. */
+  void updateMixedDrag();
+  /** @brief Restores original item positions and clears the mixed drag state. */
+  void cancelMixedDrag();
+  struct RouteEditState;
+  /** @brief Applies preview routes while recording original geometry in the edit state. */
+  void applyRoutingPreview(const std::vector<RoutedSegment>& routes,
+                           RouteEditState& state);
+
+  struct RouteEditState {
+    struct Contact {
+      uint64_t segmentId;
+      bool first;
+      uint64_t neighborId = 0;
+      GraphicalComponent* component = nullptr;
+      Port* port = nullptr;
+    };
+    std::vector<std::pair<uint64_t, std::vector<QPointF>>> originals;
+    WireManager* manager = nullptr;
+    std::vector<std::unique_ptr<WireManager::Edit>> edits;
+    std::vector<Contact> contacts;
+    std::map<uint64_t, WireManager::SegmentTopology> topologyBefore;
+    std::map<uint64_t, WireEndpointEdit::NetState> netBefore;
+    /** @brief Captures existing endpoint contacts, topology, and net identities for the gesture. */
+    void captureContacts(const DiagramScene& scene);
+    /** @brief Records a segment's original route and creates its preview edit once. */
+    void remember(WireManager& manager, GraphicalWireSegment* segment);
+    /** @brief Cancels pending edits and restores original segment routes. */
+    void cancel();
+    /** @brief Commits pending segment edits as a batch and rebuilds changed topology. */
+    void commit(WireManager& manager);
+    /** @brief Returns before and after snapshots for routes changed during the gesture. */
+    [[nodiscard]] std::vector<WireRouteChange> changes(const DiagramScene& scene) const;
+  };
+
+  struct ComponentDragState {
+    std::unique_ptr<InteractiveWireRouter> router;
+    std::vector<std::pair<GraphicalComponent*, QPointF>> initialPositions;
+    std::vector<std::pair<GraphicalComponent*, QPointF>> validPositions;
+    std::unordered_map<const GraphicalComponent*,
+                       std::unordered_set<const GraphicalWire*>> attachedWires;
+    RouteEditState routes;
+  } componentDrag;
+
+  struct MixedDragItem {
+    GraphicalItem* item = nullptr;
+    QPointF originalPosition;
+    QPointF validPosition;
+  };
+  std::vector<MixedDragItem> mixedDrag;
+  std::unordered_map<const GraphicalComponent*,
+                     std::unordered_set<const GraphicalWire*>> mixedDragAttachedWires;
+  std::map<uint64_t, WireManager::SegmentTopology> mixedDragTopologyBefore;
+  std::map<uint64_t, WireEndpointEdit::NetState> mixedDragNetBefore;
+
+  struct WireDragState {
+    GraphicalWireSegment* segment = nullptr;
+    WireDragKind type = WireDragKind::Bend;
+    size_t index = 0;
+    QPointF start;
+    std::vector<QPointF> originalPoints;
+    std::unique_ptr<InteractiveWireRouter> router;
+    RouteEditState routes;
+  } wireDrag;
 
   /** @brief Last placed component type for repeat placement */
   std::string lastPlacedComponentType;
