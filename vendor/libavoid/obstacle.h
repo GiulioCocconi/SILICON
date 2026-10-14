@@ -66,7 +66,7 @@ class Obstacle
         //! @param[in]  poly    A Polygon representing the boundary of the
         //!                     shape.
         //! @param[in]  id      A unique positive integer ID for the shape.
-        Obstacle(Router *router, Polygon poly, const unsigned int id = 0);
+        Obstacle(Router *router, const Polygon& poly, const unsigned int id = 0);
 
 // To prevent C++ objects from being destroyed in garbage collected languages
 // when the libraries are called from SWIG, we hide the declarations of the

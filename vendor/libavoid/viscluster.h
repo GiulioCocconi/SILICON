@@ -60,16 +60,17 @@ class AVOID_EXPORT ClusterRef
     public:
         //! @brief  Cluster reference constructor.
         //!
-        //! Creates a cluster object reference, but does not yet place it
-        //! into the Router scene.  You can add or remove the cluster to/from
-        //! the scene with Router::addCluster() and Router::delCluster().  The
-        //! cluster can effectively be moved with ClusterRef::setNewPoly()
-        //! method.
+        //! Creates a cluster object reference and adds it to the router scene.
+        //! Ownership belongs to the router.  Remove and free the cluster with
+        //! Router::deleteCluster().  The cluster can effectively be moved
+        //! with ClusterRef::setNewPoly().
         //!
         //! The poly argument should be used to specify a polygon boundary.
         //! The rectangular boundary will be automatically generated from this.
         //! The polygon boundary could be a convex hull consisting of points
         //! from the boundaries of shapes.
+        //! The input polygon can be temporary.  Points are copied or reference
+        //! shapes owned by the router; the input polygon itself is not retained.
         //!
         //! @note Regarding IDs:
         //!       You can let libavoid manually handle IDs by not specifying
@@ -86,13 +87,14 @@ class AVOID_EXPORT ClusterRef
         //! @param[in]  id      Optionally, a positive integer ID unique
         //!                     among all objects.
         //!
-        ClusterRef(Router *router, Polygon& poly, const unsigned int id = 0);
+        ClusterRef(Router *router, const Polygon& poly, const unsigned int id = 0);
 
 // To prevent C++ objects from being destroyed in garbage collected languages
 // when the libraries are called from SWIG, we hide the declarations of the
 // destructors and prevent generation of default destructors.
 #ifndef SWIG
         //! @brief  Cluster reference destructor.
+        //! Ownership belongs to the router.  Use Router::deleteCluster().
         ~ClusterRef();
 #endif
         //! @brief   Update the polygon boundary for this cluster.
@@ -102,7 +104,7 @@ class AVOID_EXPORT ClusterRef
         //!
         //! @param[in]  poly    A Polygon representing the boundary of the
         //!                     cluster.
-        void setNewPoly(Polygon& poly);
+        void setNewPoly(const Polygon& poly);
         //! @brief   Returns the ID of this cluster.
         //! @returns The ID of the cluster.
         unsigned int id(void) const;
@@ -110,10 +112,12 @@ class AVOID_EXPORT ClusterRef
         //!          cluster.
         //! @returns A reference to the polygon boundary of the cluster.
         ReferencingPolygon& polygon(void);
+        const ReferencingPolygon& polygon(void) const;
         //! @brief   Returns a reference to the rectangular boundary of this
         //!          cluster.
         //! @returns A reference to the rectangular boundary of the cluster.
         Polygon& rectangularPolygon(void);
+        const Polygon& rectangularPolygon(void) const;
         //! @brief   Returns a pointer to the router scene this cluster is in.
         //! @returns A pointer to the router scene for this cluster.
         Router *router(void) const;
