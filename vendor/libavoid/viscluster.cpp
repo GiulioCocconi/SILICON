@@ -33,7 +33,7 @@
 namespace Avoid {
 
 
-ClusterRef::ClusterRef(Router *router, Polygon& polygon, const unsigned int id)
+ClusterRef::ClusterRef(Router *router, const Polygon& polygon, const unsigned int id)
     : m_router(router),
       m_polygon(polygon, router),
       m_rectangular_polygon(m_polygon.boundingRectPolygon()),
@@ -80,7 +80,7 @@ void ClusterRef::makeInactive(void)
 }
 
 
-void ClusterRef::setNewPoly(Polygon& poly)
+void ClusterRef::setNewPoly(const Polygon& poly)
 {
     m_polygon = ReferencingPolygon(poly, m_router);
     m_rectangular_polygon = m_polygon.boundingRectPolygon();
@@ -98,8 +98,18 @@ ReferencingPolygon& ClusterRef::polygon(void)
     return m_polygon;
 }
 
+const ReferencingPolygon& ClusterRef::polygon(void) const
+{
+    return m_polygon;
+}
+
 
 Polygon& ClusterRef::rectangularPolygon(void)
+{
+    return m_rectangular_polygon;
+}
+
+const Polygon& ClusterRef::rectangularPolygon(void) const
 {
     return m_rectangular_polygon;
 }

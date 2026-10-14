@@ -36,7 +36,7 @@
 namespace Avoid {
 
 
-ShapeRef::ShapeRef(Router *router, Polygon& ply, const unsigned int id)
+ShapeRef::ShapeRef(Router *router, const Polygon& ply, const unsigned int id)
     : Obstacle(router, ply, id)
 {
     m_router->addShape(this);
