@@ -100,6 +100,7 @@ class AVOID_EXPORT ShapeRef : public Obstacle
         //! Specifying such a buffer results in connectors leaving a small
         //! amount of space around shapes, rather than touching them on the
         //! corners or edges.
+        //! The polygon is copied; the caller does not need to keep it alive.
         //!
         //! @note Regarding IDs:
         //!       You can let libavoid manually handle IDs by not specifying
@@ -116,7 +117,7 @@ class AVOID_EXPORT ShapeRef : public Obstacle
         //! @param[in]  id      Optionally, a positive integer ID unique
         //!                     among all objects.
         //!
-        ShapeRef(Router *router, Polygon& poly, const unsigned int id = 0);
+        ShapeRef(Router *router, const Polygon& poly, const unsigned int id = 0);
 
 // To prevent C++ objects from being destroyed in garbage collected languages
 // when the libraries are called from SWIG, we hide the declarations of the

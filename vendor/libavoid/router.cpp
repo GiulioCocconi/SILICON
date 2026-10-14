@@ -156,6 +156,14 @@ Router::~Router()
         conn = connRefs.begin();
     }
 
+    // Clusters can reference obstacle polygons; destroy them first.
+    while (!clusterRefs.empty())
+    {
+        ClusterRef *cluster = clusterRefs.front();
+        cluster->makeInactive();
+        delete cluster;
+    }
+
     // Remove remaining obstacles (shapes and junctions).
     ObstacleList::iterator obstacle =  m_obstacles.begin();
     while (obstacle != m_obstacles.end())
@@ -1164,6 +1172,10 @@ void Router::deleteCluster(ClusterRef *cluster)
     unsigned int pid = cluster->id();
 
     adjustClustersWithDel(pid);
+
+    m_currently_calling_destructors = true;
+    delete cluster;
+    m_currently_calling_destructors = false;
 }
 
 

@@ -32,7 +32,7 @@
 namespace Avoid {
 
 
-Obstacle::Obstacle(Router *router, Polygon ply, const unsigned int id)
+Obstacle::Obstacle(Router *router, const Polygon& ply, const unsigned int id)
     : m_router(router),
       m_polygon(ply),
       m_active(false),
