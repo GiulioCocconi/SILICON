@@ -129,7 +129,7 @@ void Component::handleInputSizeChange(const unsigned int index,
 }
 
 void Component::replaceBus(std::vector<Bus>& busCollection, const unsigned int index,
-                           Bus newBus, bool isInput)
+                           Bus newBus)
 {
   if (busCollection.size() > index && busCollection[index] == newBus)
     return;
@@ -201,7 +201,7 @@ void Component::setInput(const unsigned int index, const Bus& bus, const bool ch
 
   if (checkSize)
     handleInputSizeChange(index, bus.size());
-  replaceBus(this->inputs, index, bus, true);
+  replaceBus(this->inputs, index, bus);
   notifyIOListeners();
 }
 
@@ -209,7 +209,7 @@ void Component::setOutput(const unsigned int index, const Bus& bus)
 {
   if (this->outputs.size() > index && this->outputs[index] == bus)
     return;
-  replaceBus(this->outputs, index, bus, false);
+  replaceBus(this->outputs, index, bus);
   notifyIOListeners();
 }
 
@@ -219,7 +219,7 @@ void Component::setInputs(const std::vector<Bus>& newInputs)
     return;
   this->inputs.resize(newInputs.size());
   for (auto [index, bus] : newInputs | SILICON::views::enumerate) {
-    replaceBus(this->inputs, index, bus, true);
+    replaceBus(this->inputs, index, bus);
   }
   notifyIOListeners();
 }
@@ -230,25 +230,21 @@ void Component::setOutputs(const std::vector<Bus>& newOutputs)
     return;
   this->outputs.resize(newOutputs.size());
   for (auto [index, bus] : newOutputs | SILICON::views::enumerate) {
-    replaceBus(this->outputs, index, bus, false);
+    replaceBus(this->outputs, index, bus);
   }
   notifyIOListeners();
 }
 
 bool Component::isConnectedTo(const Bus& b) const
 {
-  return (std::ranges::find(inputs, b) != inputs.end()
-          || std::ranges::find(outputs, b) != outputs.end());
+  return std::ranges::contains(allBuses(), b);
 }
 
 void Component::clearWires()
 {
-  for (auto [index, bus] : this->outputs | SILICON::views::enumerate) {
-    replaceBus(this->outputs, index, Bus(std::vector<Wire_ptr>(bus.size())), false);
-  }
-  for (auto [index, bus] : this->inputs | SILICON::views::enumerate) {
-    replaceBus(this->inputs, index, Bus(std::vector<Wire_ptr>(bus.size())), true);
-  }
+  for (auto& bus :
+       std::array{std::span<Bus>(inputs), std::span<Bus>(outputs)} | std::views::join)
+    bus = Bus(std::vector<Wire_ptr>(bus.size()));
   notifyIOListeners();
 }
 

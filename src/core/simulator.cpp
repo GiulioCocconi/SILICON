@@ -141,66 +141,36 @@ Simulator::EdgeType Simulator::edgeType(const Context& context, const Wire_ptr& 
   return EdgeType::UNKNOWN;
 }
 
-Simulator::Simulator(std::shared_ptr<Circuit> c, uint64_t initialSimulationTime,
-                     bool isInteractive, std::unique_ptr<CircuitWriter> fstWriter,
-                     CancellationCheck isCancelled)
+Simulator::Simulator(std::shared_ptr<const Circuit> c, uint64_t initialSimulationTime,
+                     std::unique_ptr<CircuitWriter> fstWriter,
+                     CancellationCheck              isCancelled)
   : circuit(std::move(c)), fstWriter(std::move(fstWriter))
 {
-  if (!circuit) {
+  if (!circuit)
     throw std::invalid_argument("Simulator requires a valid Circuit pointer");
-  }
 
-  // Arm the live-editing observer chain
+  initializeExecutionPlan();
 
-  if (isInteractive) {
-    circuit->makeInteractive();
-  }
+  // Initial evaluation participates in the same cancellation contract as later runs.
+  const Context initialContext{true, {}};
+  if (!evaluateExecutionPlan(executionPlan, initialContext, isCancelled))
+    return;
+  emitTraceSnapshot();
 
-  topologyListenerId = circuit->addTopologyListener([this]() { recompile(); });
-  try {
-    recompile();
-
-    // Construction can be expensive for large circuits, so it participates in the
-    // same cooperative cancellation contract as later runs.
-    const Context initialContext{true, {}};
-    if (!evaluateExecutionPlan(executionPlan, initialContext, isCancelled))
-      return;
-    emitTraceSnapshot();
-
-    if (initialSimulationTime != 0)
-      static_cast<void>(run(initialSimulationTime, std::move(isCancelled)));
-  } catch (...) {
-    circuit->removeTopologyListener(topologyListenerId);
-    topologyListenerId = 0;
-    throw;
-  }
+  if (initialSimulationTime != 0)
+    static_cast<void>(run(initialSimulationTime, std::move(isCancelled)));
 }
 
-Simulator::~Simulator()
+void Simulator::initializeExecutionPlan()
 {
-  if (circuit && topologyListenerId != 0)
-    circuit->removeTopologyListener(topologyListenerId);
-}
-
-void Simulator::recompile()
-{
-  executionPlan.clear();
-  forwardExecutionStepsByWire.clear();
-  pendingTransitions.clear();
-  stagedSequentialTransitions.clear();
-  eventQueue = {};
-
   auto compiledBlocks = circuit->splitCyclic();
   executionPlan       = compileExecutionPlan(compiledBlocks);
 
   std::unordered_map<const Component*, std::size_t> componentToStep;
   for (const auto& [stepIndex, executionStep] :
        executionPlan | SILICON::views::enumerate) {
-    for (const auto& weakComp : executionStep.components) {
-      if (auto comp = weakComp.lock()) {
-        componentToStep[comp.get()] = stepIndex;
-      }
-    }
+    for (const auto& comp : executionStep.components)
+      componentToStep[comp.get()] = stepIndex;
   }
 
   std::vector<std::vector<std::size_t>> stepGraph(executionPlan.size());
@@ -525,12 +495,12 @@ Simulator::compileExecutionPlan(std::span<const Circuit::SimulationBlock> blocks
     if (!block.isCyclic) {
       for (const auto& weakComp : block.executionOrder) {
         if (auto comp = weakComp.lock())
-          plan.emplace_back(false, std::vector<Component_weakPtr>{comp});
+          plan.emplace_back(false, std::vector<Component_ptr>{std::move(comp)});
       }
       continue;
     }
 
-    std::vector<Component_weakPtr> cyclicComps;
+    std::vector<Component_ptr>     cyclicComps;
     const auto&                    blockGraph = block.circuit.getGraph();
     auto [viBegin, viEnd]                     = boost::vertices(blockGraph);
     for (const auto vertex : std::ranges::subrange(viBegin, viEnd)) {
@@ -544,8 +514,6 @@ Simulator::compileExecutionPlan(std::span<const Circuit::SimulationBlock> blocks
 
       auto outputWires =
           step.components
-          | std::views::transform([](const auto& weakComp) { return weakComp.lock(); })
-          | std::views::filter([](const auto& comp) { return comp != nullptr; })
           | std::views::transform([](const auto& comp) -> const std::vector<Bus>& {
               return comp->outputBuses();
             })
@@ -572,21 +540,14 @@ bool Simulator::evaluateExecutionStep(const ExecutionStep& step, const Context& 
     return false;
 
   if (!step.isCyclic) {
-    for (const auto& weakComp : step.components) {
+    for (const auto& comp : step.components) {
       if (cancellationRequested(isCancelled))
         return false;
 
-      if (auto comp = weakComp.lock())
-        comp->simulate(*this, context);
+      comp->simulate(*this, context);
     }
     return true;
   }
-
-  auto cyclicComps =
-      step.components
-      | std::views::transform([](const auto& weakComp) { return weakComp.lock(); })
-      | std::views::filter([](const auto& comp) { return comp != nullptr; })
-      | std::ranges::to<std::vector>();
 
   auto&       staging               = *step.cyclicStaging;
   auto* const previousCyclicStaging = activeCyclicStaging;
@@ -602,7 +563,7 @@ bool Simulator::evaluateExecutionStep(const ExecutionStep& step, const Context& 
 
     // No wire changes during evaluation, so every component reads the same s_k.
     // Applying the collected writes afterward produces s_(k+1) in one commit.
-    for (const auto& comp : cyclicComps) {
+    for (const auto& comp : step.components) {
       if (cancellationRequested(isCancelled))
         return false;
       comp->simulate(*this, context);

@@ -51,8 +51,7 @@ bool wireTouchesComponentPort(const GraphicalWire& wire,
     return false;
   };
 
-  return std::ranges::any_of(component.getInputPorts(), touchesPort)
-         || std::ranges::any_of(component.getOutputPorts(), touchesPort);
+  return std::ranges::any_of(component.getPorts(), touchesPort);
 }
 
 }

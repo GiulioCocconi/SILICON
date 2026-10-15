@@ -17,6 +17,10 @@
 
 #pragma once
 
+#include <array>
+#include <ranges>
+#include <span>
+
 #include <nlohmann/json.hpp>
 
 #include <ui/circuit/diagram/scene/diagramScene.hpp>
@@ -231,6 +235,17 @@ public:
 
   /** @brief Borrows output ports; copy before replacing the component ports. */
   [[nodiscard]] const std::vector<Port*>& getOutputPorts() const { return outputPorts; };
+
+  /**
+   * @brief Borrows every port, inputs first, without copying or deduplicating.
+   * @note Replacing ports invalidates the view. The component must outlive it.
+   */
+  [[nodiscard]] auto getPorts() const
+  {
+    return std::array{std::span<Port* const>(inputPorts),
+                      std::span<Port* const>(outputPorts)}
+           | std::views::join;
+  }
 
   /**
    * @brief Gets the component type name for serialization.

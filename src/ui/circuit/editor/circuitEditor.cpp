@@ -76,9 +76,15 @@ CircuitEditor::CircuitEditor(ProjectSession& session, QWidget* parent,
   // reports them through the workspace. The clipboard is not observed here: the workspace
   // watches it once and this editor only answers what its own contents mean.
   const auto reportEditState = [notifications] { notifications.editStateChanged(); };
+  const auto reportEditHistory = [notifications, reportEditState] {
+    reportEditState();
+    notifications.historyChanged();
+  };
+
   callbacks.connect(diagramScene.get(), &DiagramScene::selectionChanged, reportEditState);
   callbacks.connect(diagramScene.get(), &DiagramScene::modeChanged,
-                   reportEditState);
+                   reportEditHistory);
+
 }
 
 CircuitEditor::~CircuitEditor() = default;
@@ -143,21 +149,23 @@ void CircuitEditor::reset()
 }
 void CircuitEditor::undo()
 {
-  if (projectHistory)
+  if (canUndo())
     projectHistory->undo();
 }
 void CircuitEditor::redo()
 {
-  if (projectHistory)
+  if (canRedo())
     projectHistory->redo();
 }
 bool CircuitEditor::canUndo() const
 {
-  return projectHistory && projectHistory->canUndo();
+  return diagramScene->getInteractionMode() != InteractionMode::SIMULATION_MODE
+         && projectHistory && projectHistory->canUndo();
 }
 bool CircuitEditor::canRedo() const
 {
-  return projectHistory && projectHistory->canRedo();
+  return diagramScene->getInteractionMode() != InteractionMode::SIMULATION_MODE
+         && projectHistory && projectHistory->canRedo();
 }
 
 bool CircuitEditor::copySelectionToClipboard()
@@ -248,13 +256,13 @@ void CircuitEditor::deleteSelection()
     if (projectHistory) {
       if (components.empty()) {
         command = new WireTopologyCommand(
-            diagramScene, wires, WireTopologyCommand::Operation::Remove);
+            diagramScene.get(), wires, WireTopologyCommand::Operation::Remove);
       } else {
         command = new QUndoCommand("Remove Selection");
-        new WireTopologyCommand(diagramScene, wires,
+        new WireTopologyCommand(diagramScene.get(), wires,
                                 WireTopologyCommand::Operation::Remove, true,
                                 command);
-        new SceneSelectionCommand(diagramScene,
+        new SceneSelectionCommand(diagramScene.get(),
                                   diagramScene->serializeItems(components),
                                   SceneSelectionCommand::Operation::Remove,
                                   true, command);

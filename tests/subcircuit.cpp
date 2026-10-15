@@ -799,57 +799,59 @@ TEST_F(SubcircuitTest, DirectSimulatorRejectsUnprocessedPlaceholder)
     EXPECT_NE(std::string(error.what()).find("preprocess the circuit"),
               std::string::npos);
   }
-
-  // A constructor failure must not leave a topology callback referring to the
-  // partially constructed Simulator.
-  source->notifyTopologyListeners();
 }
 
-TEST_F(SubcircuitTest, ExplicitSessionRebuildResetsRuntimeAndRestoresTrace)
+TEST_F(SubcircuitTest, ReplacementSessionResetsRuntimeAndSupportsTrace)
 {
   auto input  = std::make_shared<Wire>();
   auto output = std::make_shared<Wire>();
   auto gate   = std::make_shared<NotGate>(input, output);
   gate->setPropertyValue("delay", 5);
 
-  auto                         source = std::make_shared<Circuit>(gate, false);
-  SILICON::simulation::Session session(source, {}, &resolver);
+  auto source  = std::make_shared<Circuit>(gate, false);
+  auto session = std::make_unique<SILICON::simulation::Session>(
+      source, Simulator::CancellationCheck{}, &resolver);
 
   std::vector<std::pair<std::uint64_t, std::vector<BusValue>>> snapshots;
-  session.setTraceBuses({{"output", Bus{output}}});
-  session.setTraceSink(
-      [&snapshots](const std::uint64_t time, const std::vector<BusValue>& values) {
-        snapshots.emplace_back(time, values);
-      });
+  const auto traceSink = [&snapshots](const std::uint64_t          time,
+                                      const std::vector<BusValue>& values) {
+    snapshots.emplace_back(time, values);
+  };
+  session->setTraceBuses({{"output", Bus{output}}});
+  session->setTraceSink(traceSink);
 
-  EXPECT_EQ(session.setBus(Bus{input}, valueFor(Bus{input}, 0)),
+  EXPECT_EQ(session->setBus(Bus{input}, valueFor(Bus{input}, 0)),
             Simulator::RunResult::Completed);
-  EXPECT_EQ(session.run(2), Simulator::RunResult::Completed);
-  EXPECT_EQ(session.getCurrentTime(), 2);
+  EXPECT_EQ(session->run(2), Simulator::RunResult::Completed);
+  EXPECT_EQ(session->getCurrentTime(), 2);
   EXPECT_NE(output->getCurrentState(), State::HIGH);
 
   // The old runtime has a HIGH transition queued for t=5. Replace the source topology
-  // with an identity AND gate; rebuilding must discard the old runtime and its event.
+  // with an identity AND gate and create a fresh session without the pending event.
+  session.reset();
   input->forceSetCurrentState(State::HIGH);
   source->removeComponent(gate);
   auto replacementGate =
       std::make_shared<AndGate>(std::vector<Wire_ptr>{input, input}, output);
   replacementGate->setPropertyValue("delay", 0);
   source->addComponent(replacementGate);
-  session.rebuild();
+  session = std::make_unique<SILICON::simulation::Session>(
+      source, Simulator::CancellationCheck{}, &resolver);
+  session->setTraceBuses({{"output", Bus{output}}});
+  session->setTraceSink(traceSink);
 
-  EXPECT_EQ(session.getCurrentTime(), 0);
+  EXPECT_EQ(session->getCurrentTime(), 0);
   EXPECT_EQ(output->getCurrentState(), State::HIGH);
   ASSERT_FALSE(snapshots.empty());
   EXPECT_EQ(snapshots.back().first, 0);
   ASSERT_EQ(snapshots.back().second.size(), 1);
   EXPECT_EQ(snapshots.back().second[0], busValueFromBits("1"));
 
-  EXPECT_EQ(session.run(6), Simulator::RunResult::Completed);
+  EXPECT_EQ(session->run(6), Simulator::RunResult::Completed);
   EXPECT_EQ(output->getCurrentState(), State::HIGH);
 }
 
-TEST_F(SubcircuitTest, FailedSessionRebuildKeepsPreviousRuntimeUsable)
+TEST_F(SubcircuitTest, FailedReplacementSessionKeepsPreviousRuntimeUsable)
 {
   project.upsertDocument(subcircuitDocument("and_gate", andSubcircuitDocument()));
 
@@ -861,7 +863,8 @@ TEST_F(SubcircuitTest, FailedSessionRebuildKeepsPreviousRuntimeUsable)
   EXPECT_EQ(session.run(1), Simulator::RunResult::Completed);
   std::vector<Bus> mismatchedInputs{Bus{std::make_shared<Wire>()}};
   component->setInputs(mismatchedInputs);
-  EXPECT_THROW(session.rebuild(), std::runtime_error);
+  EXPECT_THROW(SILICON::simulation::Session replacement(source, {}, &resolver),
+               std::runtime_error);
 
   EXPECT_EQ(session.getCurrentTime(), 1);
   EXPECT_EQ(session.run(1), Simulator::RunResult::Completed);
