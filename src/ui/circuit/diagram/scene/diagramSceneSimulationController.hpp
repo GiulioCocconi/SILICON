@@ -108,11 +108,6 @@ public:
   void refreshGraphicalOutputs();
 
   /**
-   * @brief Reacts to wire topology changes while simulation mode is active.
-   */
-  void handleTopologyChanged();
-
-  /**
    * @brief Clears waveform state after the scene has been fully emptied.
    */
   void clearWaveformTrace();

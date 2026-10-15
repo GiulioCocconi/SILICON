@@ -79,7 +79,10 @@ CircuitEditor::CircuitEditor(ProjectSession& session, QWidget* parent,
   QObject::connect(diagramScene, &DiagramScene::selectionChanged, diagramScene,
                    reportEditState);
   QObject::connect(diagramScene, &DiagramScene::modeChanged, diagramScene,
-                   reportEditState);
+                   [notifications] {
+                     notifications.editStateChanged();
+                     notifications.historyChanged();
+                   });
 }
 
 CircuitEditor::~CircuitEditor()
@@ -148,21 +151,23 @@ void CircuitEditor::reset()
 }
 void CircuitEditor::undo()
 {
-  if (projectHistory)
+  if (canUndo())
     projectHistory->undo();
 }
 void CircuitEditor::redo()
 {
-  if (projectHistory)
+  if (canRedo())
     projectHistory->redo();
 }
 bool CircuitEditor::canUndo() const
 {
-  return projectHistory && projectHistory->canUndo();
+  return diagramScene->getInteractionMode() != InteractionMode::SIMULATION_MODE
+         && projectHistory && projectHistory->canUndo();
 }
 bool CircuitEditor::canRedo() const
 {
-  return projectHistory && projectHistory->canRedo();
+  return diagramScene->getInteractionMode() != InteractionMode::SIMULATION_MODE
+         && projectHistory && projectHistory->canRedo();
 }
 
 bool CircuitEditor::copySelectionToClipboard()

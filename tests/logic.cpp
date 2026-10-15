@@ -1678,7 +1678,7 @@ TEST(LogicTest, CircuitEditing2)
   EXPECT_EQ(o->getCurrentState(), State::LOW);
 }
 
-TEST(LogicTest, InteractiveTopologyEditRecompilesSimulatorPlan)
+TEST(LogicTest, TopologyEditUsesNewSimulator)
 {
   auto a = std::make_shared<Wire>(State::HIGH);
   auto b = std::make_shared<Wire>(State::HIGH);
@@ -1688,14 +1688,19 @@ TEST(LogicTest, InteractiveTopologyEditRecompilesSimulatorPlan)
   auto gate = std::make_shared<AndGate>(std::vector<Wire_ptr>{a, b}, o);
   gate->setProperty("delay", 0);
 
-  auto      circuit = std::make_shared<Circuit>(Component_set{gate});
-  Simulator simulator(circuit, 0, true);
+  {
+    auto      circuit = std::make_shared<Circuit>(Component_set{gate});
+    Simulator simulator(circuit);
 
-  EXPECT_EQ(simulator.runUntilIdle(), Simulator::RunResult::Completed);
-  EXPECT_EQ(o->getCurrentState(), State::HIGH);
+    EXPECT_EQ(simulator.runUntilIdle(), Simulator::RunResult::Completed);
+    EXPECT_EQ(o->getCurrentState(), State::HIGH);
+  }
 
   std::vector<Bus> newInputs = {{c}, {b}};
   gate->setInputs(newInputs);
+
+  auto      circuit = std::make_shared<Circuit>(Component_set{gate});
+  Simulator simulator(circuit);
 
   a->forceSetCurrentState(State::LOW);
   EXPECT_EQ(simulator.setBus(Bus{c}, valueFor(Bus{c}, 0)),

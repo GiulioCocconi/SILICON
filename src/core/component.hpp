@@ -455,10 +455,8 @@ public:
    * @param busCollection The collection to modify (inputs or outputs)
    * @param index The index of the bus to replace
    * @param newBus The new bus to set
-   * @param isInput True for input collection, false for output
    */
-  void replaceBus(std::vector<Bus>& busCollection, unsigned int index, Bus newBus,
-                  bool isInput);
+  void replaceBus(std::vector<Bus>& busCollection, unsigned int index, Bus newBus);
 
   /**
    * @brief Sets a property value.
@@ -603,6 +601,16 @@ public:
    * @return Const reference to the output bus vector
    */
   [[nodiscard]] const std::vector<Bus>& outputBuses() const { return outputs; }
+
+  /**
+   * @brief Borrows all buses, inputs first, without copying or deduplicating.
+   * @note Replacing buses invalidates the view. The component must outlive it.
+   */
+  [[nodiscard]] auto allBuses() const
+  {
+    return std::array{std::span<const Bus>(inputs), std::span<const Bus>(outputs)}
+           | std::views::join;
+  }
 
   /**
    * @brief Gets the component type name.

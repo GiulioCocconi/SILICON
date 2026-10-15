@@ -134,10 +134,7 @@ QRectF GraphicalComponent::collisionRectForWires() const
   QPainterPath componentPath{};
   componentPath.addRect(itemShape->boundingRect());
 
-  for (const auto port : inputPorts)
-    componentPath.addRect(port->collisionRect());
-
-  for (const auto port : outputPorts)
+  for (const auto port : getPorts())
     componentPath.addRect(port->collisionRect());
 
   return componentPath.boundingRect();
@@ -193,19 +190,15 @@ void GraphicalComponent::clearPorts()
     diagram->requestConnectionsRefresh();
   prepareGeometryChange();
 
-  auto deletePorts = [](std::vector<Port*>& ports) {
-    for (Port* port : ports) {
-      if (!port)
-        continue;
+  for (Port* port : getPorts()) {
+    if (!port)
+      continue;
 
-      delete port->line;
-      delete port;
-    }
-    ports.clear();
-  };
-
-  deletePorts(inputPorts);
-  deletePorts(outputPorts);
+    delete port->line;
+    delete port;
+  }
+  inputPorts.clear();
+  outputPorts.clear();
 }
 
 QPoint GraphicalComponent::scanImage(const QImage& image, const PortSide side,

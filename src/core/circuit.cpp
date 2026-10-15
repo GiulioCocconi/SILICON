@@ -115,75 +115,11 @@ namespace {
 
 }  // namespace
 
-// --- Topology Observers & Live Editing -------------------------------------------------
-
-uint64_t Circuit::addTopologyListener(TopologyObserver cb)
-{
-  return topologyListeners.add(std::move(cb));
-}
-
-void Circuit::removeTopologyListener(uint64_t id)
-{
-  topologyListeners.remove(id);
-}
-
-void Circuit::notifyTopologyListeners()
-{
-  topologyListeners.notify();
-}
-
-void Circuit::makeInteractive()
-{
-  if (isInteractive)
-    return;
-  isInteractive = true;
-
-  std::weak_ptr<Circuit> weakThis = weak_from_this();
-
-  // Attach to all currently existing components
-  for (auto v : boost::make_iterator_range(boost::vertices(graph))) {
-    if (auto cPtr = graph[v].component) {
-      cPtr->addIOListener([weakThis](Component* c) {
-        if (auto circ = weakThis.lock()) {
-          circ->updateComponentIO(c->shared_from_this());
-        }
-      });
-    }
-  }
-}
-
 Component_ptr Circuit::getComponentByVertexId(VertexDescriptor vertexId) const
 {
   if (vertexId >= boost::num_vertices(graph))
     return nullptr;
   return graph[vertexId].component;
-}
-
-void Circuit::updateComponentIO(const Component_ptr& component)
-{
-  if (!component)
-    return;
-
-  auto it = componentToVertex.find(component.get());
-  if (it == componentToVertex.end())
-    return;
-  VertexDescriptor v = it->second;
-
-  // 1. Wipe old edges connected to this specific component
-  boost::clear_vertex(v, graph);
-
-  // 2. Rebuild out-edges (from this component to downstream)
-  rebuildEdges(v);
-
-  // 3. Rebuild in-edges (from upstream into this component)
-  for (auto u : boost::make_iterator_range(boost::vertices(graph))) {
-    if (u != v)
-      rebuildEdges(u);
-  }
-
-  // 4. Update the spatial wire lookup and notify the Simulator!
-  buildTopologyMap();
-  notifyTopologyListeners();
 }
 
 // --- Internal Helpers ------------------------------------------------------------------
@@ -197,17 +133,6 @@ VertexDescriptor Circuit::getOrAddVertex(const Component_ptr& component)
 
   if (auto it = componentToVertex.find(key); it != componentToVertex.end()) {
     return it->second;
-  }
-
-  // If we are in interactive mode, automatically attach a listener to newly added
-  // components
-  if (isInteractive) {
-    std::weak_ptr<Circuit> weakThis = weak_from_this();
-    component->addIOListener([weakThis](Component* c) {
-      if (auto circ = weakThis.lock()) {
-        circ->updateComponentIO(c->shared_from_this());
-      }
-    });
   }
 
   const VertexDescriptor v = boost::add_vertex(VertexProperty{component}, graph);
@@ -361,11 +286,7 @@ void Circuit::addComponentRecursive(const Component_ptr&           component,
   newlyAdded.push_back(v);
 
   // Recursively explore neighbors through shared buses
-  for (const Bus& bus : component->inputBuses())
-    for (const auto& c : getComponentsForBus(bus))
-      addComponentRecursive(c, newlyAdded);
-
-  for (const Bus& bus : component->outputBuses())
+  for (const Bus& bus : component->allBuses())
     for (const auto& c : getComponentsForBus(bus))
       addComponentRecursive(c, newlyAdded);
 }
@@ -381,7 +302,6 @@ void Circuit::addComponent(const Component_ptr& component)
     rebuildEdges(v);
 
   buildTopologyMap();
-  notifyTopologyListeners();
 }
 
 void Circuit::removeComponent(const Component_ptr& component)
@@ -405,7 +325,6 @@ void Circuit::removeComponent(const Component_ptr& component)
   }
 
   buildTopologyMap();
-  notifyTopologyListeners();
 }
 
 std::optional<VertexDescriptor> Circuit::getVertexId(const Component* component) const

@@ -256,24 +256,6 @@ void DiagramSceneSimulationController::refreshGraphicalOutputs()
   }
 }
 
-void DiagramSceneSimulationController::handleTopologyChanged()
-{
-  if (scene.getInteractionMode() != InteractionMode::SIMULATION_MODE)
-    return;
-  if (!isJobFinished())
-    return;
-
-  if (!scene.calculateWiresForComponents()) {
-    scene.setInteractionMode(InteractionMode::NORMAL_MODE);
-    return;
-  }
-  if (simulator)
-    simulator->rebuild();
-  refreshGraphicalOutputs();
-  refreshTraceConfiguration();
-  scene.update();
-}
-
 void DiagramSceneSimulationController::clearWaveformTrace()
 {
   scene.waveformTraceReset({}, 0, {});
