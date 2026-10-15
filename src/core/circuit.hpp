@@ -29,7 +29,6 @@
 
 #include <boost/graph/adjacency_list.hpp>
 
-#include <core/callbackRegistry.hpp>
 #include <core/wire.hpp>
 
 namespace SILICON::core {
@@ -113,18 +112,10 @@ struct CircuitPort {
  * and reactive simulation.
  *
  * @note The circuit tracks connectivity through shared wires between component
- * input/output buses, enabling automatic graph construction and dynamic updates.
+ * input/output buses. Reconstruct the graph after rewiring components; a circuit
+ * passed to a Simulator must retain its topology for that simulator's lifetime.
  */
-class Circuit : public std::enable_shared_from_this<Circuit> {
-public:
-  /**
-   * @brief Callback type for topology change notifications.
-   *
-   * Topology observers are invoked whenever the circuit's component graph changes,
-   * such as when components are added or their I/O connections are modified.
-   */
-  using TopologyObserver = std::function<void()>;
-
+class Circuit {
 private:
   /** @brief The Boost graph representing the circuit topology */
   CircuitGraph graph;
@@ -140,12 +131,6 @@ private:
 
   /** @brief Wires owned by this circuit (for deserialization) */
   std::vector<Wire_ptr> ownedWires;
-
-  /** @brief Whether interactive mode is enabled for live editing */
-  bool isInteractive = false;
-
-  /** @brief Registry of topology listener callbacks. */
-  CallbackRegistry<> topologyListeners;
 
   /**
    * @brief Gets or adds a vertex for a component
@@ -212,14 +197,6 @@ public:
   explicit Circuit(const Component_ptr& component, bool explore = true);
 
   /**
-   * @brief Enables interactive mode for live circuit editing.
-   *
-   * When enabled, the circuit automatically tracks I/O changes for all components
-   * and notifies listeners when connections change.
-   */
-  void makeInteractive();
-
-  /**
    * @brief Adds a component to the circuit recursively.
    *
    * Adds the component and all components reachable through shared buses.
@@ -264,39 +241,12 @@ public:
   [[nodiscard]] Component_ptr getComponentByVertexId(VertexDescriptor vertexId) const;
 
   /**
-   * @brief Updates the circuit after a component's I/O has changed.
-   *
-   * Rebuilds all affected edges and notifies topology listeners.
-   *
-   * @param component The component whose I/O changed
-   */
-  void updateComponentIO(const Component_ptr& component);
-
-  /**
    * @brief Builds a reverse mapping from wires to components that use them.
    *
    * This enables O(1) lookup of components connected to a specific wire, used for
    * subgraph extraction and reactive updates.
    */
   void buildTopologyMap();
-
-  /**
-   * @brief Adds a listener for topology changes.
-   * @param cb Callback function to invoke when topology changes
-   * @return Unique ID for later removing the listener
-   */
-  uint64_t addTopologyListener(TopologyObserver cb);
-
-  /**
-   * @brief Removes a previously added topology listener.
-   * @param id The ID returned by addTopologyListener
-   */
-  void removeTopologyListener(uint64_t id);
-
-  /**
-   * @brief Notifies all topology listeners of a change.
-   */
-  void notifyTopologyListeners();
 
   /**
    * @brief Gets all input buses of the circuit.

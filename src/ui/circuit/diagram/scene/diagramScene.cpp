@@ -123,7 +123,6 @@ DiagramScene::DiagramScene(QObject* parent) : QGraphicsScene(parent)
     if (getInteractionMode() != InteractionMode::SIMULATION_MODE)
       circuit.reset();
     requestConnectionsRefresh();
-    simulationController->handleTopologyChanged();
   });
   wireManager.setPortAnchors([this] {
     std::vector<WireManager::PortAnchor> anchors;
@@ -414,10 +413,7 @@ void DiagramScene::RouteEditState::captureContacts(const DiagramScene& scene)
         auto* component = category_cast<GraphicalComponent>(item, ItemCategory::Component);
         if (!component)
           continue;
-        for (Port* port : component->getInputPorts())
-          if (component->mapToScene(port->getPosition()) == endpoint)
-            contacts.push_back({segment->getUiId(), first, 0, component, port});
-        for (Port* port : component->getOutputPorts())
+        for (Port* port : component->getPorts())
           if (component->mapToScene(port->getPosition()) == endpoint)
             contacts.push_back({segment->getUiId(), first, 0, component, port});
       }
@@ -494,9 +490,7 @@ void DiagramScene::beginComponentDrag()
 
   for (const auto& component : componentDrag.initialPositions | std::views::keys) {
     std::vector<QPointF> ports;
-    for (const auto* port : component->getInputPorts())
-      ports.push_back(component->mapToScene(port->getPosition()));
-    for (const auto* port : component->getOutputPorts())
+    for (const auto* port : component->getPorts())
       ports.push_back(component->mapToScene(port->getPosition()));
     auto& attached = componentDrag.attachedWires[component];
 
@@ -617,9 +611,7 @@ void DiagramScene::beginMixedDrag()
     if (!component)
       continue;
     std::vector<QPointF> ports;
-    for (const auto* port : component->getInputPorts())
-      ports.push_back(component->mapToScene(port->getPosition()));
-    for (const auto* port : component->getOutputPorts())
+    for (const auto* port : component->getPorts())
       ports.push_back(component->mapToScene(port->getPosition()));
     auto& attached = mixedDragAttachedWires[component];
     for (const auto* segment : segments) {
@@ -1058,8 +1050,7 @@ bool DiagramScene::isWireCompletionPoint(const QPointF scenePoint) const
       return component->mapToScene(port->getPosition()) == scenePoint;
     };
 
-    if (std::ranges::any_of(component->getInputPorts(), portIsAtPoint)
-        || std::ranges::any_of(component->getOutputPorts(), portIsAtPoint))
+    if (std::ranges::any_of(component->getPorts(), portIsAtPoint))
       return true;
   }
 
@@ -1573,11 +1564,7 @@ void DiagramScene::refreshConnections()
                                                               ItemCategory::LogicComponent);
     if (!component)
       continue;
-    for (Port* port : component->getInputPorts()) {
-      port->setInputAssignmentError(false);
-      port->setToolTip(port->getName());
-    }
-    for (Port* port : component->getOutputPorts()) {
+    for (Port* port : component->getPorts()) {
       port->setInputAssignmentError(false);
       port->setToolTip(port->getName());
     }

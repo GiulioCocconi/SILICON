@@ -20,6 +20,7 @@
 #include <stdexcept>
 #include <utility>
 
+#include <core/elaboration.hpp>
 #include <core/serialization/component_registry.hpp>
 
 namespace SILICON::simulation {
@@ -31,27 +32,13 @@ using namespace SILICON::waveform::fst;
 Session::Session(std::shared_ptr<Circuit>              sourceCircuit,
                  Simulator::CancellationCheck          isCancelled,
                  const SILICON::core::CircuitResolver* resolver)
-  : sourceCircuit(std::move(sourceCircuit)),
-    elaborator(ComponentRegistry::instance(), resolver)
 {
-  if (!this->sourceCircuit)
+  if (!sourceCircuit)
     throw std::invalid_argument("Session requires a valid Circuit pointer");
 
-  rebuild(std::move(isCancelled));
-}
-
-void Session::rebuild(Simulator::CancellationCheck isCancelled)
-{
-  auto replacementRuntime   = elaborator.elaborate(*sourceCircuit);
-  auto replacementSimulator = std::make_unique<Simulator>(
-      replacementRuntime, 0, false, nullptr, std::move(isCancelled));
-
-  replacementSimulator->setTraceBuses(traceBuses);
-  if (traceSink)
-    replacementSimulator->setTraceSink(traceSink);
-
-  runtime          = std::move(replacementRuntime);
-  runtimeSimulator = std::move(replacementSimulator);
+  CircuitElaborator elaborator(ComponentRegistry::instance(), resolver);
+  runtimeSimulator = std::make_unique<Simulator>(elaborator.elaborate(*sourceCircuit), 0,
+                                                 nullptr, std::move(isCancelled));
 }
 
 Simulator::RunResult Session::run(const uint64_t               duration,
@@ -89,14 +76,12 @@ Simulator::RunResult Session::setBus(Bus bus, const BusValue& value,
 
 void Session::setTraceBuses(std::vector<CircuitWriter::NamedBus> buses)
 {
-  traceBuses = std::move(buses);
-  runtimeSimulator->setTraceBuses(traceBuses);
+  runtimeSimulator->setTraceBuses(std::move(buses));
 }
 
 void Session::setTraceSink(Simulator::TraceSink sink)
 {
-  traceSink = std::move(sink);
-  runtimeSimulator->setTraceSink(traceSink);
+  runtimeSimulator->setTraceSink(std::move(sink));
 }
 
 void Session::setFstWriter(std::unique_ptr<CircuitWriter> writer)

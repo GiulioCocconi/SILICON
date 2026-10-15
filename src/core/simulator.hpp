@@ -69,7 +69,7 @@ struct TimedEvent {
  * convergence).
  *
  * @note The simulator compiles the circuit topology into a reusable execution plan.
- * In interactive mode topology changes notify the simulator to rebuild that plan.
+ * The topology must remain fixed for the simulator's lifetime.
  */
 class Simulator {
 public:
@@ -117,20 +117,13 @@ public:
    * @param c The circuit to simulate
    * @param initialSimulationTime If != 0 also simulate the circuit using
    * initialSimulationTime as duration
-   * @param isInteractive If true make the circuit interactive
    * @param fstWriter Optional waveform writer used to trace simulation snapshots
    * @param isCancelled Optional cancellation callback used during initial evaluation
    * @throws std::invalid_argument If c is null
    */
-  explicit Simulator(std::shared_ptr<Circuit> c, uint64_t initialSimulationTime = 0,
-                     bool                           isInteractive = false,
-                     std::unique_ptr<CircuitWriter> fstWriter     = nullptr,
-                     CancellationCheck              isCancelled   = {});
-  /**
-   * @brief Destructor - removes topology listener
-   */
-  ~Simulator();
-
+  explicit Simulator(std::shared_ptr<const Circuit> c, uint64_t initialSimulationTime = 0,
+                     std::unique_ptr<CircuitWriter> fstWriter   = nullptr,
+                     CancellationCheck              isCancelled = {});
   /**
    * @brief Executes the simulation for a specified duration.
    *
@@ -172,14 +165,6 @@ public:
   RunResult simulateWaveform(uint64_t duration, std::span<const Sample> inputSnapshots,
                              std::span<const WaveformInputDriver> inputDrivers,
                              CancellationCheck                    isCancelled = {});
-
-  /**
-   * @brief Rebuilds the cached execution plan after topology changes.
-   *
-   * Topological sorting, cyclic grouping, and forward-cone reachability are compiled
-   * once here instead of during every event batch.
-   */
-  void recompile();
 
   /**
    * @brief Enables FST tracing for this simulator.
@@ -326,7 +311,7 @@ private:
   };
 
   struct ExecutionStep {
-    ExecutionStep(bool cyclic, std::vector<Component_weakPtr> orderedComponents)
+    ExecutionStep(bool cyclic, std::vector<Component_ptr> orderedComponents)
       : isCyclic(cyclic), components(std::move(orderedComponents))
     {
       if (isCyclic)
@@ -334,17 +319,17 @@ private:
     }
 
     bool                           isCyclic = false;
-    std::vector<Component_weakPtr> components;
+    std::vector<Component_ptr>     components;
     std::unique_ptr<CyclicStaging> cyclicStaging;
   };
 
   class EvaluationStateGuard;
 
   /** @brief The circuit being simulated */
-  std::shared_ptr<Circuit> circuit;
+  std::shared_ptr<const Circuit> circuit;
 
-  /** @brief Listener ID used to unregister from circuit topology notifications */
-  uint64_t topologyListenerId = 0;
+  /** @brief Builds execution and reachability caches once, during construction. */
+  void initializeExecutionPlan();
 
   /** @brief Compiled component/SCC execution plan in topological order */
   std::vector<ExecutionStep> executionPlan;
