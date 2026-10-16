@@ -93,7 +93,7 @@ void GraphicalWire::setConnectionError(std::optional<QString> reason)
 
   this->connectionError = reason;
   for (auto* segment : getSegments()) {
-    segment->setToolTip(reason.value_or({}));
+    segment->setToolTip(reason.value_or(""));
     segment->update();
   }
 }
