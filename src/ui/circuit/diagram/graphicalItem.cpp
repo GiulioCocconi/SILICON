@@ -76,8 +76,10 @@ uint64_t GraphicalItem::generateUiId()
 
 void GraphicalItem::setCollidingStatus(const CollidingStatus newStatus)
 {
+  if (collidingStatus == newStatus)
+    return;
   collidingStatus = newStatus;
-  prepareGeometryChange();
+  update();
 }
 
 void GraphicalItem::mousePressEvent(QGraphicsSceneMouseEvent* event)
@@ -159,26 +161,18 @@ QVariant GraphicalItem::itemChange(GraphicsItemChange change, const QVariant& va
     const auto proposedPos = DiagramScene::snapToGrid(value.toPointF());
     const auto offset      = proposedPos - pos();
 
-    this->collidingStatus = CollidingStatus::NOT_COLLIDING;
+    setCollidingStatus(NOT_COLLIDING);
 
     if (!ds->itemCollisionChecksEnabled()) {
       onPositionChanged(offset);
       return proposedPos;
     }
 
-    // Calculate the bounding rectangle at the *new* position in scene coordinates.
-    // Use the item's bounding rectangle, offset by the proposed new position.
-    auto newCollisionRect = getCollisionRect().translated(proposedPos);
-
-    if (canRotate()) {
-      // Rotate newRect by item's rotation centered at item most-topleft pos using
-      // QTransform
-      const auto transform = QTransform()
-                                 .translate(proposedPos.x(), proposedPos.y())
-                                 .rotate(rotation())
-                                 .translate(-proposedPos.x(), -proposedPos.y());
-      newCollisionRect = transform.mapRect(newCollisionRect);
-    }
+    // Positions are in parent coordinates; collision geometry is in scene coordinates.
+    const QPointF sceneOffset = parentItem()
+        ? parentItem()->mapToScene(proposedPos) - parentItem()->mapToScene(pos())
+        : offset;
+    const auto newCollisionRect = mapRectToScene(getCollisionRect()).translated(sceneOffset);
 
     // Find all graphics items that intersect with our collision rectangle
     // Filter out: current item, other selected items (as they are moving too), child
@@ -209,9 +203,11 @@ QVariant GraphicalItem::itemChange(GraphicsItemChange change, const QVariant& va
       auto* otherComponent = category_cast<GraphicalComponent>(
           collidingItem, ItemCategory::Component);
       if (movingComponent && otherComponent) {
-        // Component-component collision
-        // Since we simply care if the bounding rects intersects we should reject all
-        // changes
+        // Scene queries include visual bounds. Reject only physical overlap.
+        const auto* otherItem = static_cast<GraphicalItem*>(otherComponent);
+        if (!newCollisionRect.intersects(
+                otherItem->mapRectToScene(otherItem->getCollisionRect())))
+          continue;
         movingComponent->setCollidingStatus(COLLIDING_WITH_COMPONENT);
         otherComponent->setCollidingStatus(COLLIDING_WITH_COMPONENT);
 
@@ -253,9 +249,9 @@ QVariant GraphicalItem::itemChange(GraphicsItemChange change, const QVariant& va
       // If dragged item is a wire segment, translate the path to match the proposed
       // position
       if (this->type() == WIRE_SEGMENT) {
-        collisionPath.translate(offset);
+        collisionPath.translate(sceneOffset);
         for (auto& vertex : vertices)
-          vertex += offset;
+          vertex += sceneOffset;
       }
 
       // Create circular exclusion zones (5px radius) around each wire vertex
@@ -268,16 +264,11 @@ QVariant GraphicalItem::itemChange(GraphicsItemChange change, const QVariant& va
       // needed. Subtract the port exclusion zones from the wire's collision path.
       collisionPath = collisionPath.subtracted(toBeSubtractedWire);
 
-      // Determine the component position for collision check
-      QPointF collidingComponentOffset = hasCategory(this, ItemCategory::Component)
-                                             ? proposedPos
-                                             : collidingComponent->pos();
-
-      // Check if the wire's collision path intersects with the component's wire collision
-      // area
-      const bool isCollidingWithWire =
-          collisionPath.intersects(collidingComponent->collisionRectForWires().translated(
-              collidingComponentOffset));
+      auto componentRect = collidingComponent->mapRectToScene(
+          collidingComponent->collisionRectForWires());
+      if (movingComponent)
+        componentRect.translate(sceneOffset);
+      const bool isCollidingWithWire = collisionPath.intersects(componentRect);
 
       // If collision detected, mark the component and reject the position change
       if (isCollidingWithWire) {

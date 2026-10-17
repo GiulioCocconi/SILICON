@@ -30,6 +30,7 @@
 
 #include <QPoint>
 #include <QRect>
+#include <QLineF>
 
 
 namespace SILICON::ui {
@@ -76,6 +77,9 @@ private:
   /** @brief Whether the net associated with this port has an error */
   bool inputAssignmentError = false;
 
+  [[nodiscard]] QLineF connectionLine() const;
+  void prepareBoundsChange();
+
 public:
   /**
    * @brief Constructs a port.
@@ -88,13 +92,11 @@ public:
   Port(unsigned int index, QPoint position, QString name, bool printName = false,
        QGraphicsItem* parent = nullptr);
 
-  /**
-   * @brief Painting is handled by the parent component.
-   */
+  /** @brief Paints port names, bus markers, and input assignment errors. */
   void paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
              QWidget* widget) override;
 
-  /** @brief Gets the bounding rectangle from the line and bus-size marker */
+  /** @brief Gets visual bounds, including port labels and stroked markers. */
   QRectF boundingRect() const override;
 
   /** @brief Gets the port index */
@@ -126,7 +128,7 @@ public:
 
   /**
    * @brief Gets the collision rectangle for wire detection.
-   * @return Rectangle for hit testing
+   * @return Physical line bounds with clearance around the connection point
    */
   [[nodiscard]] QRectF collisionRect() const;
 };
@@ -147,6 +149,7 @@ public:
  */
 class GraphicalComponent : public GraphicalItem {
   Q_OBJECT
+  friend class Port;
 public:
   /**
    * @brief Gets the collision rectangle extended for wire connections.
@@ -176,7 +179,7 @@ protected:
   void paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
              QWidget* widget) override;
 
-  /** @brief Gets collision rectangle for drag/drop */
+  /** @brief Gets physical body and port line bounds for drag/drop. */
   [[nodiscard]] QRectF getCollisionRect() const override;
 
   /** @brief Components can rotate by default */
