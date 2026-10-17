@@ -44,6 +44,7 @@ QPalette paletteFromTokens(const SILICON::ui::theme::ColorMap& tokens)
   const QColor ink        = color(tokens, "SILICON_INK");
   const QColor disabled   = color(tokens, "SILICON_DISABLED");
   const QColor blue       = color(tokens, "SILICON_BLUE");
+  const QColor selected   = color(tokens, "SILICON_SELECTED");
 
   palette.setColor(QPalette::Window, background);
   palette.setColor(QPalette::WindowText, ink);
@@ -53,7 +54,7 @@ QPalette paletteFromTokens(const SILICON::ui::theme::ColorMap& tokens)
   palette.setColor(QPalette::Button, surface);
   palette.setColor(QPalette::ButtonText, ink);
   palette.setColor(QPalette::BrightText, color(tokens, "SILICON_ORANGE"));
-  palette.setColor(QPalette::Highlight, blue);
+  palette.setColor(QPalette::Highlight, selected);
   palette.setColor(QPalette::HighlightedText, ink);
   palette.setColor(QPalette::Link, blue);
   palette.setColor(QPalette::ToolTipBase, raised);
@@ -103,6 +104,11 @@ void ThemeEngine::apply(QApplication& app, SILICON::ui::theme::Mode mode)
 
   const QString base     = loadQssTemplate();
   const QString finalQss = injectTokens(base, currentMap);
+
+  // Remove palette overrides installed while polishing the previous stylesheet before
+  // changing the application palette. This lets existing widgets inherit the new palette
+  // instead of retaining resolved colors from the previous theme.
+  app.setStyleSheet({});
   app.setPalette(paletteFromTokens(currentMap));
   app.setStyleSheet(finalQss);
 
