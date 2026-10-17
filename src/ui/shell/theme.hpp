@@ -22,7 +22,8 @@ inline ColorMap light()
           {"SILICON_INTERNAL", {"#ffe6d5"}},       {"SILICON_INK", {"#2a2730"}},
           {"SILICON_BACKGROUND", {"#fdfdfd"}},     {"SILICON_SURFACE", {"#ffffff"}},
           {"SILICON_SURFACE_RAISED", {"#ffffff"}}, {"SILICON_GRID", {"#d8d4dd"}},
-          {"SILICON_GREY", {"#8a8490"}},           {"SILICON_DISABLED", {"#a0a0a0"}}};
+          {"SILICON_GREY", {"#8a8490"}},           {"SILICON_DISABLED", {"#a0a0a0"}},
+          {"SILICON_SELECTED", {"#46a6ef"}}};
 }
 
 /* ---------- DARK ---------- */
@@ -35,7 +36,8 @@ inline ColorMap dark()
           {"SILICON_INTERNAL", {"#3c3130"}},       {"SILICON_INK", {"#f3eef8"}},
           {"SILICON_BACKGROUND", {"#17161d"}},     {"SILICON_SURFACE", {"#24212b"}},
           {"SILICON_SURFACE_RAISED", {"#2e2a36"}}, {"SILICON_GRID", {"#383340"}},
-          {"SILICON_GREY", {"#857c8e"}},           {"SILICON_DISABLED", {"#857c8e"}}};
+          {"SILICON_GREY", {"#857c8e"}},           {"SILICON_DISABLED", {"#857c8e"}},
+          {"SILICON_SELECTED", {"#2e2a36"}}};
 }
 
 }  // namespace theme

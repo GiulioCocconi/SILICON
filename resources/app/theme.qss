@@ -7,6 +7,8 @@ QWidget {
     /* --background */
     background-color: SILICON_BACKGROUND;
     color: SILICON_INK;
+    selection-background-color: SILICON_SELECTED;
+    selection-color: SILICON_INK;
     font-family: "Quicksand";
     font-size: 14px;
 }
@@ -146,7 +148,7 @@ QScrollBar::handle:vertical {
 }
 
 QScrollBar::handle:vertical:hover {
-    background-color: SILICON_BLUE;
+    background-color: SILICON_SELECTED;
 }
 
 /* Horizontal Scrollbar */
@@ -166,7 +168,7 @@ QScrollBar::handle:horizontal {
 }
 
 QScrollBar::handle:horizontal:hover {
-    background-color: SILICON_BLUE;
+    background-color: SILICON_SELECTED;
 }
 
 /* Hide OS arrows for a cleaner, modern look */
