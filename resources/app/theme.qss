@@ -146,7 +146,7 @@ QScrollBar::handle:vertical {
 }
 
 QScrollBar::handle:vertical:hover {
-    background-color: SILICON_BLUE;
+    background-color: SILICON_SELECTED;
 }
 
 /* Horizontal Scrollbar */
@@ -166,7 +166,7 @@ QScrollBar::handle:horizontal {
 }
 
 QScrollBar::handle:horizontal:hover {
-    background-color: SILICON_BLUE;
+    background-color: SILICON_SELECTED;
 }
 
 /* Hide OS arrows for a cleaner, modern look */
