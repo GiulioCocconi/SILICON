@@ -17,6 +17,7 @@
 
 #include "graphicalItem.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <stdexcept>
 #include <utility>
@@ -36,6 +37,22 @@ using namespace SILICON::core;
 namespace {
 
 std::atomic<uint64_t> NextGraphicalItemUiId = 1;
+
+bool wireTouchesComponentPort(const GraphicalWire& wire,
+                              const GraphicalComponent& component)
+{
+  const auto touchesPort = [&](const Port* port) {
+    const QPointF position = component.mapToScene(port->getPosition());
+    for (const auto* segment : wire.getSegments()) {
+      const auto points = segment->getScenePoints();
+      if (!points.empty() && (points.front() == position || points.back() == position))
+        return true;
+    }
+    return false;
+  };
+
+  return std::ranges::any_of(component.getPorts(), touchesPort);
+}
 
 }
 
@@ -59,8 +76,10 @@ uint64_t GraphicalItem::generateUiId()
 
 void GraphicalItem::setCollidingStatus(const CollidingStatus newStatus)
 {
+  if (collidingStatus == newStatus)
+    return;
   collidingStatus = newStatus;
-  prepareGeometryChange();
+  update();
 }
 
 void GraphicalItem::mousePressEvent(QGraphicsSceneMouseEvent* event)
@@ -85,6 +104,9 @@ void GraphicalItem::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
   if (!ds)
     return;
 
+  auto topologyEdit = ds->finishMixedDrag();
+  auto wireMoves = ds->finishComponentDrag();
+
   if (this->isColliding())
     this->setCollidingStatus(NOT_COLLIDING);
 
@@ -103,7 +125,12 @@ void GraphicalItem::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
   }
 
   if (itemsActuallyMoved) {
-    undoStack->push(moveCmd);
+    moveCmd->setWireMoves(std::move(wireMoves));
+    moveCmd->setTopologyEdit(std::move(topologyEdit));
+    if (undoStack)
+      undoStack->push(moveCmd);
+    else
+      delete moveCmd;
   } else {
     delete moveCmd;
   }
@@ -134,26 +161,18 @@ QVariant GraphicalItem::itemChange(GraphicsItemChange change, const QVariant& va
     const auto proposedPos = DiagramScene::snapToGrid(value.toPointF());
     const auto offset      = proposedPos - pos();
 
-    this->collidingStatus = CollidingStatus::NOT_COLLIDING;
+    setCollidingStatus(NOT_COLLIDING);
 
     if (!ds->itemCollisionChecksEnabled()) {
       onPositionChanged(offset);
       return proposedPos;
     }
 
-    // Calculate the bounding rectangle at the *new* position in scene coordinates.
-    // Use the item's bounding rectangle, offset by the proposed new position.
-    auto newCollisionRect = getCollisionRect().translated(proposedPos);
-
-    if (canRotate()) {
-      // Rotate newRect by item's rotation centered at item most-topleft pos using
-      // QTransform
-      const auto transform = QTransform()
-                                 .translate(proposedPos.x(), proposedPos.y())
-                                 .rotate(rotation())
-                                 .translate(-proposedPos.x(), -proposedPos.y());
-      newCollisionRect = transform.mapRect(newCollisionRect);
-    }
+    // Positions are in parent coordinates; collision geometry is in scene coordinates.
+    const QPointF sceneOffset = parentItem()
+        ? parentItem()->mapToScene(proposedPos) - parentItem()->mapToScene(pos())
+        : offset;
+    const auto newCollisionRect = mapRectToScene(getCollisionRect()).translated(sceneOffset);
 
     // Find all graphics items that intersect with our collision rectangle
     // Filter out: current item, other selected items (as they are moving too), child
@@ -164,61 +183,59 @@ QVariant GraphicalItem::itemChange(GraphicsItemChange change, const QVariant& va
      * against a wall will lead to the overlapping of the two items without triggering
      * collision detection */
 
+    const auto children = childItems();
     const auto collidingItems =
         scene()->items(newCollisionRect, Qt::IntersectsItemBoundingRect)
-        | std::views::filter([this](auto item) {
-            return !(item == this || item->isSelected() || childItems().contains(item)
+        | std::views::filter([this, &children](auto item) {
+            return !(item == this || item->isSelected() || children.contains(item)
                      || item->type() <= UNKNOWN);
           })
         | std::ranges::to<std::vector>();
 
     QPointF finalPos          = proposedPos;
     bool    collisionRejected = false;
+    auto* movingComponent = category_cast<GraphicalComponent>(this, ItemCategory::Component);
+    auto* movingSegment = category_cast<GraphicalWireSegment>(this,
+                                                               ItemCategory::WireSegment);
 
     // Analyze each potentially colliding item to determine collision type
     for (QGraphicsItem* collidingItem : collidingItems) {
-      // Initialize containers to categorize the colliding pair
-      std::unordered_set<GraphicalComponent*>   componentsInPair;
-      std::unordered_set<GraphicalWireSegment*> segmentsInPair;
-
-      // Lambda function to categorize items as components or wire segments
-      auto categorizeItem = [&](QGraphicsItem* item) {
-        if (auto* comp = category_cast<GraphicalComponent>(item, ItemCategory::Component))
-          componentsInPair.insert(comp);
-        else if (auto* seg =
-                     category_cast<GraphicalWireSegment>(item, ItemCategory::WireSegment))
-          segmentsInPair.insert(seg);
-      };
-
-      // Categorize both the current item and the colliding item
-      categorizeItem(this);
-      categorizeItem(collidingItem);
-
-      // Skip if categorization doesn't result in exactly 2 valid items
-      if (componentsInPair.size() + segmentsInPair.size() != 2)
-        continue;
-
-      if (componentsInPair.empty()) {
-        // Wire-Wire collision TODO
-        continue;
-      } else if (segmentsInPair.empty()) {
-        // Component-component collision
-        // Since we simply care if the bounding rects intersects we should reject all
-        // changes
-        for (auto el : componentsInPair)
-          el->setCollidingStatus(COLLIDING_WITH_COMPONENT);
+      auto* otherComponent = category_cast<GraphicalComponent>(
+          collidingItem, ItemCategory::Component);
+      if (movingComponent && otherComponent) {
+        // Scene queries include visual bounds. Reject only physical overlap.
+        const auto* otherItem = static_cast<GraphicalItem*>(otherComponent);
+        if (!newCollisionRect.intersects(
+                otherItem->mapRectToScene(otherItem->getCollisionRect())))
+          continue;
+        movingComponent->setCollidingStatus(COLLIDING_WITH_COMPONENT);
+        otherComponent->setCollidingStatus(COLLIDING_WITH_COMPONENT);
 
         finalPos          = pos();
         collisionRejected = true;
         break;  // Reject immediately, stop checking others
       }
 
-      // Extract the component and colliding segment
-      auto        collidingComponent = *(componentsInPair.begin());
-      auto        collidingSegment   = *(segmentsInPair.begin());
+      // Check component-wire collisions for both component and wire movement.
+      auto* collidingComponent = movingComponent ? movingComponent : otherComponent;
+      auto* collidingSegment = movingSegment ? movingSegment
+          : category_cast<GraphicalWireSegment>(collidingItem,
+                                                ItemCategory::WireSegment);
+      if (!collidingComponent || !collidingSegment)
+        continue;
       const auto* collidingWire      = collidingSegment->getGraphicalWire();
 
       if (!collidingWire)
+        continue;
+
+      // An attached net follows its component during a drag. Other nets must
+      // still prevent the component from moving onto their wires.
+      if (this == collidingComponent
+          && ds->getInteractionMode() == InteractionMode::NORMAL_MODE
+          && (ds->isDraggingComponent(collidingComponent)
+                  ? ds->isWireAttachedToDraggedComponent(collidingComponent,
+                                                          collidingWire)
+                  : wireTouchesComponentPort(*collidingWire, *collidingComponent)))
         continue;
 
       // Container for exclusion zones around wire vertices
@@ -232,9 +249,9 @@ QVariant GraphicalItem::itemChange(GraphicsItemChange change, const QVariant& va
       // If dragged item is a wire segment, translate the path to match the proposed
       // position
       if (this->type() == WIRE_SEGMENT) {
-        collisionPath.translate(offset);
+        collisionPath.translate(sceneOffset);
         for (auto& vertex : vertices)
-          vertex += offset;
+          vertex += sceneOffset;
       }
 
       // Create circular exclusion zones (5px radius) around each wire vertex
@@ -247,16 +264,11 @@ QVariant GraphicalItem::itemChange(GraphicsItemChange change, const QVariant& va
       // needed. Subtract the port exclusion zones from the wire's collision path.
       collisionPath = collisionPath.subtracted(toBeSubtractedWire);
 
-      // Determine the component position for collision check
-      QPointF collidingComponentOffset = hasCategory(this, ItemCategory::Component)
-                                             ? proposedPos
-                                             : collidingComponent->pos();
-
-      // Check if the wire's collision path intersects with the component's wire collision
-      // area
-      const bool isCollidingWithWire =
-          collisionPath.intersects(collidingComponent->collisionRectForWires().translated(
-              collidingComponentOffset));
+      auto componentRect = collidingComponent->mapRectToScene(
+          collidingComponent->collisionRectForWires());
+      if (movingComponent)
+        componentRect.translate(sceneOffset);
+      const bool isCollidingWithWire = collisionPath.intersects(componentRect);
 
       // If collision detected, mark the component and reject the position change
       if (isCollidingWithWire) {

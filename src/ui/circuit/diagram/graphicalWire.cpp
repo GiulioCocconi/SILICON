@@ -17,10 +17,13 @@
 
 #include "graphicalWire.hpp"
 
+#include "utils/ranges_wrapper.hpp"
+
 #include <QDebug>
 #include <QGraphicsSceneMouseEvent>
 #include <QLineF>
 #include <algorithm>
+#include <atomic>
 #include <ranges>
 #include <stdexcept>
 #include <unordered_set>
@@ -36,9 +39,24 @@
 namespace SILICON::ui {
 using namespace SILICON::core;
 
+namespace {
+std::atomic<uint64_t> nextGraphicalWireRouteId{1};
+}
+
 // --- Graphical Wire --------------------------------------------------------------------
 
+GraphicalWire::GraphicalWire() : routeId(nextGraphicalWireRouteId++) {}
+
+void GraphicalWire::restoreRouteId(const uint64_t id)
+{
+  routeId = id;
+  uint64_t expected = nextGraphicalWireRouteId.load();
+  while (expected <= id
+         && !nextGraphicalWireRouteId.compare_exchange_weak(expected, id + 1)) {}
+}
+
 GraphicalWire::GraphicalWire(unsigned int busSize)
+  : GraphicalWire()
 {
   setBusSize(busSize);
 }
@@ -68,9 +86,21 @@ void GraphicalWire::clearBusState()
       wire->forceSetCurrentState(State::UNKNOWN);
 }
 
+void GraphicalWire::setConnectionError(std::optional<QString> reason)
+{
+  if (reason == connectionError)
+    return;
+
+  this->connectionError = reason;
+  for (auto* segment : getSegments()) {
+    segment->setToolTip(reason.value_or(""));
+    segment->update();
+  }
+}
+
 QColor GraphicalWire::getColor() const
 {
-  if (bus.isInErrorState())
+  if (connectionError.has_value() || bus.isInErrorState())
     return Qt::red;
 
   // Show simulation state visually for single wires
@@ -115,7 +145,7 @@ QPainterPath GraphicalWire::shape() const
   QPainterPath combinedPath;
 
   for (const auto segment : segments)
-    combinedPath.addPath(segment->mapToScene(segment->shape()).simplified());
+    combinedPath.addPath(segment->mapToScene(segment->centerlineShape()).simplified());
 
   return combinedPath;
 }
@@ -144,8 +174,7 @@ void GraphicalWireSegment::updateTopology()
   }
 }
 
-void GraphicalWireSegment::setGraphicalWire(GraphicalWire* newWire,
-                                            const bool     propagateToTouchingSegments)
+void GraphicalWireSegment::setGraphicalWire(GraphicalWire* newWire)
 {
   if (graphicalWire == newWire)
     return;
@@ -175,23 +204,13 @@ void GraphicalWireSegment::setGraphicalWire(GraphicalWire* newWire,
     throw std::logic_error("setGraphicalWire: failed to create wire");
   graphicalWire->addSegment(this);
 
-  // Interactive wire construction uses geometric contact to establish connectivity.
-  // Deserialization and autoplacement already carry authoritative bus identities, so
-  // their callers disable propagation to preserve intentional crossings and overlaps.
-  if (propagateToTouchingSegments) {
-    for (auto* sibling : WireManager::segmentNeighbors(this)) {
-      if (sibling != this) {
-        sibling->setGraphicalWire(graphicalWire);
-      }
-    }
-  }
 }
 
-void GraphicalWireSegment::setShowPoints(const std::vector<QPointF>& scenePoints)
+void GraphicalWireSegment::setShowPoints(const std::vector<QPointF>& newShowPoints)
 {
   std::vector<QPointF> localPoints;
-  localPoints.reserve(scenePoints.size());
-  for (const auto& pt : scenePoints)
+  localPoints.reserve(newShowPoints.size());
+  for (const auto& pt : newShowPoints)
     localPoints.push_back(mapFromScene(pt));
 
   this->showPoints = localPoints;
@@ -207,25 +226,18 @@ void GraphicalWireSegment::addPoints()
     return;
   }
 
-  // Check for self intersection
-  const QPainterPathStroker stroker;
-  const auto                showStroke   = stroker.createStroke(showPath);
-  auto                      intersection = shape().intersected(showStroke);
-
-  // Exclude the last point of path
-  QPainterPath exclusionZone;
-  exclusionZone.addEllipse(lastPoint(), 1, 1);
-  intersection = intersection.subtracted(exclusionZone);
-
-  if (intersection.isEmpty()) {
-    for (auto pt : this->showPoints)
-      this->points.push_back(pt);
-    this->showPoints = {};
-    updatePath();
-  } else {
-    qDebug() << "[GraphicalWireSegment] addPoints: self-intersecting wire detected, "
+  std::vector<QPointF> proposed = points;
+  proposed.insert(proposed.end(), showPoints.begin(), showPoints.end());
+  proposed = canonicalizeOrthogonalRoute(std::move(proposed));
+  if (!isOrthogonalRoute(proposed) || orthogonalRouteSelfIntersects(proposed)) {
+    qDebug() << "[GraphicalWireSegment] addPoints: invalid or self-intersecting route, "
                 "points NOT added";
+    return;
   }
+
+  points = std::move(proposed);
+  showPoints.clear();
+  updatePath();
 }
 
 void GraphicalWireSegment::updatePath()
@@ -276,8 +288,7 @@ void GraphicalWireSegment::paint(QPainter*                       painter,
   if (isSelected()) {
     painter->setPen(Qt::NoPen);
     for (size_t i = 0; i < points.size(); ++i) {
-      // Compare size_t to safely avoid signed/unsigned compiler warnings
-      const bool hovered = (i == static_cast<size_t>(hoveredPointIndex));
+      const bool hovered = hoveredPointIndex && i == *hoveredPointIndex;
       painter->setBrush(hovered ? QColor(255, 80, 80) : QColor(200, 60, 60, 160));
       painter->drawEllipse(points[i], POINT_RADIUS, POINT_RADIUS);
     }
@@ -353,7 +364,13 @@ QRectF GraphicalWireSegment::boundingRect() const
 QPainterPath GraphicalWireSegment::shape() const
 {
   QPainterPathStroker stroker;
+  stroker.setWidth(2 * GRAB_RADIUS);
   return stroker.createStroke(this->path);
+}
+
+QPainterPath GraphicalWireSegment::centerlineShape() const
+{
+  return QPainterPathStroker().createStroke(path);
 }
 
 bool GraphicalWireSegment::isPointOnPath(const QPointF point) const
@@ -383,46 +400,40 @@ void GraphicalWireSegment::setPoints(std::vector<QPointF> newPoints)
   updatePath();
 }
 
-int GraphicalWireSegment::pointIndexAt(const QPointF localPos) const
+std::optional<size_t> GraphicalWireSegment::pointIndexAt(const QPointF localPos) const
 {
-  for (size_t i = 0; i < points.size(); i++) {
+  for (size_t i = 0; i < points.size(); ++i) {
     if (QLineF(localPos, points[i]).length() <= GRAB_RADIUS)
       return i;
   }
-  return -1;
+  return std::nullopt;
 }
 
-void GraphicalWireSegment::movePointTo(const size_t index, QPointF newLocalPos)
+
+std::optional<size_t> GraphicalWireSegment::edgeIndexAt(const QPointF localPos) const
 {
-  if (index >= points.size())
-    return;
+  constexpr qreal radiusSq = GRAB_RADIUS * GRAB_RADIUS;
 
-  newLocalPos = DiagramScene::snapToGrid(newLocalPos);
+  for (auto [i, segment] : points | SILICON::views::adjacent<2> | SILICON::views::enumerate) {
+    auto [p1, p2] = segment;
 
-  const QPointF oldPos = points[index];
-  points[index]        = newLocalPos;
+    const QPointF dir = p2 - p1;
+    const qreal dirSq = QPointF::dotProduct(dir, dir);
 
-  // Helper lambda to maintain horizontal/vertical orthogonality for adjacent points
-  auto alignAdjacent = [&](QPointF& adj) {
-    const bool wasHorizontal =
-        std::abs(adj.y() - oldPos.y()) <= std::abs(adj.x() - oldPos.x());
+    if (qFuzzyIsNull(dirSq)) // Safer and faster than length() == 0
+      continue;
 
-    if (wasHorizontal) {
-      adj.setY(newLocalPos.y());
-    } else {
-      adj.setX(newLocalPos.x());
+    const qreal t = QPointF::dotProduct(localPos - p1, dir) / dirSq;
+
+    // Only check distance if the projection falls on the segment bounds
+    if (t >= 0.0 && t <= 1.0) {
+      const QPointF diff = localPos - (p1 + dir * t);
+      if (QPointF::dotProduct(diff, diff) <= radiusSq)
+        return static_cast<size_t>(i);
     }
-  };
-
-  // Adjust previous and next points if they exist
-  if (index > 0) {
-    alignAdjacent(points[index - 1]);
-  }
-  if (index + 1 < points.size()) {
-    alignAdjacent(points[index + 1]);
   }
 
-  updatePath();
+  return std::nullopt;
 }
 
 void GraphicalWireSegment::setFirstPointJunction(bool v)
@@ -496,10 +507,13 @@ bool GraphicalWireSegment::isAlignedWith(const GraphicalWireSegment* other) cons
 void GraphicalWireSegment::mousePressEvent(QGraphicsSceneMouseEvent* event)
 {
   if (event->button() == Qt::LeftButton) {
-    const QPointF localPos = event->pos();
-    dragPointIndex         = pointIndexAt(localPos);
-    if (dragPointIndex >= 0) {
-      dragStartPos = points[dragPointIndex];
+    auto* ds = qobject_cast<DiagramScene*>(scene());
+    const bool selecting = event->modifiers() & (Qt::ControlModifier | Qt::ShiftModifier);
+    if (ds && !selecting && !(isSelected() && ds->hasWireGroupSelection())
+        && ds->beginWireDrag(this, event->scenePos(), event->pos())) {
+      if (!isSelected())
+        ds->clearSelection();
+      setSelected(true);
       event->accept();
       return;
     }
@@ -509,9 +523,9 @@ void GraphicalWireSegment::mousePressEvent(QGraphicsSceneMouseEvent* event)
 
 void GraphicalWireSegment::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
 {
-  if (dragPointIndex >= 0 && isSelected()) {
-    movePointTo(dragPointIndex, event->pos());
-    update();
+  auto* ds = qobject_cast<DiagramScene*>(scene());
+  if (ds && ds->isDraggingWire(this)) {
+    ds->updateWireDrag(this, event->scenePos());
     event->accept();
     return;
   }
@@ -520,50 +534,57 @@ void GraphicalWireSegment::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
 
 void GraphicalWireSegment::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
 {
-  GraphicalItem::mouseReleaseEvent(event);
-
-  if (event->button() != Qt::LeftButton) {
+  auto* ds = qobject_cast<DiagramScene*>(scene());
+  if (!ds || !ds->isDraggingWire(this)) {
+    GraphicalItem::mouseReleaseEvent(event);
     return;
   }
-
-  const auto ds = qobject_cast<DiagramScene*>(scene());
-  if (!ds)
+  if (event->button() != Qt::LeftButton)
     return;
-
-  auto draggedPointIndex = dragPointIndex;
-  dragPointIndex         = -1;
-
-  if (draggedPointIndex >= static_cast<int>(points.size()))
-    return;
-
-  if (draggedPointIndex >= 0) {
-    const QPointF newPos = points[draggedPointIndex];
-    if (newPos != dragStartPos) {
-      const auto undoStack = ds->getUndoStack();
-      const auto moveCmd =
-          new MoveWirePointCommand(this, draggedPointIndex, dragStartPos, newPos);
-      undoStack->push(moveCmd);
-    }
-  }
-
-  if (graphicalWire && graphicalWire->getManager()) {
-    graphicalWire->getManager()->updateSegmentTopology(this);
-  }
+  ds->finishWireDrag(this);
+  event->accept();
 }
 
 void GraphicalWireSegment::hoverMoveEvent(QGraphicsSceneHoverEvent* event)
 {
-  const int newHovered = pointIndexAt(event->pos());
+  auto* ds = qobject_cast<DiagramScene*>(scene());
+  if (!ds || ds->getInteractionMode() != InteractionMode::NORMAL_MODE) {
+    GraphicalItem::hoverMoveEvent(event);
+    return;
+  }
+
+  auto newHovered = pointIndexAt(event->pos());
   if (newHovered != hoveredPointIndex) {
     hoveredPointIndex = newHovered;
     update();
   }
 
+  const auto edgeIndex = edgeIndexAt(event->pos());
+  if (newHovered)
+    setCursor(Qt::SizeAllCursor);
+  else if (edgeIndex)
+    setCursor(points[*edgeIndex].y() == points[*edgeIndex + 1].y()
+                  ? Qt::SizeVerCursor : Qt::SizeHorCursor);
+  else
+    unsetCursor();
+
   GraphicalItem::hoverMoveEvent(event);
+}
+
+void GraphicalWireSegment::modeChanged(const InteractionMode mode)
+{
+  GraphicalItem::modeChanged(mode);
+  unsetCursor();
+  if (mode != InteractionMode::NORMAL_MODE && hoveredPointIndex.has_value()) {
+    hoveredPointIndex = std::nullopt;
+    update();
+  }
 }
 
 GraphicalWireSegment::~GraphicalWireSegment()
 {
+  if (auto* ds = qobject_cast<DiagramScene*>(scene()); ds && ds->isDraggingWire(this))
+    ds->cancelWireDrag();
   if (!graphicalWire)
     return;
 
@@ -582,7 +603,8 @@ nlohmann::ordered_json GraphicalWireSegment::serialize() const
   nlohmann::ordered_json j;
   j["uiId"] = getUiId();
 
-  auto jsonPoints = points | std::views::transform([](const QPointF& p) {
+  // Persist scene coordinates; the loader reconstructs segments at the scene origin.
+  auto jsonPoints = getScenePoints() | std::views::transform([](const QPointF& p) {
                       return nlohmann::ordered_json{{"x", p.x()}, {"y", p.y()}};
                     })
                     | std::ranges::to<std::vector>();
@@ -591,9 +613,8 @@ nlohmann::ordered_json GraphicalWireSegment::serialize() const
 
   if (graphicalWire) {
     const auto& bus = graphicalWire->getBus();
-    if (bus.size() > 0 && bus[0]) {
+    if (bus.size() > 0 && bus[0])
       j["wireId"] = bus[0]->getId();
-    }
   }
 
   return j;

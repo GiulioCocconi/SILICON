@@ -482,7 +482,6 @@ Constraint* IncSolver::mostViolated(Constraints &l)
 
 using std::set;
 using std::vector;
-using std::iterator;
 using std::list;
 using std::copy;
 #define __NOTNAN(p) (p)==(p)

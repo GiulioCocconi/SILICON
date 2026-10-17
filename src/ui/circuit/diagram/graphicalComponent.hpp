@@ -17,6 +17,10 @@
 
 #pragma once
 
+#include <array>
+#include <ranges>
+#include <span>
+
 #include <nlohmann/json.hpp>
 
 #include <ui/circuit/diagram/scene/diagramScene.hpp>
@@ -26,6 +30,7 @@
 
 #include <QPoint>
 #include <QRect>
+#include <QLineF>
 
 
 namespace SILICON::ui {
@@ -69,8 +74,11 @@ private:
   /** @brief Whether to write the port name on the component */
   bool printName = false;
 
-  /** @brief Whether this port failed the latest simulation input assignment */
+  /** @brief Whether the net associated with this port has an error */
   bool inputAssignmentError = false;
+
+  [[nodiscard]] QLineF connectionLine() const;
+  void prepareBoundsChange();
 
 public:
   /**
@@ -84,13 +92,11 @@ public:
   Port(unsigned int index, QPoint position, QString name, bool printName = false,
        QGraphicsItem* parent = nullptr);
 
-  /**
-   * @brief Painting is handled by the parent component.
-   */
+  /** @brief Paints port names, bus markers, and input assignment errors. */
   void paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
              QWidget* widget) override;
 
-  /** @brief Gets the bounding rectangle from the line and bus-size marker */
+  /** @brief Gets visual bounds, including port labels and stroked markers. */
   QRectF boundingRect() const override;
 
   /** @brief Gets the port index */
@@ -114,9 +120,6 @@ public:
   /** @brief Marks whether this port failed input assignment during simulation setup */
   void setInputAssignmentError(bool failed);
 
-  /** @brief Returns whether this port failed input assignment during simulation setup */
-  [[nodiscard]] bool hasInputAssignmentError() const { return inputAssignmentError; }
-
   /**
    * @brief Sets the connecting line.
    * @param line The line item
@@ -125,7 +128,7 @@ public:
 
   /**
    * @brief Gets the collision rectangle for wire detection.
-   * @return Rectangle for hit testing
+   * @return Physical line bounds with clearance around the connection point
    */
   [[nodiscard]] QRectF collisionRect() const;
 };
@@ -146,6 +149,7 @@ public:
  */
 class GraphicalComponent : public GraphicalItem {
   Q_OBJECT
+  friend class Port;
 public:
   /**
    * @brief Gets the collision rectangle extended for wire connections.
@@ -175,7 +179,7 @@ protected:
   void paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
              QWidget* widget) override;
 
-  /** @brief Gets collision rectangle for drag/drop */
+  /** @brief Gets physical body and port line bounds for drag/drop. */
   [[nodiscard]] QRectF getCollisionRect() const override;
 
   /** @brief Components can rotate by default */
@@ -229,11 +233,22 @@ public:
   virtual void setPorts(const std::vector<PortPair>& busToPortInputs,
                         const std::vector<PortPair>& busToPortOutputs);
 
-  /** @brief Gets all input ports */
-  [[nodiscard]] std::vector<Port*> getInputPorts() const { return inputPorts; };
+  /** @brief Borrows input ports; copy before replacing the component ports. */
+  [[nodiscard]] const std::vector<Port*>& getInputPorts() const { return inputPorts; };
 
-  /** @brief Gets all output ports */
-  [[nodiscard]] std::vector<Port*> getOutputPorts() const { return outputPorts; };
+  /** @brief Borrows output ports; copy before replacing the component ports. */
+  [[nodiscard]] const std::vector<Port*>& getOutputPorts() const { return outputPorts; };
+
+  /**
+   * @brief Borrows every port, inputs first, without copying or deduplicating.
+   * @note Replacing ports invalidates the view. The component must outlive it.
+   */
+  [[nodiscard]] auto getPorts() const
+  {
+    return std::array{std::span<Port* const>(inputPorts),
+                      std::span<Port* const>(outputPorts)}
+           | std::views::join;
+  }
 
   /**
    * @brief Gets the component type name for serialization.

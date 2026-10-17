@@ -25,6 +25,7 @@
 #include <QFontMetricsF>
 #include <QLabel>
 #include <QPainter>
+#include <QPainterPathStroker>
 #include <QTextOption>
 
 #include <ui/shell/theme.hpp>
@@ -37,17 +38,85 @@ using namespace SILICON::core;
 
 namespace {
 
+constexpr qreal SelectionMargin = 4.0;
+constexpr qreal SelectionPenWidth = 3.0;
+constexpr qreal PortPenWidth = 3.0;
+constexpr qreal PortErrorPenWidth = 4.0;
+constexpr qreal SlashLength = 12.0;
+constexpr qreal SlashPenWidth = 2.0;
+
 class ThemedPortLineItem : public QGraphicsLineItem {
 public:
-  using QGraphicsLineItem::QGraphicsLineItem;
+  ThemedPortLineItem(const QLineF& line, QGraphicsItem* parent)
+    : QGraphicsLineItem(line, parent)
+  {
+    setPen(QPen(Qt::black, PortPenWidth));
+  }
 
   void paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
              QWidget* widget) override
   {
-    setPen(QPen(QBrush(ThemeEngine::getColor("SILICON_INK")), 3));
-    QGraphicsLineItem::paint(painter, option, widget);
+    auto themedPen = pen();
+    themedPen.setColor(ThemeEngine::getColor("SILICON_INK"));
+    painter->setPen(themedPen);
+    painter->drawLine(line());
   }
 };
+
+QFont portMarkerFont()
+{
+  QFont font = QApplication::font();
+  font.setFamily("NovaMono");
+  if (font.pointSizeF() > 0)
+    font.setPointSizeF(font.pointSizeF() * 0.6);
+  else
+    font.setPixelSize(std::max(1, qRound(font.pixelSize() * 0.6)));
+  return font;
+}
+
+QFont portSizeFont()
+{
+  return QFont("NovaMono");
+}
+
+QRectF strokedLineRect(const QLineF& line, const qreal width)
+{
+  QPainterPath path;
+  path.moveTo(line.p1());
+  path.lineTo(line.p2());
+  QPainterPathStroker stroker;
+  stroker.setWidth(width);
+  stroker.setCapStyle(Qt::SquareCap);
+  return stroker.createStroke(path).boundingRect();
+}
+
+QLineF portSlash(const QLineF& line)
+{
+  QTransform transform;
+  transform.translate(line.center().x(), line.center().y());
+  transform.rotate(-line.angle() + 60.0);
+  return transform.map(QLineF(-SlashLength / 2.0, 0, SlashLength / 2.0, 0));
+}
+
+QRectF portNameRect(const QLineF& line, const QString& name, const PortSide side)
+{
+  constexpr qreal margin = DiagramScene::GRID_SIZE / 2.0;
+  const QFontMetricsF metrics(portMarkerFont());
+  const QPointF point = line.p2();
+  const qreal width = metrics.horizontalAdvance(name);
+  const qreal height = metrics.height();
+  switch (side) {
+    case PortSide::DOWN:
+      return {point.x() - width / 2.0, point.y() - margin / 1.5 - height, width, height};
+    case PortSide::UP:
+      return {point.x() - width / 2.0, point.y() + margin / 1.5, width, height};
+    case PortSide::LEFT:
+      return {point.x() + margin, point.y() - height / 2.0, width, height};
+    case PortSide::RIGHT:
+      return {point.x() - margin - width, point.y() - height / 2.0, width, height};
+  }
+  std::unreachable();
+}
 
 QRectF portSizeLabelRect(const QPointF& midpoint, const QRectF& textRect,
                          const PortSide direction)
@@ -89,32 +158,27 @@ void GraphicalComponent::setItemShape(QGraphicsItem* shape)
   if (!shape)
     throw std::invalid_argument("setItemShape: shape must not be null");
 
-  if (this->itemShape) {
-    prepareGeometryChange();
-    delete this->itemShape;
-  }
+  if (itemShape == shape)
+    return;
+
+  prepareGeometryChange();
+  if (this->itemShape)
+    delete std::exchange(this->itemShape, nullptr);
 
   this->itemShape = shape;
   this->itemShape->setParentItem(this);
+  update();
 }
 
 QRectF GraphicalComponent::boundingRect() const
 {
-  const qreal MARGIN = isSelected() ? 0 : 4;  // Pen width is 3
-  auto        rect   = boundingRectWithoutMargins();
-  rect.adjust(-MARGIN, -MARGIN, MARGIN, MARGIN);
-
-  return rect;
+  return boundingRectWithoutMargins().adjusted(-SelectionMargin, -SelectionMargin,
+                                              SelectionMargin, SelectionMargin);
 }
 
 QRectF GraphicalComponent::boundingRectWithoutMargins() const
 {
-  QRectF rect = itemShape->boundingRect();  // Start with shape bounds
-
-  for (const QGraphicsItem* child : childItems())
-    rect = rect.united(child->boundingRect());
-
-  return rect;
+  return childrenBoundingRect();
 }
 
 void GraphicalComponent::paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
@@ -124,35 +188,38 @@ void GraphicalComponent::paint(QPainter* painter, const QStyleOptionGraphicsItem
     auto color = isColliding() ? Qt::red : ThemeEngine::getColor("SILICON_INK");
     auto style = isColliding() ? Qt::SolidLine : Qt::DotLine;
 
-    painter->setPen(QPen(color, 3, style));
+    painter->setPen(QPen(color, SelectionPenWidth, style));
+    painter->setBrush(Qt::NoBrush);
     painter->drawRect(this->boundingRectWithoutMargins());
   }
 }
 
 QRectF GraphicalComponent::collisionRectForWires() const
 {
-  QPainterPath componentPath{};
-  componentPath.addRect(itemShape->boundingRect());
+  QRectF rect = itemShape ? itemShape->mapRectToParent(itemShape->boundingRect())
+                         : QRectF{};
 
-  for (const auto port : inputPorts)
-    componentPath.addRect(port->collisionRect());
+  for (const auto port : getPorts())
+    rect = rect.united(port->mapRectToParent(port->collisionRect()));
 
-  for (const auto port : outputPorts)
-    componentPath.addRect(port->collisionRect());
-
-  return componentPath.boundingRect();
+  return rect;
 }
 
 void GraphicalComponent::rotate()
 {
   setRotation(rotation() + 90);
-  prepareGeometryChange();
   update();
 }
 
 QRectF GraphicalComponent::getCollisionRect() const
 {
-  return boundingRectWithoutMargins();
+  QRectF rect = itemShape ? itemShape->mapRectToParent(itemShape->boundingRect())
+                         : QRectF{};
+  for (const auto* port : getPorts()) {
+    if (port->line)
+      rect = rect.united(port->line->mapRectToParent(port->line->boundingRect()));
+  }
+  return rect;
 }
 
 void GraphicalComponent::mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event)
@@ -183,25 +250,26 @@ void GraphicalComponent::setPorts(const std::vector<PortPair>& busToPortInputs,
     this->outputPorts.push_back(p);
     this->setPortLine(p);
   }
+  if (auto* diagram = qobject_cast<DiagramScene*>(scene()))
+    diagram->requestConnectionsRefresh();
 }
 
 void GraphicalComponent::clearPorts()
 {
+  if (auto* diagram = qobject_cast<DiagramScene*>(scene()))
+    diagram->requestConnectionsRefresh();
   prepareGeometryChange();
 
-  auto deletePorts = [](std::vector<Port*>& ports) {
-    for (Port* port : ports) {
-      if (!port)
-        continue;
+  for (Port* port : getPorts()) {
+    if (!port)
+      continue;
 
-      delete port->line;
-      delete port;
-    }
-    ports.clear();
-  };
-
-  deletePorts(inputPorts);
-  deletePorts(outputPorts);
+    port->prepareGeometryChange();
+    delete std::exchange(port->line, nullptr);
+    delete port;
+  }
+  inputPorts.clear();
+  outputPorts.clear();
 }
 
 QPoint GraphicalComponent::scanImage(const QImage& image, const PortSide side,
@@ -274,12 +342,12 @@ void GraphicalComponent::setPortLine(Port* port)
   const QPoint projectionOnShape = scanImage(image, portSide, naiveProjection);
 
   // Create the line from port position to the projection
+  prepareGeometryChange();
   port->side = portSide;
+  port->printName = printPortNames;
   port->setLine(new ThemedPortLineItem(QLineF(portPos, projectionOnShape), this));
 
-  if (printPortNames) {
-    port->printName = true;
-  } else {
+  if (!printPortNames) {
     port->setToolTip(port->name);
   }
 }
@@ -294,30 +362,49 @@ Port::Port(const unsigned int index, const QPoint position, QString name, bool p
   this->name      = std::move(name);
 }
 
+QLineF Port::connectionLine() const
+{
+  const auto portLine = line->line();
+  return {mapFromItem(line, portLine.p1()), mapFromItem(line, portLine.p2())};
+}
+
+void Port::prepareBoundsChange()
+{
+  // The parent paints its selection outline around the accumulated child bounds.
+  if (auto* component = dynamic_cast<GraphicalComponent*>(parentItem()))
+    component->prepareGeometryChange();
+  prepareGeometryChange();
+}
+
 QRectF Port::boundingRect() const
 {
   if (!line)
     return {};
 
-  QRectF rect = line->boundingRect();
-  if (size == 1)
-    return rect;
-
-  const QLineF  portLine = line->line();
-  const QPointF midpoint((portLine.p1().x() + portLine.p2().x()) / 2.0,
-                         (portLine.p1().y() + portLine.p2().y()) / 2.0);
-
-  const QFontMetricsF metrics(QFont("NovaMono"));
-  const QRectF        labelRect =
-      metrics.boundingRect(QString::number(size)).adjusted(-4.0, -2.0, 4.0, 2.0);
-  rect = rect.united(portSizeLabelRect(midpoint, labelRect, side));
+  const QLineF portLine = connectionLine();
+  // Reserve the error stroke even while it is hidden, keeping bounds stable.
+  QRectF rect = mapRectFromItem(line, line->boundingRect())
+                    .united(strokedLineRect(portLine, PortErrorPenWidth));
+  if (printName)
+    rect = rect.united(portNameRect(portLine, name, side));
+  if (size != 1) {
+    const QFontMetricsF metrics(portSizeFont());
+    const QRectF textRect =
+        metrics.boundingRect(QString::number(size)).adjusted(-4.0, -2.0, 4.0, 2.0);
+    rect = rect.united(portSizeLabelRect(portLine.center(), textRect, side))
+               .united(strokedLineRect(portSlash(portLine), SlashPenWidth));
+  }
 
   return rect;
 }
 
 void Port::setLine(QGraphicsLineItem* line)
 {
-  prepareGeometryChange();
+  prepareBoundsChange();
+  if (line->parentItem() != parentItem()) {
+    if (auto* component = dynamic_cast<GraphicalComponent*>(line->parentItem()))
+      component->prepareGeometryChange();
+  }
   this->line = line;
   setParentItem(line->parentItem());
   setZValue(line->zValue() + 1.0);
@@ -329,9 +416,11 @@ void Port::setSize(const unsigned int newSize)
   if (size == normalizedSize)
     return;
 
-  prepareGeometryChange();
+  prepareBoundsChange();
   size = normalizedSize;
   update();
+  if (parentItem())
+    parentItem()->update();
 }
 
 void Port::setInputAssignmentError(const bool failed)
@@ -354,75 +443,43 @@ void Port::paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
   if (!line)
     return;
 
-  const bool          isBusPort = (size != 1);
-  const QLineF        portLine  = line->line();
-  const QFont         markerFont("NovaMono", painter->font().pointSize() * 0.6);
-  const QFontMetricsF metrics(markerFont);
+  const bool          isBusPort  = (size != 1);
+  const QLineF        portLine   = connectionLine();
+  const QFont         markerFont = portMarkerFont();
   const QColor        portColor =
       inputAssignmentError ? Qt::red : ThemeEngine::getColor("SILICON_INK");
 
   if (inputAssignmentError) {
     painter->save();
-    painter->setPen(QPen(portColor, 4.0, Qt::SolidLine));
+    painter->setPen(QPen(portColor, PortErrorPenWidth, Qt::SolidLine));
     painter->drawLine(portLine);
     painter->restore();
   }
 
   if (printName) {
-    auto getNameRect = [portLine, metrics, this]() -> QRectF {
-      constexpr qreal MARGIN = DiagramScene::GRID_SIZE / 2.0;
-      const QPointF   linePt = portLine.p2();
-
-      const qreal textWidth  = metrics.horizontalAdvance(name);
-      const qreal textHeight = metrics.height();
-
-      switch (this->side) {
-        case PortSide::DOWN:
-          return {linePt.x() - textWidth / 2.0, linePt.y() - MARGIN / 1.5 - textHeight,
-                  textWidth, textHeight};
-        case PortSide::UP:
-          return {linePt.x() - textWidth / 2.0, linePt.y() + MARGIN / 1.5, textWidth,
-                  textHeight};
-        case PortSide::LEFT:
-          return {linePt.x() + MARGIN, linePt.y() - textHeight / 2.0, textWidth,
-                  textHeight};
-        case PortSide::RIGHT:
-          return {linePt.x() - MARGIN - textWidth, linePt.y() - textHeight / 2.0,
-                  textWidth, textHeight};
-      }
-      std::unreachable();
-    };
-
     painter->save();
     painter->setFont(markerFont);
     painter->setPen(QPen(portColor));
-    painter->drawText(getNameRect(), name, QTextOption(Qt::AlignCenter));
+    painter->drawText(portNameRect(portLine, name, side), name,
+                      QTextOption(Qt::AlignCenter));
     painter->restore();
   }
 
   if (isBusPort) {
-    constexpr qreal SLASH_LENGTH = 12.0;
-    constexpr qreal SLASH_ANGLE  = 60.0;
-
-    const QPointF midpoint((portLine.p1().x() + portLine.p2().x()) / 2.0,
-                           (portLine.p1().y() + portLine.p2().y()) / 2.0);
-    const qreal   lineAngle = portLine.angle();
-    const QString sizeText  = QString::number(size);
+    const QString sizeText = QString::number(size);
+    const QFont sizeFont = portSizeFont();
+    const QFontMetricsF metrics(sizeFont);
 
     painter->save();
-    painter->setPen(QPen(portColor, 2.0));
-    painter->setFont(markerFont);
-
-    painter->translate(midpoint);
-    painter->rotate(-lineAngle + SLASH_ANGLE);
-    painter->drawLine(QPointF(-SLASH_LENGTH / 2.0, 0), QPointF(SLASH_LENGTH / 2.0, 0));
+    painter->setPen(QPen(portColor, SlashPenWidth));
+    painter->drawLine(portSlash(portLine));
     painter->restore();
 
     const QRectF textRect = metrics.boundingRect(sizeText).adjusted(-4.0, -2.0, 4.0, 2.0);
-    const QRectF labelRect = portSizeLabelRect(midpoint, textRect, side);
+    const QRectF labelRect = portSizeLabelRect(portLine.center(), textRect, side);
 
     painter->save();
-    painter->setFont(markerFont);
+    painter->setFont(sizeFont);
     painter->setPen(portColor);
     painter->drawText(labelRect, sizeText, QTextOption(Qt::AlignCenter));
     painter->restore();
@@ -431,11 +488,15 @@ void Port::paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
 
 QRectF Port::collisionRect() const
 {
+  if (!line)
+    return {};
+
+  // Decorations describe the bus; they must not obstruct a wire reaching its tip.
   QPainterPath boundingPath{};
-  boundingPath.addRect(boundingRect());
+  boundingPath.addRect(mapRectFromItem(line, line->boundingRect()));
 
   QPainterPath subtract{};
-  subtract.addEllipse(position, 5, 5);
+  subtract.addEllipse(connectionLine().p1(), 5, 5);
 
   return boundingPath.subtracted(subtract).boundingRect();
 }

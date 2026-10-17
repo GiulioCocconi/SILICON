@@ -21,7 +21,6 @@
 #include <span>
 #include <vector>
 
-#include <core/elaboration.hpp>
 #include <core/simulator.hpp>
 
 namespace SILICON::simulation {
@@ -31,25 +30,12 @@ using namespace SILICON::waveform;
 using namespace SILICON::waveform::fst;
 
 /**
- * @brief Owns the source design elaboration and its runtime Simulator.
+ * @brief Elaborates a source design once and owns its runtime Simulator.
  *
- * Simulator remains concerned only with executing a runtime circuit. This session
- * handles the higher-level simulation lifecycle: elaborate source modules, construct
- * the runtime simulator, and rebuild when the source topology changes.
- *
- * @details Session is the runtime workflow facade:
- *
- * 1. The caller provides the source Circuit, which may contain source-level module
- *    placeholders such as subcircuits.
- * 2. The session creates a CircuitElaborator using the active component registry.
- * 3. @ref rebuild() elaborates the source circuit into a runtime circuit and creates a
- *    Simulator for that runtime circuit only.
- * 4. The UI or workflow calls @ref rebuild() explicitly after source topology changes.
- * 5. Trace bus/sink configuration is stored on the session and reapplied whenever the
- *    runtime simulator is rebuilt.
- *
- * Saved circuit JSON and UI component state remain source-level data; the runtime
- * circuit is an implementation detail of the active simulation session.
+ * Source components are cloned and subcircuits are expanded before simulation.
+ * Root wires remain shared so UI handles can drive inputs and observe outputs.
+ * The runtime topology is fixed; create a new session after design changes.
+ * Saved circuit JSON and UI component state remain source-level data.
  */
 class Session {
 public:
@@ -59,7 +45,7 @@ public:
    * @param sourceCircuit Source/editable circuit to simulate.
    * @param isCancelled Optional cancellation callback used during initial runtime
    * construction.
-   * @param resolver Optional non-owning resolver that must outlive this session.
+   * @param resolver Optional resolver used only during construction.
    * @throws std::invalid_argument if @p sourceCircuit is null.
    */
   explicit Session(std::shared_ptr<Circuit>              sourceCircuit,
@@ -70,15 +56,6 @@ public:
 
   Session(const Session&)            = delete;
   Session& operator=(const Session&) = delete;
-
-  /**
-   * @brief Rebuilds the runtime circuit and runtime simulator from the source circuit.
-   *
-   * @details This discards pending events and simulation time, because a topology change
-   * invalidates the previous runtime circuit. Stored trace configuration is immediately
-   * reapplied to the new runtime simulator.
-   */
-  void rebuild(Simulator::CancellationCheck isCancelled = {});
 
   /**
    * @brief Runs the active simulation for a bounded duration.
@@ -113,16 +90,12 @@ public:
                               Simulator::CancellationCheck isCancelled = {});
 
   /**
-   * @brief Stores and applies the named buses emitted by trace snapshots.
-   *
-   * The stored configuration is reapplied after runtime simulator rebuilds.
+   * @brief Configures the named buses emitted by trace snapshots.
    */
   void setTraceBuses(std::vector<CircuitWriter::NamedBus> buses);
 
   /**
-   * @brief Stores and applies the callback that receives encoded trace snapshots.
-   *
-   * The stored callback is reapplied after runtime simulator rebuilds.
+   * @brief Configures the callback that receives encoded trace snapshots.
    */
   void setTraceSink(Simulator::TraceSink sink);
 
@@ -142,13 +115,7 @@ public:
   [[nodiscard]] uint64_t getCurrentTime() const;
 
 private:
-  std::shared_ptr<Circuit>   sourceCircuit;
-  std::shared_ptr<Circuit>   runtime;
   std::unique_ptr<Simulator> runtimeSimulator;
-  CircuitElaborator          elaborator;
-
-  std::vector<CircuitWriter::NamedBus> traceBuses;
-  Simulator::TraceSink                 traceSink;
 };
 
 }  // namespace SILICON::simulation

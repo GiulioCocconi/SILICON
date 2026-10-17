@@ -219,9 +219,7 @@ namespace {
         }
       };
 
-      for (const auto& bus : component->inputBuses())
-        seedBus(bus);
-      for (const auto& bus : component->outputBuses())
+      for (const auto& bus : component->allBuses())
         seedBus(bus);
     }
     return wireMap;

@@ -57,7 +57,8 @@ class WireManager;
  */
 class GraphicalWire {
 public:
-  GraphicalWire()  = default;
+  /** @brief Creates a wire with a unique route identifier. */
+  GraphicalWire();
   ~GraphicalWire() = default;
 
   /**
@@ -65,6 +66,23 @@ public:
    * @param busSize The number of wires in the bus
    */
   explicit GraphicalWire(unsigned int busSize);
+  /** @brief Returns the persistent identifier of this logical wire group. */
+  [[nodiscard]] uint64_t getRouteId() const { return routeId; }
+  /**
+   * @brief Restores a saved identifier and advances the identifier allocator.
+   * @param id Route identifier from serialization or an undo snapshot.
+   */
+  void restoreRouteId(uint64_t id);
+
+  /**
+   * @brief Updates the connection error and refreshes segment tooltips and painting.
+   * @param reason Error message, or no value to clear the error.
+   */
+  void setConnectionError(std::optional<QString> reason);
+
+  /** @brief Returns the connection error, or no value when the net has no error. */
+  [[nodiscard]] std::optional<QString> getConnectionError() const
+  { return connectionError; }
 
   /**
    * @brief Adds a segment to this wire.
@@ -170,6 +188,8 @@ public:
   WireManager* getManager() const { return manager; }
 
 private:
+  uint64_t routeId;
+  std::optional<QString> connectionError;
   /** @brief The logical bus */
   Bus bus;
 
@@ -185,13 +205,11 @@ private:
  * @brief The visible, selectable polyline wire on the diagram scene.
  *
  * GraphicalWireSegment is a QGraphicsItem representing a polyline wire
- * drawn on the diagram. It supports interactive point dragging,
- * automatic junction detection, and orthogonal (horizontal/vertical)
- * path maintenance.
+ * drawn on the diagram. It stores and paints orthogonal route geometry and exposes
+ * hit-tested bend and edge handles to DiagramScene's interaction state.
  *
  * Junctions occur where an endpoint meets at least three distinct wire arms.
- * Individual points can be highlighted and dragged to reshape
- * the wire while maintaining orthogonality.
+ * Individual bends can be highlighted while a scene edit previews the route.
  *
  * @see GraphicalWire
  */
@@ -216,6 +234,9 @@ public:
   /** @brief Gets the shape for hit testing */
   [[nodiscard]] QPainterPath shape() const override;
 
+  /** @brief Narrow painted centerline used by component collision checks. */
+  [[nodiscard]] QPainterPath centerlineShape() const;
+
   /** @brief Gets the bounding rectangle */
   [[nodiscard]] QRectF boundingRect() const override;
 
@@ -239,9 +260,9 @@ public:
 
   /**
    * @brief Sets temporary points shown while drawing.
-   * @param showPoints The points to show
+   * @param newShowPoints The points to show
    */
-  void setShowPoints(const std::vector<QPointF>& showPoints);
+  void setShowPoints(const std::vector<QPointF>& newShowPoints);
 
   /**
    * @brief Gets temporary points shown while drawing.
@@ -273,7 +294,7 @@ public:
   /**
    * @brief Replaces all points at once.
    *
-   * Used by WireManager during aligned merge operations.
+   * Used for route previews, undo/redo, and aligned merge operations.
    *
    * @param newPoints The new points vector
    */
@@ -283,17 +304,15 @@ public:
    * @brief Gets the index of the point nearest to localPos.
    *
    * @param localPos The position to check
-   * @return Index of nearest point, or -1 if none within grab radius
+   * @return Index of nearest point, or no value outside the grab radius
    */
-  [[nodiscard]] int pointIndexAt(QPointF localPos) const;
-
+  [[nodiscard]] std::optional<size_t>       pointIndexAt(QPointF localPos) const;
   /**
-   * @brief Moves a point and adjusts adjacent points for orthogonality.
-   *
-   * @param index The point index to move
-   * @param newLocalPos The new position
+   * @brief Finds the first edge within the grab radius of a local position.
+   * @param localPos Position in segment coordinates.
+   * @return Index of the edge's first point, or no value when no edge is hit.
    */
-  void movePointTo(size_t index, QPointF newLocalPos);
+  [[nodiscard]] std::optional<size_t>       edgeIndexAt(QPointF localPos) const;
 
   /** @brief Checks if first endpoint is a junction */
   [[nodiscard]] bool isFirstPointJunction() const { return firstJunction; }
@@ -312,11 +331,9 @@ public:
 
   /**
    * @brief Sets the logical wire, optionally propagating to touching siblings.
-   * @param graphicalWire The wire to set
-   * @param propagateToTouchingSegments Whether geometric contact should merge siblings
+   * @param newWire The wire to set
    */
-  void setGraphicalWire(GraphicalWire* graphicalWire,
-                        bool           propagateToTouchingSegments = true);
+  void setGraphicalWire(GraphicalWire* newWire);
 
   /**
    * @brief Detaches from the logical wire without side effects.
@@ -327,6 +344,8 @@ public:
   void detachFromWire() { graphicalWire = nullptr; }
 
   void updateTopology() override;
+  /** @brief Clears the drag cursor and resets hover highlighting outside normal mode. */
+  void modeChanged(InteractionMode mode) override;
 
   ~GraphicalWireSegment() override;
 
@@ -367,14 +386,8 @@ private:
   /** @brief Junction flag for last endpoint */
   bool lastJunction = false;
 
-  /** @brief Currently dragged point index */
-  int dragPointIndex = -1;
-
-  /** @brief Starting position of point drag */
-  QPointF dragStartPos;
-
   /** @brief Currently hovered point index */
-  int hoveredPointIndex = -1;
+  std::optional<size_t> hoveredPointIndex = std::nullopt;
 
   /** @brief Updates the internal path shapes */
   void updatePath();

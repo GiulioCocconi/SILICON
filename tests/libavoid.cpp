@@ -3,14 +3,17 @@
 #include "libavoid/libavoid.h"
 #include "libavoid/qtgeomtypes.h"
 #include "ui/circuit/diagram/wireRouting.hpp"
+#include "ui/circuit/diagram/interactiveWireRouter.hpp"
 
 #include <QPointF>
 #include <QPolygonF>
 #include <QRectF>
 #include <algorithm>
+#include <string>
 #include <vector>
 
 using namespace SILICON::core;
+using namespace SILICON::ui;
 
 namespace {
 
@@ -111,6 +114,261 @@ Avoid::ConnEnd pinnedTerminal(Avoid::ShapeRef* shape, const QRectF& bounds,
 
 }  // namespace
 
+TEST(InteractiveWireRouterTest, MovingPinnedComponentReroutesItsWire)
+{
+  InteractiveWireRouter router(
+      {{1, QRectF(-20, -10, 20, 20), {{0, 0}}},
+       {2, QRectF(100, -10, 20, 20), {{100, 0}}}},
+      {{11, 1, {{0, 0}, {100, 0}}}}, 10);
+  const std::vector<ComponentRouteMove> moves{{1, QRectF(0, -10, 20, 20)}};
+  const auto routed = router.routeComponents(moves);
+  ASSERT_TRUE(routed);
+  ASSERT_EQ(routed->size(), 1U);
+  EXPECT_EQ(routed->front().points.front(), QPointF(20, 0));
+  EXPECT_EQ(routed->front().points.back(), QPointF(100, 0));
+  EXPECT_TRUE(isOrthogonalRoute(routed->front().points));
+}
+
+TEST(InteractiveWireRouterTest, MovingComponentKeepsTwoAttachedWiresAtTheirPorts)
+{
+  InteractiveWireRouter router(
+      {{1, QRectF(-20, -20, 40, 40), {{0, -20}, {0, 20}}},
+       {2, QRectF(-20, -100, 40, 20), {{0, -80}}},
+       {3, QRectF(-20, 80, 40, 20), {{0, 80}}}},
+      {{11, 1, {{0, -20}, {0, -80}}},
+       {12, 2, {{0, 20}, {0, 80}}}}, 10);
+  const std::vector<ComponentRouteMove> moves{{1, QRectF(0, -20, 40, 40)}};
+  const auto routed = router.routeComponents(moves);
+  ASSERT_TRUE(routed);
+  ASSERT_EQ(routed->size(), 2U);
+  EXPECT_EQ((*routed)[0].points.front(), QPointF(20, -20));
+  EXPECT_EQ((*routed)[0].points.back(), QPointF(0, -80));
+  EXPECT_EQ((*routed)[1].points.front(), QPointF(20, 20));
+  EXPECT_EQ((*routed)[1].points.back(), QPointF(0, 80));
+  EXPECT_TRUE(isOrthogonalRoute((*routed)[0].points));
+  EXPECT_TRUE(isOrthogonalRoute((*routed)[1].points));
+}
+
+TEST(InteractiveWireRouterTest, PinnedPortInsidePaintBoundsStillMoves)
+{
+  InteractiveWireRouter router(
+      {{1, QRectF(-20, -10, 21, 20), {{0, 0}}},
+       {2, QRectF(99, -10, 21, 20), {{100, 0}}}},
+      {{11, 1, {{0, 0}, {100, 0}}}}, 10);
+  const std::vector<ComponentRouteMove> moves{{1, QRectF(0, -10, 21, 20)}};
+  const auto routed = router.routeComponents(moves);
+  ASSERT_TRUE(routed);
+  EXPECT_EQ(routed->front().points.front(), QPointF(20, 0));
+  EXPECT_EQ(routed->front().points.back(), QPointF(100, 0));
+}
+
+TEST(InteractiveWireRouterTest, PortOutsideCollisionBoundsKeepsItsPosition)
+{
+  InteractiveWireRouter router(
+      {{1, QRectF(0, -10, 90, 20), {{100, 0}}},
+       {2, QRectF(200, -10, 90, 20), {{200, 0}}}},
+      {{11, 1, {{100, 0}, {200, 0}}}}, 10);
+  const std::vector<ComponentRouteMove> moves{{1, QRectF(20, -10, 90, 20)}};
+  testing::internal::CaptureStderr();
+  const auto routed = router.routeComponents(moves);
+  const std::string diagnostics = testing::internal::GetCapturedStderr();
+  EXPECT_EQ(diagnostics.find("ShapeConnectionPin constructor"), std::string::npos)
+      << diagnostics;
+  ASSERT_TRUE(routed);
+  EXPECT_EQ(routed->front().points.front(), QPointF(120, 0));
+  EXPECT_EQ(routed->front().points.back(), QPointF(200, 0));
+}
+
+TEST(InteractiveWireRouterTest, MovingComponentCannotRerouteUnattachedWire)
+{
+  InteractiveWireRouter router(
+      {{1, QRectF(40, 40, 20, 20), {}}},
+      {{11, 1, {{0, 0}, {100, 0}}}}, 10);
+  const std::vector<ComponentRouteMove> moves{{1, QRectF(40, -10, 20, 20)}};
+  EXPECT_FALSE(router.routeComponents(moves));
+}
+
+TEST(InteractiveWireRouterTest, MovingComponentLeavesOtherNetFixed)
+{
+  const std::vector<QPointF> other{{0, 60}, {100, 60}};
+  InteractiveWireRouter router(
+      {{1, QRectF(-20, -10, 20, 20), {{0, 0}}},
+       {2, QRectF(100, -10, 20, 20), {{100, 0}}}},
+      {{11, 1, {{0, 0}, {100, 0}}}, {12, 2, other}}, 10);
+  const std::vector<ComponentRouteMove> moves{{1, QRectF(0, -10, 20, 20)}};
+  const auto routed = router.routeComponents(moves);
+  ASSERT_TRUE(routed);
+  ASSERT_EQ(routed->size(), 2U);
+  EXPECT_EQ((*routed)[0].points.front(), QPointF(20, 0));
+  EXPECT_EQ((*routed)[1].points, other);
+}
+
+TEST(InteractiveWireRouterTest, BendAndEdgeUseLibavoidConstraints)
+{
+  InteractiveWireRouter router({}, {{11, 1, {{0, 0}, {30, 0}, {30, 40}, {80, 40}}}}, 10);
+  const auto bend = router.routeWireBend(11, 1, QPointF(40, 20));
+  ASSERT_TRUE(bend);
+  EXPECT_TRUE(pointOnOrthogonalRoute(QPointF(40, 20), bend->front().points));
+  EXPECT_EQ(bend->front().points.front(), QPointF(0, 0));
+  EXPECT_EQ(bend->front().points.back(), QPointF(80, 40));
+
+  const auto edge = router.routeWireEdge(11, 1, QPointF(20, 0));
+  ASSERT_TRUE(edge);
+  EXPECT_TRUE(pointOnOrthogonalRoute(QPointF(50, 20), edge->front().points));
+  EXPECT_EQ(edge->front().points.front(), QPointF(0, 0));
+  EXPECT_EQ(edge->front().points.back(), QPointF(80, 40));
+}
+
+TEST(InteractiveWireRouterTest, BranchFollowsDraggedTrunkEdge)
+{
+  InteractiveWireRouter router({},
+      {{11, 1, {{0, 0}, {100, 0}}}, {12, 1, {{50, 0}, {50, 50}}}}, 10);
+  const auto routed = router.routeWireEdge(11, 0, QPointF(0, 20));
+  ASSERT_TRUE(routed);
+  ASSERT_EQ(routed->size(), 2U);
+  EXPECT_TRUE(pointOnOrthogonalRoute(QPointF(50, 20), (*routed)[0].points));
+  EXPECT_EQ((*routed)[1].points.front(), QPointF(50, 20));
+  EXPECT_EQ((*routed)[1].points.back(), QPointF(50, 50));
+}
+
+TEST(InteractiveWireRouterTest, DraggingBranchEndpointLeavesTrunkInPlace)
+{
+  InteractiveWireRouter router({},
+      {{11, 1, {{0, 0}, {100, 0}}}, {12, 1, {{50, 0}, {50, 50}}}}, 10);
+  const auto routed = router.routeWireEndpoint(12, 0, QPointF(70, 20));
+  ASSERT_TRUE(routed);
+  ASSERT_EQ(routed->size(), 2U);
+  EXPECT_EQ((*routed)[0].points, (std::vector<QPointF>{{0, 0}, {100, 0}}));
+  EXPECT_EQ((*routed)[1].points.front(), QPointF(70, 20));
+  EXPECT_EQ((*routed)[1].points.back(), QPointF(50, 50));
+  EXPECT_FALSE(orthogonalRoutesTouch((*routed)[1].points, (*routed)[0].points));
+}
+
+TEST(InteractiveWireRouterTest, DraggingBranchFromSplitTrunkLeavesBothArmsInPlace)
+{
+  InteractiveWireRouter router({},
+      {{11, 1, {{0, 0}, {50, 0}}}, {12, 1, {{50, 0}, {100, 0}}},
+       {13, 1, {{50, 0}, {50, 50}}}}, 10);
+  const auto routed = router.routeWireEndpoint(13, 0, QPointF(70, 20));
+  ASSERT_TRUE(routed);
+  ASSERT_EQ(routed->size(), 3U);
+  EXPECT_EQ((*routed)[0].points, (std::vector<QPointF>{{0, 0}, {50, 0}}));
+  EXPECT_EQ((*routed)[1].points, (std::vector<QPointF>{{50, 0}, {100, 0}}));
+  EXPECT_EQ((*routed)[2].points.front(), QPointF(70, 20));
+  EXPECT_FALSE(orthogonalRoutesTouch((*routed)[2].points, (*routed)[0].points));
+  EXPECT_FALSE(orthogonalRoutesTouch((*routed)[2].points, (*routed)[1].points));
+}
+
+TEST(InteractiveWireRouterTest, DraggingDetachedEndpointBackOntoWire)
+{
+  InteractiveWireRouter router({},
+      {{11, 1, {{0, 0}, {100, 0}}}, {12, 2, {{70, 20}, {70, 50}}}}, 10);
+  const auto routed = router.routeWireEndpoint(12, 0, QPointF(70, 0));
+  ASSERT_TRUE(routed);
+  ASSERT_EQ(routed->size(), 2U);
+  EXPECT_EQ((*routed)[0].points, (std::vector<QPointF>{{0, 0}, {100, 0}}));
+  EXPECT_EQ((*routed)[1].points.front(), QPointF(70, 0));
+  EXPECT_TRUE(orthogonalRoutesTouch((*routed)[0].points, (*routed)[1].points));
+}
+
+TEST(InteractiveWireRouterTest, TerminalEdgeAddsDoglegWithoutMovingTerminals)
+{
+  InteractiveWireRouter router({}, {{11, 1, {{0, 0}, {60, 0}}}}, 10);
+  const auto routed = router.routeWireEdge(11, 0, QPointF(0, 20));
+  ASSERT_TRUE(routed);
+  EXPECT_EQ(routed->front().points.front(), QPointF(0, 0));
+  EXPECT_EQ(routed->front().points.back(), QPointF(60, 0));
+  EXPECT_TRUE(pointOnOrthogonalRoute(QPointF(30, 20), routed->front().points));
+}
+
+TEST(InteractiveWireRouterTest, EdgeDragKeepsComponentPinsAttached)
+{
+  InteractiveWireRouter router(
+      {{1, QRectF(-20, -10, 20, 20), {{0, 0}}},
+       {2, QRectF(100, -10, 20, 20), {{100, 0}}}},
+      {{11, 1, {{0, 0}, {100, 0}}}}, 10);
+  const auto routed = router.routeWireEdge(11, 0, QPointF(0, 20));
+  ASSERT_TRUE(routed);
+  EXPECT_EQ(routed->front().points.front(), QPointF(0, 0));
+  EXPECT_EQ(routed->front().points.back(), QPointF(100, 0));
+  EXPECT_TRUE(pointOnOrthogonalRoute(QPointF(50, 20), routed->front().points));
+}
+
+TEST(InteractiveWireRouterTest, DragLeavesAnotherNetFixed)
+{
+  const std::vector<QPointF> other{{0, 60}, {100, 60}};
+  InteractiveWireRouter router({},
+      {{11, 1, {{0, 0}, {100, 0}}}, {12, 2, other}}, 10);
+  const auto routed = router.routeWireEdge(11, 0, QPointF(0, 20));
+  ASSERT_TRUE(routed);
+  ASSERT_EQ(routed->size(), 2U);
+  EXPECT_EQ((*routed)[1].points, other);
+}
+
+TEST(InteractiveWireRouterTest, PreviewsAlwaysStartFromOriginalGeometry)
+{
+  const std::vector<QPointF> original{{0, 0}, {30, 0}, {30, 40}, {80, 40}};
+  InteractiveWireRouter router({}, {{11, 1, original}}, 10);
+
+  const auto first = router.routeWireBend(11, 1, QPointF(40, 20));
+  ASSERT_TRUE(first);
+  const auto different = router.routeWireEdge(11, 1, QPointF(20, 0));
+  ASSERT_TRUE(different);
+  const auto repeated = router.routeWireBend(11, 1, QPointF(40, 20));
+  ASSERT_TRUE(repeated);
+  EXPECT_EQ(repeated->front().points, first->front().points);
+  EXPECT_FALSE(router.routeWireBend(11, 0, QPointF(40, 20)));
+  EXPECT_FALSE(router.routeWireEdge(11, original.size(), QPointF(0, 10)));
+}
+
+TEST(InteractiveWireRouterTest, MovedPortKeepsFanoutJunctionAttached)
+{
+  InteractiveWireRouter router(
+      {{1, QRectF(-20, -10, 20, 20), {{0, 0}}}},
+      {{11, 1, {{0, 0}, {50, 0}}},
+       {12, 1, {{50, 0}, {50, 40}}},
+       {13, 1, {{50, 0}, {100, 0}}}}, 10);
+  const std::vector<ComponentRouteMove> moves{{1, QRectF(0, -10, 20, 20)}};
+  const auto routed = router.routeComponents(moves);
+  ASSERT_TRUE(routed);
+  ASSERT_EQ(routed->size(), 3U);
+  EXPECT_EQ((*routed)[0].points.front(), QPointF(20, 0));
+  EXPECT_EQ((*routed)[0].points.back(), QPointF(50, 0));
+  EXPECT_EQ((*routed)[1].points.front(), QPointF(50, 0));
+  EXPECT_EQ((*routed)[2].points.front(), QPointF(50, 0));
+}
+
+TEST(WireRoutingTest, NormalizationPreservesIntentionalRetracedEdges)
+{
+  const std::vector<QPointF> route{{0, 0}, {20, 0}, {0, 0}, {0, 30}};
+  const auto normalized = canonicalizeOrthogonalRoute(route);
+  EXPECT_EQ(normalized, route);
+  EXPECT_EQ(canonicalizeOrthogonalRoute(normalized), normalized);
+}
+
+TEST(WireRoutingTest, SelfIntersectionAllowsConnectedBendsButRejectsCrossings)
+{
+  EXPECT_FALSE(orthogonalRouteSelfIntersects(
+      std::vector<QPointF>{{0, 0}, {40, 0}, {40, 20}, {80, 20}, {80, 40}}));
+  EXPECT_FALSE(orthogonalRouteSelfIntersects(
+      std::vector<QPointF>{{0, 0}, {40, 0}, {40, 0}, {40, 20}}));
+  EXPECT_TRUE(orthogonalRouteSelfIntersects(
+      std::vector<QPointF>{{0, 0}, {40, 0}, {40, 40}, {20, 40}, {20, -20}}));
+  EXPECT_TRUE(orthogonalRouteSelfIntersects(
+      std::vector<QPointF>{{0, 0}, {40, 0}, {0, 0}}));
+  EXPECT_TRUE(orthogonalRouteSelfIntersects(
+      std::vector<QPointF>{{0, 0}, {40, 0}, {40, 40}, {0, 40}, {0, 0}}));
+}
+
+TEST(WireRoutingTest, DetectsOnlyObstacleInteriorCrossings)
+{
+  const std::vector<QRectF> obstacles{QRectF(20, 20, 20, 20)};
+  const std::vector<QPointF> alongBoundary{{0, 20}, {60, 20}};
+  const std::vector<QPointF> acrossInterior{{0, 30}, {60, 30}};
+  EXPECT_FALSE(orthogonalRouteCrossesObstacleInterior(alongBoundary, obstacles));
+  EXPECT_TRUE(orthogonalRouteCrossesObstacleInterior(acrossInterior, obstacles));
+}
+
 TEST(LibavoidTest, RoutesAroundObstacle)
 {
   Avoid::Router router(Avoid::PolyLineRouting);
@@ -161,6 +419,21 @@ TEST(WireRoutingTest, RoutesAroundBufferedObstacle)
 
   for (size_t i = 1; i < route.size(); ++i)
     EXPECT_FALSE(segmentCrossesRectInterior(route[i - 1], route[i], bufferedObstacle));
+}
+
+TEST(WireRoutingTest, ConnectsPortsInsideBufferedComponentBounds)
+{
+  const QPointF start(80, 20);
+  const QPointF end(180, 20);
+  const std::vector<QRectF> obstacles = {
+      QRectF(-25, -5, 110, 50), QRectF(175, -5, 110, 50)};
+  const auto route = routeOrthogonalWire(start, end, obstacles, 10);
+
+  ASSERT_GE(route.size(), 2U);
+  EXPECT_EQ(route.front(), start);
+  EXPECT_EQ(route.back(), end);
+  EXPECT_TRUE(isOrthogonalRoute(route));
+  EXPECT_FALSE(orthogonalRouteSelfIntersects(route));
 }
 
 TEST(WireRoutingTest, RoutesVerticalPairsAroundBufferedObstacle)
