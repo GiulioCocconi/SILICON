@@ -17,6 +17,8 @@
 
 #include "waveformViewer.hpp"
 
+#include "ui/shell/siliconSettings.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -66,11 +68,11 @@ using namespace SILICON::waveform;
 
 namespace {
 
-  constexpr int RULER_HEIGHT_PX       = 24;
+  constexpr int RULER_HEIGHT_PX        = 24;
   constexpr int TRACE_ROW_HEIGHT_PX    = 28;
   constexpr int GROUP_HEADER_HEIGHT_PX = 22;
   constexpr int SIGNAL_LIST_WIDTH_PX   = 220;
-  constexpr int WAVEFORM_LEFT_INSET   = 16;
+  constexpr int WAVEFORM_LEFT_INSET    = 16;
 
   int normalizedIndex(const int index, const int count)
   {
@@ -109,6 +111,49 @@ namespace {
     if (std::ranges::all_of(value, [](const auto s) { return s == State::LOW; }))
       return ThemeEngine::getColor("SILICON_LORANGE");
     return ThemeEngine::getColor("SILICON_ORANGE");
+  }
+
+  /** @brief Theme colors shared by the signal list and the waveform canvas. */
+  struct TraceTheme {
+    QColor background;
+    QColor groupBackground;
+    QColor grid;
+    QColor text;
+    QColor selectedRow;
+  };
+
+  TraceTheme traceTheme()
+  {
+    return {ThemeEngine::getColor("SILICON_SURFACE"),
+            ThemeEngine::getColor("SILICON_SURFACE_RAISED"),
+            ThemeEngine::getColor("SILICON_GRID"), ThemeEngine::getColor("SILICON_INK"),
+            ThemeEngine::getColor("SILICON_SELECTED")};
+  }
+
+  /** @brief Draws a group band; pass an empty label for a plain spacer row. */
+  void paintGroupBand(QPainter& painter, int y, int width, const TraceTheme& theme,
+                      const QString& label = {})
+  {
+    painter.fillRect(QRect(0, y, width, GROUP_HEADER_HEIGHT_PX),
+                     label.isEmpty() ? theme.background : theme.groupBackground);
+    if (!label.isEmpty()) {
+      painter.setPen(theme.text);
+      painter.drawText(QRect(6, y, width - 12, GROUP_HEADER_HEIGHT_PX),
+                       Qt::AlignVCenter | Qt::AlignLeft, label);
+    }
+    painter.setPen(theme.grid);
+    painter.drawLine(0, y + GROUP_HEADER_HEIGHT_PX - 1, width,
+                     y + GROUP_HEADER_HEIGHT_PX - 1);
+  }
+
+  /** @brief Draws the selected-row highlight and bottom separator for one signal row. */
+  void paintSignalRow(QPainter& painter, int y, int width, int row, int selectedRow,
+                      const TraceTheme& theme)
+  {
+    if (row == selectedRow)
+      painter.fillRect(QRect(0, y, width, TRACE_ROW_HEIGHT_PX), theme.selectedRow);
+    painter.setPen(theme.grid);
+    painter.drawLine(0, y + TRACE_ROW_HEIGHT_PX - 1, width, y + TRACE_ROW_HEIGHT_PX - 1);
   }
 
   bool hasInputGroup(int inputCount)
@@ -202,48 +247,34 @@ void SignalListWidget::paintEvent(QPaintEvent* event)
 {
   QWidget::paintEvent(event);
 
-  QPainter painter(this);
-  painter.fillRect(rect(), palette().base());
+  QPainter     painter(this);
+  const auto   theme     = traceTheme();
+  const int    valueX    = valueColumnX();
+  const QColor gridColor = theme.grid;
 
-  const QColor gridColor(220, 220, 220);
-  const QColor groupColor       = palette().alternateBase().color();
-  const QColor textColor        = palette().text().color();
-  const QColor selectedRowColor = ThemeEngine::getColor("SILICON_BLUE").lighter(175);
-  const int    valueX           = valueColumnX();
+  painter.fillRect(rect(), theme.background);
 
   painter.setPen(gridColor);
   painter.drawLine(valueX - 8, 0, valueX - 8, height());
 
-  auto drawGroup = [&](int y, const QString& label) {
-    painter.fillRect(QRect(0, y, width(), GROUP_HEADER_HEIGHT_PX), groupColor);
-    painter.setPen(textColor);
-    painter.drawText(QRect(6, y, width() - 12, GROUP_HEADER_HEIGHT_PX),
-                     Qt::AlignVCenter | Qt::AlignLeft, label);
-    painter.setPen(gridColor);
-    painter.drawLine(0, y + GROUP_HEADER_HEIGHT_PX - 1, width(),
-                     y + GROUP_HEADER_HEIGHT_PX - 1);
-  };
-
   if (hasInputGroup(inputSignalCount))
-    drawGroup(0, tr("Inputs"));
+    paintGroupBand(painter, 0, width(), theme, tr("Inputs"));
   if (hasOutputGroup(names.size(), inputSignalCount))
-    drawGroup(yForSignalRow(inputSignalCount) - GROUP_HEADER_HEIGHT_PX, tr("Outputs"));
+    paintGroupBand(painter, yForSignalRow(inputSignalCount) - GROUP_HEADER_HEIGHT_PX,
+                   width(), theme, tr("Outputs"));
 
   for (const auto& [row, name] : names | SILICON::views::enumerate) {
     const int     y     = yForSignalRow(static_cast<int>(row));
     const QString value = row < values.size() ? values[row] : QString("x");
 
-    if (static_cast<int>(row) == selectedSignalIndex)
-      painter.fillRect(QRect(0, y, width(), TRACE_ROW_HEIGHT_PX), selectedRowColor);
+    paintSignalRow(painter, y, width(), static_cast<int>(row), selectedSignalIndex,
+                   theme);
 
-    painter.setPen(textColor);
+    painter.setPen(theme.text);
     painter.drawText(QRect(6, y, valueX - 18, TRACE_ROW_HEIGHT_PX),
                      Qt::AlignVCenter | Qt::AlignLeft, name);
     painter.drawText(QRect(valueX, y, width() - valueX - 6, TRACE_ROW_HEIGHT_PX),
                      Qt::AlignVCenter | Qt::AlignLeft, value);
-
-    painter.setPen(gridColor);
-    painter.drawLine(0, y + TRACE_ROW_HEIGHT_PX - 1, width(), y + TRACE_ROW_HEIGHT_PX - 1);
   }
 }
 
@@ -303,7 +334,8 @@ void Canvas::updateCanvasSize()
   const qsizetype minimumHeight = RULER_HEIGHT_PX + TRACE_ROW_HEIGHT_PX;
   const qsizetype contentHeight =
       RULER_HEIGHT_PX
-      + totalGroupHeaderCount(signalNames.size(), inputSignalCount) * GROUP_HEADER_HEIGHT_PX
+      + totalGroupHeaderCount(signalNames.size(), inputSignalCount)
+            * GROUP_HEADER_HEIGHT_PX
       + signalNames.size() * TRACE_ROW_HEIGHT_PX;
   const qsizetype height = std::max(minimumHeight, contentHeight);
   setMinimumSize(width, height);
@@ -451,14 +483,15 @@ void Canvas::paintEvent(QPaintEvent* event)
 
   QPainter painter(this);
   painter.setRenderHint(QPainter::Antialiasing, false);
-  painter.fillRect(rect(), palette().base());
 
-  const QColor gridColor(220, 220, 220);
-  const QColor textColor        = palette().text().color();
-  const QColor selectedRowColor = ThemeEngine::getColor("SILICON_BLUE").lighter(185);
-  const QRect  visibleRect      = event ? event->rect() : rect();
+  const auto theme = traceTheme();
+  painter.fillRect(rect(), theme.background);
 
-  painter.setPen(gridColor);
+  const QPen  gridPen(theme.grid);
+  const QPen  textPen(theme.text);
+  const QRect visibleRect = event ? event->rect() : rect();
+
+  painter.setPen(gridPen);
   painter.drawLine(0, RULER_HEIGHT_PX - 1, width(), RULER_HEIGHT_PX - 1);
 
   const auto visibleTimeForX = [this](int x) -> quint64 {
@@ -527,32 +560,21 @@ void Canvas::paintEvent(QPaintEvent* event)
          ++sampleIt) {
       const int sampleIndex = static_cast<int>(sampleIt - samples.cbegin());
       if (isSelectedSignalTick(sampleIndex))
-        drawTimeMarker(sampleIt->time, QPen(gridColor), QPen(textColor), false);
+        drawTimeMarker(sampleIt->time, gridPen, textPen, false);
     }
   } else {
     for (const Sample& sample : visibleSamples)
-      drawTimeMarker(sample.time, QPen(gridColor), QPen(textColor), false);
+      drawTimeMarker(sample.time, gridPen, textPen, false);
   }
-
-  auto drawGroupSpacer = [&](int y) {
-    painter.fillRect(QRect(0, y, width(), GROUP_HEADER_HEIGHT_PX), palette().base());
-    painter.setPen(gridColor);
-    painter.drawLine(0, y + GROUP_HEADER_HEIGHT_PX - 1, width(),
-                     y + GROUP_HEADER_HEIGHT_PX - 1);
-  };
 
   if (hasInputGroup(inputSignalCount))
-    drawGroupSpacer(RULER_HEIGHT_PX);
+    paintGroupBand(painter, RULER_HEIGHT_PX, width(), theme);
   if (hasOutputGroup(signalNames.size(), inputSignalCount))
-    drawGroupSpacer(yForSignalRow(inputSignalCount) - GROUP_HEADER_HEIGHT_PX);
+    paintGroupBand(painter, yForSignalRow(inputSignalCount) - GROUP_HEADER_HEIGHT_PX,
+                   width(), theme);
 
-  for (int row = 0; row < signalNames.size(); ++row) {
-    const int y = yForSignalRow(row);
-    if (row == selectedSignalIndex)
-      painter.fillRect(QRect(0, y, width(), TRACE_ROW_HEIGHT_PX), selectedRowColor);
-    painter.setPen(gridColor);
-    painter.drawLine(0, y + TRACE_ROW_HEIGHT_PX - 1, width(), y + TRACE_ROW_HEIGHT_PX - 1);
-  }
+  for (int row = 0; row < signalNames.size(); ++row)
+    paintSignalRow(painter, yForSignalRow(row), width(), row, selectedSignalIndex, theme);
 
   const int editSignalIndex =
       editDragSignalIndex >= 0 ? editDragSignalIndex : editSelectionSignalIndex;
@@ -750,7 +772,7 @@ void Canvas::drawBus(QPainter& painter, int row, int x0, int x1,
   painter.drawLine(x1 - offset, bottom, x1, mid);
 
   if (x1 - x0 > 28) {
-    painter.setPen(palette().text().color());
+    painter.setPen(ThemeEngine::getColor("SILICON_INK"));
     const QString displayValue =
         QString::fromStdString(formatValue(value, formatForSignal(signalFormats, row)));
     painter.drawText(QRect(x0 + 7, top, x1 - x0 - 14, bottom - top), Qt::AlignCenter,
