@@ -10,6 +10,7 @@
 #pragma once
 
 #include <ui/documents/documentEditor.hpp>
+#include <ui/lifetime.hpp>
 
 namespace SILICON::ui {
 
@@ -24,8 +25,8 @@ public:
                 EditorNotifications notifications);
   ~CircuitEditor() override;
 
-  [[nodiscard]] DiagramScene* scene() const noexcept { return diagramScene; }
-  [[nodiscard]] DiagramView*  view() const noexcept { return diagramView; }
+  [[nodiscard]] DiagramScene* scene() const noexcept { return diagramScene.get(); }
+  [[nodiscard]] DiagramView*  view() const noexcept { return diagramView.get(); }
 
   [[nodiscard]] QWidget* widget() const noexcept override;
   [[nodiscard]] std::shared_ptr<PreparedEditorDocument>
@@ -56,8 +57,9 @@ private:
   bool copySelectionToClipboard();
 
   ProjectSession& session;
-  DiagramScene*   diagramScene;
-  DiagramView*    diagramView;
+  std::unique_ptr<DiagramScene> diagramScene;
+  std::unique_ptr<DiagramView>  diagramView;
+  CallbackScope                 callbacks;
 };
 
 }  // namespace SILICON::ui

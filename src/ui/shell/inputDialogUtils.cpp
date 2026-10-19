@@ -17,6 +17,8 @@
 
 #include "inputDialogUtils.hpp"
 
+#include <ui/lifetime.hpp>
+
 #include <utility>
 
 #include <QGraphicsItem>
@@ -39,8 +41,9 @@ QWidget* parentWidgetForGraphicsItem(const QGraphicsItem* item)
 }
 
 void getText(QWidget* parent, const QString& title, const QString& label,
-             const QString& defaultText, TextCallback callback)
+             const QString& defaultText, TextCallback callback, QObject* context)
 {
+  callback = guardCallback(context ? context : parent, std::move(callback));
 #ifdef __EMSCRIPTEN__
   auto* dialog = new QInputDialog(parent);
   dialog->setAttribute(Qt::WA_DeleteOnClose);
@@ -64,8 +67,10 @@ void getText(QWidget* parent, const QString& title, const QString& label,
 }
 
 void getItem(QWidget* parent, const QString& title, const QString& label,
-             const QStringList& items, int current, bool editable, TextCallback callback)
+             const QStringList& items, int current, bool editable, TextCallback callback,
+             QObject* context)
 {
+  callback = guardCallback(context ? context : parent, std::move(callback));
 #ifdef __EMSCRIPTEN__
   auto* dialog = new QInputDialog(parent);
   dialog->setAttribute(Qt::WA_DeleteOnClose);
@@ -115,8 +120,9 @@ void critical(QWidget* parent, const QString& title, const QString& text)
 }
 
 void question(QWidget* parent, const QString& title, const QString& text,
-              AcceptedCallback accepted)
+              AcceptedCallback accepted, QObject* context)
 {
+  accepted = guardCallback(context ? context : parent, std::move(accepted));
 #ifdef __EMSCRIPTEN__
   auto* messageBox = new QMessageBox(QMessageBox::Question, title, text,
                                      QMessageBox::Yes | QMessageBox::No, parent);
@@ -139,8 +145,9 @@ void question(QWidget* parent, const QString& title, const QString& text,
 
 void warningChoice(QWidget* parent, const QString& title, const QString& text,
                    const QString& primaryText, const QString& secondaryText,
-                   ChoiceCallback callback)
+                   ChoiceCallback callback, QObject* context)
 {
+  callback = guardCallback(context ? context : parent, std::move(callback));
 #ifdef __EMSCRIPTEN__
   auto* messageBox =
       new QMessageBox(QMessageBox::Warning, title, text, QMessageBox::NoButton, parent);

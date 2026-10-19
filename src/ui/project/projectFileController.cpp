@@ -157,7 +157,8 @@ void ProjectFileController::open()
         dialogParent, tr("Open Project"), tr("SILICON Project (*.sil);;All Files (*)"),
         [this](const QString& fileName, const QByteArray& fileContent) {
           loadProjectContent(fileName, fileContent);
-        });
+        },
+        this);
   });
 }
 
@@ -257,7 +258,8 @@ void ProjectFileController::confirmSaveIfDirty(std::function<void()> continuatio
           return;
 
         continuation();
-      });
+      },
+      this);
 }
 
 }  // namespace SILICON::ui

@@ -7,6 +7,7 @@
 #include <QWidget>
 
 #include <sisl/sisl.hpp>
+#include <ui/lifetime.hpp>
 
 class QGraphicsScene;
 class QGraphicsView;
@@ -83,6 +84,7 @@ private:
   QGraphicsView*       view = nullptr;
   QPushButton*         backButton = nullptr;
   QLabel*              hintLabel = nullptr;
+  CallbackScope        callbacks;
 };
 
 } // namespace SILICON::ui

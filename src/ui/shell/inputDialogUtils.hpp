@@ -24,6 +24,7 @@
 
 class QGraphicsItem;
 class QWidget;
+class QObject;
 
 namespace SILICON::ui::inputDialog {
 
@@ -36,21 +37,23 @@ using ChoiceCallback = std::function<void(Choice)>;
 QWidget* parentWidgetForGraphicsItem(const QGraphicsItem* item);
 
 void getText(QWidget* parent, const QString& title, const QString& label,
-             const QString& defaultText, TextCallback callback);
+             const QString& defaultText, TextCallback callback,
+             QObject* context = nullptr);
 
 void getItem(QWidget* parent, const QString& title, const QString& label,
-             const QStringList& items, int current, bool editable, TextCallback callback);
+             const QStringList& items, int current, bool editable, TextCallback callback,
+             QObject* context = nullptr);
 
 void warning(QWidget* parent, const QString& title, const QString& text);
 
 void critical(QWidget* parent, const QString& title, const QString& text);
 
 void question(QWidget* parent, const QString& title, const QString& text,
-              AcceptedCallback accepted);
+              AcceptedCallback accepted, QObject* context = nullptr);
 
 /** @brief Shows a three-way warning using caller-provided action labels. */
 void warningChoice(QWidget* parent, const QString& title, const QString& text,
                    const QString& primaryText, const QString& secondaryText,
-                   ChoiceCallback callback);
+                   ChoiceCallback callback, QObject* context = nullptr);
 
 }  // namespace SILICON::ui::inputDialog

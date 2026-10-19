@@ -13,6 +13,7 @@
 #include <QWidget>
 
 #include <core/projectDocument.hpp>
+#include <ui/lifetime.hpp>
 
 class QStackedWidget;
 class QUndoStack;
@@ -115,5 +116,6 @@ private:
   std::unique_ptr<CodeDocumentEditor>         code;
   std::unique_ptr<BinaryDocumentEditor>       binary;
   std::unique_ptr<ArchitectureDocumentEditor> architecture;
+  CallbackScope                               callbacks;
 };
 }  // namespace SILICON::ui

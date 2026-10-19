@@ -24,13 +24,14 @@
 #include <QString>
 
 class QWidget;
+class QObject;
 
 namespace SILICON::ui::fileDialog {
 
 using OpenContentCallback = std::function<void(const QString&, const QByteArray&)>;
 
 void openFileContent(QWidget* parent, const QString& caption, const QString& filter,
-                     OpenContentCallback callback);
+                     OpenContentCallback callback, QObject* context = nullptr);
 
 std::optional<QString> saveFileContent(QWidget* parent, const QString& caption,
                                        const QString& suggestedFileName,

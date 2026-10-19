@@ -36,25 +36,26 @@ namespace {
 
 CodeDocumentEditor::CodeDocumentEditor(ProjectSession& session, QWidget* parent,
                                        EditorNotifications notifications)
-  : session(session), codeEditor(new CodeEditor(parent))
+  : session(session), codeEditor(std::make_unique<CodeEditor>(parent))
 {
   const auto& historyChanged   = notifications.historyChanged;
   const auto& editStateChanged = notifications.editStateChanged;
-  QObject::connect(codeEditor->document(), &QTextDocument::modificationChanged,
-                   codeEditor, [this](bool modified) {
+  callbacks.connect(codeEditor->document(), &QTextDocument::modificationChanged, [this](bool modified) {
                      if (modified && codeEditor->fileType())
                        dirty = true;
                    });
-  QObject::connect(codeEditor, &QPlainTextEdit::undoAvailable, codeEditor,
+  callbacks.connect(codeEditor.get(), &QPlainTextEdit::undoAvailable,
                    [historyChanged](bool) { historyChanged(); });
-  QObject::connect(codeEditor, &QPlainTextEdit::redoAvailable, codeEditor,
+  callbacks.connect(codeEditor.get(), &QPlainTextEdit::redoAvailable,
                    [historyChanged](bool) { historyChanged(); });
-  QObject::connect(codeEditor, &QPlainTextEdit::selectionChanged, codeEditor,
+  callbacks.connect(codeEditor.get(), &QPlainTextEdit::selectionChanged,
                    [editStateChanged] { editStateChanged(); });
 }
+CodeDocumentEditor::~CodeDocumentEditor() = default;
+
 QWidget* CodeDocumentEditor::widget() const noexcept
 {
-  return codeEditor;
+  return codeEditor.get();
 }
 std::shared_ptr<PreparedEditorDocument>
 CodeDocumentEditor::prepare(const SILICON::project::Document& document)
@@ -148,10 +149,10 @@ EditorEditState CodeDocumentEditor::editState() const
 
 BinaryDocumentEditor::BinaryDocumentEditor(ProjectSession& session, QWidget* parent,
                                            EditorNotifications notifications)
-  : session(session), binaryEditor(new BinaryEditor(parent))
+  : session(session), binaryEditor(std::make_unique<BinaryEditor>(parent))
 {
   const auto& historyChanged = notifications.historyChanged;
-  QObject::connect(binaryEditor->history(), &QUndoStack::cleanChanged, binaryEditor,
+  callbacks.connect(binaryEditor->history(), &QUndoStack::cleanChanged,
                    [this](bool clean) {
                      const auto type = SILICON::project::documentTypeForPath(
                          this->session.activeDocumentPath);
@@ -160,14 +161,16 @@ BinaryDocumentEditor::BinaryDocumentEditor(ProjectSession& session, QWidget* par
                                 == SILICON::project::DocumentCategory::Binary)
                        dirty = true;
                    });
-  QObject::connect(binaryEditor->history(), &QUndoStack::canUndoChanged, binaryEditor,
+  callbacks.connect(binaryEditor->history(), &QUndoStack::canUndoChanged,
                    [historyChanged](bool) { historyChanged(); });
-  QObject::connect(binaryEditor->history(), &QUndoStack::canRedoChanged, binaryEditor,
+  callbacks.connect(binaryEditor->history(), &QUndoStack::canRedoChanged,
                    [historyChanged](bool) { historyChanged(); });
 }
+BinaryDocumentEditor::~BinaryDocumentEditor() = default;
+
 QWidget* BinaryDocumentEditor::widget() const noexcept
 {
-  return binaryEditor;
+  return binaryEditor.get();
 }
 std::shared_ptr<PreparedEditorDocument>
 BinaryDocumentEditor::prepare(const SILICON::project::Document& document)
@@ -233,32 +236,32 @@ bool BinaryDocumentEditor::canRedo() const
 ArchitectureDocumentEditor::ArchitectureDocumentEditor(ProjectSession&     session,
                                                        QWidget*            parent,
                                                        EditorNotifications notifications)
-  : session(session), architectureWorkspace(new ArchitectureWorkspace(parent))
+  : session(session), architectureWorkspace(std::make_unique<ArchitectureWorkspace>(parent))
 {
   const auto& historyChanged   = notifications.historyChanged;
   const auto& editStateChanged = notifications.editStateChanged;
-  QObject::connect(architectureWorkspace, &ArchitectureWorkspace::documentModified,
-                   architectureWorkspace, [this] { dirty = true; });
+  callbacks.connect(architectureWorkspace.get(), &ArchitectureWorkspace::documentModified, [this] { dirty = true; });
   for (const auto& [type, editor] : architectureWorkspace->editors()) {
-    QObject::connect(editor, &QPlainTextEdit::undoAvailable, architectureWorkspace,
+    callbacks.connect(editor, &QPlainTextEdit::undoAvailable,
                      [historyChanged](bool) { historyChanged(); });
-    QObject::connect(editor, &QPlainTextEdit::redoAvailable, architectureWorkspace,
+    callbacks.connect(editor, &QPlainTextEdit::redoAvailable,
                      [historyChanged](bool) { historyChanged(); });
-    QObject::connect(editor, &QPlainTextEdit::selectionChanged, architectureWorkspace,
+    callbacks.connect(editor, &QPlainTextEdit::selectionChanged,
                      [editStateChanged] { editStateChanged(); });
   }
   // Selecting a tab swaps the editor owning the architecture document, and the visualizer
   // tab replaces editing altogether, so a tab change alters both what can be undone and
   // which editing commands apply.
-  QObject::connect(architectureWorkspace, &QTabWidget::currentChanged,
-                   architectureWorkspace, [historyChanged, editStateChanged](int) {
+  callbacks.connect(architectureWorkspace.get(), &QTabWidget::currentChanged, [historyChanged, editStateChanged](int) {
                      historyChanged();
                      editStateChanged();
                    });
 }
+ArchitectureDocumentEditor::~ArchitectureDocumentEditor() = default;
+
 QWidget* ArchitectureDocumentEditor::widget() const noexcept
 {
-  return architectureWorkspace;
+  return architectureWorkspace.get();
 }
 std::shared_ptr<PreparedEditorDocument>
 ArchitectureDocumentEditor::prepare(const SILICON::project::Document& document)

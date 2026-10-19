@@ -9,6 +9,8 @@
 
 #pragma once
 
+#include <ui/lifetime.hpp>
+
 #include <functional>
 #include <optional>
 
@@ -43,6 +45,7 @@ private:
   std::optional<SILICON::project::ProjectInfo>& currentProjectInfo;
   const QString&                                currentFileName;
   std::function<void()>                         rebuildProjectTree;
+  CallbackScope                                 callbacks;
 };
 
 class PropertySpinBox : public QSpinBox {

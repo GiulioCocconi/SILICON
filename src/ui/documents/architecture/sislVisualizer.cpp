@@ -199,7 +199,7 @@ void SislVisualizer::setupUI() {
   view->setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
   layout->addWidget(view);
 
-  connect(backButton, &QPushButton::clicked, this, &SislVisualizer::showOverview);
+  callbacks.connect(backButton, &QPushButton::clicked, [this] { showOverview(); });
   hide();
 }
 
@@ -250,7 +250,7 @@ void SislVisualizer::drawAllFormatBoxes(const ThemeColors& theme, qreal& y) {
 
     auto* box = new FormatBox(
       QRectF(Layout::LEFT_M - Layout::BOX_PAD_X, y - Layout::BOX_PAD_Y, Layout::calcBoxWidth(width), Layout::ROW_H + 25),
-      [this, name = format.name] { QTimer::singleShot(0, this, [this, name] { showFormat(name); }); }
+      callbacks.guard([this, name = format.name] { QTimer::singleShot(0, callbacks.context(), [this, name] { showFormat(name); }); })
     );
 
     box->setPen(QPen(theme.mid));
@@ -270,9 +270,9 @@ void SislVisualizer::drawStandaloneInstructionsBox(const ThemeColors& theme, qre
                                          [](const auto& item) { return !item.format; });
   if (!hasStandalone) return;
 
-  auto* box = new FormatBox(QRectF(Layout::LEFT_M - Layout::BOX_PAD_X, y, Layout::calcBoxWidth(0), 48), [this] {
-    QTimer::singleShot(0, this, [this] { showFormat(std::nullopt); });
-  });
+  auto* box = new FormatBox(QRectF(Layout::LEFT_M - Layout::BOX_PAD_X, y, Layout::calcBoxWidth(0), 48), callbacks.guard([this] {
+    QTimer::singleShot(0, callbacks.context(), [this] { showFormat(std::nullopt); });
+  }));
 
   box->setPen(QPen(theme.mid));
   scene->addItem(box);

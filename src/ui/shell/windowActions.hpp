@@ -10,6 +10,7 @@
 #pragma once
 
 #include <initializer_list>
+#include <memory>
 #include <optional>
 
 #include <QObject>
@@ -18,6 +19,9 @@
 #include <core/projectDocument.hpp>
 #include <ui/actionGroups.hpp>
 #include <ui/shell/uiUtils.hpp>
+#ifdef __EMSCRIPTEN__
+  #include <ui/shell/browserShortcutCapture.hpp>
+#endif
 
 class QAction;
 class QMainWindow;
@@ -39,6 +43,7 @@ struct ShortcutSetting;
 class WindowActions : public QObject {
 public:
   WindowActions(QMainWindow& window, ProjectSession& session, EditorWorkspace& workspace);
+  ~WindowActions() override;
 
   void createActions();
   void createMenus();
@@ -95,6 +100,9 @@ private:
   QMainWindow&     window;
   ProjectSession&  session;
   EditorWorkspace& workspace;
+#ifdef __EMSCRIPTEN__
+  std::unique_ptr<BrowserShortcutCapture> browserShortcuts;
+#endif
 };
 
 }  // namespace SILICON::ui

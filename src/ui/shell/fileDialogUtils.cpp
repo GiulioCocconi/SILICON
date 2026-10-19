@@ -17,6 +17,8 @@
 
 #include "fileDialogUtils.hpp"
 
+#include <ui/lifetime.hpp>
+
 #include <utility>
 
 #include <QFile>
@@ -28,8 +30,9 @@
 namespace SILICON::ui::fileDialog {
 
 void openFileContent(QWidget* parent, const QString& caption, const QString& filter,
-                     OpenContentCallback callback)
+                     OpenContentCallback callback, QObject* context)
 {
+  callback = guardCallback(context ? context : parent, std::move(callback));
 #ifdef __EMSCRIPTEN__
   QFileDialog::getOpenFileContent(
       filter, [callback = std::move(callback)](const QString&    fileName,

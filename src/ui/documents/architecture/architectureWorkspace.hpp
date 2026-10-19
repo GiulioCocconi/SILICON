@@ -9,6 +9,8 @@
 
 #pragma once
 
+#include <ui/lifetime.hpp>
+
 #include <map>
 #include <memory>
 #include <string>
@@ -80,6 +82,7 @@ private:
   std::map<SILICON::project::DocumentType, CodeEditor*> codeEditors;
   SislVisualizer*                                       visualizer = nullptr;
   std::string                                           loadedArchitectureName;
+  CallbackScope                                         callbacks;
 };
 
 }  // namespace SILICON::ui

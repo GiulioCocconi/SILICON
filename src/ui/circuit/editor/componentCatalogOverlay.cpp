@@ -174,12 +174,12 @@ namespace SILICON::ui {
 
     auto* closeShortcut = new QShortcut(QKeySequence(Qt::Key_Escape), this);
     closeShortcut->setContext(Qt::WidgetWithChildrenShortcut);
-    connect(closeShortcut, &QShortcut::activated, this, &QWidget::hide);
+    callbacks.connect(closeShortcut, &QShortcut::activated, [this] { hide(); });
 
-    connect(searchInput, &QLineEdit::textChanged, this, [this] { rebuildRows(); });
-    connect(table, &QTableWidget::cellDoubleClicked, this,
+    callbacks.connect(searchInput, &QLineEdit::textChanged, [this] { rebuildRows(); });
+    callbacks.connect(table, &QTableWidget::cellDoubleClicked,
             [this](int row, int) { activateRow(row); });
-    connect(table, &QTableWidget::itemActivated, this, [this](QTableWidgetItem* item) {
+    callbacks.connect(table, &QTableWidget::itemActivated, [this](QTableWidgetItem* item) {
       if (item)
         activateRow(item->row());
     });

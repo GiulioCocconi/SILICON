@@ -135,13 +135,13 @@ SettingsWindow::SettingsWindow(const QString& appName, QVector<ShortcutSetting> 
   mainLayout->addLayout(transferLayout);
   mainLayout->addWidget(buttonBox);
 
-  connect(importButton, &QPushButton::clicked, this, &SettingsWindow::importSettings);
-  connect(exportButton, &QPushButton::clicked, this, &SettingsWindow::exportSettings);
-  connect(restoreDefaultsButton, &QPushButton::clicked, this,
-          &SettingsWindow::restoreDefaults);
-  connect(buttonBox->button(QDialogButtonBox::Cancel), &QPushButton::clicked, this,
-          &QDialog::reject);
-  connect(buttonBox->button(QDialogButtonBox::Save), &QPushButton::clicked, this, [this] {
+  callbacks.connect(importButton, &QPushButton::clicked, [this] { importSettings(); });
+  callbacks.connect(exportButton, &QPushButton::clicked, [this] { exportSettings(); });
+  callbacks.connect(restoreDefaultsButton, &QPushButton::clicked,
+                    [this] { restoreDefaults(); });
+  callbacks.connect(buttonBox->button(QDialogButtonBox::Cancel), &QPushButton::clicked,
+                    [this] { reject(); });
+  callbacks.connect(buttonBox->button(QDialogButtonBox::Save), &QPushButton::clicked, [this] {
     if (saveSettings())
       accept();
   });
@@ -271,7 +271,8 @@ void SettingsWindow::importSettings()
 
         QSettings importedSettings(importedFileName, SiliconSettings::format());
         importSettingsStore(importedSettings);
-      });
+      },
+      callbacks.context());
 }
 
 void SettingsWindow::exportSettings()

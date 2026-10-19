@@ -54,33 +54,42 @@ namespace {
 
 }  // namespace
 
-void WindowActions::syncWasmShortcutCapture()
-{
 #ifdef __EMSCRIPTEN__
-  const QVector<ShortcutSetting> shortcuts = shortcutSettings();
-  QJsonArray                     shortcutSequences;
-  for (const ShortcutSetting& shortcut : shortcuts) {
-    if (!shortcut.action)
-      continue;
+BrowserShortcutCapture::BrowserShortcutCapture()
+{
+  // clang-format off
+    id = EM_ASM_INT({
+      globalThis.__siliconShortcutCaptures = globalThis.__siliconShortcutCaptures || new Map();
+      const id = globalThis.__siliconNextShortcutCaptureId ?? 0;
+      globalThis.__siliconNextShortcutCaptureId = id + 1;
+      globalThis.__siliconShortcutCaptures.set(id, {});
+      return id;
+    });
+  // clang-format on
+}
 
-    for (const QKeySequence& sequence : shortcut.action->shortcuts()) {
-      if (sequence.isEmpty())
-        continue;
-
-      for (int index = 0; index < sequence.count(); ++index)
-        shortcutSequences.append(
-            QKeySequence(sequence[index]).toString(QKeySequence::PortableText));
-    }
-  }
-
-  const QByteArray shortcutsJson =
-      QJsonDocument(shortcutSequences).toJson(QJsonDocument::Compact);
-
+BrowserShortcutCapture::~BrowserShortcutCapture() {
   // clang-format off
 EM_ASM(
     {
-      const shortcuts = JSON.parse(UTF8ToString($0));
-      globalThis.__siliconShortcutSequences =
+      const captures = globalThis.__siliconShortcutCaptures;
+      const capture = captures.get($0);
+      if (capture.handler)
+        document.removeEventListener('keydown', capture.handler, true);
+      captures.delete($0);
+    }, id);
+  // clang-format on
+}
+
+void BrowserShortcutCapture::update(const QByteArray& shortcutsJson)
+{
+  // clang-format off
+EM_ASM(
+    {
+      const captures = globalThis.__siliconShortcutCaptures;
+      const capture = captures.get($0);
+      const shortcuts = JSON.parse(UTF8ToString($1));
+      capture.sequences =
           shortcuts.map(sequence => sequence.trim()
                                          .split('+')
                                          .map(part => part.trim().toLowerCase())
@@ -133,24 +142,50 @@ EM_ASM(
         return key === keyToken || event.code.toLowerCase() === keyToken;
       };
 
-      globalThis.__siliconShouldCaptureShortcut = event =>
-          globalThis.__siliconShortcutSequences.some(
-              shortcut => eventMatchesShortcut(event, shortcut));
-
-      if (globalThis.__siliconShortcutCaptureInstalled)
+      if (capture.handler)
         return;
-
-      globalThis.__siliconShortcutCaptureInstalled = true;
-      document.addEventListener(
-      'keydown',
-      event => {
-        if (globalThis.__siliconShouldCaptureShortcut?.(event))
+      capture.handler = event => {
+        if (capture.sequences.some(
+              shortcut => eventMatchesShortcut(event, shortcut)))
           event.preventDefault();
-      },
+      };
+      document.addEventListener('keydown', capture.handler,
       true);
     },
+    id,
     shortcutsJson.constData());
   // clang-format on
+}
+
+#endif
+
+WindowActions::~WindowActions() = default;
+
+void WindowActions::syncWasmShortcutCapture()
+{
+#ifdef __EMSCRIPTEN__
+  const QVector<ShortcutSetting> shortcuts = shortcutSettings();
+  QJsonArray                     shortcutSequences;
+  for (const ShortcutSetting& shortcut : shortcuts) {
+    if (!shortcut.action)
+      continue;
+
+    for (const QKeySequence& sequence : shortcut.action->shortcuts()) {
+      if (sequence.isEmpty())
+        continue;
+
+      for (int index = 0; index < sequence.count(); ++index)
+        shortcutSequences.append(
+            QKeySequence(sequence[index]).toString(QKeySequence::PortableText));
+    }
+  }
+
+  const QByteArray shortcutsJson =
+      QJsonDocument(shortcutSequences).toJson(QJsonDocument::Compact);
+
+  if (!browserShortcuts)
+    browserShortcuts = std::make_unique<BrowserShortcutCapture>();
+  browserShortcuts->update(shortcutsJson);
 #endif
 }
 

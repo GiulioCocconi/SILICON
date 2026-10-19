@@ -222,7 +222,8 @@ void ProjectDocumentController::convertActiveDocument()
         const auto index = labels.indexOf(selected);
         if (index >= 0 && index < static_cast<qsizetype>(targets.size()))
           convertActiveDocumentTo(targets[static_cast<std::size_t>(index)]);
-      });
+      },
+      this);
 }
 
 void ProjectDocumentController::convertActiveDocumentTo(

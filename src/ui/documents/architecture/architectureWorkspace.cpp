@@ -54,12 +54,12 @@ ArchitectureWorkspace::ArchitectureWorkspace(QWidget* parent) : QTabWidget(paren
     auto* codeEditor = new CodeEditor(this);
     codeEditor->setFileType(component.type);
     codeEditors.emplace(component.type, codeEditor);
-    connect(codeEditor->document(), &QTextDocument::modificationChanged, this,
+    callbacks.connect(codeEditor->document(), &QTextDocument::modificationChanged,
             [this](bool modified) {
               if (modified)
                 emit documentModified();
             });
-    connect(codeEditor, &QPlainTextEdit::textChanged, this, [this] {
+    callbacks.connect(codeEditor, &QPlainTextEdit::textChanged, [this] {
       const int index = indexOf(visualizer);
       if (index >= 0) {
         visualizer->hide();

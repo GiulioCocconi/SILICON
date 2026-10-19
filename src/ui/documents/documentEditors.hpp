@@ -10,6 +10,7 @@
 #pragma once
 
 #include <ui/documents/documentEditor.hpp>
+#include <ui/lifetime.hpp>
 
 namespace SILICON::ui {
 
@@ -22,7 +23,8 @@ class CodeDocumentEditor final : public DocumentEditor {
 public:
   CodeDocumentEditor(ProjectSession& session, QWidget* parent,
                      EditorNotifications notifications);
-  [[nodiscard]] CodeEditor* editor() const noexcept { return codeEditor; }
+  ~CodeDocumentEditor() override;
+  [[nodiscard]] CodeEditor* editor() const noexcept { return codeEditor.get(); }
   [[nodiscard]] QWidget*    widget() const noexcept override;
   [[nodiscard]] std::shared_ptr<PreparedEditorDocument>
                                 prepare(const SILICON::project::Document&) override;
@@ -43,15 +45,17 @@ public:
 
 private:
   ProjectSession& session;
-  CodeEditor*     codeEditor;
+  std::unique_ptr<CodeEditor> codeEditor;
   bool            dirty = false;
+  CallbackScope               callbacks;
 };
 
 class BinaryDocumentEditor final : public DocumentEditor {
 public:
   BinaryDocumentEditor(ProjectSession& session, QWidget* parent,
                        EditorNotifications notifications);
-  [[nodiscard]] BinaryEditor* editor() const noexcept { return binaryEditor; }
+  ~BinaryDocumentEditor() override;
+  [[nodiscard]] BinaryEditor* editor() const noexcept { return binaryEditor.get(); }
   [[nodiscard]] QWidget*      widget() const noexcept override;
   [[nodiscard]] std::shared_ptr<PreparedEditorDocument>
                      prepare(const SILICON::project::Document&) override;
@@ -67,17 +71,19 @@ public:
 
 private:
   ProjectSession& session;
-  BinaryEditor*   binaryEditor;
+  std::unique_ptr<BinaryEditor> binaryEditor;
   bool            dirty = false;
+  CallbackScope                 callbacks;
 };
 
 class ArchitectureDocumentEditor final : public DocumentEditor {
 public:
   ArchitectureDocumentEditor(ProjectSession& session, QWidget* parent,
                              EditorNotifications notifications);
+  ~ArchitectureDocumentEditor() override;
   [[nodiscard]] ArchitectureWorkspace* workspace() const noexcept
   {
-    return architectureWorkspace;
+    return architectureWorkspace.get();
   }
   [[nodiscard]] CodeEditor*
                      activeCodeEditor(SILICON::project::DocumentType type) const noexcept;
@@ -102,8 +108,9 @@ public:
 
 private:
   ProjectSession&        session;
-  ArchitectureWorkspace* architectureWorkspace;
+  std::unique_ptr<ArchitectureWorkspace> architectureWorkspace;
   bool                   dirty = false;
+  CallbackScope                          callbacks;
 };
 
 }  // namespace SILICON::ui

@@ -100,8 +100,52 @@ bool SiliconWindow::handleWasmEscapeKey()
 }
 #endif
 
+/** Finishes Qt drag state while the main-window layout is still alive. */
+class WindowLifetime {
+public:
+  explicit WindowLifetime(QMainWindow& window) : window(window) {}
+  ~WindowLifetime()
+  {
+    // Non-closable docks accept close after the main window has been hidden.
+    window.hide();
+    for (const auto& dock : docks) {
+      if (dock)
+        dock->close();
+    }
+    // Qt releases toolbar drag state in mouseReleaseEvent(), not its destructor.
+    if (toolBar) {
+      QMouseEvent releaseEvent(QEvent::MouseButtonRelease, QPointF(), QPointF(),
+                               Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+      QApplication::sendEvent(toolBar, &releaseEvent);
+    }
+  }
+
+  QPointer<QDockWidget> docks[3];
+  QPointer<QToolBar>    toolBar;
+
+private:
+  QMainWindow& window;
+};
+
+#ifdef __EMSCRIPTEN__
+class BrowserKeyDownRegistration {
+public:
+  BrowserKeyDownRegistration(void* owner, em_key_callback_func callback)
+  {
+    emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_DOCUMENT, owner, true,
+                                    callback);
+  }
+  ~BrowserKeyDownRegistration()
+  {
+    emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_DOCUMENT, nullptr, true,
+                                    nullptr);
+  }
+};
+#endif
+
 SiliconWindow::SiliconWindow()
 {
+  windowLifetime = std::make_unique<WindowLifetime>(*this);
   // --- Layout Setup --------------------------------------------------------------------
   const auto centralWidget = new QWidget();
   setCentralWidget(centralWidget);
@@ -113,6 +157,9 @@ SiliconWindow::SiliconWindow()
   documentDock = new QDockWidget(this);
   propertyDock = new QDockWidget(this);
   logDock      = new QDockWidget(this);
+  windowLifetime->docks[0] = documentDock;
+  windowLifetime->docks[1] = propertyDock;
+  windowLifetime->docks[2] = logDock;
 
   addDockWidget(Qt::LeftDockWidgetArea, documentDock);
   addDockWidget(Qt::LeftDockWidgetArea, propertyDock);
@@ -129,77 +176,75 @@ SiliconWindow::SiliconWindow()
 
   splitDockWidget(documentDock, propertyDock, Qt::Vertical);
 
-  workspace     = new EditorWorkspace(projectSession, centralWidget);
+  workspace     = std::make_unique<EditorWorkspace>(projectSession, centralWidget);
   circuitEditor = &workspace->circuitEditor();
 
-  connect(circuitEditor->scene(), &DiagramScene::modeChanged, this,
-          &SiliconWindow::updateStatus);
+  callbacks.connect(circuitEditor->scene(), &DiagramScene::modeChanged,
+                    [this] { updateStatus(); });
   updateStatus();
 
-  layout->addWidget(workspace);
+  layout->addWidget(workspace.get());
   componentCatalogOverlay = new ComponentCatalogOverlay(
       circuitEditor->scene(), projectSession.projectContext.documents(),
       &projectSession.circuitResolver, circuitEditor->view()->viewport());
-  circuitEditor->view()->viewport()->installEventFilter(this);
-  watchedViewport = circuitEditor->view()->viewport();
+  viewportFilter.reset(circuitEditor->view()->viewport(), this);
   updateComponentCatalogGeometry();
   initializeProjectTree();
-  undoStack = new QUndoStack(this);
+  undoStack = std::make_unique<QUndoStack>(this);
   // The circuit scene, its document editor and the rest of the shell share one history:
   // the workspace hands it to every editor it hosts.
-  workspace->setProjectHistory(undoStack);
-  circuitEditor->scene()->setUndoStack(undoStack);
-  interactionController = new DiagramInteractionController(
+  workspace->setProjectHistory(undoStack.get());
+  circuitEditor->scene()->setUndoStack(undoStack.get());
+  interactionController = std::make_unique<DiagramInteractionController>(
       projectSession, *circuitEditor, *componentCatalogOverlay, *undoStack, *this);
-  documentController =
-      new ProjectDocumentController(projectSession, *workspace, *projectTree,
+  documentController = std::make_unique<ProjectDocumentController>(projectSession, *workspace, *projectTree,
                                     *componentCatalogOverlay, *undoStack, this);
-  architectureController =
-      new ArchitectureController(projectSession, *workspace, *documentController, this);
-  circuitEditor->scene()->setDocumentNavigator(documentController);
-  connect(documentController, &ProjectDocumentController::activeDocumentChanged, this,
+  architectureController = std::make_unique<ArchitectureController>(projectSession, *workspace, *documentController, this);
+  circuitEditor->scene()->setDocumentNavigator(documentController.get());
+  callbacks.connect(documentController.get(), &ProjectDocumentController::activeDocumentChanged,
           [this](const QString&, SILICON::project::DocumentCategory) {
             refreshActiveDocumentUi();
           });
-  connect(documentController, &ProjectDocumentController::projectDocumentsChanged, this,
-          &SiliconWindow::refreshProjectUi);
+  callbacks.connect(documentController.get(), &ProjectDocumentController::projectDocumentsChanged,
+                    [this] { refreshProjectUi(); });
 
   aboutDialog = new AboutDialog("SILICON", this);
 
-  fileController = new ProjectFileController(projectSession, *workspace,
+  fileController = std::make_unique<ProjectFileController>(projectSession, *workspace,
                                              *documentController, *undoStack, this);
-  connect(fileController, &ProjectFileController::projectChanged, this,
-          &SiliconWindow::refreshProjectUi);
-  propertyPanel =
-      new PropertyPanel(propertyDock, circuitEditor->scene(), projectTree, undoStack,
+  callbacks.connect(fileController.get(), &ProjectFileController::projectChanged,
+                    [this] { refreshProjectUi(); });
+  propertyPanel = std::make_unique<PropertyPanel>(propertyDock, circuitEditor->scene(), projectTree, undoStack.get(),
                         projectSession.currentProjectInfo, projectSession.currentFileName,
                         [this] { documentController->rebuildTree(); });
 
-  actionSet = new WindowActions(*this, projectSession, *workspace);
+  actionSet = std::make_unique<WindowActions>(*this, projectSession, *workspace);
   actionSet->createActions();
-  connect(circuitEditor->scene(), &DiagramScene::selectionChanged, this,
-          &SiliconWindow::selectionChanged);
-  waveformController = new WaveformController(projectSession, *circuitEditor->scene(),
+  callbacks.connect(circuitEditor->scene(), &DiagramScene::selectionChanged,
+                    [this] { selectionChanged(); });
+  waveformController = std::make_unique<WaveformController>(projectSession, *circuitEditor->scene(),
                                               *documentController, this);
   wireActions();
   actionSet->applyStoredSettings();
   actionSet->createMenus();
   actionSet->createToolBar();
+  windowLifetime->toolBar = actionSet->toolBar;
 
   logSideView = new LogSideView(logDock);
   connect(circuitEditor->scene(), &DiagramScene::logsClearRequested, logSideView,
           &LogSideView::clear);
-  graphicalLogStream = new GraphicalLogStream(this);
+  graphicalLogStream = std::make_unique<GraphicalLogStream>(this);
   logDock->setWidget(logSideView);
   logDock->setMinimumHeight(logSideView->minimumSizeHint().height());
   logDock->resize(width(), logSideView->sizeHint().height());
 
 #ifdef __EMSCRIPTEN__
-  emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_DOCUMENT, this, true,
+  browserKeyDown = std::make_unique<BrowserKeyDownRegistration>(
+      this,
                                   &SiliconWindow::wasmKeyDownCallback);
 #endif
 
-  connect(graphicalLogStream, &GraphicalLogStream::lineReceived, logSideView,
+  connect(graphicalLogStream.get(), &GraphicalLogStream::lineReceived, logSideView,
           &LogSideView::appendLine, Qt::QueuedConnection);
   graphicalLogStream->attachToBoostLog();
 
@@ -218,28 +263,28 @@ SiliconWindow::SiliconWindow()
 
 void SiliconWindow::wireActions()
 {
-  connect(actionSet->project.newProject, &QAction::triggered, fileController,
+  connect(actionSet->project.newProject, &QAction::triggered, fileController.get(),
           &ProjectFileController::newFile);
-  connect(actionSet->project.open, &QAction::triggered, fileController,
+  connect(actionSet->project.open, &QAction::triggered, fileController.get(),
           &ProjectFileController::open);
-  connect(actionSet->project.save, &QAction::triggered, this,
+  callbacks.connect(actionSet->project.save, &QAction::triggered,
           [this] { fileController->save(); });
-  connect(actionSet->project.exportImage, &QAction::triggered, this,
-          &SiliconWindow::exportImage);
-  connect(actionSet->project.exit, &QAction::triggered, this, &QWidget::close);
-  connect(actionSet->project.settings, &QAction::triggered, actionSet,
+  callbacks.connect(actionSet->project.exportImage, &QAction::triggered,
+                    [this] { exportImage(); });
+  callbacks.connect(actionSet->project.exit, &QAction::triggered, [this] { close(); });
+  connect(actionSet->project.settings, &QAction::triggered, actionSet.get(),
           &WindowActions::openSettings);
-  connect(actionSet->project.about, &QAction::triggered, this, &SiliconWindow::about);
+  callbacks.connect(actionSet->project.about, &QAction::triggered, [this] { about(); });
 
-  connect(actionSet->documents.newCircuit, &QAction::triggered, documentController,
+  connect(actionSet->documents.newCircuit, &QAction::triggered, documentController.get(),
           &ProjectDocumentController::createCircuit);
-  connect(actionSet->documents.newCodeFile, &QAction::triggered, documentController,
+  connect(actionSet->documents.newCodeFile, &QAction::triggered, documentController.get(),
           &ProjectDocumentController::createCodeFile);
-  connect(actionSet->documents.newArchitecture, &QAction::triggered, documentController,
+  connect(actionSet->documents.newArchitecture, &QAction::triggered, documentController.get(),
           &ProjectDocumentController::createArchitecture);
-  connect(actionSet->documents.newBinaryFile, &QAction::triggered, documentController,
+  connect(actionSet->documents.newBinaryFile, &QAction::triggered, documentController.get(),
           &ProjectDocumentController::createBinaryFile);
-  connect(actionSet->documents.codeConversion, &QAction::triggered, documentController,
+  connect(actionSet->documents.codeConversion, &QAction::triggered, documentController.get(),
           &ProjectDocumentController::convertActiveDocument);
 
   // Editor subsystems own the commands they implement, so they wire their own actions.
@@ -285,7 +330,7 @@ void SiliconWindow::contextMenuEvent(QContextMenuEvent* event)
 
 bool SiliconWindow::eventFilter(QObject* watched, QEvent* event)
 {
-  if (watched == watchedViewport && event->type() == QEvent::Resize) {
+  if (watched == viewportFilter.target() && event->type() == QEvent::Resize) {
     updateComponentCatalogGeometry();
   }
 
@@ -324,10 +369,10 @@ void SiliconWindow::closeEvent(QCloseEvent* event)
 {
   if (workspace->hasUnsavedChanges() && !closeAfterSaveConfirmation) {
     event->ignore();
-    fileController->confirmSaveIfDirty([this] {
+    fileController->confirmSaveIfDirty(callbacks.guard([this] {
       closeAfterSaveConfirmation = true;
       close();
-    });
+    }));
     return;
   }
 
@@ -361,63 +406,17 @@ void SiliconWindow::refreshProjectUi()
   updatePropertyDock();
 }
 
-SiliconWindow::~SiliconWindow()
-{
-#ifdef __EMSCRIPTEN__
-  emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_DOCUMENT, nullptr, true,
-                                  nullptr);
-#endif
-
-  // QObject disconnects receivers in its base destructor, but by then this class's
-  // C++ members have already been destroyed. Some children (notably QUndoStack)
-  // emit state-change signals from their destructors, so disconnect every owned
-  // sender while SiliconWindow is still fully alive.
-  const auto ownedObjects =
-      findChildren<QObject*>(QString(), Qt::FindChildrenRecursively);
-  for (auto* object : ownedObjects)
-    disconnect(object, nullptr, this, nullptr);
-
-  // QToolBar only releases its transient drag state in mouseReleaseEvent().
-  // Finish a pending drag before Qt destroys the toolbar during window teardown.
-  if (actionSet->toolBar) {
-    QMouseEvent releaseEvent(QEvent::MouseButtonRelease, QPointF(), QPointF(),
-                             Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
-    QApplication::sendEvent(actionSet->toolBar, &releaseEvent);
-  }
-
-  delete propertyPanel;
-  propertyPanel = nullptr;
-  delete waveformController;
-  waveformController = nullptr;
-  delete architectureController;
-  architectureController = nullptr;
-  delete actionSet;
-  actionSet = nullptr;
-  delete fileController;
-  fileController = nullptr;
-  delete interactionController;
-  interactionController = nullptr;
-  // Child teardown sends events that still reach this filter, so stop watching
-  // before the workspace and its viewport start being destroyed.
-  if (watchedViewport) {
-    watchedViewport->removeEventFilter(this);
-    watchedViewport = nullptr;
-  }
-  delete workspace;
-  workspace = nullptr;
-  delete documentController;
-  documentController = nullptr;
-}
+SiliconWindow::~SiliconWindow() = default;
 
 void SiliconWindow::initializeProjectTree()
 {
   projectTree = new ProjectTree(documentDock);
   documentDock->setWidget(projectTree);
 
-  connect(projectTree, &QTreeWidget::itemSelectionChanged, this,
-          &SiliconWindow::projectTreeSelectionChanged);
-  connect(projectTree, &QTreeWidget::customContextMenuRequested, this,
-          &SiliconWindow::showProjectTreeContextMenu);
+  callbacks.connect(projectTree, &QTreeWidget::itemSelectionChanged,
+                    [this] { projectTreeSelectionChanged(); });
+  callbacks.connect(projectTree, &QTreeWidget::customContextMenuRequested,
+      [this](const QPoint& position) { showProjectTreeContextMenu(position); });
 }
 
 void SiliconWindow::projectTreeSelectionChanged()
@@ -465,24 +464,24 @@ void SiliconWindow::showProjectTreeContextMenu(const QPoint& position)
   newMenu->addAction(actionSet->documents.newBinaryFile);
 
   menu->addSeparator();
-  menu->addAction(Icon("import"), tr("Import Document..."), documentController,
+  menu->addAction(Icon("import"), tr("Import Document..."), documentController.get(),
                   &ProjectDocumentController::importProjectDocument);
 
   if (const auto selection = projectTree->selectedDocument()) {
     const bool architecture = ProjectTree::itemKind(projectTree->selectedProjectItem())
                               == ProjectTreeItemKind::Architecture;
-    menu->addAction(Icon("export"), tr("Export Document..."), documentController,
+    menu->addAction(Icon("export"), tr("Export Document..."), documentController.get(),
                     &ProjectDocumentController::exportSelectedDocument);
     menu->addSeparator();
     menu->addAction(
         Icon("pencil"),
         architecture ? tr("Rename ISA Architecture...") : tr("Rename Document..."),
-        documentController, &ProjectDocumentController::renameSelectedDocument);
+        documentController.get(), &ProjectDocumentController::renameSelectedDocument);
     auto* deleteAction = menu->addAction(
         Icon("delete"),
         architecture ? tr("Delete ISA Architecture")
                      : tr("Delete %1").arg(documentTypeName(selection->type)),
-        documentController, &ProjectDocumentController::deleteSelectedDocument);
+        documentController.get(), &ProjectDocumentController::deleteSelectedDocument);
     const auto circuitCount = std::ranges::count_if(
         projectSession.projectContext.documents().getDocuments(),
         [](const auto& document) {
