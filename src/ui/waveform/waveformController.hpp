@@ -9,12 +9,15 @@
 
 #pragma once
 
+#include <memory>
+
 #include <QObject>
 #include <QString>
 
 #include <core/projectDocument.hpp>
 
 #include <ui/actionGroups.hpp>
+#include <ui/lifetime.hpp>
 
 class QAction;
 class QDialog;
@@ -51,10 +54,11 @@ private:
 
   DiagramScene&     scene;
   QAction*          toggleAction = nullptr;
-  QDialog*          window       = nullptr;
   waveform::Viewer* viewer       = nullptr;
   QString           activeDocumentPath;
   bool              activeIsDiagram = false;
+  std::unique_ptr<QDialog> window;
+  CallbackScope            callbacks;
 };
 
 }  // namespace SILICON::ui

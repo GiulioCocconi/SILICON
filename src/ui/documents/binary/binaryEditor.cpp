@@ -33,7 +33,6 @@
 #include <QPainter>
 #include <QResizeEvent>
 #include <QScrollBar>
-#include <QSignalBlocker>
 #include <QUndoCommand>
 #include <QUndoStack>
 #include <QVBoxLayout>
@@ -354,11 +353,17 @@ private:
   std::vector<unsigned> after;
 };
 
+/** History must not notify observers while the editor is being destroyed. */
+class BinaryUndoStack : public QUndoStack {
+public:
+  ~BinaryUndoStack() override { blockSignals(true); }
+};
+
 BinaryEditor::BinaryEditor(QWidget* parent)
   : QWidget(parent),
     hexView(new BinaryHexView(this)),
     offsetEdit(new QLineEdit(this)),
-    undoHistory(new QUndoStack(this))
+    undoHistory(std::make_unique<BinaryUndoStack>())
 {
   setProperty("class", "mono");
   setFont(monospacedFont());
@@ -403,7 +408,7 @@ BinaryEditor::BinaryEditor(QWidget* parent)
   }
 
   for (std::size_t index = 0; index < inspectors.size(); ++index) {
-    connect(inspectors[index].edit, &QLineEdit::editingFinished, this,
+    callbacks.connect(inspectors[index].edit, &QLineEdit::editingFinished,
             [this, index] { commitInspector(inspectors[index]); });
   }
 
@@ -420,9 +425,9 @@ BinaryEditor::BinaryEditor(QWidget* parent)
   offsetEdit->setPlaceholderText(tr("Decimal or 0x-prefixed hexadecimal"));
   offsetLayout->addWidget(offsetEdit);
   inspectorLayout->addWidget(offsetContainer, 2, 3);
-  connect(offsetEdit, &QLineEdit::editingFinished, this, &BinaryEditor::commitOffset);
+  callbacks.connect(offsetEdit, &QLineEdit::editingFinished, [this] { commitOffset(); });
 
-  connect(undoHistory, &QUndoStack::indexChanged, this, [this] {
+  callbacks.connect(undoHistory.get(), &QUndoStack::indexChanged, [this] {
     highHexDigitEntered = false;
     updateEditorState();
   });
@@ -430,11 +435,7 @@ BinaryEditor::BinaryEditor(QWidget* parent)
   refreshOffset();
 }
 
-BinaryEditor::~BinaryEditor()
-{
-  const QSignalBlocker blocker(undoHistory);
-  undoHistory->clear();
-}
+BinaryEditor::~BinaryEditor() = default;
 
 void BinaryEditor::setData(QByteArray data)
 {
@@ -521,7 +522,7 @@ bool BinaryEditor::overwriteHexDigit(const unsigned digit)
 
 QUndoStack* BinaryEditor::history() const noexcept
 {
-  return undoHistory;
+  return undoHistory.get();
 }
 
 bool BinaryEditor::isModified() const

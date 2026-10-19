@@ -65,32 +65,27 @@ namespace {
 CircuitEditor::CircuitEditor(ProjectSession& session, QWidget* parent,
                              EditorNotifications notifications)
   : session(session),
-    diagramScene(new DiagramScene(parent)),
-    diagramView(new DiagramView(parent))
+    diagramScene(std::make_unique<DiagramScene>()),
+    diagramView(std::make_unique<DiagramView>(parent))
 {
   diagramScene->setDocumentStore(&session.projectContext.documents());
   diagramScene->setCircuitResolver(&session.circuitResolver);
-  diagramView->setScene(diagramScene);
+  diagramView->setScene(diagramScene.get());
 
   // Selection and interaction mode both decide which diagram commands apply, so the scene
   // reports them through the workspace. The clipboard is not observed here: the workspace
   // watches it once and this editor only answers what its own contents mean.
   const auto reportEditState = [notifications] { notifications.editStateChanged(); };
-  QObject::connect(diagramScene, &DiagramScene::selectionChanged, diagramScene,
-                   reportEditState);
-  QObject::connect(diagramScene, &DiagramScene::modeChanged, diagramScene,
+  callbacks.connect(diagramScene.get(), &DiagramScene::selectionChanged, reportEditState);
+  callbacks.connect(diagramScene.get(), &DiagramScene::modeChanged,
                    reportEditState);
 }
 
-CircuitEditor::~CircuitEditor()
-{
-  diagramView->setScene(nullptr);
-  delete diagramScene;
-}
+CircuitEditor::~CircuitEditor() = default;
 
 QWidget* CircuitEditor::widget() const noexcept
 {
-  return diagramView;
+  return diagramView.get();
 }
 
 std::shared_ptr<PreparedEditorDocument>
@@ -114,7 +109,7 @@ void CircuitEditor::apply(const PreparedEditorDocument& prepared)
 
   // The editor can be hidden while another document type is active. Center after the
   // workspace has made this view current, when its viewport has its final geometry.
-  QTimer::singleShot(0, diagramView, &DiagramView::centerCircuit);
+  QTimer::singleShot(0, diagramView.get(), &DiagramView::centerCircuit);
 }
 
 void CircuitEditor::flush(const std::string& path)
@@ -144,7 +139,7 @@ void CircuitEditor::reset()
   diagramScene->clear();
   diagramScene->setDocumentCircuit(std::make_shared<SILICON::core::Circuit>());
   diagramScene->setSubcircuitDocumentMode(false);
-  QTimer::singleShot(0, diagramView, &DiagramView::centerCircuit);
+  QTimer::singleShot(0, diagramView.get(), &DiagramView::centerCircuit);
 }
 void CircuitEditor::undo()
 {
@@ -225,7 +220,7 @@ void CircuitEditor::paste()
 
     if (projectHistory)
       projectHistory->push(
-          new SceneSelectionCommand(diagramScene, diagramScene->serializeSelection(),
+          new SceneSelectionCommand(diagramScene.get(), diagramScene->serializeSelection(),
                                     SceneSelectionCommand::Operation::Add, true));
   } catch (const std::exception&) {
   }
@@ -244,7 +239,7 @@ void CircuitEditor::deleteSelection()
   diagramScene->removeItems(itemsToDelete);
   if (projectHistory)
     projectHistory->push(new SceneSelectionCommand(
-        diagramScene, payload, SceneSelectionCommand::Operation::Remove, true));
+        diagramScene.get(), payload, SceneSelectionCommand::Operation::Remove, true));
 }
 
 EditorEditState CircuitEditor::editState() const

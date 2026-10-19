@@ -40,17 +40,17 @@ WaveformController::WaveformController(ProjectSession& session, DiagramScene& sc
 {
   activeDocumentPath = QString::fromStdString(session.activeDocumentPath);
 
-  this->window = new QDialog(window);
+  this->window = std::make_unique<QDialog>(window);
   this->window->setWindowTitle(tr("Waveform"));
   this->window->setModal(false);
   this->window->resize(900, 420);
 
-  auto* layout = new QVBoxLayout(this->window);
+  auto* layout = new QVBoxLayout(this->window.get());
   layout->setContentsMargins(0, 0, 0, 0);
-  this->viewer = new waveform::Viewer(this->window);
+  this->viewer = new waveform::Viewer(this->window.get());
   layout->addWidget(this->viewer);
 
-  connect(this->window, &QDialog::finished, this, [this] {
+  callbacks.connect(this->window.get(), &QDialog::finished, [this] {
     setTraceActionChecked(false);
     this->viewer->setEditMode(false);
   });
@@ -58,27 +58,27 @@ WaveformController::WaveformController(ProjectSession& session, DiagramScene& sc
           &waveform::Viewer::resetTrace);
   connect(&this->scene, &DiagramScene::waveformTraceSnapshots, this->viewer,
           &waveform::Viewer::appendSnapshots);
-  connect(this->viewer, &waveform::Viewer::editModeChanged, this,
+  callbacks.connect(this->viewer, &waveform::Viewer::editModeChanged,
           [this](bool enabled) { this->scene.setIoInteractionsEnabled(!enabled); });
   connect(this->viewer, &waveform::Viewer::editTraceCommitted, &this->scene,
           &DiagramScene::simulateEditedWaveform);
 
   // Traces belong to the circuit that produced them, so the viewer follows the document
   // controller instead of inspecting the project session on its own.
-  connect(&documents, &ProjectDocumentController::activeDocumentChanged, this,
-          &WaveformController::handleActiveDocumentChanged);
+  callbacks.connect(&documents, &ProjectDocumentController::activeDocumentChanged,
+      [this](const QString& path, SILICON::project::DocumentCategory category) {
+        handleActiveDocumentChanged(path, category);
+      });
 }
 
 void WaveformController::bindActions(const WaveformActions& actions)
 {
   toggleAction = actions.toggleTrace;
-  connect(toggleAction, &QAction::toggled, this, &WaveformController::toggle);
+  callbacks.connect(toggleAction, &QAction::toggled,
+                    [this](bool enabled) { toggle(enabled); });
 }
 
-WaveformController::~WaveformController()
-{
-  delete window;
-}
+WaveformController::~WaveformController() = default;
 
 void WaveformController::toggle(const bool enabled)
 {

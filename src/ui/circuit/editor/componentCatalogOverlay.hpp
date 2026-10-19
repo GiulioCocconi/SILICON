@@ -23,6 +23,8 @@
 #include <QStringList>
 #include <QWidget>
 
+#include <ui/lifetime.hpp>
+
 #include <core/component.hpp>
 #include <core/serialization/component_registry.hpp>
 
@@ -71,6 +73,7 @@ namespace SILICON::ui {
     QLineEdit*                             searchInput = nullptr;
     QTableWidget*                          table       = nullptr;
     std::vector<CatalogRow>                catalogRows;
+    CallbackScope                          callbacks;
   };
 
 }  // namespace SILICON::ui

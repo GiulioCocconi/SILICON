@@ -17,7 +17,10 @@
 
 #pragma once
 
+#include <memory>
+
 #include <QMainWindow>
+#include <ui/lifetime.hpp>
 #include <ui/project/projectSession.hpp>
 
 #ifdef __EMSCRIPTEN__
@@ -51,6 +54,10 @@ class ProjectDocumentController;
 class ProjectFileController;
 class WaveformController;
 class WindowActions;
+class WindowLifetime;
+#ifdef __EMSCRIPTEN__
+class BrowserKeyDownRegistration;
+#endif
 
 /**
  * @brief Main window for the SILICON graphical circuit editor.
@@ -66,9 +73,7 @@ public:
    */
   SiliconWindow();
 
-  /**
-   * @brief Disconnects window-owned callbacks and scene signal connections.
-   */
+  /** @brief Releases scoped callbacks and UI owners in dependency order. */
   ~SiliconWindow() override;
 
 protected:
@@ -164,41 +169,37 @@ private:
   /** @brief Dock containing application log output. */
   QDockWidget* logDock = nullptr;
 
-  /** @brief Tree widget listing project metadata and documents. */
+  /** @brief Borrowed handles into the workspace and Qt widget hierarchy. */
   ProjectTree*                  projectTree            = nullptr;
-  ProjectDocumentController*    documentController     = nullptr;
-  ProjectFileController*        fileController         = nullptr;
-  DiagramInteractionController* interactionController  = nullptr;
-  ArchitectureController*       architectureController = nullptr;
-  WindowActions*                actionSet              = nullptr;
-  WaveformController*           waveformController     = nullptr;
-  PropertyPanel*                propertyPanel          = nullptr;
-
-  /** @brief Widget that displays captured application log lines. */
   LogSideView* logSideView = nullptr;
-
-  /** @brief Adapter that forwards Boost.Log output into the Qt log side view. */
-  GraphicalLogStream* graphicalLogStream = nullptr;
-
-  EditorWorkspace* workspace     = nullptr;
   CircuitEditor*   circuitEditor = nullptr;
-
-  /** @brief Floating searchable component catalog, shown over the diagram viewport. */
   ComponentCatalogOverlay* componentCatalogOverlay = nullptr;
-
-  /** @brief Diagram viewport whose resize events are filtered, cleared on teardown. */
-  QObject* watchedViewport = nullptr;
-
-  /** @brief Undo stack shared by diagram and project operations. */
-  QUndoStack* undoStack = nullptr;
+  AboutDialog* aboutDialog = nullptr;
 
   /** @brief Allows the close event triggered after an accepted dirty-file prompt. */
   bool closeAfterSaveConfirmation = false;
 
+  // Declaration order is lifetime order: the session and history outlive the
+  // editors, and the document navigator remains available during scene teardown.
   ProjectSession projectSession;
+  std::unique_ptr<QUndoStack>                   undoStack;
+  std::unique_ptr<ProjectDocumentController>    documentController;
+  std::unique_ptr<EditorWorkspace>              workspace;
+  std::unique_ptr<DiagramInteractionController> interactionController;
+  std::unique_ptr<ProjectFileController>        fileController;
+  std::unique_ptr<WindowActions>                actionSet;
+  std::unique_ptr<ArchitectureController>       architectureController;
+  std::unique_ptr<WaveformController>           waveformController;
+  std::unique_ptr<PropertyPanel>                propertyPanel;
+  std::unique_ptr<GraphicalLogStream>           graphicalLogStream;
 
-  /** @brief Lazily shown application about dialog. */
-  AboutDialog* aboutDialog = nullptr;
+  ScopedEventFilter               viewportFilter;
+  std::unique_ptr<WindowLifetime> windowLifetime;
+#ifdef __EMSCRIPTEN__
+  std::unique_ptr<BrowserKeyDownRegistration> browserKeyDown;
+#endif
+  // Disconnect and discard queued callbacks before any teardown emits signals.
+  CallbackScope callbacks;
 };
 
 }  // namespace SILICON::ui

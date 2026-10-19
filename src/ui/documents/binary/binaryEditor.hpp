@@ -19,12 +19,14 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <vector>
 
 #include <QByteArray>
 #include <QWidget>
 
+#include <ui/lifetime.hpp>
 #include <utils/num_formatting.hpp>
 
 class QLineEdit;
@@ -33,6 +35,7 @@ class QUndoStack;
 namespace SILICON::ui {
 
 class BinaryHexView;
+class BinaryUndoStack;
 
 /** Fixed-size binary document editor with a byte-oriented hexadecimal caret. */
 class BinaryEditor : public QWidget {
@@ -81,8 +84,9 @@ private:
   bool                   highHexDigitEntered = false;
   BinaryHexView*         hexView;
   QLineEdit*             offsetEdit;
-  QUndoStack*            undoHistory;
   std::vector<Inspector> inspectors;
+  std::unique_ptr<BinaryUndoStack> undoHistory;
+  CallbackScope                    callbacks;
 };
 
 }  // namespace SILICON::ui

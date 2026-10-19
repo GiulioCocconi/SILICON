@@ -67,7 +67,8 @@ void ProjectDocumentController::createArchitecture()
         }
         this->pushCreateDocumentCommand({path, std::format("arch {} = {{}};\n", name)},
                                         tr("Create ISA Architecture"));
-      });
+      },
+      this);
 }
 
 void ProjectDocumentController::showArchitectureTabContextMenu(const QPoint& position)
@@ -109,7 +110,8 @@ void ProjectDocumentController::deleteArchitectureComponent(const std::string& p
               *session.projectContext.documents().find(path)))),
       [this, path] {
         this->removeProjectDocuments({path}, tr("Delete Architecture File"));
-      });
+      },
+      this);
 }
 
 void ProjectDocumentController::renameArchitecture(const std::string& name)
@@ -164,7 +166,8 @@ void ProjectDocumentController::renameArchitecture(const std::string& name)
         } catch (const std::exception& error) {
           SILICON::ui::inputDialog::warning(dialogParent, title, error.what());
         }
-      });
+      },
+      this);
 }
 
 void ProjectDocumentController::deleteArchitecture(const std::string& name)
@@ -181,7 +184,8 @@ void ProjectDocumentController::deleteArchitecture(const std::string& name)
           .arg(QString::fromStdString(name)),
       [this, paths] {
         this->removeProjectDocuments(paths, tr("Delete ISA Architecture"));
-      });
+      },
+      this);
 }
 
 }  // namespace SILICON::ui

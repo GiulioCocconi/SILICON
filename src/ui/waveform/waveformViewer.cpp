@@ -44,7 +44,6 @@
 #include <QPaintEvent>
 #include <QPainter>
 #include <QPen>
-#include <QPointer>
 #include <QScrollBar>
 #include <QSignalBlocker>
 #include <QTemporaryFile>
@@ -839,8 +838,8 @@ Viewer::Viewer(QWidget* parent) : QWidget(parent)
   durationEdit = makeNumberEdit(1);
   startEdit    = makeNumberEdit(0);
   endEdit      = makeNumberEdit(0);
-  startEdit->installEventFilter(this);
-  endEdit->installEventFilter(this);
+  startEditFilter.reset(startEdit, this);
+  endEditFilter.reset(endEdit, this);
 
   const auto bottomBar    = new QWidget(this);
   const auto bottomLayout = new QHBoxLayout(bottomBar);
@@ -859,7 +858,7 @@ Viewer::Viewer(QWidget* parent) : QWidget(parent)
   refreshTimer->setSingleShot(true);
   // Limit relayout and repaint work to roughly one frame when snapshots arrive rapidly.
   refreshTimer->setInterval(16);
-  connect(refreshTimer, &QTimer::timeout, this, [this]() {
+  callbacks.connect(refreshTimer, &QTimer::timeout, [this]() {
     refreshViews();
     if (keepScrolledToEnd)
       scrollArea->horizontalScrollBar()->setValue(
@@ -867,13 +866,14 @@ Viewer::Viewer(QWidget* parent) : QWidget(parent)
     keepScrolledToEnd = false;
   });
 
-  connect(saveAct, &QAction::triggered, this, &Viewer::saveTrace);
-  connect(editAct, &QAction::toggled, this, &Viewer::setEditMode);
-  connect(zoomInAct, &QAction::triggered, this, [this]() {
+  callbacks.connect(saveAct, &QAction::triggered, [this]() { saveTrace(); });
+  callbacks.connect(editAct, &QAction::toggled,
+                    [this](bool enabled) { setEditMode(enabled); });
+  callbacks.connect(zoomInAct, &QAction::triggered, [this]() {
     pixelsPerTick *= 1.25;
     refreshCanvas();
   });
-  connect(zoomOutAct, &QAction::triggered, this, [this]() {
+  callbacks.connect(zoomOutAct, &QAction::triggered, [this]() {
     pixelsPerTick /= 1.25;
     refreshCanvas();
   });
@@ -881,24 +881,28 @@ Viewer::Viewer(QWidget* parent) : QWidget(parent)
           labelScrollArea->verticalScrollBar(), &QScrollBar::setValue);
   connect(labelScrollArea->verticalScrollBar(), &QScrollBar::valueChanged,
           scrollArea->verticalScrollBar(), &QScrollBar::setValue);
-  connect(canvas, &Canvas::timestampHovered, this, [this](int sampleIndex) {
+  callbacks.connect(canvas, &Canvas::timestampHovered, [this](int sampleIndex) {
     selectedSampleIndex = sampleIndex;
     refreshViews();
   });
-  connect(signalList, &SignalListWidget::signalSelected, this,
-          &Viewer::setSelectedSignalIndex);
-  connect(canvas, &Canvas::signalSelected, this, &Viewer::setSelectedSignalIndex);
-  connect(signalList, &SignalListWidget::signalContextMenuRequested, this,
-          &Viewer::showSignalFormatMenu);
-  connect(canvas, &Canvas::signalContextMenuRequested, this,
-          &Viewer::showSignalFormatMenu);
-  connect(canvas, &Canvas::editIntervalChanged, this,
+  callbacks.connect(signalList, &SignalListWidget::signalSelected,
+                    [this](int index) { setSelectedSignalIndex(index); });
+  callbacks.connect(canvas, &Canvas::signalSelected,
+                    [this](int index) { setSelectedSignalIndex(index); });
+  callbacks.connect(signalList, &SignalListWidget::signalContextMenuRequested,
+      [this](int index, QPoint position) { showSignalFormatMenu(index, position); });
+  callbacks.connect(canvas, &Canvas::signalContextMenuRequested,
+      [this](int index, QPoint position) { showSignalFormatMenu(index, position); });
+  callbacks.connect(canvas, &Canvas::editIntervalChanged,
           [this](const int signalIndex, const quint64 startTime, const quint64 endTime) {
             setSelectedSignalIndex(signalIndex);
             setEditIntervalFields(startTime, endTime);
           });
-  connect(canvas, &Canvas::editIntervalSelected, this, &Viewer::promptEditIntervalValue);
-  connect(durationEdit, &QLineEdit::editingFinished, this, [this]() {
+  callbacks.connect(canvas, &Canvas::editIntervalSelected,
+                    [this](int index, quint64 start, quint64 end) {
+                      promptEditIntervalValue(index, start, end);
+                    });
+  callbacks.connect(durationEdit, &QLineEdit::editingFinished, [this]() {
     if (!editMode) {
       updateDurationField();
       return;
@@ -913,10 +917,10 @@ Viewer::Viewer(QWidget* parent) : QWidget(parent)
     rebuildEditableTrace(trace, editDuration);
     refreshViews();
   });
-  connect(startEdit, &QLineEdit::returnPressed, this,
-          &Viewer::promptSelectedEditIntervalValue);
-  connect(endEdit, &QLineEdit::returnPressed, this,
-          &Viewer::promptSelectedEditIntervalValue);
+  callbacks.connect(startEdit, &QLineEdit::returnPressed,
+                    [this]() { promptSelectedEditIntervalValue(); });
+  callbacks.connect(endEdit, &QLineEdit::returnPressed,
+                    [this]() { promptSelectedEditIntervalValue(); });
   updateEditControls();
 }
 
@@ -953,7 +957,7 @@ bool Viewer::eventFilter(QObject* watched, QEvent* event)
       preciseIntervalEditing = true;
       refreshCanvas();
     } else if (event->type() == QEvent::FocusOut) {
-      QTimer::singleShot(0, this, [this]() {
+      QTimer::singleShot(0, callbacks.context(), [this]() {
         preciseIntervalEditing = startEdit->hasFocus() || endEdit->hasFocus();
         refreshCanvas();
       });
@@ -1079,16 +1083,15 @@ void Viewer::promptEditIntervalValue(int signalIndex, quint64 startTime, quint64
   setEditIntervalFields(startTime, endTime);
 
   const std::size_t      width = SILICON::waveform::signalWidth(trace, signalIndex);
-  const QPointer<Viewer> safeThis(this);
   if (width <= 1) {
     SILICON::ui::inputDialog::getItem(
         this, tr("Input Value"),
         tr("Set value from %1 to %2").arg(startTime).arg(endTime),
         QStringList{tr("0"), tr("1")}, 0, false,
-        [safeThis, signalIndex, startTime, endTime](const QString& text) {
-          if (safeThis)
-            safeThis->applyEditInterval(signalIndex, startTime, endTime, text);
-        });
+        [this, signalIndex, startTime, endTime](const QString& text) {
+          applyEditInterval(signalIndex, startTime, endTime, text);
+        },
+        callbacks.context());
     return;
   }
 
@@ -1100,23 +1103,21 @@ void Viewer::promptEditIntervalValue(int signalIndex, quint64 startTime, quint64
           .arg(startTime)
           .arg(endTime),
       QString("0"),
-      [safeThis, signalIndex, startTime, endTime, width](const QString& text) {
-        if (!safeThis)
-          return;
-
+      [this, signalIndex, startTime, endTime, width](const QString& text) {
         const auto parsed  = valueFromStr(text.toStdString());
         const auto resized = resizeParsedValue(parsed, width);
         if (!resized) {
           SILICON::ui::inputDialog::warning(
-              safeThis, QObject::tr("Bus Input"),
+              this, QObject::tr("Bus Input"),
               QObject::tr("The value does not fit in the selected signal width."));
           return;
         }
 
-        safeThis->applyEditInterval(
+        applyEditInterval(
             signalIndex, startTime, endTime,
             QString::fromStdString(formatValue(*resized, BusValueFormat::Raw)));
-      });
+      },
+      callbacks.context());
 }
 
 void Viewer::promptSelectedEditIntervalValue()
@@ -1252,7 +1253,7 @@ void Viewer::showSignalFormatMenu(const int signalIndex, QPoint globalPosition)
     QAction* action = menu->addAction(label);
     action->setCheckable(true);
     action->setChecked(formatForSignal(signalFormats, signalIndex) == format);
-    connect(action, &QAction::triggered, this, [this, signalIndex, format]() {
+    callbacks.connect(action, &QAction::triggered, [this, signalIndex, format]() {
       if (normalizedIndex(signalIndex, static_cast<int>(signalFormats.size())) < 0)
         return;
       signalFormats[static_cast<std::size_t>(signalIndex)] = format;

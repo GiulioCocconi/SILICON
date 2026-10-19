@@ -98,11 +98,11 @@ CodeEditor::CodeEditor(QWidget* parent)
   completer->setCompletionMode(QCompleter::PopupCompletion);
   completer->setModelSorting(QCompleter::CaseSensitivelySortedModel);
 
-  connect(completer, qOverload<const QString&>(&QCompleter::activated), this,
+  callbacks.connect(completer, qOverload<const QString&>(&QCompleter::activated),
           [this](const QString& completion) { insertCompletion(completion); });
-  connect(this, &QPlainTextEdit::blockCountChanged, this,
+  callbacks.connect(this, &QPlainTextEdit::blockCountChanged,
           [this] { updateLineNumberAreaWidth(); });
-  connect(this, &QPlainTextEdit::updateRequest, this,
+  callbacks.connect(this, &QPlainTextEdit::updateRequest,
           [this](const QRect& rect, const int dy) {
             if (dy)
               lineNumberArea->scroll(0, dy);
@@ -111,7 +111,7 @@ CodeEditor::CodeEditor(QWidget* parent)
             if (rect.contains(viewport()->rect()))
               updateLineNumberAreaWidth();
           });
-  connect(this, &QPlainTextEdit::cursorPositionChanged, lineNumberArea, [this] {
+  callbacks.connect(this, &QPlainTextEdit::cursorPositionChanged, [this] {
     lineNumberArea->update();
     completer->popup()->hide();
   });
@@ -514,7 +514,7 @@ void CodeEditor::contextMenuEvent(QContextMenuEvent* event)
   copyAction->setEnabled(textCursor().hasSelection());
   auto* pasteAction = menu->addAction(tr("Paste"), this, &QPlainTextEdit::paste);
   pasteAction->setEnabled(!isReadOnly() && canPaste());
-  auto* deleteAction = menu->addAction(tr("Delete"), this, [this] {
+  auto* deleteAction = menu->addAction(tr("Delete"), callbacks.context(), [this] {
     auto cursor = textCursor();
     cursor.removeSelectedText();
   });

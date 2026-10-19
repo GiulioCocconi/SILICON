@@ -23,6 +23,7 @@
 #include <QTimer>
 #include <QWidget>
 #include <core/siliconWaveform.hpp>
+#include <ui/lifetime.hpp>
 #include <utils/num_formatting.hpp>
 #include <vector>
 
@@ -294,6 +295,10 @@ private:
 
   /** @brief Coalesces rapid snapshot arrivals into at most one refresh per frame. */
   QTimer* refreshTimer = nullptr;
+
+  ScopedEventFilter startEditFilter;
+  ScopedEventFilter endEditFilter;
+  CallbackScope     callbacks;
 
   /** @brief Repaints the signal list while preserving scroll position. */
   void refreshSignalList();

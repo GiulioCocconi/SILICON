@@ -92,7 +92,8 @@ void ProjectDocumentController::importProjectDocument()
               dialogParent, tr("Document Import Error"),
               tr("Failed to import the document:\n%1").arg(error.what()));
         }
-      });
+      },
+      this);
 }
 
 void ProjectDocumentController::exportSelectedDocument()
@@ -255,7 +256,8 @@ void ProjectDocumentController::createDocument(const SILICON::project::DocumentT
         SILICON::project::Document document(path, sceneJson);
 
         pushCreateDocumentCommand(std::move(document), tr("Create %1").arg(noun));
-      });
+      },
+      this);
 }
 
 void ProjectDocumentController::pushDocumentSnapshotCommand(
@@ -325,7 +327,8 @@ void ProjectDocumentController::renameSelectedDocument()
         } catch (const std::exception& error) {
           SILICON::ui::inputDialog::warning(dialogParent, title, error.what());
         }
-      });
+      },
+      this);
 }
 
 void ProjectDocumentController::removeProjectDocuments(
@@ -445,7 +448,8 @@ void ProjectDocumentController::deleteSelectedDocument()
         };
 
         undoStack->push(new CallbackUndoCommand(title, restoreDocument, removeStored));
-      });
+      },
+      this);
 }
 
 void ProjectDocumentController::commitDocumentChanges(
@@ -492,7 +496,7 @@ void ProjectDocumentController::commitDocumentChanges(
         dialogParent, tr("Replace Existing Documents"),
         tr("The following documents already exist and will be replaced:\n\n%1")
             .arg(conflicts.join('\n')),
-        std::move(commit));
+        std::move(commit), this);
   } else {
     commit();
   }

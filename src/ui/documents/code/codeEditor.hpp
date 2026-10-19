@@ -17,6 +17,8 @@
 
 #pragma once
 
+#include <ui/lifetime.hpp>
+
 #include <optional>
 #include <vector>
 
@@ -91,6 +93,7 @@ private:
   std::vector<QRegularExpression>               indentationTriggers;
   std::optional<SILICON::project::DocumentType> fileTypeValue;
   qreal                                         zoomFontPointSize = 0.0;
+  CallbackScope                                 callbacks;
 };
 
 }  // namespace SILICON::ui

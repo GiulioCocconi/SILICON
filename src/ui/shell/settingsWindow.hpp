@@ -17,6 +17,8 @@
 
 #pragma once
 
+#include <ui/lifetime.hpp>
+
 #include <QDialog>
 #include <QVector>
 
@@ -95,6 +97,7 @@ private:
   QPushButton*      exportButton;
   QPushButton*      restoreDefaultsButton;
   QDialogButtonBox* buttonBox;
+  CallbackScope     callbacks;
 };
 
 }  // namespace SILICON::ui

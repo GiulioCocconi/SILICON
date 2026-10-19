@@ -39,18 +39,19 @@ EditorWorkspace::EditorWorkspace(ProjectSession& session, QWidget* parent)
   layout->setContentsMargins(0, 0, 0, 0);
   layout->addWidget(stack);
   activeDocumentEditor = &circuitEditor();
-  connect(this, &EditorWorkspace::editorCreated, this,
+  callbacks.connect(this, &EditorWorkspace::editorCreated,
           [this](DocumentEditor* editor) { editor->setProjectHistory(projectHistory); });
   // The clipboard is global while the editors answering editState() are local, so it is
   // observed exactly once here. The active editor still decides what its contents mean.
-  connect(QApplication::clipboard(), &QClipboard::dataChanged, this,
-          &EditorWorkspace::editStateChanged);
+  callbacks.connect(QApplication::clipboard(), &QClipboard::dataChanged,
+                    [this] { emit editStateChanged(); });
 }
 EditorWorkspace::~EditorWorkspace() = default;
 
 EditorNotifications EditorWorkspace::notifications()
 {
-  return {[this] { emit historyStateChanged(); }, [this] { emit editStateChanged(); }};
+  return {callbacks.guard([this] { emit historyStateChanged(); }),
+          callbacks.guard([this] { emit editStateChanged(); })};
 }
 
 CircuitEditor& EditorWorkspace::circuitEditor()
@@ -106,16 +107,16 @@ void EditorWorkspace::setProjectHistory(QUndoStack* history) noexcept
   if (projectHistory == history)
     return;
   if (projectHistory)
-    disconnect(projectHistory, nullptr, this, nullptr);
+    disconnect(projectHistory, nullptr, callbacks.context(), nullptr);
 
   projectHistory = history;
   if (projectHistory) {
     // Every editor falls back to the project history when its own document has nothing
     // left to undo, so its state has to be part of the workspace notifications.
-    connect(projectHistory, &QUndoStack::canUndoChanged, this,
-            &EditorWorkspace::historyStateChanged);
-    connect(projectHistory, &QUndoStack::canRedoChanged, this,
-            &EditorWorkspace::historyStateChanged);
+    callbacks.connect(projectHistory, &QUndoStack::canUndoChanged,
+                      [this] { emit historyStateChanged(); });
+    callbacks.connect(projectHistory, &QUndoStack::canRedoChanged,
+                      [this] { emit historyStateChanged(); });
   }
   if (circuit)
     circuit->setProjectHistory(projectHistory);

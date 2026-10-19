@@ -163,11 +163,12 @@ void PropertyPanel::refresh()
         return;
 
       undoStack->push(
-          new MetadataEditCommand(label, oldValue, newValue, std::move(apply)));
+          new MetadataEditCommand(label, oldValue, newValue,
+                                              callbacks.guard(std::move(apply))));
     };
 
     auto schedulePropertyDockRefresh = [this] {
-      QTimer::singleShot(0, this, &PropertyPanel::refresh);
+      QTimer::singleShot(0, callbacks.context(), [this] { refresh(); });
     };
 
     if (itemKind == ProjectTreeItemKind::Project) {
@@ -179,7 +180,7 @@ void PropertyPanel::refresh()
           QString::fromStdString(currentProjectInfo->description));
       descriptionEdit->document()->setModified(false);
 
-      connect(nameEdit, &QLineEdit::editingFinished, this,
+      callbacks.connect(nameEdit, &QLineEdit::editingFinished,
               [this, nameEdit, pushMetadataEdit, schedulePropertyDockRefresh] {
                 if (!currentProjectInfo || !nameEdit->isModified())
                   return;
@@ -197,7 +198,7 @@ void PropertyPanel::refresh()
                       schedulePropertyDockRefresh();
                     });
               });
-      descriptionEdit->commit = [this, descriptionEdit, pushMetadataEdit,
+      descriptionEdit->commit = callbacks.guard([this, descriptionEdit, pushMetadataEdit,
                                  schedulePropertyDockRefresh] {
         if (!currentProjectInfo || !descriptionEdit->document()->isModified())
           return;
@@ -212,7 +213,7 @@ void PropertyPanel::refresh()
                            currentProjectInfo->description = value;
                            schedulePropertyDockRefresh();
                          });
-      };
+      });
     }
 
     layout->addRow(wrappingLabel(tr("Name"), container), nameEdit);
@@ -255,18 +256,12 @@ void PropertyPanel::refresh()
       if (command->isEmpty())
         return;
 
-      ModifyPropertyCommand* const submitted = command.release();
-      try {
-        // push() runs redo() before taking ownership of the command, so a
-        // validation exception from applyProperty would otherwise leak it.
-        undoStack->push(submitted);
-      } catch (...) {
-        delete submitted;
-        throw;
-      }
+      // Keep ownership if redo() throws before QUndoStack accepts the command.
+      undoStack->push(command.get());
+      static_cast<void>(command.release());
     } catch (const std::exception& e) {
       SILICON::ui::inputDialog::warning(propertyDock, tr("Invalid Property"), e.what());
-      QTimer::singleShot(0, this, &PropertyPanel::refresh);
+      QTimer::singleShot(0, callbacks.context(), [this] { refresh(); });
     }
   };
 
@@ -289,7 +284,7 @@ void PropertyPanel::refresh()
           checkBox->setChecked(arg);
         }
 
-        connect(checkBox, &QCheckBox::checkStateChanged, this, [=](Qt::CheckState state) {
+        callbacks.connect(checkBox, &QCheckBox::checkStateChanged, [=](Qt::CheckState state) {
           if (state == Qt::PartiallyChecked)
             return;
           checkBox->setTristate(false);
@@ -310,7 +305,7 @@ void PropertyPanel::refresh()
           spinBox->setValue(arg);
         }
 
-        connect(spinBox, &QSpinBox::valueChanged, this, [=](int val) {
+        callbacks.connect(spinBox, &QSpinBox::valueChanged, [=](int val) {
           if (val == MIN_VAL && spinBox->isMixed())
             return;
           spinBox->setMixed(false);
@@ -335,7 +330,7 @@ void PropertyPanel::refresh()
             comboBox->setCurrentText(QString::fromStdString(arg));
           }
 
-          connect(comboBox, &QComboBox::currentTextChanged, this,
+          callbacks.connect(comboBox, &QComboBox::currentTextChanged,
                   [=](const QString& text) {
                     if (text.isEmpty())
                       return;
@@ -354,7 +349,7 @@ void PropertyPanel::refresh()
           lineEdit->setText(QString::fromStdString(arg));
         }
 
-        connect(lineEdit, &QLineEdit::editingFinished, this, [=]() {
+        callbacks.connect(lineEdit, &QLineEdit::editingFinished, [=]() {
           if (!lineEdit->isModified())
             return;
 
@@ -371,7 +366,7 @@ void PropertyPanel::refresh()
           lineEdit->setText(QString::fromStdString(
               SILICON::core::formatValue(arg, BusValueFormat::Raw)));
 
-        connect(lineEdit, &QLineEdit::editingFinished, this, [=, this]() {
+        callbacks.connect(lineEdit, &QLineEdit::editingFinished, [=, this]() {
           if (!lineEdit->isModified())
             return;
           try {
