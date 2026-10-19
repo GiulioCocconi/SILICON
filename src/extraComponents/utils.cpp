@@ -17,6 +17,8 @@
 
 #include "utils.hpp"
 
+#include <algorithm>
+
 #include <core/simulator.hpp>
 
 namespace SILICON::extra {
@@ -58,13 +60,19 @@ int WireSplitter::setSize(int newSize)
     return static_cast<int>(this->outputs.size());
   }
 
-  if (this->inputs[0].size() == static_cast<unsigned int>(newSize)
-      && this->outputs.size() == static_cast<unsigned int>(newSize)) {
+  if (this->inputs.size() == 1
+      && this->inputs[0].size() == static_cast<unsigned int>(newSize)
+      && this->outputs.size() == static_cast<unsigned int>(newSize)
+      && std::ranges::all_of(this->outputs,
+                             [](const Bus& bus) { return bus.size() == 1; })) {
     return newSize;
   }
 
   setInput(0, Bus(newSize));
-  std::vector<Bus> outs(newSize, Bus(1));
+  std::vector<Bus> outs;
+  outs.reserve(newSize);
+  for (int i = 0; i < newSize; ++i)
+    outs.emplace_back(1);
   setOutputs(outs);
 
   return newSize;
@@ -120,11 +128,17 @@ int WireMerger::setSize(int newSize)
     return static_cast<int>(this->inputs.size());
 
   if (this->inputs.size() == static_cast<unsigned int>(newSize)
-      && this->outputs[0].size() == static_cast<unsigned int>(newSize)) {
+      && this->outputs.size() == 1
+      && this->outputs[0].size() == static_cast<unsigned int>(newSize)
+      && std::ranges::all_of(this->inputs,
+                             [](const Bus& bus) { return bus.size() == 1; })) {
     return newSize;
   }
 
-  std::vector<Bus> inputs(newSize, Bus());
+  std::vector<Bus> inputs;
+  inputs.reserve(newSize);
+  for (int i = 0; i < newSize; ++i)
+    inputs.emplace_back(std::vector<Wire_ptr>(1));
   setInputs(inputs);
   setOutput(0, Bus(newSize));
   return newSize;
@@ -136,7 +150,7 @@ void WireMerger::simulate(SILICON::simulation::Simulator& sim)
   const int          delay = getPropertyValue<int>("delay").value();
 
   for (unsigned int i = 0; i < size; i++) {
-    const bool  inputIsDisconnected = this->inputs[i].size() == 0;
+    const bool  inputIsDisconnected = this->inputs[i].size() == 0 || !this->inputs[i][0];
     const State s                   = inputIsDisconnected ? State::UNKNOWN
                                                           : Wire::safeGetCurrentState(this->inputs[i][0]);
 
