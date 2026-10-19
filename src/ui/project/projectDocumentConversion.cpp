@@ -16,6 +16,8 @@
  */
 
 #include <ui/documents/editorWorkspace.hpp>
+#include <ui/circuit/editor/circuitEditor.hpp>
+#include <ui/circuit/diagram/scene/diagramScene.hpp>
 #include <ui/project/projectDocumentController.hpp>
 #include <ui/project/projectSession.hpp>
 
@@ -236,6 +238,9 @@ void ProjectDocumentController::convertActiveDocumentTo(
     const auto* source     = store.find(sourcePath);
     if (!source)
       throw std::runtime_error("The active document no longer exists");
+    if (source->getType() == SILICON::project::DocumentType::Circuit
+        && !workspace.circuitEditor().scene()->currentConnectionReport().valid())
+      throw std::runtime_error("Repair the invalid wire connections before conversion");
 
     auto prepared = prepareDocumentConversion(
         *source, target, store.getDocuments(),

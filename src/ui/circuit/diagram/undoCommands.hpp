@@ -21,6 +21,7 @@
 #include <QPointF>
 #include <QUndoCommand>
 #include <functional>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -28,6 +29,8 @@
 
 #include <core/component.hpp>
 #include <ui/circuit/diagram/graphicalWire.hpp>
+#include <ui/circuit/diagram/wireManager.hpp>
+#include <ui/circuit/diagram/scene/diagramSceneEdit.hpp>
 
 namespace SILICON::ui {
   using namespace SILICON::core;
@@ -36,6 +39,46 @@ namespace SILICON::ui {
   class GraphicalComponent;
   class GraphicalLogicComponent;
   class DiagramScene;
+
+  class WireTopologyCommand : public QUndoCommand {
+  public:
+    enum class Operation { Add, Remove };
+    /**
+     * @brief Captures segments for undoing or redoing wire addition or removal.
+     * @param scene Scene containing the segments.
+     * @param segments Segments whose geometry, identifiers, and buses are captured.
+     * @param operation Whether the original action adds or removes segments.
+     * @param skipInitialRedo Whether the action was already applied before pushing the command.
+     * @param parent Optional parent undo command.
+     */
+    WireTopologyCommand(DiagramScene* scene,
+                        const std::vector<GraphicalWireSegment*>& segments,
+                        Operation operation, bool skipInitialRedo = true,
+                        QUndoCommand* parent = nullptr);
+    /** @brief Reverses the captured wire addition or removal. */
+    void undo() override;
+    /** @brief Reapplies the operation, optionally skipping the first invocation. */
+    void redo() override;
+
+  private:
+    struct Snapshot {
+      uint64_t uiId;
+      uint64_t routeId;
+      Bus bus;
+      QPointF position;
+      std::vector<QPointF> points;
+    };
+    /**
+     * @brief Restores captured segments or removes them from their original document.
+     * @param restore True restores the snapshots; false removes their scene items.
+     */
+    void apply(bool restore);
+    DiagramScene* scene;
+    std::string documentPath;
+    std::vector<Snapshot> snapshots;
+    Operation operation;
+    bool skipInitialRedo;
+  };
 
   /** Undo command backed by caller-provided state transition callbacks. */
   class CallbackUndoCommand : public QUndoCommand {
@@ -76,38 +119,52 @@ namespace SILICON::ui {
     }
 
     void addItemMove(GraphicalItem* item, const QPointF& oldPos, const QPointF& newPos);
+    /** @brief Stores before and after wire routes accompanying the item moves. */
+    void setWireMoves(std::vector<WireRouteChange> changes)
+    {
+      wireMoves = std::move(changes);
+    }
+    /** @brief Stores topology and net snapshots accompanying the item moves. */
+    void setTopologyEdit(WireEndpointEdit edit) { topologyEdit = std::move(edit); }
 
     void undo() override;
     void redo() override;
 
   private:
-    struct ItemMove {
-      DiagramScene* scene;
-      uint64_t      uiId;
-      QPointF       oldPos;
-      QPointF       newPos;
-    };
-    std::vector<ItemMove> moves;
+    DiagramScene* scene = nullptr;
+    std::vector<ItemPositionChange> moves;
+    std::vector<WireRouteChange> wireMoves;
+    WireEndpointEdit topologyEdit;
     std::string           documentPath;
     bool                  skipInitialRedo = true;
   };
 
-  class MoveWirePointCommand : public QUndoCommand {
+  class EditWireRouteCommand : public QUndoCommand {
   public:
-    explicit MoveWirePointCommand(GraphicalWireSegment* segment, size_t pointIndex,
-                                  const QPointF& oldPos, const QPointF& newPos,
+    /**
+     * @brief Captures an already applied wire gesture for undo and redo.
+     * @param segment Edited segment used to locate the scene and document.
+     * @param changes Before and after route snapshots for affected segments.
+     * @param kind Handle type used to label the command.
+     * @param endpointEdit Contact, topology, and net snapshots for the gesture.
+     * @param parent Optional parent undo command.
+     * @note The first redo is skipped because the gesture is already applied.
+     */
+    explicit EditWireRouteCommand(GraphicalWireSegment* segment,
+                                  std::vector<WireRouteChange> changes,
+                                  WireDragKind kind, WireEndpointEdit endpointEdit = {},
                                   QUndoCommand* parent = nullptr);
 
+    /** @brief Restores the wire routes from before the gesture. */
     void undo() override;
+    /** @brief Restores the gesture's final routes, skipping the first invocation. */
     void redo() override;
 
   private:
     DiagramScene* scene;
     std::string   documentPath;
-    uint64_t      uiId;
-    size_t        pointIndex;
-    QPointF       oldPos;
-    QPointF       newPos;
+    std::vector<WireRouteChange> changes;
+    WireEndpointEdit endpointEdit;
     bool          skipInitialRedo = true;
   };
 

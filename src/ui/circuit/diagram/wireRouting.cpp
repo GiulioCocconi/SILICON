@@ -119,6 +119,77 @@ bool isOrthogonalRoute(const std::span<const QPointF> points)
   return true;
 }
 
+bool orthogonalRouteSelfIntersects(const std::span<const QPointF> points)
+{
+  Q_ASSERT(isOrthogonalRoute(points));
+
+  for (std::size_t i = 1; i < points.size(); ++i) {
+    const QPointF& a = points[i - 1];
+    const QPointF& b = points[i];
+    if (a == b)
+      continue;
+
+    bool adjacent = true;
+    for (std::size_t j = i + 1; j < points.size(); ++j) {
+      const QPointF& c = points[j - 1];
+      const QPointF& d = points[j];
+      if (c == d)
+        continue;
+      const bool sharesVertex = adjacent;
+      adjacent = false;
+
+      const bool firstHorizontal = a.y() == b.y();
+      const bool secondHorizontal = c.y() == d.y();
+      if (firstHorizontal == secondHorizontal) {
+        const qreal firstAxis = firstHorizontal ? a.y() : a.x();
+        const qreal secondAxis = secondHorizontal ? c.y() : c.x();
+        if (firstAxis != secondAxis)
+          continue;
+        const qreal overlapStart = firstHorizontal
+                                       ? std::max(std::min(a.x(), b.x()), std::min(c.x(), d.x()))
+                                       : std::max(std::min(a.y(), b.y()), std::min(c.y(), d.y()));
+        const qreal overlapEnd = firstHorizontal
+                                     ? std::min(std::max(a.x(), b.x()), std::max(c.x(), d.x()))
+                                     : std::min(std::max(a.y(), b.y()), std::max(c.y(), d.y()));
+        if (overlapStart < overlapEnd || (!sharesVertex && overlapStart == overlapEnd))
+          return true;
+      } else {
+        const QPointF& h1 = firstHorizontal ? a : c;
+        const QPointF& h2 = firstHorizontal ? b : d;
+        const QPointF& v1 = firstHorizontal ? c : a;
+        const QPointF& v2 = firstHorizontal ? d : b;
+        if (!sharesVertex && v1.x() >= std::min(h1.x(), h2.x())
+            && v1.x() <= std::max(h1.x(), h2.x())
+            && h1.y() >= std::min(v1.y(), v2.y())
+            && h1.y() <= std::max(v1.y(), v2.y()))
+          return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool orthogonalRouteCrossesObstacleInterior(
+    const std::span<const QPointF> route, const std::span<const QRectF> obstacles)
+{
+  for (std::size_t i = 1; i < route.size(); ++i) {
+    const auto& a = route[i - 1];
+    const auto& b = route[i];
+    for (const auto& obstacle : obstacles) {
+      const QRectF rect = obstacle.normalized();
+      if (a.y() == b.y() && a.y() > rect.top() && a.y() < rect.bottom()
+          && std::max(std::min(a.x(), b.x()), rect.left())
+                 < std::min(std::max(a.x(), b.x()), rect.right()))
+        return true;
+      if (a.x() == b.x() && a.x() > rect.left() && a.x() < rect.right()
+          && std::max(std::min(a.y(), b.y()), rect.top())
+                 < std::min(std::max(a.y(), b.y()), rect.bottom()))
+        return true;
+    }
+  }
+  return false;
+}
+
 bool pointOnOrthogonalRoute(const QPointF point, const std::span<const QPointF> route)
 {
   if (route.empty())
@@ -313,7 +384,10 @@ std::vector<QPointF> canonicalizeOrthogonalRoute(std::vector<QPointF> points)
     const QPointF& next       = points[i + 1];
     const bool     vertical   = previous.x() == current.x() && current.x() == next.x();
     const bool     horizontal = previous.y() == current.y() && current.y() == next.y();
-    if (vertical || horizontal) {
+    const bool between = vertical
+                             ? (current.y() - previous.y()) * (current.y() - next.y()) <= 0
+                             : (current.x() - previous.x()) * (current.x() - next.x()) <= 0;
+    if ((vertical || horizontal) && between) {
       points.erase(points.begin() + static_cast<std::ptrdiff_t>(i));
       continue;
     }
@@ -486,16 +560,18 @@ std::vector<QPointF> routeOrthogonalWire(const QPointF start, const QPointF end,
   if (routedPoints.empty())
     return {};
 
-  if (routedPoints.front() != routedStart)
+  // Snapping a projected terminal can place it back on the actual port. In that
+  // case the port is already reached; adding the projection would double back.
+  if (routedPoints.front() != routedStart && routedPoints.front() != start)
     routedPoints.insert(routedPoints.begin(), routedStart);
 
-  if (routedStart != start)
+  if (routedPoints.front() != start)
     routedPoints.insert(routedPoints.begin(), start);
 
-  if (routedPoints.back() != routedEnd)
+  if (routedPoints.back() != routedEnd && routedPoints.back() != end)
     routedPoints.push_back(routedEnd);
 
-  if (routedEnd != end)
+  if (routedPoints.back() != end)
     routedPoints.push_back(end);
 
   return canonicalizeOrthogonalRoute(std::move(routedPoints));

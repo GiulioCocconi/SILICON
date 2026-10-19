@@ -100,8 +100,6 @@ DiagramSceneSimulationController::~DiagramSceneSimulationController()
 
 bool DiagramSceneSimulationController::enterSimulationMode()
 {
-  scene.clearInputAssignmentErrors();
-
   if (!scene.calculateWiresForComponents())
     return false;
 
@@ -287,7 +285,6 @@ void DiagramSceneSimulationController::simulateEditedWaveform(
   if (!isJobFinished())
     return;
 
-  scene.clearInputAssignmentErrors();
   if (!scene.calculateWiresForComponents())
     return;
 
