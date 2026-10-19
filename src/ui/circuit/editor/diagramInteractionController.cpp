@@ -98,6 +98,7 @@ void DiagramInteractionController::rotate()
       auto* component   = selectedComponents.front();
       auto  oldRotation = component->rotation();
       component->rotate();
+      circuit.scene()->updateSceneAfterEdit();
       auto newRotation = component->rotation();
       component->setInitialRotation();
       auto rotateCmd = new RotateItemCommand(component, oldRotation, newRotation);

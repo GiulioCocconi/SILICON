@@ -69,7 +69,7 @@ private:
   /** @brief Whether to write the port name on the component */
   bool printName = false;
 
-  /** @brief Whether this port failed the latest simulation input assignment */
+  /** @brief Whether the net associated with this port has an error */
   bool inputAssignmentError = false;
 
 public:
@@ -113,9 +113,6 @@ public:
 
   /** @brief Marks whether this port failed input assignment during simulation setup */
   void setInputAssignmentError(bool failed);
-
-  /** @brief Returns whether this port failed input assignment during simulation setup */
-  [[nodiscard]] bool hasInputAssignmentError() const { return inputAssignmentError; }
 
   /**
    * @brief Sets the connecting line.
@@ -229,11 +226,11 @@ public:
   virtual void setPorts(const std::vector<PortPair>& busToPortInputs,
                         const std::vector<PortPair>& busToPortOutputs);
 
-  /** @brief Gets all input ports */
-  [[nodiscard]] std::vector<Port*> getInputPorts() const { return inputPorts; };
+  /** @brief Borrows input ports; copy before replacing the component ports. */
+  [[nodiscard]] const std::vector<Port*>& getInputPorts() const { return inputPorts; };
 
-  /** @brief Gets all output ports */
-  [[nodiscard]] std::vector<Port*> getOutputPorts() const { return outputPorts; };
+  /** @brief Borrows output ports; copy before replacing the component ports. */
+  [[nodiscard]] const std::vector<Port*>& getOutputPorts() const { return outputPorts; };
 
   /**
    * @brief Gets the component type name for serialization.

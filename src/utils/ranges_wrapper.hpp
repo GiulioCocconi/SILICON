@@ -20,6 +20,15 @@
 #include <vector>
 #include <version>
 
+#ifndef __cpp_lib_ranges_zip
+  #include <range/v3/functional/pipeable.hpp>
+  #include <range/v3/view/empty.hpp>
+  #include <range/v3/view/sliding.hpp>
+  #include <range/v3/view/transform.hpp>
+  #include <tuple>
+  #include <utility>
+#endif
+
 #ifndef __cpp_lib_ranges_slide
   #include <range/v3/view/sliding.hpp>
 #endif
@@ -29,6 +38,25 @@
 #endif
 
 namespace SILICON::views {
+
+#ifndef __cpp_lib_ranges_zip
+template <std::size_t N>
+inline constexpr auto adjacent = ranges::make_pipeable([](auto&& r) {
+  if constexpr (N == 0) {
+    return ranges::views::empty<std::tuple<>>;
+  } else {
+    return std::forward<decltype(r)>(r) | ranges::views::sliding(N)
+           | ranges::views::transform([](auto window) {
+               return [&]<std::size_t... I>(std::index_sequence<I...>) {
+                 return std::tuple<decltype(*ranges::next(ranges::begin(window), I))...>(
+                     *ranges::next(ranges::begin(window), I)...);
+               }(std::make_index_sequence<N>{});
+             });
+  }
+});
+#else
+template <std::size_t N> inline constexpr auto adjacent = std::views::adjacent<N>;
+#endif
 
 #ifndef __cpp_lib_ranges_enumerate
 static inline constexpr auto enumerate = [](auto&& r) {
