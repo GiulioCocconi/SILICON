@@ -39,6 +39,9 @@ public:
                      const SILICON::core::PropertyValue& value) override;
   void setDocumentStore(const SILICON::project::DocumentStore* documents);
 
+protected:
+  void mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event) override;
+
 private:
   const SILICON::project::DocumentStore* documents          = nullptr;
   std::uint64_t                          documentListenerId = 0;

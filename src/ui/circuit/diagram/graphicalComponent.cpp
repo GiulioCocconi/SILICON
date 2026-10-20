@@ -29,6 +29,7 @@
 #include <QTextOption>
 
 #include <ui/shell/theme.hpp>
+#include <ui/documents/documentNavigator.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
 #include <utils/ranges_wrapper.hpp>
 
@@ -225,6 +226,29 @@ QRectF GraphicalComponent::getCollisionRect() const
 void GraphicalComponent::mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event)
 {
   GraphicalItem::mouseDoubleClickEvent(event);
+}
+
+bool GraphicalComponent::openDocumentOnDoubleClick(QGraphicsSceneMouseEvent* event,
+                                                   const std::string& path)
+{
+  auto* diagram = qobject_cast<DiagramScene*>(scene());
+  if (event->button() != Qt::LeftButton || !diagram
+      || diagram->getInteractionMode() != InteractionMode::NORMAL_MODE
+      || !diagram->getDocumentNavigator())
+    return false;
+
+  // Activating another circuit can delete this item. Wait until event dispatch ends.
+  QMetaObject::invokeMethod(
+      this,
+      [this, path] {
+        if (auto* diagram = qobject_cast<DiagramScene*>(scene())) {
+          if (auto* navigator = diagram->getDocumentNavigator())
+            navigator->activateDocument(path);
+        }
+      },
+      Qt::QueuedConnection);
+  event->accept();
+  return true;
 }
 
 void GraphicalComponent::setPorts(const std::vector<PortPair>& busToPortInputs,

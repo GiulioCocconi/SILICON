@@ -77,6 +77,9 @@ namespace SILICON::ui {
 
     int type() const override { return SiliconTypes::SUBCIRCUIT; }
 
+  protected:
+    void mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event) override;
+
   private:
     std::uint64_t                          registryListenerId = 0;
     const SILICON::project::DocumentStore* documents          = nullptr;

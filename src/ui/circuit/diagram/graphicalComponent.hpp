@@ -186,9 +186,13 @@ protected:
   [[nodiscard]] bool canRotate() const override { return true; }
 
   /**
-   * @brief Handles double-click for properties dialog.
+   * @brief Handles double-clicks not consumed by a component-specific action.
    */
   void mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event) override;
+
+  /** @brief Queues document navigation for a left double-click in normal mode. */
+  bool openDocumentOnDoubleClick(QGraphicsSceneMouseEvent* event,
+                                 const std::string& path);
 
   /** @brief Input connection ports */
   std::vector<Port*> inputPorts;

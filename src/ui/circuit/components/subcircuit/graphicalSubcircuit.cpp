@@ -153,6 +153,19 @@ namespace SILICON::ui {
         std::string());
   }
 
+  void GraphicalSubcircuitComponent::mouseDoubleClickEvent(
+      QGraphicsSceneMouseEvent* event)
+  {
+    const auto slug = currentSlug();
+    if (SILICON::project::isValidDocumentSlug(slug)
+        && openDocumentOnDoubleClick(event, SILICON::project::documentPathForSlug(
+                                               SILICON::project::DocumentType::Circuit,
+                                               slug)))
+      return;
+
+    GraphicalLogicComponent::mouseDoubleClickEvent(event);
+  }
+
   void
   GraphicalSubcircuitComponent::applyMetadata(const GraphicalSubcircuitMetadata& metadata)
   {
