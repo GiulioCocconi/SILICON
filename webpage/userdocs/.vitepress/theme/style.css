@@ -66,10 +66,34 @@ h3,
   font-family: "Quicksand", ui-sans-serif, system-ui, sans-serif;
 }
 
+.lesson-specification {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 2rem;
+  margin: 1.5rem 0;
+}
+
+.lesson-specification > div > :first-child {
+  margin-top: 0;
+}
+
+.lesson-specification > div > :last-child {
+  margin-bottom: 0;
+}
+
+@media (max-width: 767px) {
+  .lesson-specification {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+  }
+}
+
 .VPNav {
   background-color: var(--silicon-doc-nav-bg) !important;
   border-bottom: 2px solid var(--silicon-ink);
 }
+
 
 .VPNavBar {
   background-color: var(--silicon-doc-nav-bg) !important;
@@ -292,6 +316,16 @@ h3,
   transform: none !important;
 }
 
+/* Keep display equations fully visible, including multi-line aligned math. */
+.vp-doc mjx-container[display="true"] {
+  overflow: visible;
+}
+
+.vp-doc mjx-container[display="true"] > svg {
+  max-width: 100%;
+  height: auto;
+}
+
 /* Tables specifically */
 .vp-doc table {
   width: max-content;
@@ -482,6 +516,35 @@ h3,
 .vp-doc dd {
   color: var(--silicon-ink);
   line-height: 1.7;
+  text-align: justify;
+}
+
+.vp-doc ol {
+  list-style: none;
+  padding-inline-start: 2.75rem;
+}
+
+.vp-doc ol > li {
+  position: relative;
+}
+
+.vp-doc ol > li::before {
+  content: counter(list-item);
+  position: absolute;
+  inset-inline-start: -2.5rem;
+  top: 0.1em;
+  display: grid;
+  place-items: center;
+  min-width: 1.75rem;
+  height: 1.75rem;
+  padding-inline: 0.25rem;
+  border: 2px solid var(--silicon-ink);
+  border-radius: 50%;
+  color: var(--silicon-ink);
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .vp-doc dl {
@@ -541,6 +604,22 @@ h3,
 .VPFooter {
   border-top: 2px solid var(--silicon-ink);
   background-color: var(--vp-c-bg);
+}
+
+.VPDocFooter .edit-link-button {
+  border: 2px solid var(--silicon-ink);
+  border-radius: 0.75rem;
+  padding: 0.5rem 1rem;
+  background-color: var(--silicon-green);
+  box-shadow: 4px 4px 0 0 var(--silicon-ink);
+  color: var(--silicon-ink);
+  font-weight: 700;
+}
+
+.VPDocFooter .edit-link-button:hover,
+.VPDocFooter .edit-link-button:focus-visible {
+  background-color: var(--silicon-orange);
+  color: var(--silicon-ink);
 }
 
 .pager {
