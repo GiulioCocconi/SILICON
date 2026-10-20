@@ -24,16 +24,30 @@ export default defineConfig({
   appearance: false,
   outDir: "../dist/docs",
   cacheDir: "../node_modules/.vitepress-cache/userdocs",
+  markdown: {
+    math: true,
+  },
   themeConfig: {
     logo: "/silicon-icon.svg",
     siteTitle: "SILICON Docs",
+    editLink: {
+      pattern: "https://github.com/GiulioCocconi/SILICON/edit/main/webpage/userdocs/:path",
+      text: "Modify on GitHub",
+    },
     nav: [
       { text: "home", link: "/../", target: "_self" },
       { text: "getting started", link: "/" },
       { text: "silicon", link: "/guide/silicon" },
+      { text: "lessons", link: "/lessons" },
       { text: "showcase", link: "/guide/lorem-ipsum" },
     ],
     sidebar: {
+      "/lessons/": [
+        {
+          text: "Lessons",
+          items: [{ text: "Overview", link: "/lessons/" }],
+        },
+      ],
       "/guide/contributing/": [
         {
           text: "Contributing to SILICON",

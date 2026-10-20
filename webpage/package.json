@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-"docs:dev": "vitepress dev userdocs",
+    "docs:dev": "vitepress dev userdocs",
     "build:docs": "vitepress build userdocs",
     "build:all": "vite build && vitepress build userdocs",
     "preview:docs": "vitepress preview userdocs",
@@ -26,10 +26,11 @@
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^5.0.4",
     "globals": "^15.15.0",
+    "markdown-it-mathjax3": "^4",
     "tailwindcss": "^4.2.1",
     "typescript": "^5.8.3",
     "vite": "^7.3.1",
-    "vitepress": "^1.6.4",
-    "vite-tsconfig-paths": "^6.0.2"
+    "vite-tsconfig-paths": "^6.0.2",
+    "vitepress": "^1.6.4"
   }
 }

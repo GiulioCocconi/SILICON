@@ -11,7 +11,7 @@ bun run build:all
 cp -r dist/* $TMP/SILICON
 
 cd ..
-doxygen
+# doxygen
 cp -r docs/html/ $TMP/SILICON/internaldocs
 
 python -m http.server 8080 --bind 127.0.0.1 --directory $TMP
