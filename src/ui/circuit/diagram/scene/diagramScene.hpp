@@ -213,27 +213,13 @@ public:
   void addComponent(GraphicalComponent* component, QPointF pos);
 
   /**
-   * @brief Begins placing a component of the given type.
-   * @param typeName The component type name
-   */
-  void placeComponent(std::string_view typeName);
-
-  /**
-   * @brief Begins placing a component of the given type.
-   * @param typeName The component type name
-   * @param showSearchBox Whether entering placement mode should show the quick search
-   * box
-   */
-  void placeComponent(std::string_view typeName, bool showSearchBox);
-
-  /**
    * @brief Begins placing a component and applies initial core properties first.
    * @param typeName The component type name
    * @param showSearchBox Whether entering placement mode should show quick search
    * @param initialProperties Properties to apply to the associated logic component
    */
-  void placeComponent(std::string_view typeName, bool showSearchBox,
-                      const PropertyMap& initialProperties);
+  void placeComponent(std::string_view typeName, bool showSearchBox = true,
+                      const PropertyMap& initialProperties = {});
 
   /**
    * @brief Snaps a point to the grid.
