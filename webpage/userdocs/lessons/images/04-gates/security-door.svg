@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 230" role="img" aria-labelledby="title desc">
+  <title id="title">Security door alarm circuit</title>
+  <desc id="desc">Input a feeds a NOT gate to produce n. An OR gate combines n with b to produce t. An AND gate combines t with s to produce y.</desc>
+  <rect width="720" height="230" rx="12" fill="#f4f6fa"/>
+  <g fill="none" stroke="#34455e" stroke-width="2.5" stroke-linejoin="round">
+    <path d="M50 65H110 M200 65H280V95H320 M50 145H280V125H320 M410 110H485V130H520 M50 195H485V160H520 M610 145H665"/>
+    <rect x="110" y="40" width="90" height="50" rx="6" fill="#fff"/>
+    <rect x="320" y="85" width="90" height="50" rx="6" fill="#fff"/>
+    <rect x="520" y="120" width="90" height="50" rx="6" fill="#fff"/>
+  </g>
+  <g fill="#24344b" font-family="system-ui, sans-serif" font-size="18" text-anchor="middle">
+    <text x="155" y="72">NOT</text><text x="365" y="117">OR</text><text x="565" y="152">AND</text>
+    <text x="35" y="71">a</text><text x="35" y="151">b</text><text x="35" y="201">s</text><text x="685" y="151">y</text>
+    <text x="240" y="49">n = ¬a</text><text x="455" y="94">t = n ∨ b</text>
+    <text x="360" y="25" font-size="14" fill="#526078">Each box implements the Boolean operation written inside it.</text>
+  </g>
+</svg>
