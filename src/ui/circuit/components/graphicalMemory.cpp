@@ -82,6 +82,18 @@ GraphicalROM::~GraphicalROM()
   unsubscribeFromDocuments();
 }
 
+void GraphicalROM::mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event)
+{
+  const auto slug = currentSlug();
+  if (SILICON::project::isValidDocumentSlug(slug)
+      && openDocumentOnDoubleClick(event, SILICON::project::documentPathForSlug(
+                                             SILICON::project::DocumentType::RawBinary,
+                                             slug)))
+    return;
+
+  GraphicalLogicComponent::mouseDoubleClickEvent(event);
+}
+
 void GraphicalROM::setComponent(const Component_ptr& component)
 {
   GraphicalLogicComponent::setComponent(component);
