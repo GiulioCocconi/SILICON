@@ -24,6 +24,7 @@
 #include <algorithm>
 #include <ranges>
 #include <stdexcept>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -42,6 +43,7 @@
 #include <core/serialization/component_registry.hpp>
 #include <ui/shell/inputDialogUtils.hpp>
 #include <ui/serialization/document_conversion.hpp>
+#include <utils/transparent_string.hpp>
 
 namespace SILICON::ui {
 namespace {
@@ -62,7 +64,8 @@ namespace {
       return lhs.label < rhs.label;
     });
 
-    std::unordered_map<std::string, const SILICON::conversion::ConversionChoice*>
+    std::unordered_map<std::string, const SILICON::conversion::ConversionChoice*,
+                       core::TransparentStringHash, core::TransparentStringEqual>
         choicesById;
     for (const auto& choice : choices)
       choicesById.emplace(choice.id, &choice);
@@ -86,9 +89,9 @@ namespace {
     constexpr int EXPLICITLY_SELECTED_ROLE = Qt::UserRole;
     constexpr int CHOICE_ID_ROLE           = Qt::UserRole + 1;
 
-    const auto addDependencies = [&choicesById](this auto&&        addDependencies,
-                                                QTreeWidgetItem*   parentItem,
-                                                const std::string& choiceId) -> void {
+    const auto addDependencies = [&choicesById](this auto&&           addDependencies,
+                                                QTreeWidgetItem*      parentItem,
+                                                const std::string_view choiceId) -> void {
       const auto choice = choicesById.find(choiceId);
       if (choice == choicesById.end())
         return;
@@ -146,8 +149,8 @@ namespace {
           importButton->setEnabled(!roots.empty());
           std::vector<std::string> dependencies;
           const auto               collectDependencies =
-              [&choicesById, &dependencies](this auto&&        collectDependencies,
-                                            const std::string& id) -> void {
+              [&choicesById, &dependencies](this auto&&           collectDependencies,
+                                            const std::string_view id) -> void {
             const auto choice = choicesById.find(id);
             if (choice == choicesById.end())
               return;

@@ -544,7 +544,7 @@ void GraphicalIO::setPortOrientation(const PortSide side)
 {
   if (!associatedComponent)
     return;
-  associatedComponent->setPropertyValue(std::string(PORT_ORIENTATION_PROPERTY),
+  associatedComponent->setPropertyValue(PORT_ORIENTATION_PROPERTY,
                                         std::string(portOrientationName(side)));
 }
 

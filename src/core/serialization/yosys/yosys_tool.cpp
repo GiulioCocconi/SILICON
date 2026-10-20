@@ -35,6 +35,7 @@
 #include <vector>
 
 #include <logging/logger.hpp>
+#include <utils/transparent_string.hpp>
 
 #ifndef __EMSCRIPTEN__
   #include <boost/asio/io_context.hpp>
@@ -410,7 +411,9 @@ std::string readVerilog(const std::span<const SILICON::core::SourceFile> sources
   if (!isSafeRelativeSourcePath(entryPath))
     throw std::invalid_argument("Verilog entry path must be a safe relative path");
 
-  std::unordered_set<std::string> paths;
+  std::unordered_set<std::string, core::TransparentStringHash,
+                     core::TransparentStringEqual>
+      paths;
   for (const auto& source : sources) {
     if (!isSafeRelativeSourcePath(source.path))
       throw std::invalid_argument(std::format(
@@ -419,7 +422,7 @@ std::string readVerilog(const std::span<const SILICON::core::SourceFile> sources
       throw std::invalid_argument(
           std::format("Duplicate Verilog source path: {}", source.path));
   }
-  if (!paths.contains(std::string(entryPath)))
+  if (!paths.contains(entryPath))
     throw std::invalid_argument(
         std::format("Verilog entry source is missing: {}", entryPath));
 

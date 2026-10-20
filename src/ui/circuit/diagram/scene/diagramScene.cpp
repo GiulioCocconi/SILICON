@@ -24,6 +24,7 @@
 #include <span>
 #include <stdexcept>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include <QCursor>
@@ -35,6 +36,7 @@
 
 #include <logging/logger.hpp>
 #include <utils/ranges_wrapper.hpp>
+#include <utils/transparent_string.hpp>
 
 #include <ui/circuit/components/graphicalIO.hpp>
 #include <ui/circuit/components/graphicalMemory.hpp>
@@ -190,7 +192,8 @@ namespace {
       return;
 
     std::size_t count = 1;
-    std::unordered_set<std::string> usedNames;
+    std::unordered_set<std::string, TransparentStringHash, TransparentStringEqual>
+        usedNames;
     for (const auto* existing : logicComponentsInScene(scene)) {
       if (existing->getTypeName() == component.getTypeName())
         ++count;

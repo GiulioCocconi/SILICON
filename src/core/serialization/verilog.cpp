@@ -29,6 +29,7 @@
 
 #include <core/circuit.hpp>
 #include <core/serialization/yosys/netlist.hpp>
+#include <utils/transparent_string.hpp>
 
 namespace SILICON::verilog {
 namespace {
@@ -212,7 +213,9 @@ namespace {
   {
     auto lines = splitLines(source);
 
-    std::unordered_map<std::string, std::size_t> declarations;
+    std::unordered_map<std::string, std::size_t, core::TransparentStringHash,
+                       core::TransparentStringEqual>
+        declarations;
     for (std::size_t line = 0; line < lines.size(); ++line) {
       const auto name = parseNetDeclarationName(lines[line], "wire");
       if (name && isGeneratedIdentifier(*name)
@@ -224,7 +227,9 @@ namespace {
       std::size_t line;
       std::string expression;
     };
-    std::unordered_map<std::string, Driver>      drivers;
+    std::unordered_map<std::string, Driver, core::TransparentStringHash,
+                       core::TransparentStringEqual>
+                                                 drivers;
     std::unordered_map<std::string, std::size_t> uses;
     std::unordered_set<std::string>              unsafe;
     for (std::size_t line = 0; line < lines.size(); ++line) {
@@ -235,7 +240,7 @@ namespace {
             unsafe.insert(assignment->lhs);
         }
         forEachIdentifier(assignment->rhs, [&](const std::string_view identifier) {
-          if (declarations.contains(std::string(identifier)))
+          if (declarations.contains(identifier))
             ++uses[std::string(identifier)];
         });
         continue;
@@ -251,12 +256,14 @@ namespace {
       if (declarationLine)
         continue;
       forEachIdentifier(lines[line], [&](const std::string_view identifier) {
-        if (declarations.contains(std::string(identifier)))
+        if (declarations.contains(identifier))
           unsafe.insert(std::string(identifier));
       });
     }
 
-    std::unordered_set<std::string> inlineable;
+    using IdentifierSet = std::unordered_set<std::string, core::TransparentStringHash,
+                                             core::TransparentStringEqual>;
+    IdentifierSet inlineable;
     for (const auto& [name, declaration] : declarations) {
       (void)declaration;
       if (drivers.contains(name) && uses[name] == 1 && !unsafe.contains(name))
@@ -264,23 +271,22 @@ namespace {
     }
 
     const auto expand = [&](this const auto& self, const std::string_view expression,
-                            std::unordered_set<std::string>& active) -> std::string {
+                            IdentifierSet& active) -> std::string {
       std::string result;
       std::size_t copied         = 0;
       const auto  parentOperator = associativeOperator(expression);
       forEachIdentifier(expression, [&](const std::string_view identifier) {
         const auto begin = expression.find(identifier, copied);
         result.append(expression.substr(copied, begin - copied));
-        const std::string name(identifier);
-        if (inlineable.contains(name) && !active.contains(name)) {
-          active.insert(name);
-          const auto& child         = drivers.at(name).expression;
+        if (inlineable.contains(identifier) && !active.contains(identifier)) {
+          active.emplace(identifier);
+          const auto& child         = drivers.find(identifier)->second.expression;
           const auto  expandedChild = self(child, active);
           if (parentOperator && associativeOperator(child) == parentOperator)
             result += expandedChild;
           else
             result += '(' + expandedChild + ')';
-          active.erase(name);
+          active.erase(identifier);
         } else {
           result += identifier;
         }
@@ -301,10 +307,10 @@ namespace {
       const auto assignment = parseContinuousAssignment(lines[line]);
       if (!assignment)
         continue;
-      std::unordered_set<std::string> active;
-      const auto indent = lines[line].substr(0, lines[line].find_first_not_of(" \t"));
-      lines[line]       = std::format("{}assign {} = {};", indent, assignment->lhs,
-                                      expand(assignment->rhs, active));
+      IdentifierSet active;
+      const auto    indent = lines[line].substr(0, lines[line].find_first_not_of(" \t"));
+      lines[line]          = std::format("{}assign {} = {};", indent, assignment->lhs,
+                                         expand(assignment->rhs, active));
     }
 
     std::string result;
