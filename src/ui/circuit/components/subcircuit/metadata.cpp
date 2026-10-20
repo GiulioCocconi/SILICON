@@ -22,6 +22,7 @@
 #include <cstdint>
 #include <format>
 #include <optional>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -33,6 +34,7 @@
 #include <core/serialization/component_registry.hpp>
 #include <ui/circuit/diagram/enums.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
+#include <utils/transparent_string.hpp>
 
 namespace SILICON::ui {
 using namespace SILICON::core;
@@ -92,9 +94,11 @@ struct PortDefinition {
 
 enum class BoundaryRole { None, Input, Output };
 
-[[nodiscard]] BoundaryRole boundaryRoleForType(const std::string& type)
+[[nodiscard]] BoundaryRole boundaryRoleForType(const std::string_view type)
 {
-  static std::unordered_map<std::string, BoundaryRole> boundaryRoleByType;
+  static std::unordered_map<std::string, BoundaryRole, TransparentStringHash,
+                            TransparentStringEqual>
+      boundaryRoleByType;
 
   if (const auto it = boundaryRoleByType.find(type); it != boundaryRoleByType.end())
     return it->second;
@@ -111,7 +115,7 @@ enum class BoundaryRole { None, Input, Output };
   return boundaryRoleByType.emplace(type, role).first->second;
 }
 
-[[nodiscard]] bool isBoundaryType(const std::string& type, const bool inputPort)
+[[nodiscard]] bool isBoundaryType(const std::string_view type, const bool inputPort)
 {
   const auto role = boundaryRoleForType(type);
   return inputPort ? role == BoundaryRole::Input : role == BoundaryRole::Output;
@@ -264,7 +268,11 @@ portDefinitionsFromDocument(const nlohmann::json& document, bool inputPort)
     const auto componentsIt = visualIt->find("components");
     if (componentsIt != visualIt->end() && componentsIt->is_array()) {
       for (const auto& component : *componentsIt) {
-        if (!isBoundaryType(component.value("type", std::string()), inputPort))
+        const auto typeIt = component.find("type");
+        const std::string_view type =
+            typeIt == component.end() ? std::string_view{}
+                                      : typeIt->get_ref<const std::string&>();
+        if (!isBoundaryType(type, inputPort))
           continue;
         if (!component.contains("vertexId")
             || !component["vertexId"].is_number_integer()) {

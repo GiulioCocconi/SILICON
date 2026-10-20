@@ -262,7 +262,7 @@ bool CircuitDependencyGraph::containsDocument(const std::string_view documentPat
 std::optional<CircuitDependencyGraph::Vertex>
 CircuitDependencyGraph::findVertex(const std::string_view documentPath) const
 {
-  const auto it = pathToVertex.find(std::string(documentPath));
+  const auto it = pathToVertex.find(documentPath);
   if (it == pathToVertex.end())
     return std::nullopt;
 

@@ -30,6 +30,7 @@
 #include <nlohmann/json.hpp>
 
 #include <core/wire.hpp>
+#include <utils/transparent_string.hpp>
 
 namespace SILICON::core {
 class Circuit;
@@ -71,7 +72,9 @@ public:
   using Vertex = boost::graph_traits<Graph>::vertex_descriptor;
 
   /// @brief O(1) index mapping a module name to its graph vertex.
-  using NameToVertex = std::unordered_map<std::string, Vertex>;
+  using NameToVertex =
+      std::unordered_map<std::string, Vertex, core::TransparentStringHash,
+                         core::TransparentStringEqual>;
 
   /**
    * @brief Ensures a module vertex exists, creating it if necessary.

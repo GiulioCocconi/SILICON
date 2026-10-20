@@ -26,6 +26,7 @@
 #include <boost/graph/adjacency_list.hpp>
 
 #include <core/projectDocument.hpp>
+#include <utils/transparent_string.hpp>
 
 namespace SILICON::project {
 
@@ -170,7 +171,9 @@ private:
   enum class VisitState { Unvisited, Visiting, Visited };
 
   /// @brief O(1) index mapping a document path to its graph vertex.
-  using PathToVertex = std::unordered_map<std::string, Vertex>;
+  using PathToVertex =
+      std::unordered_map<std::string, Vertex, core::TransparentStringHash,
+                         core::TransparentStringEqual>;
 
   /// @brief The dependency graph itself.
   Graph graph;

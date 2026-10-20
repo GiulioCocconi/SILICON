@@ -1640,7 +1640,7 @@ bool ModuleDependencyGraph::containsModule(const std::string_view moduleName) co
 std::optional<ModuleDependencyGraph::Vertex>
 ModuleDependencyGraph::findVertex(std::string_view moduleName) const
 {
-  const auto it = nameToVertex.find(std::string(moduleName));
+  const auto it = nameToVertex.find(moduleName);
   if (it == nameToVertex.end())
     return std::nullopt;
   return it->second;
