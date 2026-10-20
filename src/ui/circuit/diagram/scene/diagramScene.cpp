@@ -181,6 +181,32 @@ namespace {
     return components;
   }
 
+  void assignDefaultComponentName(const QGraphicsScene& scene,
+                                  GraphicalLogicComponent& component)
+  {
+    const auto defaultName =
+        component.getComponent()->getPropertyValue<std::string>("name");
+    if (!defaultName || defaultName->empty())
+      return;
+
+    std::size_t count = 1;
+    std::unordered_set<std::string> usedNames;
+    for (const auto* existing : logicComponentsInScene(scene)) {
+      if (existing->getTypeName() == component.getTypeName())
+        ++count;
+      if (const auto name =
+              existing->getComponent()->getPropertyValue<std::string>("name"))
+        usedNames.insert(*name);
+    }
+
+    // Derive the count from the scene so cancellation, undo, and loading need
+    // no separate counter state. Skip names retained after deletion or renaming.
+    auto name = *defaultName + std::to_string(count);
+    while (usedNames.contains(name))
+      name = *defaultName + std::to_string(++count);
+    component.applyProperty("name", name);
+  }
+
   Component_set coreComponentsFor(std::span<GraphicalLogicComponent* const> components)
   {
     Component_set coreComponents;
@@ -1633,16 +1659,6 @@ void DiagramScene::autoPlaceCircuit()
   applyAutoplacement(*this, activeCircuit, components, options);
 }
 
-void DiagramScene::placeComponent(std::string_view typeName)
-{
-  placeComponent(typeName, true);
-}
-
-void DiagramScene::placeComponent(std::string_view typeName, const bool showSearchBox)
-{
-  placeComponent(typeName, showSearchBox, {});
-}
-
 void DiagramScene::placeComponent(std::string_view typeName, const bool showSearchBox,
                                   const PropertyMap& initialProperties)
 {
@@ -1655,18 +1671,19 @@ void DiagramScene::placeComponent(std::string_view typeName, const bool showSear
     subcircuit->setDocumentStore(documents);
     subcircuit->setCircuitResolver(resolver);
   }
-  if (auto* rom = dynamic_cast<GraphicalROM*>(componentToBeDrawn))
+  else if (auto* rom = dynamic_cast<GraphicalROM*>(componentToBeDrawn))
     rom->setDocumentStore(documents);
+
   lastPlacedComponentType       = typeName;
   lastPlacedComponentProperties = initialProperties;
   suppressNextComponentSearch   = !showSearchBox;
 
-  if (!initialProperties.empty()) {
-    if (auto* logicComponent = category_cast<GraphicalLogicComponent>(
-            componentToBeDrawn, ItemCategory::LogicComponent)) {
-      for (const auto& [key, value] : initialProperties)
-        logicComponent->applyProperty(key, value);
-    }
+  if (auto* logicComponent = category_cast<GraphicalLogicComponent>(
+          componentToBeDrawn, ItemCategory::LogicComponent)) {
+    for (const auto& [key, value] : initialProperties)
+      logicComponent->applyProperty(key, value);
+    if (!initialProperties.contains("name"))
+      assignDefaultComponentName(*this, *logicComponent);
   }
 
   // TODO: IMPLEMENT COMPONENT SHADOW TO BE SHOWN WHILE DRAGGING
