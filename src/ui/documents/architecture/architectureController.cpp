@@ -103,7 +103,7 @@ void ArchitectureController::bindActions(const ArchitectureActions& actions)
 
 void ArchitectureController::configureWorkspace(DocumentEditor* editor)
 {
-  auto* architectureEditor = dynamic_cast<ArchitectureDocumentEditor*>(editor);
+  architectureEditor = dynamic_cast<ArchitectureDocumentEditor*>(editor);
   if (!architectureEditor)
     return;
   auto* architecture = architectureEditor->workspace();
