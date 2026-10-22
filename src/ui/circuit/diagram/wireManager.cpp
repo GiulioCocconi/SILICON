@@ -188,10 +188,10 @@ void WireManager::refreshPortAnchors()
 
 void WireManager::rebuildTopologyEdges()
 {
-  TopologyGraph graph;
+  topologyGraph.clear();
   std::map<uint64_t, VertexDescriptor> descriptors;
   for (const auto id : vertices | std::views::keys)
-    descriptors.emplace(id, boost::add_vertex(id, graph));
+    descriptors.emplace(id, boost::add_vertex(id, topologyGraph));
 
   std::map<uint64_t, TopologyEdge> rebuilt;
   for (auto& [segmentId, topology] : segmentTopology) {
@@ -232,7 +232,7 @@ void WireManager::rebuildTopologyEdges()
         const uint64_t id = nextEdgeId++;
         rebuilt.emplace(id, TopologyEdge{id, segmentId, startVertex, endVertex,
                                          core::canonicalizeOrthogonalRoute(piece)});
-        boost::add_edge(descriptors.at(startVertex), descriptors.at(endVertex), id, graph);
+        boost::add_edge(descriptors.at(startVertex), descriptors.at(endVertex), id, topologyGraph);
         edgeIds.push_back(id);
       }
       piece = {point};
@@ -241,7 +241,6 @@ void WireManager::rebuildTopologyEdges()
     topology.edgeIds = std::move(edgeIds);
   }
   edges = std::move(rebuilt);
-  topologyGraph = std::move(graph);
   vertexDescriptors = std::move(descriptors);
 }
 

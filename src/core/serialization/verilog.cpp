@@ -286,7 +286,7 @@ namespace {
             result += expandedChild;
           else
             result += '(' + expandedChild + ')';
-          active.erase(identifier);
+          active.erase(active.find(identifier));
         } else {
           result += identifier;
         }
