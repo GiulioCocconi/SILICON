@@ -8,7 +8,7 @@ using namespace SILICON::core;
 using namespace SILICON::extra;
 
 GraphicalWireSplitter::GraphicalWireSplitter(QGraphicsItem* parent)
-  : GraphicalLogicComponent(std::make_shared<WireSplitter>(Bus(), (std::vector<Bus>){}),
+  : GraphicalLogicComponent(std::make_shared<WireSplitter>(Bus(), std::vector<Bus>{}),
                             nullptr, parent)
 {
   setSize(associatedComponent->getPropertyValue<int>("size").value_or(2));
@@ -64,7 +64,7 @@ int GraphicalWireSplitter::setSize(const int newSize)
 }
 
 GraphicalWireMerger::GraphicalWireMerger(QGraphicsItem* parent)
-  : GraphicalLogicComponent(std::make_shared<WireMerger>((std::vector<Bus>){}, Bus()),
+  : GraphicalLogicComponent(std::make_shared<WireMerger>(std::vector<Bus>{}, Bus()),
                             nullptr, parent)
 {
   setSize(associatedComponent->getPropertyValue<int>("size").value_or(2));

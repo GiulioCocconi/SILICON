@@ -12,6 +12,7 @@
 #
 #  You should have received a copy of the GNU General Public License
 #  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 cmake_minimum_required(VERSION 3.31)
 
 # Persistent version is updated by ci/semver.py. CI may override the full
@@ -212,9 +213,9 @@ if (CMAKE_EXPORT_COMPILE_COMMANDS)
 endif ()
 
 if (MSVC)
-    add_compile_options(/W4)
+    add_compile_options(/W4 /permissive-)
 elseif (UNIX)
-    add_compile_options(-Wall -Wextra -Wno-unused-parameter -Wno-return-type)
+    add_compile_options(-Wall -Wextra -Wno-unused-parameter -Wno-return-type -pedantic)
 elseif (WIN32 AND MINGW)
     add_compile_options(-Wall -Wextra -Wno-unused-parameter)
 elseif (EMSCRIPTEN)
