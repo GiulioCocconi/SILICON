@@ -12,6 +12,7 @@
 #
 #  You should have received a copy of the GNU General Public License
 #  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 cmake_minimum_required(VERSION 3.31)
 
 # Persistent version is updated by ci/semver.py. CI may override the full
@@ -212,9 +213,9 @@ if (CMAKE_EXPORT_COMPILE_COMMANDS)
 endif ()
 
 if (MSVC)
-    add_compile_options(/W4)
+    add_compile_options(/W4 /permissive-)
 elseif (UNIX)
-    add_compile_options(-Wall -Wextra -Wno-unused-parameter -Wno-return-type)
+    add_compile_options(-Wall -Wextra -Wno-unused-parameter -Wno-return-type -pedantic)
 elseif (WIN32 AND MINGW)
     add_compile_options(-Wall -Wextra -Wno-unused-parameter)
 elseif (EMSCRIPTEN)
@@ -250,6 +251,13 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU"
             ${src_dir}/utils/num_formatting.cpp
             ${src_dir}/ui/documents/architecture/sislVisualizer.cpp
             PROPERTIES COMPILE_OPTIONS -Wno-error=aggressive-loop-optimizations\;-Wno-error=array-bounds)
+endif ()
+
+# Emscripten gives a false positive when using EM_ASM constructs (they aren't C++)
+if (EMSCRIPTEN)
+    set_source_files_properties(
+	    ${src_dir}/ui/shell/windowActionsSettings.cpp
+            PROPERTIES COMPILE_OPTIONS -Wno-dollar-in-identifier-extension)
 endif ()
 
 if (UNIX AND NOT APPLE AND NOT EMSCRIPTEN AND SILICON_ENABLE_SANITIZERS)
