@@ -132,7 +132,7 @@ bool ProjectDocumentController::switchToDocument(const std::string& path,
   }
 
   const auto type = target->getType();
-  catalog.hide();
+  catalog.dismiss();
 
   if (workspace.circuitEditor().scene()->getInteractionMode()
       != InteractionMode::NORMAL_MODE)

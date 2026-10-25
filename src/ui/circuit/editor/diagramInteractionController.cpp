@@ -184,7 +184,10 @@ void DiagramInteractionController::showComponentCatalog()
 
 void DiagramInteractionController::cancelCurrentInteraction()
 {
-  circuit.scene()->cancelCurrentInteraction();
+  if (catalog.isVisible())
+    catalog.dismiss();
+  else
+    circuit.scene()->cancelCurrentInteraction();
 }
 
 }  // namespace SILICON::ui

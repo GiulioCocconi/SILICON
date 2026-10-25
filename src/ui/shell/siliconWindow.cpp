@@ -23,7 +23,6 @@
 #endif
 
 #include <algorithm>
-#include <cstring>
 #include <ranges>
 
 #include <QAction>
@@ -68,38 +67,6 @@ using namespace SILICON::core;
 
 const SILICON::logging::Logger uiLog("ui");
 
-#ifdef __EMSCRIPTEN__
-EM_BOOL SiliconWindow::wasmKeyDownCallback(int, const EmscriptenKeyboardEvent* keyEvent,
-                                           void* userData)
-{
-  if (!userData || !keyEvent)
-    return EM_FALSE;
-
-  if (std::strcmp(keyEvent->key, "Escape") != 0
-      && std::strcmp(keyEvent->code, "Escape") != 0)
-    return EM_FALSE;
-
-  auto* window = static_cast<SiliconWindow*>(userData);
-  return window->handleWasmEscapeKey() ? EM_TRUE : EM_FALSE;
-}
-
-bool SiliconWindow::handleWasmEscapeKey()
-{
-  if (QApplication::activeModalWidget())
-    return false;
-
-  if (componentCatalogOverlay && componentCatalogOverlay->isVisible()) {
-    componentCatalogOverlay->hide();
-    return true;
-  }
-
-  if (circuitEditor->scene())
-    circuitEditor->scene()->cancelCurrentInteraction();
-
-  return true;
-}
-#endif
-
 /** Finishes Qt drag state while the main-window layout is still alive. */
 class WindowLifetime {
 public:
@@ -126,22 +93,6 @@ public:
 private:
   QMainWindow& window;
 };
-
-#ifdef __EMSCRIPTEN__
-class BrowserKeyDownRegistration {
-public:
-  BrowserKeyDownRegistration(void* owner, em_key_callback_func callback)
-  {
-    emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_DOCUMENT, owner, true,
-                                    callback);
-  }
-  ~BrowserKeyDownRegistration()
-  {
-    emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_DOCUMENT, nullptr, true,
-                                    nullptr);
-  }
-};
-#endif
 
 SiliconWindow::SiliconWindow()
 {
@@ -237,12 +188,6 @@ SiliconWindow::SiliconWindow()
   logDock->setWidget(logSideView);
   logDock->setMinimumHeight(logSideView->minimumSizeHint().height());
   logDock->resize(width(), logSideView->sizeHint().height());
-
-#ifdef __EMSCRIPTEN__
-  browserKeyDown = std::make_unique<BrowserKeyDownRegistration>(
-      this,
-                                  &SiliconWindow::wasmKeyDownCallback);
-#endif
 
   connect(graphicalLogStream.get(), &GraphicalLogStream::lineReceived, logSideView,
           &LogSideView::appendLine, Qt::QueuedConnection);

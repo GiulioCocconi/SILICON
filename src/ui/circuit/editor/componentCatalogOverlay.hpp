@@ -57,6 +57,10 @@ namespace SILICON::ui {
                                      QWidget* parent = nullptr);
 
     void open();
+    void dismiss();
+
+  protected:
+    void keyPressEvent(QKeyEvent* event) override;
 
   private:
     void rebuildRows();
