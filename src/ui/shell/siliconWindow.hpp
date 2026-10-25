@@ -23,10 +23,6 @@
 #include <ui/lifetime.hpp>
 #include <ui/project/projectSession.hpp>
 
-#ifdef __EMSCRIPTEN__
-  #include <emscripten/html5.h>
-#endif
-
 #ifndef QT_NO_CONTEXTMENU
 class QContextMenuEvent;
 #endif
@@ -55,9 +51,6 @@ class ProjectFileController;
 class WaveformController;
 class WindowActions;
 class WindowLifetime;
-#ifdef __EMSCRIPTEN__
-class BrowserKeyDownRegistration;
-#endif
 
 /**
  * @brief Main window for the SILICON graphical circuit editor.
@@ -141,25 +134,6 @@ private:
   /** @brief Refreshes the property dock after a project-level change. */
   void refreshProjectUi();
 
-#ifdef __EMSCRIPTEN__
-  /**
-   * @brief Browser keydown callback used to catch Escape outside Qt focus handling.
-   * @param eventType Emscripten event type
-   * @param keyEvent Browser keyboard event data
-   * @param userData Pointer to the SiliconWindow instance
-   * @return EM_TRUE when the event was handled
-   */
-  static EM_BOOL wasmKeyDownCallback(int                            eventType,
-                                     const EmscriptenKeyboardEvent* keyEvent,
-                                     void*                          userData);
-
-  /**
-   * @brief Handles a browser Escape key press for overlays and active interactions.
-   * @return True when Escape was consumed
-   */
-  bool handleWasmEscapeKey();
-#endif
-
   /** @brief Dock containing the project document tree. */
   QDockWidget* documentDock = nullptr;
 
@@ -195,9 +169,6 @@ private:
 
   ScopedEventFilter               viewportFilter;
   std::unique_ptr<WindowLifetime> windowLifetime;
-#ifdef __EMSCRIPTEN__
-  std::unique_ptr<BrowserKeyDownRegistration> browserKeyDown;
-#endif
   // Disconnect and discard queued callbacks before any teardown emits signals.
   CallbackScope callbacks;
 };

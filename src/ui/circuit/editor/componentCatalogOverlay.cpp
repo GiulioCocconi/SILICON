@@ -25,14 +25,15 @@
 #include <utility>
 
 #include <QAbstractItemView>
+#include <QApplication>
 #include <QGraphicsScene>
 #include <QGraphicsView>
 #include <QHeaderView>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPainter>
 #include <QPixmap>
-#include <QShortcut>
 #include <QSignalBlocker>
 #include <QStringList>
 #include <QTableWidget>
@@ -172,10 +173,6 @@ namespace SILICON::ui {
 
     layout->addWidget(table);
 
-    auto* closeShortcut = new QShortcut(QKeySequence(Qt::Key_Escape), this);
-    closeShortcut->setContext(Qt::WidgetWithChildrenShortcut);
-    callbacks.connect(closeShortcut, &QShortcut::activated, [this] { hide(); });
-
     callbacks.connect(searchInput, &QLineEdit::textChanged, [this] { rebuildRows(); });
     callbacks.connect(table, &QTableWidget::cellDoubleClicked,
             [this](int row, int) { activateRow(row); });
@@ -202,6 +199,38 @@ namespace SILICON::ui {
     raise();
     searchInput->setFocus(Qt::OtherFocusReason);
     selectFirstComponentRow();
+  }
+
+  void ComponentCatalogOverlay::keyPressEvent(QKeyEvent* event)
+  {
+    // Escape still dismisses the catalog if the cancel action was remapped.
+    if (event->key() == Qt::Key_Escape && event->modifiers() == Qt::NoModifier) {
+      dismiss();
+      event->accept();
+      return;
+    }
+    QWidget::keyPressEvent(event);
+  }
+
+  void ComponentCatalogOverlay::dismiss()
+  {
+    if (!isVisible())
+      return;
+
+    const auto* focus        = QApplication::focusWidget();
+    const bool  restoreFocus = !focus || focus == this || isAncestorOf(focus);
+    hide();
+
+    if (!restoreFocus || QApplication::activeModalWidget()
+        || QApplication::activePopupWidget() || !window()->isActiveWindow())
+      return;
+
+    for (auto* view : diagramScene->views()) {
+      if (view->isVisible() && view->isAncestorOf(this)) {
+        view->setFocus(Qt::OtherFocusReason);
+        break;
+      }
+    }
   }
 
   void ComponentCatalogOverlay::rebuildRows()
@@ -327,10 +356,7 @@ namespace SILICON::ui {
       diagramScene->setInteractionMode(DiagramScene::InteractionMode::NORMAL_MODE);
 
     diagramScene->placeComponent(typeName.toStdString(), false, initialProperties);
-    hide();
-
-    if (!diagramScene->views().empty())
-      diagramScene->views().first()->setFocus(Qt::OtherFocusReason);
+    dismiss();
   }
 
   void ComponentCatalogOverlay::selectFirstComponentRow()

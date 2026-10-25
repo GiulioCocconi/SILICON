@@ -12,7 +12,7 @@ class QByteArray;
 
 namespace SILICON::ui {
 
-/** Owns one browser listener without retaining a pointer into C++ state. */
+/** Owns browser shortcut and focus listeners without retaining C++ pointers. */
 class BrowserShortcutCapture {
 public:
   BrowserShortcutCapture();

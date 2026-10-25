@@ -74,8 +74,10 @@ EM_ASM(
     {
       const captures = globalThis.__siliconShortcutCaptures;
       const capture = captures.get($0);
-      if (capture.handler)
-        document.removeEventListener('keydown', capture.handler, true);
+      for (const [type, handler] of capture.listeners || [])
+        document.removeEventListener(type, handler, true);
+      if (capture.frame)
+        cancelAnimationFrame(capture.frame);
       captures.delete($0);
     }, id);
   // clang-format on
@@ -119,6 +121,7 @@ EM_ASM(
         if (shortcut.length === 0)
           return false;
 
+        const target     = event.composedPath()[0];
         const key        = event.key.toLowerCase();
         const keyToken   = normalizedKeyToken(shortcut[shortcut.length - 1]);
         const wantsCtrl  = shortcut.includes('ctrl') || shortcut.includes('control');
@@ -127,13 +130,17 @@ EM_ASM(
         const wantsShift = shortcut.includes('shift');
         const usesCommandModifier = wantsCtrl || wantsMeta || wantsAlt;
 
-        if (!usesCommandModifier && isEditableTarget(event.target))
+        if (!usesCommandModifier && isEditableTarget(target))
           return false;
 
-        if (wantsCtrl && !(event.ctrlKey || event.metaKey))
+        if (wantsCtrl || wantsMeta) {
+          if (wantsCtrl && !(event.ctrlKey || event.metaKey))
+            return false;
+          if (wantsMeta && !event.metaKey)
+            return false;
+        } else if (event.ctrlKey || event.metaKey) {
           return false;
-        if (wantsMeta && !event.metaKey)
-          return false;
+        }
         if (wantsAlt !== event.altKey)
           return false;
         if (wantsShift !== event.shiftKey)
@@ -142,15 +149,76 @@ EM_ASM(
         return key === keyToken || event.code.toLowerCase() === keyToken;
       };
 
-      if (capture.handler)
+      if (capture.listeners)
         return;
-      capture.handler = event => {
+
+      // Qt 6.11 requestActivateWindow() can leave DOM focus unset when an
+      // input context exists. Keep this compatibility workaround here, alongside
+      // browser shortcut capture; never change a valid DOM/text-input focus.
+      const qtHost = event => event.composedPath().find(
+          node => node.id === 'qt-shadow-container' && node.shadowRoot);
+      const rememberQt = event => {
+        const host = qtHost(event);
+        if (!host)
+          return false;
+        capture.host = host;
+        capture.window = event.composedPath().find(
+            node => node.classList?.contains('qt-window'));
+        return true;
+      };
+      const scheduleFocus = () => {
+        if (capture.frame || !capture.owned)
+          return;
+        // One frame after Qt and browser default handling, without a timeout or
+        // a polling loop. Pointer/focus transitions outside Qt revoke ownership.
+        capture.frame = requestAnimationFrame(() => {
+          capture.frame = 0;
+          if (!capture.owned || !document.hasFocus()
+              || document.activeElement !== document.body)
+            return;
+          const root = capture.host?.shadowRoot;
+          if (!capture.host?.isConnected || !root || root.activeElement)
+            return;
+          const visible = element => element.getClientRects().length > 0;
+          // Prefer the helper for the window that received the event. If a Qt
+          // popup just disappeared, use a remaining visible window's helper.
+          // Both selectors are Qt internals, isolated here for version updates.
+          const selector = '.qt-window-focus-helper, .hidden-visually-read-by-screen-reader';
+          const local = capture.window?.querySelectorAll(selector) || [];
+          const target = Array.from(local).find(visible)
+              || Array.from(root.querySelectorAll(selector)).find(visible);
+          target?.focus({preventScroll: true});
+        });
+      };
+      const onFocusIn = event => {
+        capture.owned = rememberQt(event);
+      };
+      const onPointerDown = event => {
+        capture.owned = rememberQt(event);
+        scheduleFocus();
+      };
+      const onFocusOut = event => {
+        if (capture.owned && qtHost(event))
+          scheduleFocus();
+      };
+      const onKeyDown = event => {
+        if (!rememberQt(event))
+          return;
+        // Tab is an intentional focus transition, including out of the app.
+        capture.owned = event.key !== 'Tab';
+        if (!capture.owned || event.isComposing)
+          return;
+        scheduleFocus();
         if (capture.sequences.some(
               shortcut => eventMatchesShortcut(event, shortcut)))
           event.preventDefault();
       };
-      document.addEventListener('keydown', capture.handler,
-      true);
+      capture.listeners = ([
+        ['keydown', onKeyDown], ['focusin', onFocusIn],
+        ['focusout', onFocusOut], ['pointerdown', onPointerDown]
+      ]);
+      for (const [type, handler] of capture.listeners)
+        document.addEventListener(type, handler, true);
     },
     id,
     shortcutsJson.constData());
