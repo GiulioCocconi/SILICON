@@ -1,8 +1,12 @@
 #pragma once
 #include <QApplication>
+#include <QByteArray>
 #include <QColor>
 #include <QMap>
 #include <QString>
+#include <utility>
+
+class QSvgRenderer;
 
 namespace SILICON::ui {
 
@@ -42,16 +46,28 @@ inline ColorMap dark()
 
 }  // namespace theme
 
-class ThemeEngine {
+class ThemeEngine : public QObject {
+  Q_OBJECT
 public:
-  static void          apply(QApplication& app, SILICON::ui::theme::Mode mode);
+  static ThemeEngine&  instance();
+  static void          apply(QApplication& app, theme::Mode mode);
   static const QColor& getColor(const QString& key);
 
+  /** Resolves SVG theme annotations without changing the source resource. */
+  static QByteArray preprocessSvg(const QByteArray& svg);
+  /** Borrows an application-owned renderer cached by resource path and theme. */
+  static QSvgRenderer* svgRenderer(const QString& path);
+
+signals:
+  void themeChanged();
+
 private:
-  static QString loadQssTemplate();
-  static QString                      injectTokens(const QString&                      qss,
-                                                   const SILICON::ui::theme::ColorMap& tokens);
-  static SILICON::ui::theme::ColorMap currentMap;
+  explicit ThemeEngine(QObject* parent) : QObject(parent) {}
+  static QString  loadQssTemplate();
+  static QString  injectTokens(const QString& qss, const theme::ColorMap& tokens);
+  theme::ColorMap currentMap  = theme::light();
+  theme::Mode     currentMode = theme::Mode::Light;
+  QMap<std::pair<QString, theme::Mode>, QSvgRenderer*> svgCache;
 };
 
 }  // namespace SILICON::ui

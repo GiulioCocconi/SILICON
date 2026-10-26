@@ -19,9 +19,9 @@
 
 #include <ui/shell/icons.hpp>
 #include <ui/shell/theme.hpp>
+#include <ui/shell/themedSvgItem.hpp>
 
 #include <QFont>
-#include <QGraphicsSvgItem>
 #include <QTextOption>
 
 #include <stdexcept>
@@ -66,10 +66,10 @@ namespace {
     QString iconName;
   };
 
-  class ComparatorShape : public QGraphicsSvgItem {
+  class ComparatorShape : public ThemedSvgItem {
   public:
     explicit ComparatorShape(QString mode, QGraphicsItem* parent = nullptr)
-      : QGraphicsSvgItem(":/other_components/COMPARATOR.svg", parent), mode(std::move(mode))
+      : ThemedSvgItem(":/other_components/COMPARATOR.svg", parent), mode(std::move(mode))
     {
     }
 
@@ -82,7 +82,7 @@ namespace {
     void paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
                QWidget* widget) override
     {
-      QGraphicsSvgItem::paint(painter, option, widget);
+      ThemedSvgItem::paint(painter, option, widget);
 
       painter->save();
       painter->setPen(QPen(ThemeEngine::getColor("SILICON_INK")));
@@ -155,8 +155,8 @@ GraphicalComplementer::GraphicalComplementer(QGraphicsItem* parent)
 
 GraphicalHalfAdder::GraphicalHalfAdder(QGraphicsItem* parent)
   : GraphicalLogicComponent(makeHalfAdder(),
-                            new QGraphicsSvgItem(":/other_components/H_ADDER.svg"),
-                            parent, true)
+                            new ThemedSvgItem(":/other_components/H_ADDER.svg"), parent,
+                            true)
 {
   printPortNames = true;
   setPorts({PortPair{"a", QPoint(20, -20)}, PortPair{"b", QPoint(80, -20)}},
@@ -165,8 +165,8 @@ GraphicalHalfAdder::GraphicalHalfAdder(QGraphicsItem* parent)
 
 GraphicalFullAdder::GraphicalFullAdder(QGraphicsItem* parent)
   : GraphicalLogicComponent(makeFullAdder(),
-                            new QGraphicsSvgItem(":/other_components/F_ADDER.svg"),
-                            parent, true)
+                            new ThemedSvgItem(":/other_components/F_ADDER.svg"), parent,
+                            true)
 {
   printPortNames = true;
   setPorts({PortPair{"a", QPoint(20, -20)}, PortPair{"b", QPoint(80, -20)},
@@ -175,9 +175,8 @@ GraphicalFullAdder::GraphicalFullAdder(QGraphicsItem* parent)
 }
 
 GraphicalAdderNBits::GraphicalAdderNBits(QGraphicsItem* parent)
-  : GraphicalLogicComponent(makeAdderNBits(),
-                            new QGraphicsSvgItem(":/other_components/ADDER.svg"), parent,
-                            true)
+  : GraphicalLogicComponent(
+        makeAdderNBits(), new ThemedSvgItem(":/other_components/ADDER.svg"), parent, true)
 {
   printPortNames = true;
   setPorts({PortPair{"a", QPoint(20, -20)}, PortPair{"b", QPoint(80, -20)}},
@@ -185,9 +184,8 @@ GraphicalAdderNBits::GraphicalAdderNBits(QGraphicsItem* parent)
 }
 
 GraphicalShifter::GraphicalShifter(QGraphicsItem* parent)
-  : GraphicalLogicComponent(makeShifter(),
-                            new QGraphicsSvgItem(":/other_components/SHIFTR.svg"),
-                            parent, true)
+  : GraphicalLogicComponent(
+        makeShifter(), new ThemedSvgItem(":/other_components/SHIFTR.svg"), parent, true)
 {
   setupCallbacks();
   setPorts({PortPair{"value", QPoint(-20, 20)}, PortPair{"amount", QPoint(40, -20)}},
@@ -209,9 +207,9 @@ std::string GraphicalShifter::applyMode(std::string mode)
   if (mode != Shifter::LEFT_MODE && mode != Shifter::RIGHT_MODE)
     throw std::invalid_argument("Shifter mode must be 'left' or 'right'");
 
-  setItemShape(new QGraphicsSvgItem(mode == Shifter::LEFT_MODE
-                                        ? ":/other_components/SHIFTL.svg"
-                                        : ":/other_components/SHIFTR.svg"));
+  setItemShape(new ThemedSvgItem(mode == Shifter::LEFT_MODE
+                                     ? ":/other_components/SHIFTL.svg"
+                                     : ":/other_components/SHIFTR.svg"));
   return mode;
 }
 

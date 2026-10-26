@@ -18,13 +18,13 @@
 #pragma once
 
 #include <QGraphicsItem>
-#include <QGraphicsSvgItem>
 #include <QPainter>
 #include <QString>
 
 #include <core/component.hpp>
 #include <core/io.hpp>
 #include <core/wire.hpp>
+#include <ui/shell/themedSvgItem.hpp>
 
 #include <string_view>
 

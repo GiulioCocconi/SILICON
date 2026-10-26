@@ -47,7 +47,7 @@ GraphicalGate::GraphicalGate(const std::shared_ptr<Gate> gate, QGraphicsItem* sh
 
 GraphicalNot::GraphicalNot(QGraphicsItem* parent)
   : GraphicalLogicComponent(std::make_shared<NotGate>(nullptr, nullptr),
-                            new QGraphicsSvgItem(":/gates/NOT_ANSI.svg"), parent)
+                            new ThemedSvgItem(":/gates/NOT_ANSI.svg"), parent)
 {
   isEditable = false;
 
