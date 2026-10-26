@@ -1,7 +1,7 @@
 <svg width="70" height="40" viewBox="0 0 70 40" fill="none" xmlns="http://www.w3.org/2000/svg">
 <g clip-path="url(#clip0_4_282)">
-<circle cx="65" cy="20" r="5" fill="black"/>
-<path d="M55.2568 20L1.5 37.9189V2.08105L55.2568 20Z" fill="#D8FFFF" stroke="black" stroke-width="3"/>
+<circle cx="65" cy="20" r="5" fill="black" data-silicon-fill="SILICON_INK" />
+<path d="M55.2568 20L1.5 37.9189V2.08105L55.2568 20Z" fill="#D8FFFF" stroke="black" stroke-width="3" data-silicon-fill="SILICON_BLUE" data-silicon-stroke="SILICON_INK" />
 </g>
 <defs>
 <clipPath id="clip0_4_282">

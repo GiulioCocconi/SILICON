@@ -113,6 +113,7 @@ set(UI_SOURCE_FILES
         ${src_dir}/ui/shell/logging/graphicalLogStream.cpp
         ${src_dir}/ui/shell/logging/logSideView.cpp
         ${src_dir}/ui/shell/theme.cpp
+        ${src_dir}/ui/shell/themedSvgItem.cpp
         ${src_dir}/ui/shell/fileDialogUtils.cpp
         ${src_dir}/ui/shell/inputDialogUtils.cpp
         ${src_dir}/ui/circuit/editor/componentSearchMatcher.cpp

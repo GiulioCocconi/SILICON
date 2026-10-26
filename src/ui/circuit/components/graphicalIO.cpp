@@ -560,7 +560,7 @@ void GraphicalIO::setComponent(const Component_ptr& component)
 
 GraphicalInput::GraphicalInput(QGraphicsItem* parent)
   : GraphicalIO(ItemCategory::Input, std::make_shared<DummyInputComponent>(Bus(1), "in"),
-                new QGraphicsSvgItem(":/other_components/input_off.svg"), parent)
+                new ThemedSvgItem(":/other_components/input_off.svg"), parent)
 {
   isEditable = false;
   GraphicalLogicComponent::setPorts({}, {PortPair{"o", QPoint(20, 60)}});
@@ -582,8 +582,8 @@ void GraphicalInput::toggle()
 void GraphicalInput::setState(State state)
 {
   skinState = state;
-  setItemShape(new QGraphicsSvgItem((skinState == State::HIGH) ? getOnShapePath()
-                                                               : getOffShapePath()));
+  setItemShape(new ThemedSvgItem((skinState == State::HIGH) ? getOnShapePath()
+                                                            : getOffShapePath()));
 
   const auto targetBus = getComponent()->getOutputs()[0];
   if (!isInteractiveSimulation(this)) {
@@ -605,8 +605,8 @@ void GraphicalInput::applyStartValue()
                               ->getPropertyValue<BusValue>("startValue")
                               .value_or(BusValue{State::LOW});
   skinState = startValue.empty() ? State::LOW : startValue.front();
-  setItemShape(new QGraphicsSvgItem((skinState == State::HIGH) ? getOnShapePath()
-                                                               : getOffShapePath()));
+  setItemShape(new ThemedSvgItem((skinState == State::HIGH) ? getOnShapePath()
+                                                            : getOffShapePath()));
 
   if (auto* input = dynamic_cast<DummyInputComponent*>(getComponent().get()))
     input->setState(skinState);
@@ -859,7 +859,7 @@ QRectF GraphicalBusInput::boundingRect() const
 GraphicalOutputSingle::GraphicalOutputSingle(QGraphicsItem* parent)
   : GraphicalIO(ItemCategory::Output,
                 std::make_shared<DummyOutputComponent>(Bus(1), "out"),
-                new QGraphicsSvgItem(":/other_components/output_unknown.svg"), parent)
+                new ThemedSvgItem(":/other_components/output_unknown.svg"), parent)
 {
   isEditable = false;
   GraphicalLogicComponent::setPorts({PortPair{"in", QPoint(20, 60)}}, {});
@@ -879,7 +879,7 @@ void GraphicalOutputSingle::setState(State state)
   else if (state == State::UNKNOWN)
     shapePath = getUnknownShapePath();
 
-  setItemShape(new QGraphicsSvgItem(shapePath));
+  setItemShape(new ThemedSvgItem(shapePath));
 }
 
 void GraphicalOutputSingle::applyStartValue()

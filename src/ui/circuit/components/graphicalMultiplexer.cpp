@@ -22,11 +22,10 @@
 #include <variant>
 
 #include <QGraphicsRectItem>
-#include <QGraphicsSvgItem>
 #include <QPainter>
 
 #include <ui/shell/theme.hpp>
-
+#include <ui/shell/themedSvgItem.hpp>
 
 namespace SILICON::ui {
 using namespace SILICON::core;
@@ -112,8 +111,7 @@ std::vector<PortPair> northBusPorts(const int count, const QString& prefix,
 
 GraphicalMultiplexer::GraphicalMultiplexer(QGraphicsItem* parent)
   : GraphicalLogicComponent(makeMultiplexer(),
-                            new QGraphicsSvgItem(":/other_components/MUX.svg"), parent,
-                            true)
+                            new ThemedSvgItem(":/other_components/MUX.svg"), parent, true)
 {
   printPortNames = true;
   setupCallbacks();
@@ -156,7 +154,7 @@ void GraphicalMultiplexer::updateLayout(const int selectionSize, const int busSi
     return;
   }
 
-  setItemShape(new QGraphicsSvgItem(":/other_components/MUX.svg"));
+  setItemShape(new ThemedSvgItem(":/other_components/MUX.svg"));
   if (selectionSize == 1) {
     setPorts({PortPair{"d[0]", QPoint(-20, 30)}, PortPair{"d[1]", QPoint(-20, 70)},
               PortPair{"sel", QPoint(60, -10)}},
@@ -197,8 +195,8 @@ void GraphicalMultiplexer::setComponent(const Component_ptr& component)
 
 GraphicalDemultiplexer::GraphicalDemultiplexer(QGraphicsItem* parent)
   : GraphicalLogicComponent(makeDemultiplexer(),
-                            new QGraphicsSvgItem(":/other_components/DEMUX.svg"),
-                            parent, true)
+                            new ThemedSvgItem(":/other_components/DEMUX.svg"), parent,
+                            true)
 {
   printPortNames = true;
   setupCallbacks();
@@ -240,7 +238,7 @@ void GraphicalDemultiplexer::updateLayout(const int selectionSize, const int bus
     return;
   }
 
-  setItemShape(new QGraphicsSvgItem(":/other_components/DEMUX.svg"));
+  setItemShape(new ThemedSvgItem(":/other_components/DEMUX.svg"));
   setPorts({PortPair{"d", QPoint(-20, 50)}, PortPair{"sel", QPoint(60, -10)}},
            {PortPair{"out", QPoint(120, 50)}});
 }
@@ -276,9 +274,8 @@ void GraphicalDemultiplexer::setComponent(const Component_ptr& component)
 // --- Graphical Decoder -----------------------------------------------------------------
 
 GraphicalDecoder::GraphicalDecoder(QGraphicsItem* parent)
-  : GraphicalLogicComponent(makeDecoder(),
-                            new QGraphicsSvgItem(":/other_components/DECODER.svg"),
-                            parent, true)
+  : GraphicalLogicComponent(
+        makeDecoder(), new ThemedSvgItem(":/other_components/DECODER.svg"), parent, true)
 {
   printPortNames = true;
   setupCallbacks();

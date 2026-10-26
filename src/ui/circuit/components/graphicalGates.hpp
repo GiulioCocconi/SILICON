@@ -17,11 +17,9 @@
 
 #pragma once
 
-#include <QGraphicsSvgItem>
-
 #include <core/gates.hpp>
 #include <ui/circuit/components/graphicalLogicComponent.hpp>
-
+#include <ui/shell/themedSvgItem.hpp>
 
 namespace SILICON::ui {
 using namespace SILICON::core;
@@ -41,7 +39,7 @@ public:
   explicit GraphicalAnd(QGraphicsItem* parent = nullptr)
     : GraphicalGate(
           std::make_shared<AndGate>(std::vector<Wire_ptr>{nullptr, nullptr}, nullptr),
-          new QGraphicsSvgItem(":/gates/AND_ANSI.svg"), parent)
+          new ThemedSvgItem(":/gates/AND_ANSI.svg"), parent)
   {
   }
 
@@ -54,7 +52,7 @@ public:
   explicit GraphicalOr(QGraphicsItem* parent = nullptr)
     : GraphicalGate(
           std::make_shared<OrGate>(std::vector<Wire_ptr>{nullptr, nullptr}, nullptr),
-          new QGraphicsSvgItem(":/gates/OR_ANSI.svg"), parent)
+          new ThemedSvgItem(":/gates/OR_ANSI.svg"), parent)
   {
   }
 
@@ -74,7 +72,7 @@ public:
   explicit GraphicalNand(QGraphicsItem* parent = nullptr)
     : GraphicalGate(
           std::make_shared<NandGate>(std::vector<Wire_ptr>{nullptr, nullptr}, nullptr),
-          new QGraphicsSvgItem(":/gates/NAND_ANSI.svg"), parent)
+          new ThemedSvgItem(":/gates/NAND_ANSI.svg"), parent)
   {
   }
 
@@ -87,7 +85,7 @@ public:
   explicit GraphicalNor(QGraphicsItem* parent = nullptr)
     : GraphicalGate(
           std::make_shared<NorGate>(std::vector<Wire_ptr>{nullptr, nullptr}, nullptr),
-          new QGraphicsSvgItem(":/gates/NOR_ANSI.svg"), parent)
+          new ThemedSvgItem(":/gates/NOR_ANSI.svg"), parent)
   {
   }
 
@@ -101,7 +99,7 @@ public:
 
     : GraphicalGate(
           std::make_shared<XorGate>(std::array<Wire_ptr, 2>{nullptr, nullptr}, nullptr),
-          new QGraphicsSvgItem(":/gates/XOR_ANSI.svg"), parent, true)
+          new ThemedSvgItem(":/gates/XOR_ANSI.svg"), parent, true)
   {
   }
 
