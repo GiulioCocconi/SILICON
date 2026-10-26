@@ -132,7 +132,7 @@ void CodeSyntaxHighlighter::setPalette(const QPalette& palette)
   formats[static_cast<std::size_t>(CodeSyntaxStyle::Todo)] =
       colored(color("SILICON_ORANGE"));
   formats[static_cast<std::size_t>(CodeSyntaxStyle::Operator)] =
-      colored(color("SILICON_MAGENTA"));
+      colored(color("SILICON_VIOLET"));
   formats[static_cast<std::size_t>(CodeSyntaxStyle::Comment)] =
       colored(color("SILICON_GREY"));
   formats[static_cast<std::size_t>(CodeSyntaxStyle::Global)] =
