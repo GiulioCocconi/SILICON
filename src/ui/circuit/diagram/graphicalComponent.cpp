@@ -23,7 +23,9 @@
 
 #include <QDialog>
 #include <QFontMetricsF>
+#include <QGraphicsView>
 #include <QLabel>
+#include <QMarginsF>
 #include <QPainter>
 #include <QPainterPathStroker>
 #include <QTextOption>
@@ -45,6 +47,9 @@ constexpr qreal PortPenWidth = 3.0;
 constexpr qreal PortErrorPenWidth = 4.0;
 constexpr qreal SlashLength = 12.0;
 constexpr qreal SlashPenWidth = 2.0;
+constexpr qreal ClockIconWidth = 16.0;
+constexpr qreal ClockIconHeight = 8.0;
+constexpr qreal ClockIconPenWidth = 1.5;
 
 class ThemedPortLineItem : public QGraphicsLineItem {
 public:
@@ -64,20 +69,9 @@ public:
   }
 };
 
-QFont portMarkerFont()
+QFont portMarkerFont(const QFont& baseFont)
 {
-  QFont font = QApplication::font();
-  font.setFamily("NovaMono");
-  if (font.pointSizeF() > 0)
-    font.setPointSizeF(font.pointSizeF() * 0.6);
-  else
-    font.setPixelSize(std::max(1, qRound(font.pixelSize() * 0.6)));
-  return font;
-}
-
-QFont portSizeFont()
-{
-  return QFont("NovaMono");
+  return QFont("NovaMono", baseFont.pointSize() * 0.6);
 }
 
 QRectF strokedLineRect(const QLineF& line, const qreal width)
@@ -99,22 +93,39 @@ QLineF portSlash(const QLineF& line)
   return transform.map(QLineF(-SlashLength / 2.0, 0, SlashLength / 2.0, 0));
 }
 
-QRectF portNameRect(const QLineF& line, const QString& name, const PortSide side)
+QRectF portNameRect(const QLineF& line, const QString& name, const PortSide side,
+                    const QFont& font)
 {
-  constexpr qreal margin = DiagramScene::GRID_SIZE / 2.0;
-  const QFontMetricsF metrics(portMarkerFont());
-  const QPointF point = line.p2();
-  const qreal width = metrics.horizontalAdvance(name);
-  const qreal height = metrics.height();
+  constexpr qreal     margin = DiagramScene::GRID_SIZE / 2.0;
+  const QFontMetricsF metrics(font);
+  const QString       label  = name.startsWith('!') ? name.mid(1) : name;
+  const QPointF       point  = line.p2();
+  const bool          clock  = name == QStringLiteral("clk");
+  const qreal         width  = clock ? ClockIconWidth : metrics.horizontalAdvance(label);
+  const qreal         height = clock ? ClockIconHeight : metrics.height();
+  QMarginsF           padding;
+  if (clock) {
+    // Match the visible text edge, including font padding and the icon's stroke.
+    const QRectF glyphs = metrics.tightBoundingRect(label);
+    constexpr qreal halfPen = ClockIconPenWidth / 2.0;
+    padding = QMarginsF(glyphs.left() + halfPen,
+                        metrics.ascent() + glyphs.top() + halfPen,
+                        metrics.horizontalAdvance(label) - glyphs.right() + halfPen,
+                        metrics.height() - metrics.ascent() - glyphs.bottom() + halfPen);
+  }
   switch (side) {
     case PortSide::DOWN:
-      return {point.x() - width / 2.0, point.y() - margin / 1.5 - height, width, height};
+      return {point.x() - width / 2.0,
+              point.y() - margin / 1.5 - padding.bottom() - height, width, height};
     case PortSide::UP:
-      return {point.x() - width / 2.0, point.y() + margin / 1.5, width, height};
+      return {point.x() - width / 2.0, point.y() + margin / 1.5 + padding.top(),
+              width, height};
     case PortSide::LEFT:
-      return {point.x() + margin, point.y() - height / 2.0, width, height};
+      return {point.x() + margin + padding.left(), point.y() - height / 2.0,
+              width, height};
     case PortSide::RIGHT:
-      return {point.x() - margin - width, point.y() - height / 2.0, width, height};
+      return {point.x() - margin - padding.right() - width,
+              point.y() - height / 2.0, width, height};
   }
   std::unreachable();
 }
@@ -409,15 +420,35 @@ QRectF Port::boundingRect() const
   // Reserve the error stroke even while it is hidden, keeping bounds stable.
   QRectF rect = mapRectFromItem(line, line->boundingRect())
                     .united(strokedLineRect(portLine, PortErrorPenWidth));
-  if (printName)
-    rect = rect.united(portNameRect(portLine, name, side));
-  if (size != 1) {
-    const QFontMetricsF metrics(portSizeFont());
-    const QRectF textRect =
-        metrics.boundingRect(QString::number(size)).adjusted(-4.0, -2.0, 4.0, 2.0);
-    rect = rect.united(portSizeLabelRect(portLine.center(), textRect, side))
-               .united(strokedLineRect(portSlash(portLine), SlashPenWidth));
-  }
+  if (!printName && size == 1)
+    return rect;
+
+  const auto includeLabelBounds = [&](const QFont& baseFont) {
+    const QFont markerFont = portMarkerFont(baseFont);
+    if (printName) {
+      QRectF labelRect = portNameRect(portLine, name, side, markerFont);
+      if (name == QStringLiteral("clk")) {
+        constexpr qreal halfPen = ClockIconPenWidth / 2.0;
+        labelRect.adjust(-halfPen, -halfPen, halfPen, halfPen);
+      }
+      rect = rect.united(labelRect);
+    }
+    if (size != 1) {
+      const QFontMetricsF metrics(markerFont);
+      const QRectF        textRect =
+          metrics.boundingRect(QString::number(size)).adjusted(-4.0, -2.0, 4.0, 2.0);
+      rect = rect.united(portSizeLabelRect(portLine.center(), textRect, side))
+                 .united(strokedLineRect(portSlash(portLine), SlashPenWidth));
+    }
+  };
+
+  // Each view's painter inherits its viewport font. Measure those same fonts.
+  const auto views = scene() ? scene()->views() : QList<QGraphicsView*>{};
+  if (views.isEmpty())
+    includeLabelBounds(QApplication::font());
+  else
+    for (const auto* view : views)
+      includeLabelBounds(view->viewport()->font());
 
   return rect;
 }
@@ -467,10 +498,10 @@ void Port::paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
   if (!line)
     return;
 
-  const bool          isBusPort  = (size != 1);
-  const QLineF        portLine   = connectionLine();
-  const QFont         markerFont = portMarkerFont();
-  const QColor        portColor =
+  const bool   isBusPort  = (size != 1);
+  const QLineF portLine   = connectionLine();
+  const QFont  markerFont = portMarkerFont(painter->font());
+  const QColor portColor =
       inputAssignmentError ? Qt::red : ThemeEngine::getColor("SILICON_INK");
 
   if (inputAssignmentError) {
@@ -481,18 +512,44 @@ void Port::paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
   }
 
   if (printName) {
+    const bool        inverted  = name.startsWith('!');
+    const QString     label     = inverted ? name.mid(1) : name;
+    const QRectF      labelRect = portNameRect(portLine, name, side, markerFont);
+    const QTextOption textOption(Qt::AlignCenter);
+
     painter->save();
     painter->setFont(markerFont);
     painter->setPen(QPen(portColor));
-    painter->drawText(portNameRect(portLine, name, side), name,
-                      QTextOption(Qt::AlignCenter));
+    if (name == QStringLiteral("clk")) {
+      // A rising edge: low on the left, high on the right.
+      QPainterPath clock;
+      clock.moveTo(labelRect.left(), labelRect.bottom());
+      clock.lineTo(labelRect.center().x(), labelRect.bottom());
+      clock.lineTo(labelRect.center().x(), labelRect.top());
+      clock.lineTo(labelRect.right(), labelRect.top());
+      painter->setPen(QPen(portColor, ClockIconPenWidth, Qt::SolidLine,
+                          Qt::FlatCap, Qt::MiterJoin));
+      painter->setBrush(Qt::NoBrush);
+      painter->drawPath(clock);
+    } else {
+      painter->drawText(labelRect, label, textOption);
+    }
+    if (inverted && !label.isEmpty()) {
+      const QFontMetricsF metrics(markerFont, painter->device());
+      const QRectF textBounds = painter->boundingRect(labelRect, label, textOption);
+      // Follow the visible glyph tops instead of the font's high overline position.
+      const qreal y = textBounds.top() + metrics.ascent()
+                      + metrics.tightBoundingRect(label).top() - metrics.lineWidth()
+                      - 4.5;
+      painter->setPen(QPen(portColor, metrics.lineWidth(), Qt::SolidLine, Qt::FlatCap));
+      painter->drawLine(QLineF(textBounds.left(), y, textBounds.right(), y));
+    }
     painter->restore();
   }
 
   if (isBusPort) {
-    const QString sizeText = QString::number(size);
-    const QFont sizeFont = portSizeFont();
-    const QFontMetricsF metrics(sizeFont);
+    const QString       sizeText = QString::number(size);
+    const QFontMetricsF metrics(markerFont);
 
     painter->save();
     painter->setPen(QPen(portColor, SlashPenWidth));
@@ -503,7 +560,7 @@ void Port::paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
     const QRectF labelRect = portSizeLabelRect(portLine.center(), textRect, side);
 
     painter->save();
-    painter->setFont(sizeFont);
+    painter->setFont(markerFont);
     painter->setPen(portColor);
     painter->drawText(labelRect, sizeText, QTextOption(Qt::AlignCenter));
     painter->restore();
