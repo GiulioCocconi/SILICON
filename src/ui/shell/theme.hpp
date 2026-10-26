@@ -12,37 +12,37 @@ namespace SILICON::ui {
 
 namespace theme {
 
-enum class Mode { Light, Dark };
+  enum class Mode { Light, Dark };
 
-using ColorMap = QMap<QString, QColor>;
+  using ColorMap = QMap<QString, QColor>;
 
-/* ---------- LIGHT ---------- */
+  /* ---------- LIGHT ---------- */
 
-inline ColorMap light()
-{
-  return {{"SILICON_ORANGE", {"#ff9845"}},         {"SILICON_LORANGE", {"#ffc999"}},
-          {"SILICON_BLUE", {"#46a6ef"}},           {"SILICON_GREEN", {"#89f17f"}},
-          {"SILICON_VIOLET", {"#ce35a8"}},         {"SILICON_MAGENTA", {"#ce35a8"}},
-          {"SILICON_INTERNAL", {"#ffe6d5"}},       {"SILICON_INK", {"#2a2730"}},
-          {"SILICON_BACKGROUND", {"#fdfdfd"}},     {"SILICON_SURFACE", {"#ffffff"}},
-          {"SILICON_SURFACE_RAISED", {"#ffffff"}}, {"SILICON_GRID", {"#d8d4dd"}},
-          {"SILICON_GREY", {"#8a8490"}},           {"SILICON_DISABLED", {"#a0a0a0"}},
-          {"SILICON_SELECTED", {"#46a6ef"}}};
-}
+  inline ColorMap light()
+  {
+    return {{"SILICON_ORANGE", {"#ea6d29"}},   {"SILICON_LORANGE", {"#f4a261"}},
+            {"SILICON_BLUE", {"#2587d6"}},     {"SILICON_GREEN", {"#1da15a"}},
+            {"SILICON_VIOLET", {"#d43a96"}},   {"SILICON_INTERNAL", {"#ffe2cd"}},
+            {"SILICON_INK", {"#292c31"}},      {"SILICON_BACKGROUND", {"#f7f7f6"}},
+            {"SILICON_SURFACE", {"#ffffff"}},  {"SILICON_SURFACE_RAISED", {"#eceef1"}},
+            {"SILICON_GRID", {"#d8dce0"}},     {"SILICON_GREY", {"#68717c"}},
+            {"SILICON_DISABLED", {"#969da5"}}, {"SILICON_SELECTED", {"#b7ddfa"}},
+            {"SILICON_HOVER", {"#bcebc9"}},    {"SILICON_MENU_HOVER", {"#ffd1a8"}}};
+  }
 
-/* ---------- DARK ---------- */
+  /* ---------- DARK ---------- */
 
-inline ColorMap dark()
-{
-  return {{"SILICON_ORANGE", {"#ffad66"}},         {"SILICON_LORANGE", {"#9d6740"}},
-          {"SILICON_BLUE", {"#69b9ff"}},           {"SILICON_GREEN", {"#8ee889"}},
-          {"SILICON_VIOLET", {"#e36ac8"}},         {"SILICON_MAGENTA", {"#e36ac8"}},
-          {"SILICON_INTERNAL", {"#3c3130"}},       {"SILICON_INK", {"#f3eef8"}},
-          {"SILICON_BACKGROUND", {"#17161d"}},     {"SILICON_SURFACE", {"#24212b"}},
-          {"SILICON_SURFACE_RAISED", {"#2e2a36"}}, {"SILICON_GRID", {"#383340"}},
-          {"SILICON_GREY", {"#857c8e"}},           {"SILICON_DISABLED", {"#857c8e"}},
-          {"SILICON_SELECTED", {"#2e2a36"}}};
-}
+  inline ColorMap dark()
+  {
+    return {{"SILICON_ORANGE", {"#e8893f"}},   {"SILICON_LORANGE", {"#a87550"}},
+            {"SILICON_BLUE", {"#5599d1"}},     {"SILICON_GREEN", {"#4bac76"}},
+            {"SILICON_VIOLET", {"#ce70a7"}},   {"SILICON_INTERNAL", {"#40343a"}},
+            {"SILICON_INK", {"#eeeef1"}},      {"SILICON_BACKGROUND", {"#1c1e23"}},
+            {"SILICON_SURFACE", {"#272a30"}},  {"SILICON_SURFACE_RAISED", {"#32363e"}},
+            {"SILICON_GRID", {"#3a3d45"}},     {"SILICON_GREY", {"#a2a5ad"}},
+            {"SILICON_DISABLED", {"#8c9099"}}, {"SILICON_SELECTED", {"#3e5f7c"}},
+            {"SILICON_HOVER", {"#304d3c"}},    {"SILICON_MENU_HOVER", {"#59412e"}}};
+  }
 
 }  // namespace theme
 

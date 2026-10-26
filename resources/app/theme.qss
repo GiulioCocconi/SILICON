@@ -62,8 +62,7 @@ QPushButton {
 }
 
 QPushButton:hover {
-    /* Silicon Green pop on hover */
-    background-color: SILICON_GREEN;
+    background-color: SILICON_HOVER;
 }
 
 QPushButton:pressed {
@@ -88,7 +87,7 @@ QLineEdit, QComboBox, QSpinBox, QTextEdit, QPlainTextEdit {
 
 QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QTextEdit:focus, QPlainTextEdit:focus {
     /* Ring equivalent */
-    border: 2px solid SILICON_MAGENTA;
+    border: 2px solid SILICON_VIOLET;
 }
 
 /* --- CONTEXT MENUS --- */
@@ -114,7 +113,7 @@ QMenu::item {
 
 QMenu::item:selected {
     /* Hover state for context menus */
-    background-color: SILICON_ORANGE;
+    background-color: SILICON_MENU_HOVER;
     color: SILICON_INK;
 }
 
