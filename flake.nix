@@ -199,6 +199,11 @@ outputs = { self, nixpkgs, flake-utils, git-hooks, sisl }:
               hardeningDisable = [ "all" ];
             };
 
+            docs = pkgs.mkShell {
+              name = "SILICON-docs-CI";
+              packages = [ pkgs.python3 pkgs.doxygen pkgs.graphviz ];
+            };
+
             webpage = pkgs.mkShell {
               name = "SILICON-webpage-dev";
               packages = [ bun pkgs.doxygen pkgs.graphviz pkgs.python3 pkgs.opencode ] ++ preCommitCheck.enabledPackages;
