@@ -120,6 +120,7 @@ private:
    *  - HIGH -> UNKNOWN: Cannot be a rising edge; it is either holding HIGH or falling.
    * (Returns false)
    *
+   * @param previousClock The previous state of the clock pin
    * @param currentClock The current state of the clock pin
    * @return true if the transition from previousClock to currentClock could be the active
    * edge
