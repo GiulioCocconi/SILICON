@@ -48,32 +48,24 @@
 :root {
   --radius: 1rem;
 
-  /* Silicon brand palette (from identity sheet) */
-  --silicon-green: #89f17f;
-  --silicon-orange: #ff9845;
-  --silicon-blue: #46a6ef;
-  --silicon-magenta: #ce35a8;
-  --silicon-ink: oklch(0.18 0.01 280);
-
-  --background: oklch(0.99 0.005 100);
+  --background: var(--silicon-background);
   --foreground: var(--silicon-ink);
-  --card: oklch(1 0 0);
+  --card: var(--silicon-surface);
   --card-foreground: var(--silicon-ink);
-  --popover: oklch(1 0 0);
+  --popover: var(--silicon-surface-raised);
   --popover-foreground: var(--silicon-ink);
-
   --primary: var(--silicon-ink);
-  --primary-foreground: oklch(0.99 0.005 100);
-  --secondary: oklch(0.96 0.01 100);
+  --primary-foreground: var(--silicon-background);
+  --secondary: var(--silicon-surface-raised);
   --secondary-foreground: var(--silicon-ink);
-  --muted: oklch(0.95 0.008 100);
-  --muted-foreground: oklch(0.45 0.02 280);
+  --muted: var(--silicon-surface-raised);
+  --muted-foreground: var(--silicon-grey);
   --accent: var(--silicon-green);
-  --accent-foreground: var(--silicon-ink);
-  --destructive: oklch(0.6 0.22 27);
-  --destructive-foreground: oklch(0.99 0 0);
-  --border: oklch(0.2 0.01 280 / 12%);
-  --input: oklch(0.2 0.01 280 / 12%);
+  --accent-foreground: var(--silicon-on-accent);
+  --destructive: var(--silicon-error);
+  --destructive-foreground: var(--silicon-on-accent);
+  --border: var(--silicon-border);
+  --input: var(--silicon-border);
   --ring: var(--silicon-ink);
 
 }
@@ -89,7 +81,7 @@
     font-family: var(--font-sans);
     overflow-x: hidden;
     background-image:
-      radial-gradient(oklch(0.2 0.01 280 / 8%) 1px, transparent 1px);
+      radial-gradient(var(--silicon-dots) 1px, transparent 1px);
     background-size: 22px 22px;
   }
 
@@ -278,3 +270,6 @@
     }
   }
 }
+
+/* Foreground roles for text placed on brand-colored surfaces. */
+.hero-kicker { color: var(--silicon-on-accent); }

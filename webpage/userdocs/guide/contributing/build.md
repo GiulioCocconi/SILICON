@@ -139,6 +139,7 @@ Use the dedicated Nix development shell from the repository root:
 nix develop .#webpage
 cd webpage
 bun install --frozen-lockfile
+python3 ../ci/theme/generate.py
 bun run build:docs
 ```
 
@@ -146,5 +147,46 @@ For live editing, run `bun run docs:dev`. The complete website and VitePress
 documentation build is `bun run build:all`. Doxygen API documentation is built
 separately from the repository root with `doxygen Doxyfile`.
 
+To build and preview the homepage, user docs, and API docs together, run
+`./webpage/buildwebpage.sh` from the repository root. It generates the palette
+CSS, builds all three surfaces, and serves them at
+`http://127.0.0.1:8080/SILICON/`. Stop the server with Ctrl+C; its temporary preview
+directory is removed automatically.
+
 Before submitting a docs change, confirm that VitePress reports no dead local
 links and inspect the relevant pages in the development server.
+
+## Change the shared color palette
+
+Edit `resources/app/palette.json` from the repository root. Its `light` and
+`dark` objects use the same `SILICON_*` token names and six-digit hex colors.
+Qt embeds this file; rebuild the app after edits. Existing theme settings still
+select the light or dark palette.
+
+CI uses the repository’s pinned Doxygen toolchain (`nix develop .#docs`).
+It generates `webpage/theme/palette.css` using the Python standard library before
+building the homepage, user docs, and Doxygen. The CSS is a build artifact listed
+in `.gitignore`; commit the JSON and generator changes only.
+
+For local builds, generate it explicitly from the repository root:
+
+```bash
+python3 ci/theme/generate.py
+python3 ci/theme/generate.py --check
+```
+
+Vite and VitePress refuse to start or build without this file. They consume the
+CSS directly, so regenerate it after editing the JSON; running development
+servers pick up the changed CSS normally. Doxygen also requires this stylesheet,
+and `WARN_AS_ERROR = YES` makes missing files and all documentation warnings
+fatal. Build API docs with `doxygen Doxyfile` after generating the CSS.
+
+Website styles map framework variables to the shared tokens; transparent
+variations derive from tokens using `color-mix`. Static artwork is maintained
+separately.
+
+VitePress uses its built-in appearance switch. Doxygen uses its native
+`HTML_COLORSTYLE = TOGGLE` control, with no custom HTML header or injected
+controller. The homepage provides System, Light, and Dark choices using browser
+APIs; it shares VitePress's preference key on the same origin. Doxygen manages
+its own preference. All browser preferences are independent of the Qt setting.
