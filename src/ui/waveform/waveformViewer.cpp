@@ -104,7 +104,7 @@ namespace {
   QColor colorForTraceValue(const BusValue& value)
   {
     if (std::ranges::any_of(value, [](const auto s) { return s == State::ERROR; }))
-      return Qt::red;
+      return ThemeEngine::getColor("SILICON_ERROR");
     if (std::ranges::any_of(value, [](const auto s) { return s == State::UNKNOWN; }))
       return ThemeEngine::getColor("SILICON_VIOLET");
     if (std::ranges::all_of(value, [](const auto s) { return s == State::LOW; }))

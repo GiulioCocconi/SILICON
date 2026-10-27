@@ -101,7 +101,7 @@ void GraphicalWire::setConnectionError(std::optional<QString> reason)
 QColor GraphicalWire::getColor() const
 {
   if (connectionError.has_value() || bus.isInErrorState())
-    return Qt::red;
+    return ThemeEngine::getColor("SILICON_ERROR");
 
   // Show simulation state visually for single wires
   if (bus.size() == 1 && bus[0]) {
@@ -109,7 +109,9 @@ QColor GraphicalWire::getColor() const
       case State::HIGH: return ThemeEngine::getColor("SILICON_ORANGE");
       case State::LOW: return ThemeEngine::getColor("SILICON_LORANGE");
       case State::UNKNOWN: return ThemeEngine::getColor("SILICON_VIOLET");
-      default: qWarning() << "Unhandled wire status in getColor()"; return Qt::magenta;
+      default:
+        qWarning() << "Unhandled wire status in getColor()";
+        return ThemeEngine::getColor("SILICON_VIOLET");
     }
   }
   return ThemeEngine::getColor("SILICON_GREEN");
@@ -271,7 +273,7 @@ void GraphicalWireSegment::paint(QPainter*                       painter,
   painter->setPen(QPen(color, 3));
   painter->drawPath(path);
 
-  painter->setPen(QPen(Qt::red, 3));
+  painter->setPen(QPen(ThemeEngine::getColor("SILICON_ERROR"), 3));
   painter->drawPath(showPath);
 
   // Draw junction ellipses independently: a segment may connect two junctions.
@@ -289,7 +291,11 @@ void GraphicalWireSegment::paint(QPainter*                       painter,
     painter->setPen(Qt::NoPen);
     for (size_t i = 0; i < points.size(); ++i) {
       const bool hovered = hoveredPointIndex && i == *hoveredPointIndex;
-      painter->setBrush(hovered ? QColor(255, 80, 80) : QColor(200, 60, 60, 160));
+      QColor     pointColor =
+          ThemeEngine::getColor(hovered ? "SILICON_ERROR_HOVER" : "SILICON_ERROR_FILL");
+      if (!hovered)
+        pointColor.setAlpha(160);
+      painter->setBrush(pointColor);
       painter->drawEllipse(points[i], POINT_RADIUS, POINT_RADIUS);
     }
   }

@@ -213,11 +213,11 @@ private:
 
     switch (displayState) {
       case State::HIGH: return ThemeEngine::getColor("SILICON_BLUE");
-      case State::LOW: return QColor("#ececec");
+      case State::LOW: return ThemeEngine::getColor("SILICON_SIGNAL_LOW");
       case State::UNKNOWN: return ThemeEngine::getColor("SILICON_VIOLET");
-      case State::ERROR: return Qt::red;
+      case State::ERROR: return ThemeEngine::getColor("SILICON_ERROR");
     }
-    return Qt::magenta;
+    return ThemeEngine::getColor("SILICON_VIOLET");
   }
 
   BusIoKind    kind;
