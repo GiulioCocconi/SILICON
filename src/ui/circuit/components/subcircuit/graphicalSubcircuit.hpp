@@ -51,6 +51,8 @@ namespace SILICON::ui {
      * @brief Creates a graphical subcircuit and immediately selects a slug.
      * @param slug Subcircuit registry slug.
      * @param parent Optional parent graphics item.
+     * @param documents Optional document store for resolving subcircuit metadata.
+     * @param resolver Optional resolver for dependent circuits.
      */
     explicit GraphicalSubcircuitComponent(
         std::string slug, QGraphicsItem* parent = nullptr,

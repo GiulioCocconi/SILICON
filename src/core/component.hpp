@@ -60,7 +60,7 @@ enum class ComponentCategory {
 /**
  * @brief Declares whether a component represents a public circuit boundary port.
  *
- * This is deliberately separate from @ref ComponentCategory: catalog categories may
+ * This is deliberately separate from @ref ComponentCategory : catalog categories may
  * contain components that are not module ports (for example, constants in Inputs).
  */
 enum class PortRole {

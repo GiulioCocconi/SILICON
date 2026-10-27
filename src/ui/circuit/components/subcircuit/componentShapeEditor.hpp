@@ -31,6 +31,7 @@ namespace SILICON::ui {
 /**
  * @brief Opens the modal editor for a project subcircuit's graphical shape.
  * @param slug Project-local subcircuit slug to edit.
+ * @param project Project context containing the subcircuit metadata.
  * @param undoStack Optional undo stack used to route metadata changes.
  * @param parent Optional parent widget for the dialog and warnings.
  */
