@@ -1,4 +1,5 @@
 import type { MouseEvent } from "react";
+import { ThemeSelect } from "./ThemeSelect";
 import siliconLogo from "@/assets/silicon-icon.svg";
 
 const GH = "https://github.com/GiulioCocconi/SILICON";
@@ -45,12 +46,13 @@ export function SiteHeader() {
             blog
           </a>
         </nav>
+        <ThemeSelect />
         <a
           href={GH}
           target="_blank"
           rel="noreferrer"
           className="silicon-btn shrink-0 px-3 py-2 sm:px-5 sm:py-3 text-xs sm:text-sm"
-          style={{ backgroundColor: "var(--silicon-green)" }}
+          style={{ backgroundColor: "var(--silicon-green)", color: "var(--silicon-on-accent)" }}
         >
           <span className="sm:hidden">GitHub</span>
           <span className="hidden sm:inline">★ Star on GitHub</span>

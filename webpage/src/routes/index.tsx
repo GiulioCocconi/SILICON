@@ -119,7 +119,7 @@ function Index() {
               Simulate the <br className="hidden sm:block" />
               <span
                 className="inline-block max-w-full px-3 py-1 rounded-xl"
-                style={{ backgroundColor: "var(--silicon-orange)" }}
+                style={{ backgroundColor: "var(--silicon-orange)", color: "var(--silicon-on-accent)" }}
               >
                 silicon
               </span>{" "}
@@ -132,7 +132,7 @@ function Index() {
             </p>
           </div>
           <div className="hidden md:block">
-            <div className="silicon-card p-6" style={{ backgroundColor: "var(--silicon-green)" }}>
+            <div className="silicon-card p-6" style={{ backgroundColor: "var(--silicon-green)", color: "var(--silicon-on-accent)" }}>
               <img src={siliconLogo} alt="" width={240} height={240} className="block" />
             </div>
           </div>
@@ -225,7 +225,7 @@ function Index() {
           <div className="silicon-card p-0 overflow-hidden min-w-0">
             <div
               className="px-4 py-2 mono text-sm border-b-2 border-foreground flex items-center gap-2"
-              style={{ backgroundColor: "var(--silicon-orange)" }}
+              style={{ backgroundColor: "var(--silicon-orange)", color: "var(--silicon-on-accent)" }}
             >
               <span className="w-3 h-3 rounded-full bg-foreground" />
               <span>latch.sil</span>
@@ -240,18 +240,18 @@ function Index() {
         className="border-t-2 border-foreground"
         style={{ backgroundColor: "var(--silicon-magenta)" }}
       >
-        <div className="page-shell content-section text-center text-primary-foreground">
-          <h2 className="font-display text-3xl sm:text-4xl md:text-6xl mb-4 text-background">
+        <div className="page-shell content-section text-center" style={{ color: "var(--silicon-on-violet)" }}>
+          <h2 className="font-display text-3xl sm:text-4xl md:text-6xl mb-4">
             Ready to wire things up?
           </h2>
-          <p className="mono text-sm mb-8 text-background/80">
+          <p className="mono text-sm mb-8">
             $ git clone https://github.com/GiulioCocconi/SILICON
           </p>
           <div className="flex flex-wrap justify-center gap-3">
             <a
               href="#/download"
               className="silicon-btn"
-              style={{ backgroundColor: "var(--silicon-green)" }}
+              style={{ backgroundColor: "var(--silicon-green)", color: "var(--silicon-on-accent)" }}
             >
               Download SILICON
             </a>

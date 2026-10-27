@@ -1,3 +1,4 @@
+import "../../../theme/palette.css";
 import DefaultTheme from "vitepress/theme";
 import ParentLink from "./components/ParentLink.vue";
 import "./style.css";

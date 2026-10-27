@@ -17,11 +17,16 @@
 
 import { defineConfig } from "vitepress";
 
+import { requirePalette, syntaxTheme } from "../../palette";
+
+requirePalette();
+
 export default defineConfig({
   title: "SILICON User Documentation",
   description: "User documentation for the SILICON digital logic simulator.",
   base: "/SILICON/docs",
-  appearance: false,
+  appearance: true,
+  markdown: { theme: { light: syntaxTheme("light"), dark: syntaxTheme("dark") } },
   outDir: "../dist/docs",
   cacheDir: "../node_modules/.vitepress-cache/userdocs",
   themeConfig: {

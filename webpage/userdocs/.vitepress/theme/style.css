@@ -1,20 +1,16 @@
 @import url("https://fonts.googleapis.com/css2?family=Chango&family=Nova+Mono&family=Quicksand:wght@400;500;600;700&display=swap");
 
-:root {
-  --silicon-green: #89f17f;
-  --silicon-orange: #ff9845;
-  --silicon-blue: #46a6ef;
-  --silicon-magenta: #ce35a8;
-  --silicon-ink: oklch(0.18 0.01 280);
+
+:root, :root.dark {
   --silicon-doc-nav-bg: var(--vp-c-bg);
   --silicon-doc-sidebar-width: 12.5rem;
 
-  --vp-c-bg: oklch(0.99 0.005 100);
-  --vp-c-bg-alt: oklch(0.96 0.01 100);
-  --vp-c-bg-soft: oklch(1 0 0);
+  --vp-c-bg: var(--silicon-background);
+  --vp-c-bg-alt: var(--silicon-surface-raised);
+  --vp-c-bg-soft: var(--silicon-surface);
   --vp-c-text-1: var(--silicon-ink);
-  --vp-c-text-2: oklch(0.45 0.02 280);
-  --vp-c-text-3: oklch(0.45 0.02 280);
+  --vp-c-text-2: var(--silicon-grey);
+  --vp-c-text-3: var(--silicon-grey);
   --vp-c-brand-1: var(--silicon-ink);
   --vp-c-brand-2: var(--silicon-blue);
   --vp-c-brand-3: var(--silicon-green);
@@ -24,7 +20,7 @@
   --vp-nav-bg-color: var(--silicon-doc-nav-bg);
   --vp-sidebar-bg-color: color-mix(in oklch, var(--vp-c-bg) 92%, transparent);
   --vp-code-color: var(--silicon-ink);
-  --vp-code-bg: oklch(0.96 0.01 100);
+  --vp-code-bg: var(--silicon-surface-raised);
   --vp-font-family-base: "Quicksand", ui-sans-serif, system-ui, sans-serif;
   --vp-font-family-mono: "Nova Mono", ui-monospace, monospace;
   --vp-layout-max-width: 72rem;
@@ -43,7 +39,7 @@ body {
 body {
   color: var(--silicon-ink);
   background-color: var(--vp-c-bg);
-  background-image: radial-gradient(oklch(0.2 0.01 280 / 8%) 1px, transparent 1px);
+  background-image: radial-gradient(var(--silicon-dots) 1px, transparent 1px);
   background-size: 22px 22px;
 }
 
@@ -131,7 +127,7 @@ h3,
 
 .VPNavBarMenuLink:hover,
 .VPNavBarMenuGroup .button:hover {
-  background-color: oklch(0.95 0.008 100);
+  background-color: var(--silicon-hover);
   color: var(--silicon-ink);
 }
 
@@ -176,7 +172,7 @@ h3,
 
 .VPHero .tagline {
   max-width: 36rem;
-  color: oklch(0.45 0.02 280);
+  color: var(--silicon-grey);
   font-size: 1.125rem;
   line-height: 1.625;
 }
@@ -255,12 +251,12 @@ h3,
 }
 
 .VPButton.alt {
-  background-color: white;
+  background-color: var(--silicon-surface);
 }
 
 .VPFeatures {
   border-top: 2px solid var(--silicon-ink);
-  background-color: white;
+  background-color: var(--silicon-surface);
   padding-top: 5rem;
   padding-bottom: 5rem;
 }
@@ -278,7 +274,7 @@ h3,
 .vp-doc div[class*="language-"]:not(.vp-code-group div) {
   border: 2px solid var(--silicon-ink) !important;
   border-radius: 1.25rem !important;
-  background-color: white !important;
+  background-color: var(--silicon-surface) !important;
   box-shadow: 6px 6px 0 0 var(--silicon-ink) !important;
   transition: transform 0.15s ease, box-shadow 0.15s ease !important;
 }
@@ -349,7 +345,7 @@ h3,
 }
 
 .VPFeature .details {
-  color: oklch(0.45 0.02 280);
+  color: var(--silicon-grey);
   font-size: 1rem;
   line-height: 1.6;
 }
@@ -484,7 +480,7 @@ h3,
 .vp-doc p,
 .vp-doc li,
 .vp-doc dd {
-  color: oklch(0.32 0.015 280);
+  color: var(--silicon-ink);
   line-height: 1.7;
 }
 
@@ -493,7 +489,7 @@ h3,
   gap: 0.5rem 1rem;
   border: 2px solid var(--silicon-ink);
   border-radius: 1.25rem;
-  background-color: white;
+  background-color: var(--silicon-surface);
   box-shadow: 6px 6px 0 0 var(--silicon-ink);
   padding: 1.25rem;
 }
@@ -534,12 +530,12 @@ h3,
 
 .custom-block.tip {
   border-color: var(--silicon-ink);
-  background-color: color-mix(in oklch, var(--silicon-green) 22%, white) !important;
+  background-color: color-mix(in oklch, var(--silicon-green) 22%, var(--silicon-surface)) !important;
 }
 
 .custom-block.warning {
   border-color: var(--silicon-ink);
-  background-color: color-mix(in oklch, var(--silicon-orange) 24%, white) !important;
+  background-color: color-mix(in oklch, var(--silicon-orange) 24%, var(--silicon-surface)) !important;
 }
 
 .VPFooter {
@@ -578,5 +574,41 @@ h3,
   .vp-doc .vp-code-group:hover,
   .vp-doc div[class*="language-"]:not(.vp-code-group div):hover {
     box-shadow: 6px 6px 0 0 var(--silicon-ink) !important;
+  }
+}
+
+.VPHero .name.clip, .VPFeature .icon, .VPButton.brand,
+.VPHero .actions .VPButton { color: var(--silicon-on-accent); }
+.VPFeatures .item:nth-child(4n + 4) .icon { color: var(--silicon-on-violet); }
+/* Reuse the same semantic colors for syntax in both documentation modes. */
+:root, :root.dark {
+  --vp-c-tip-1: var(--silicon-green);
+  --vp-c-warning-1: var(--silicon-orange);
+  --vp-c-danger-1: var(--silicon-error);
+  --vp-c-default-soft: var(--silicon-surface-raised);
+  --vp-button-brand-text: var(--silicon-on-accent);
+  --vp-button-brand-hover-text: var(--silicon-on-accent);
+  --vp-button-brand-bg: var(--silicon-green);
+  --vp-button-brand-hover-bg: var(--silicon-hover);
+}
+
+/* Keep the fixed-width sidebar title within the navigation bar. */
+.VPNavBarTitle.has-sidebar .title { font-size: 1rem; }
+.VPNavBarTitle.has-sidebar .logo { width: 32px; height: 32px; }
+
+@media (max-width: 767px) {
+  .VPNavBarTitle .title, .VPNavBarTitle.has-sidebar .title { font-size: 0.875rem; }
+  .VPNavBarTitle .logo, .VPNavBarTitle.has-sidebar .logo { width: 30px; height: 30px; }
+  .VPNavBar .wrapper { padding-inline: 12px; }
+}
+
+@media (min-width: 768px) and (max-width: 1100px) {
+  .VPNavBarSearch { padding-left: 8px; }
+  .VPNavBarSearch .DocSearch-Button { padding: 0; width: 32px; }
+  .VPNavBarSearch .DocSearch-Button-Placeholder,
+  .VPNavBarSearch .DocSearch-Button-Keys { display: none; }
+  .VPNavBarMenuLink, .VPNavBarMenuGroup .button {
+    padding-inline: 0.375rem;
+    font-size: 0.75rem;
   }
 }

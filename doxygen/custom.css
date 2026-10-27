@@ -3,17 +3,7 @@
 /* ------------------------------------------------------------------------- */
 /* Silicon design tokens                                                     */
 /* ------------------------------------------------------------------------- */
-html {
-    --silicon-green: #89f17f;
-    --silicon-orange: #ff9845;
-    --silicon-blue: #46a6ef;
-    --silicon-magenta: #ce35a8;
-    --silicon-ink: #1c1b22;
-    --silicon-paper: #fcfcfc;
-    --silicon-card: #ffffff;
-    --silicon-muted: #f1f0ec;
-    --silicon-border: rgba(28, 27, 34, 0.14);
-    --silicon-text-soft: rgba(28, 27, 34, 0.72);
+html, html.dark-mode {
     --silicon-shadow-lg: 6px 6px 0 0 var(--silicon-ink);
     --silicon-shadow-md: 4px 4px 0 0 var(--silicon-ink);
     --silicon-shadow-sm: 2px 2px 0 0 var(--silicon-ink);
@@ -51,7 +41,7 @@ html {
     --code-foreground: var(--silicon-ink) !important;
     --fragment-background: var(--silicon-muted) !important;
     --fragment-foreground: var(--silicon-ink) !important;
-    --fragment-linenumber-background: rgba(28, 27, 34, 0.04) !important;
+    --fragment-linenumber-background: color-mix(in srgb, var(--silicon-ink) 4%, transparent) !important;
     --fragment-linenumber-border: var(--silicon-border) !important;
     --tablehead-background: var(--silicon-orange) !important;
     --tablehead-foreground: var(--silicon-ink) !important;
@@ -69,7 +59,7 @@ html {
 /* ------------------------------------------------------------------------- */
 body {
     background-color: var(--silicon-paper) !important;
-    background-image: radial-gradient(rgba(28, 27, 34, 0.08) 1px, transparent 1px) !important;
+    background-image: radial-gradient(var(--silicon-dots) 1px, transparent 1px) !important;
     background-size: 22px 22px !important;
     color: var(--silicon-ink) !important;
     font-family: var(--font-family) !important;
@@ -370,7 +360,7 @@ div.summary,
 #nav-tree a:hover,
 #page-nav a:hover,
 .sm-dox > ul > li > a:hover {
-    background: rgba(137, 241, 127, 0.16) !important;
+    background: color-mix(in srgb, var(--silicon-green) 16%, transparent) !important;
 }
 
 /* ------------------------------------------------------------------------- */
@@ -697,4 +687,21 @@ dl.section.return dd {
         margin: 24px 12px 16px !important;
         max-width: none !important;
     }
+}
+html, html.dark-mode {
+    --fragment-keyword: var(--silicon-blue);
+    --fragment-keywordtype: var(--silicon-violet);
+    --fragment-keywordflow: var(--silicon-violet);
+    --fragment-token: var(--silicon-ink);
+    --fragment-comment: var(--silicon-grey);
+    --fragment-link: var(--silicon-blue);
+    --fragment-preprocessor: var(--silicon-orange);
+    --fragment-stringliteral: var(--silicon-green);
+    --fragment-charliteral: var(--silicon-green);
+}
+table.doxtable th, table.fieldtable th, .memtitle, span.mlabel, dl.section dt,
+.sm-dox ul a:hover, .sm-dox ul a:focus, .sm-dox ul a.highlighted,
+a.SelectItem:hover, a.SelectItem:focus { color: var(--silicon-on-accent) !important; }
+dl.section.todo dt, dl.section.deprecated dt, dl.section.bug dt {
+    color: var(--silicon-on-violet) !important;
 }
