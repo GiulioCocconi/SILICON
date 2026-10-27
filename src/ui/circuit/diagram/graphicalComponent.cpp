@@ -56,7 +56,7 @@ public:
   ThemedPortLineItem(const QLineF& line, QGraphicsItem* parent)
     : QGraphicsLineItem(line, parent)
   {
-    setPen(QPen(Qt::black, PortPenWidth));
+    setPen(QPen(ThemeEngine::getColor("SILICON_INK"), PortPenWidth));
   }
 
   void paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
@@ -197,7 +197,8 @@ void GraphicalComponent::paint(QPainter* painter, const QStyleOptionGraphicsItem
                                QWidget* widget)
 {
   if (isSelected()) {
-    auto color = isColliding() ? Qt::red : ThemeEngine::getColor("SILICON_INK");
+    auto color = isColliding() ? ThemeEngine::getColor("SILICON_ERROR")
+                               : ThemeEngine::getColor("SILICON_INK");
     auto style = isColliding() ? Qt::SolidLine : Qt::DotLine;
 
     painter->setPen(QPen(color, SelectionPenWidth, style));
@@ -501,8 +502,8 @@ void Port::paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
   const bool   isBusPort  = (size != 1);
   const QLineF portLine   = connectionLine();
   const QFont  markerFont = portMarkerFont(painter->font());
-  const QColor portColor =
-      inputAssignmentError ? Qt::red : ThemeEngine::getColor("SILICON_INK");
+  const QColor portColor  = inputAssignmentError ? ThemeEngine::getColor("SILICON_ERROR")
+                                                 : ThemeEngine::getColor("SILICON_INK");
 
   if (inputAssignmentError) {
     painter->save();

@@ -27,5 +27,5 @@ function(add_silicon_resources target)
             FILES ${licenses_file})
 
     qt_add_resources(${target} "theme" BASE ${resources_dir}
-            FILES ${resources_dir}/theme.qss)
+            FILES ${resources_dir}/theme.qss ${resources_dir}/palette.json)
 endfunction()

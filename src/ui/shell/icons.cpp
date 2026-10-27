@@ -30,8 +30,7 @@ namespace {
 
 QColor themedIconColor()
 {
-  const QColor color = ThemeEngine::getColor("SILICON_INK");
-  return color.isValid() ? color : QColor(Qt::black);
+  return ThemeEngine::getColor("SILICON_INK");
 }
 
 QColor disabledIconColor()

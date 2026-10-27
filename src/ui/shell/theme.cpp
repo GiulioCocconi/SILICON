@@ -22,8 +22,11 @@
 
 #include <QDebug>
 #include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QPalette>
 #include <QPointer>
+#include <QRegularExpression>
 #include <QStyle>
 #include <QSvgRenderer>
 #include <QWidget>
@@ -78,45 +81,115 @@ namespace {
     }
   }
 
-QColor color(const SILICON::ui::theme::ColorMap& tokens, const QString& key)
-{
-  return tokens.value(key);
-}
+  QColor color(const SILICON::ui::theme::ColorMap& tokens, const QString& key)
+  {
+    return tokens.value(key);
+  }
 
-QPalette paletteFromTokens(const SILICON::ui::theme::ColorMap& tokens)
-{
-  QPalette palette;
+  QPalette paletteFromTokens(const SILICON::ui::theme::ColorMap& tokens)
+  {
+    QPalette palette;
 
-  const QColor background = color(tokens, "SILICON_BACKGROUND");
-  const QColor surface    = color(tokens, "SILICON_SURFACE");
-  const QColor raised     = color(tokens, "SILICON_SURFACE_RAISED");
-  const QColor ink        = color(tokens, "SILICON_INK");
-  const QColor disabled   = color(tokens, "SILICON_DISABLED");
-  const QColor blue       = color(tokens, "SILICON_BLUE");
-  const QColor selected   = color(tokens, "SILICON_SELECTED");
+    const QColor background = color(tokens, "SILICON_BACKGROUND");
+    const QColor surface    = color(tokens, "SILICON_SURFACE");
+    const QColor raised     = color(tokens, "SILICON_SURFACE_RAISED");
+    const QColor ink        = color(tokens, "SILICON_INK");
+    const QColor disabled   = color(tokens, "SILICON_DISABLED");
+    const QColor blue       = color(tokens, "SILICON_BLUE");
+    const QColor selected   = color(tokens, "SILICON_SELECTED");
 
-  palette.setColor(QPalette::Window, background);
-  palette.setColor(QPalette::WindowText, ink);
-  palette.setColor(QPalette::Base, surface);
-  palette.setColor(QPalette::AlternateBase, raised);
-  palette.setColor(QPalette::Text, ink);
-  palette.setColor(QPalette::Button, surface);
-  palette.setColor(QPalette::ButtonText, ink);
-  palette.setColor(QPalette::BrightText, color(tokens, "SILICON_ORANGE"));
-  palette.setColor(QPalette::Highlight, selected);
-  palette.setColor(QPalette::HighlightedText, ink);
-  palette.setColor(QPalette::Link, blue);
-  palette.setColor(QPalette::ToolTipBase, raised);
-  palette.setColor(QPalette::ToolTipText, ink);
+    palette.setColor(QPalette::Window, background);
+    palette.setColor(QPalette::WindowText, ink);
+    palette.setColor(QPalette::Base, surface);
+    palette.setColor(QPalette::AlternateBase, raised);
+    palette.setColor(QPalette::Text, ink);
+    palette.setColor(QPalette::Button, surface);
+    palette.setColor(QPalette::ButtonText, ink);
+    palette.setColor(QPalette::BrightText, color(tokens, "SILICON_ORANGE"));
+    palette.setColor(QPalette::Highlight, selected);
+    palette.setColor(QPalette::HighlightedText, ink);
+    palette.setColor(QPalette::Link, blue);
+    palette.setColor(QPalette::LinkVisited, color(tokens, "SILICON_VIOLET"));
+    palette.setColor(QPalette::PlaceholderText, color(tokens, "SILICON_GREY"));
+    palette.setColor(QPalette::Light, raised);
+    palette.setColor(QPalette::Midlight, raised);
+    palette.setColor(QPalette::Mid, color(tokens, "SILICON_GRID"));
+    palette.setColor(QPalette::Dark, color(tokens, "SILICON_GREY"));
+    palette.setColor(QPalette::Shadow, ink);
+    palette.setColor(QPalette::ToolTipBase, raised);
+    palette.setColor(QPalette::ToolTipText, ink);
 
-  palette.setColor(QPalette::Disabled, QPalette::WindowText, disabled);
-  palette.setColor(QPalette::Disabled, QPalette::Text, disabled);
-  palette.setColor(QPalette::Disabled, QPalette::ButtonText, disabled);
+    palette.setColor(QPalette::Disabled, QPalette::WindowText, disabled);
+    palette.setColor(QPalette::Disabled, QPalette::Text, disabled);
+    palette.setColor(QPalette::Disabled, QPalette::ButtonText, disabled);
 
-  return palette;
-}
+    return palette;
+  }
 
 }  // namespace
+
+namespace theme {
+  namespace {
+    const QMap<QString, ColorMap>& palettes()
+    {
+      static const auto maps = [] {
+        QFile file(":/palette.json");
+        if (!file.open(QFile::ReadOnly))
+          throw std::runtime_error("Cannot read shared palette");
+        QJsonParseError error;
+        const auto      document = QJsonDocument::fromJson(file.readAll(), &error);
+        if (error.error != QJsonParseError::NoError || !document.isObject())
+          throw std::runtime_error("Invalid shared palette JSON");
+        const auto root = document.object();
+        if (root.keys() != QStringList({"dark", "light"}))
+          throw std::runtime_error("Shared palette must contain light and dark modes");
+        QMap<QString, ColorMap>  result;
+        const QRegularExpression name("^SILICON_[A-Z][A-Z0-9_]*$");
+        const QRegularExpression hex("^#[0-9a-fA-F]{6}$");
+        for (const auto& mode : {QStringLiteral("light"), QStringLiteral("dark")}) {
+          if (!root.value(mode).isObject() || root.value(mode).toObject().isEmpty())
+            throw std::runtime_error("Shared palette mode must be a nonempty object");
+          const auto entries = root.value(mode).toObject();
+          ColorMap   colors;
+          for (auto it = entries.begin(); it != entries.end(); ++it) {
+            if (!name.match(it.key()).hasMatch() || !it.value().isString()
+                || !hex.match(it.value().toString()).hasMatch())
+              throw std::runtime_error("Invalid shared palette token");
+            colors.insert(it.key(), QColor(it.value().toString()));
+          }
+          result.insert(mode, colors);
+        }
+        if (result.value("light").keys() != result.value("dark").keys())
+          throw std::runtime_error("Shared palette modes must have matching tokens");
+        for (const auto* required : {"SILICON_ORANGE",     "SILICON_LORANGE",
+                                     "SILICON_BLUE",       "SILICON_GREEN",
+                                     "SILICON_VIOLET",     "SILICON_INTERNAL",
+                                     "SILICON_INK",        "SILICON_BACKGROUND",
+                                     "SILICON_SURFACE",    "SILICON_SURFACE_RAISED",
+                                     "SILICON_GRID",       "SILICON_GREY",
+                                     "SILICON_DISABLED",   "SILICON_SELECTED",
+                                     "SILICON_HOVER",      "SILICON_MENU_HOVER",
+                                     "SILICON_ERROR",      "SILICON_ERROR_HOVER",
+                                     "SILICON_ERROR_FILL", "SILICON_SIGNAL_LOW",
+                                     "SILICON_ON_ACCENT",  "SILICON_ON_VIOLET"}) {
+          if (!result.value("light").contains(required))
+            throw std::runtime_error("Missing required shared palette token");
+        }
+        return result;
+      }();
+      return maps;
+    }
+  }  // namespace
+
+  ColorMap light()
+  {
+    return palettes().value("light");
+  }
+  ColorMap dark()
+  {
+    return palettes().value("dark");
+  }
+}  // namespace theme
 
 QString ThemeEngine::loadQssTemplate()
 {
@@ -128,7 +201,7 @@ QString ThemeEngine::loadQssTemplate()
   return file.readAll();
 }
 
-QString ThemeEngine::injectTokens(const QString&                qss,
+QString ThemeEngine::injectTokens(const QString&                      qss,
                                   const SILICON::ui::theme::ColorMap& tokens)
 {
   QString out = qss;
@@ -217,8 +290,8 @@ void ThemeEngine::apply(QApplication& app, SILICON::ui::theme::Mode mode)
   auto& engine       = instance();
   auto& currentMap   = engine.currentMap;
   engine.currentMode = mode;
-  currentMap =
-      (mode == SILICON::ui::theme::Mode::Dark) ? SILICON::ui::theme::dark() : SILICON::ui::theme::light();
+  currentMap = (mode == SILICON::ui::theme::Mode::Dark) ? SILICON::ui::theme::dark()
+                                                        : SILICON::ui::theme::light();
 
   const QString base     = loadQssTemplate();
   const QString finalQss = injectTokens(base, currentMap);
