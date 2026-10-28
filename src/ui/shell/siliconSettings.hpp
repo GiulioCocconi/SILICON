@@ -18,67 +18,89 @@
 #pragma once
 
 #include <filesystem>
+#include <functional>
 #include <optional>
 
-#include <QMetaType>
 #include <QSettings>
 #include <QString>
+#include <QStyleHints>
 #include <QVariant>
 
 #include <ui/shell/theme.hpp>
 
 Q_DECLARE_METATYPE(std::filesystem::path)
 
-
 namespace SILICON::ui {
 
 namespace settings {
-inline constexpr auto LIGHT_THEME = "light";
-inline constexpr auto DARK_THEME  = "dark";
+  inline constexpr auto LIGHT_THEME = "light";
+  inline constexpr auto DARK_THEME  = "dark";
 
-/**
- * @brief Describes a persisted setting entry.
- */
-struct Definition {
-  QString                name;
-  QVariant               defaultValue;
-  std::optional<QString> help = std::nullopt;
-};
+  using DefaultProvider = std::function<std::optional<QVariant>()>;
+  /**
+   * @brief Describes a persisted setting entry.
+   */
+  struct Definition {
+    QString                name;
+    DefaultProvider        defaultProvider = [] { return std::nullopt; };
+    QVariant               defaultValue;
+    std::optional<QString> help = std::nullopt;
 
-inline const Definition Theme = {
-    .name         = QStringLiteral("ui/theme"),
-    .defaultValue = QString::fromLatin1(LIGHT_THEME),
-};
+    [[nodiscard]] QVariant getResolvedDefault() const
+    {
+      return defaultProvider().value_or(defaultValue);
+    }
+  };
 
-inline const Definition MaxSimulationSteps = {
-    .name         = QStringLiteral("simulation/maxSteps"),
-    .defaultValue = 100000,
-    .help = QStringLiteral("Maximum number of simulation steps before stopping a run."),
-};
+  [[nodiscard]] inline std::optional<QVariant> systemThemeDefault()
+  {
+    switch (QGuiApplication::styleHints()->colorScheme()) {
+      case Qt::ColorScheme::Dark: return QString::fromLatin1(DARK_THEME);
 
-inline const Definition MaxTransitionsPerDeltaCycle = {
-    .name         = QStringLiteral("simulation/maxTransitionsPerDeltaCycle"),
-    .defaultValue = 1000,
-    .help         = QStringLiteral(
-        "Maximum number of signal transitions allowed within one delta cycle."),
-};
+      case Qt::ColorScheme::Light: return QString::fromLatin1(LIGHT_THEME);
 
-/**
- * @brief Reads a setting value, falling back to its declared default when unset.
- * @param settings Source settings object.
- * @param setting Setting definition to read.
- * @return The persisted value or the definition default.
- */
-[[nodiscard]] QVariant value(const QSettings& settings, const Definition& setting);
+      default:
+	return std::nullopt;
+    }
+
+    std::unreachable();
+  }
+
+  inline const Definition Theme = {
+      .name            = QStringLiteral("ui/theme"),
+      .defaultProvider = systemThemeDefault,
+      .defaultValue    = QString::fromLatin1(LIGHT_THEME),
+  };
+
+  inline const Definition MaxSimulationSteps = {
+      .name         = QStringLiteral("simulation/maxSteps"),
+      .defaultValue = 100000,
+      .help = QStringLiteral("Maximum number of simulation steps before stopping a run."),
+  };
+
+  inline const Definition MaxTransitionsPerDeltaCycle = {
+      .name         = QStringLiteral("simulation/maxTransitionsPerDeltaCycle"),
+      .defaultValue = 1000,
+      .help         = QStringLiteral(
+          "Maximum number of signal transitions allowed within one delta cycle."),
+  };
+
+  /**
+   * @brief Reads a setting value, falling back to its declared default when unset.
+   * @param settings Source settings object.
+   * @param setting Setting definition to read.
+   * @return The persisted value or the definition default.
+   */
+  [[nodiscard]] QVariant value(const QSettings& settings, const Definition& setting);
 }  // namespace settings
 
 /**
  * @brief Snapshot of the common application settings used at runtime.
  */
 struct CommonSettingsValues {
-  QString theme              = SILICON::ui::settings::Theme.defaultValue.toString();
-  int     maxSimulationSteps = SILICON::ui::settings::MaxSimulationSteps.defaultValue.toInt();
-  int     maxTransitionsPerDeltaCycle =
+  QString theme          = SILICON::ui::settings::Theme.defaultValue.toString();
+  int maxSimulationSteps = SILICON::ui::settings::MaxSimulationSteps.defaultValue.toInt();
+  int maxTransitionsPerDeltaCycle =
       SILICON::ui::settings::MaxTransitionsPerDeltaCycle.defaultValue.toInt();
 };
 
