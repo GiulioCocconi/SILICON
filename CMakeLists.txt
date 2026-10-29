@@ -193,7 +193,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
-option(SILICON_ENABLE_SANITIZERS "Enable address and undefined behavior sanitizers" ON)
+option(SILICON_ENABLE_SANITIZERS "Enable address and undefined behavior sanitizers" OFF)
 option(SILICON_BUILD_TESTS "Build silicon tests" ON)
 option(SILICON_BUILD_BENCHMARKS "Build standalone silicon performance benchmarks" ON)
 

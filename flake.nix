@@ -149,7 +149,7 @@ outputs = { self, nixpkgs, flake-utils, git-hooks, sisl }:
 
         bun = pkgs.buildPackages.bun;
 
-        mkSilicon = { release ? false }: pkgs.stdenv.mkDerivation {
+        mkSilicon = { buildType ? "Debug", sanitizers ? false }: pkgs.stdenv.mkDerivation {
             pname = "SILICON";
             version = "0.1.0-beta.2";
 
@@ -162,9 +162,8 @@ outputs = { self, nixpkgs, flake-utils, git-hooks, sisl }:
             cmakeFlags = [
               "-DSILICON_USE_VCPKG=OFF"
               "-DUSING_NIX=ON"
-            ] ++ pkgs.lib.optionals release [
-              "-DCMAKE_BUILD_TYPE=Release"
-              "-DSILICON_ENABLE_SANITIZERS=OFF"
+              "-DCMAKE_BUILD_TYPE=${buildType}"
+              "-DSILICON_ENABLE_SANITIZERS=${if sanitizers then "ON" else "OFF"}"
             ];
 
             doCheck = true;
@@ -214,7 +213,9 @@ outputs = { self, nixpkgs, flake-utils, git-hooks, sisl }:
           checks.pre-commit-check = preCommitCheck;
 
           packages.default = mkSilicon { };
-          packages.release = mkSilicon { release = true; };
+          packages.pr = mkSilicon { sanitizers = true; };
+          packages.nightly = mkSilicon { buildType = "RelWithDebInfo"; };
+          packages.release = mkSilicon { buildType = "Release"; };
           packages.coderabbit = coderabbit;
         }
     );
