@@ -76,7 +76,7 @@ jobs:
             fi
           else
             version="$(nix develop .#lightCI --command python ci/release.py unstable-version)"
-            echo "build_type=Release" >> "${GITHUB_OUTPUT}"
+            echo "build_type=RelWithDebInfo" >> "${GITHUB_OUTPUT}"
             echo "wasm_package_name=silicon-unstable-wasm" >> "${GITHUB_OUTPUT}"
             echo "windows_package_name=silicon-unstable-windows" >> "${GITHUB_OUTPUT}"
             echo "snapshot_version=${version}" >> "${GITHUB_OUTPUT}"
@@ -105,9 +105,9 @@ jobs:
         shell: bash
         run: |
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            nix build --print-build-logs
+            nix build --print-build-logs '.#pr'
           else
-            nix build --print-build-logs '.#release'
+            nix build --print-build-logs '.#nightly'
           fi
 
   wasm-snapshot:
