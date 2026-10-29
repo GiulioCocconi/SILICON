@@ -30,7 +30,6 @@
 #include <QHBoxLayout>
 #include <QKeySequenceEdit>
 #include <QLabel>
-#include <QMessageBox>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSettings>
@@ -40,6 +39,7 @@
 
 #include <core/simulator.hpp>
 #include <ui/shell/fileDialogUtils.hpp>
+#include <ui/shell/inputDialogUtils.hpp>
 #include <ui/shell/theme.hpp>
 
 
@@ -188,7 +188,7 @@ bool SettingsWindow::saveSettings()
   writeVisibleSettings(settings);
   settings.sync();
   if (settings.status() != QSettings::NoError) {
-    QMessageBox::warning(this, tr("Settings Error"),
+    inputDialog::warning(this, tr("Settings Error"),
                          tr("Could not write the settings file."));
     return false;
   }
@@ -201,7 +201,7 @@ bool SettingsWindow::importSettingsStore(QSettings& importedSettings)
 {
   importedSettings.sync();
   if (importedSettings.status() != QSettings::NoError) {
-    QMessageBox::warning(this, tr("Import Settings"),
+    inputDialog::warning(this, tr("Import Settings"),
                          tr("Could not read the selected settings file."));
     return false;
   }
@@ -210,7 +210,7 @@ bool SettingsWindow::importSettingsStore(QSettings& importedSettings)
   copySettings(importedSettings, settings);
   settings.sync();
   if (settings.status() != QSettings::NoError) {
-    QMessageBox::warning(this, tr("Import Settings"),
+    inputDialog::warning(this, tr("Import Settings"),
                          tr("Could not save the imported settings."));
     return false;
   }
@@ -224,7 +224,7 @@ QByteArray SettingsWindow::exportSettingsContent()
 {
   QTemporaryFile exportedFile(this);
   if (!exportedFile.open()) {
-    QMessageBox::warning(this, tr("Export Settings"),
+    inputDialog::warning(this, tr("Export Settings"),
                          tr("Could not write the settings file."));
     return {};
   }
@@ -239,14 +239,14 @@ QByteArray SettingsWindow::exportSettingsContent()
   exportedSettings.sync();
 
   if (exportedSettings.status() != QSettings::NoError) {
-    QMessageBox::warning(this, tr("Export Settings"),
+    inputDialog::warning(this, tr("Export Settings"),
                          tr("Could not write the settings file."));
     return {};
   }
 
   QFile file(exportedFileName);
   if (!file.open(QIODevice::ReadOnly)) {
-    QMessageBox::warning(this, tr("Export Settings"),
+    inputDialog::warning(this, tr("Export Settings"),
                          tr("Could not read back the exported settings file."));
     return {};
   }
@@ -261,7 +261,7 @@ void SettingsWindow::importSettings()
         QTemporaryFile importedFile(this);
         if (!importedFile.open()
             || importedFile.write(fileContent) != fileContent.size()) {
-          QMessageBox::warning(this, tr("Import Settings"),
+          inputDialog::warning(this, tr("Import Settings"),
                                tr("Could not read the selected settings file."));
           return;
         }

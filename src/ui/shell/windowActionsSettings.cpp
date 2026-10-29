@@ -338,10 +338,19 @@ void WindowActions::applyStoredSettings()
 
 void WindowActions::openSettings()
 {
-  const auto     shortcuts = shortcutSettings();
+  const auto shortcuts = shortcutSettings();
+#ifdef __EMSCRIPTEN__
+  // WASM cannot run the nested event loop used by QDialog::exec().
+  auto* settingsWindow = new SettingsWindow("SILICON", shortcuts, &window);
+  settingsWindow->setAttribute(Qt::WA_DeleteOnClose);
+  connect(settingsWindow, &QDialog::finished, this,
+          [this] { syncWasmShortcutCapture(); });
+  settingsWindow->open();
+#else
   SettingsWindow settingsWindow("SILICON", shortcuts, &window);
   settingsWindow.exec();
   syncWasmShortcutCapture();
+#endif
 }
 
 }  // namespace SILICON::ui
