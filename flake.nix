@@ -153,6 +153,11 @@ outputs = { self, nixpkgs, flake-utils, git-hooks, sisl }:
             pname = "SILICON";
             version = "0.1.0-beta.2";
 
+            # CI selects pr, nightly, or release and reads its buildType with
+            # `nix eval --raw .#<package>.buildType` for Windows and WASM.
+            # This keeps their CMake build type aligned with the Linux package.
+            passthru = { inherit buildType; };
+
             src = ./.;
 
             nativeBuildInputs = nativeInputs ++ [pkgs.qt6.wrapQtAppsHook];

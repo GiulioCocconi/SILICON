@@ -42,6 +42,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       build_type: ${{ steps.meta.outputs.build_type }}
+      nix_package: ${{ steps.meta.outputs.nix_package }}
       publish: ${{ steps.meta.outputs.publish }}
       snapshot_version: ${{ steps.meta.outputs.snapshot_version }}
       build_version: ${{ steps.meta.outputs.build_version }}
@@ -52,6 +53,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
       - name: Install Nix
         uses: nixbuild/nix-quick-install-action@v35
@@ -59,13 +61,24 @@ jobs:
         run: nix develop .#lightCI --command python ci/semver.py --check
       - id: meta
         shell: bash
+        env:
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
         run: |
           if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
-            echo "build_type=Debug" >> "${GITHUB_OUTPUT}"
+            nix_package=pr
+            build_version=""
+            if [[ "${PR_HEAD_REPO}" == "${GITHUB_REPOSITORY}" && "${PR_HEAD_REF}" == release/v* ]]; then
+              version="$(nix develop .#lightCI --command python ci/semver.py --print)"
+              if [[ "${PR_HEAD_REF}" == "release/v${version}" ]]; then
+                nix_package=release
+                build_version="${version}"
+              fi
+            fi
             echo "wasm_package_name=wasm-${{ github.event.pull_request.number }}" >> "${GITHUB_OUTPUT}"
             echo "windows_package_name=windows-${{ github.event.pull_request.number }}" >> "${GITHUB_OUTPUT}"
             echo "snapshot_version=${{ github.event.pull_request.head.sha }}" >> "${GITHUB_OUTPUT}"
-            echo "build_version=" >> "${GITHUB_OUTPUT}"
+            echo "build_version=${build_version}" >> "${GITHUB_OUTPUT}"
             echo "source_sha=${{ github.event.pull_request.head.sha }}" >> "${GITHUB_OUTPUT}"
             echo "cloudsmith_repo=${{ vars.CLOUDSMITH_PR_REPO }}" >> "${GITHUB_OUTPUT}"
 
@@ -76,7 +89,7 @@ jobs:
             fi
           else
             version="$(nix develop .#lightCI --command python ci/release.py unstable-version)"
-            echo "build_type=RelWithDebInfo" >> "${GITHUB_OUTPUT}"
+            nix_package=nightly
             echo "wasm_package_name=silicon-unstable-wasm" >> "${GITHUB_OUTPUT}"
             echo "windows_package_name=silicon-unstable-windows" >> "${GITHUB_OUTPUT}"
             echo "snapshot_version=${version}" >> "${GITHUB_OUTPUT}"
@@ -85,6 +98,9 @@ jobs:
             echo "cloudsmith_repo=${{ vars.CLOUDSMITH_RELEASE_REPO }}" >> "${GITHUB_OUTPUT}"
             echo "publish=true" >> "${GITHUB_OUTPUT}"
           fi
+          build_type="$(nix eval --raw ".#${nix_package}.buildType")"
+          echo "nix_package=${nix_package}" >> "${GITHUB_OUTPUT}"
+          echo "build_type=${build_type}" >> "${GITHUB_OUTPUT}"
 
   build-linux:
     name: Linux (Nix)
@@ -103,12 +119,10 @@ jobs:
 
       - name: Build with Nix
         shell: bash
+        env:
+          NIX_PACKAGE: ${{ needs.prepare.outputs.nix_package }}
         run: |
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            nix build --print-build-logs '.#pr'
-          else
-            nix build --print-build-logs '.#nightly'
-          fi
+          nix build --print-build-logs ".#${NIX_PACKAGE}"
 
   wasm-snapshot:
     name: WASM snapshot
