@@ -82,6 +82,7 @@ jobs:
       tag: ${{ steps.release.outputs.tag }}
       tag_exists: ${{ steps.release.outputs.tag_exists }}
       draft_exists: ${{ steps.release.outputs.draft_exists }}
+      build_type: ${{ steps.config.outputs.build_type }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -96,6 +97,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GIT_CLIFF_LOG: error
         run: nix develop .#lightCI --command python ci/release_tasks.py validate "${{ inputs.channel }}"
+      - name: Read release build configuration
+        id: config
+        run: |
+          build_type="$(nix eval --raw '.#release.buildType')"
+          echo "build_type=${build_type}" >> "${GITHUB_OUTPUT}"
       - uses: actions/upload-artifact@v7
         with:
           name: release-notes
@@ -122,7 +128,7 @@ jobs:
     uses: ./.github/workflows/reusable-build-windows.yml
     with:
       checkout_ref: ${{ needs.validate.outputs.sha }}
-      build_type: Release
+      build_type: ${{ needs.validate.outputs.build_type }}
       build_version: ${{ needs.validate.outputs.version }}
       package_name: silicon-${{ inputs.channel == 'stable' && 'stable' || 'prerelease' }}-windows
       package_version: ${{ needs.validate.outputs.version }}
@@ -135,7 +141,7 @@ jobs:
     uses: ./.github/workflows/reusable-build-wasm.yml
     with:
       checkout_ref: ${{ needs.validate.outputs.sha }}
-      build_type: Release
+      build_type: ${{ needs.validate.outputs.build_type }}
       build_version: ${{ needs.validate.outputs.version }}
       package_name: silicon-${{ inputs.channel == 'stable' && 'stable' || 'prerelease' }}-wasm
       package_version: ${{ needs.validate.outputs.version }}
