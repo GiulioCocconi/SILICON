@@ -266,6 +266,31 @@ module _silicon_map_add #(
   endgenerate
 endmodule
 
+// Zero-minus-operand uses the native negation cell imported as a Complementer.
+(* techmap_celltype = "$sub" *)
+module _silicon_map_sub #(
+    parameter A_SIGNED = 0,
+    parameter B_SIGNED = 0,
+    parameter A_WIDTH = 1,
+    parameter B_WIDTH = 1,
+    parameter Y_WIDTH = 1,
+    parameter [A_WIDTH-1:0] _TECHMAP_CONSTMSK_A_ = 0,
+    parameter [A_WIDTH-1:0] _TECHMAP_CONSTVAL_A_ = 0
+) (
+    input [A_WIDTH-1:0] A,
+    input [B_WIDTH-1:0] B,
+    output [Y_WIDTH-1:0] Y
+);
+  generate
+    if (&_TECHMAP_CONSTMSK_A_ && _TECHMAP_CONSTVAL_A_ === {A_WIDTH{1'b0}}) begin
+      \$neg #(.A_SIGNED(A_SIGNED && B_SIGNED), .A_WIDTH(B_WIDTH), .Y_WIDTH(Y_WIDTH))
+        _TECHMAP_REPLACE_ (.A(B), .Y(Y));
+    end else begin
+      wire _TECHMAP_FAIL_ = 1;
+    end
+  endgenerate
+endmodule
+
 (* techmap_celltype = "$fa" *)
 module _silicon_map_fa #(
     parameter WIDTH = 1,

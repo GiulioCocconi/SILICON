@@ -118,6 +118,33 @@ TEST(YosysTest, ImportsScalarBmuxAsSeparateLiteralLanesAndRoundTrips)
                                   [](const Bus& lane) { return lane.size() == 1; }));
 }
 
+TEST(YosysTest, ImportsNegWithYosysWidthAndSignednessSemanticsWithoutYosys)
+{
+  for (bool sign : {false, true}) {
+    for (int resultWidth : {2, 3, 5}) {
+      SCOPED_TRACE(std::format("signed={} resultWidth={}", sign, resultWidth));
+      auto design = subtractionDesign(3, 3, resultWidth, sign, false);
+      auto& cell = onlyModule(design)["cells"].begin().value();
+      cell["type"] = "$neg";
+      cell["connections"].erase("B");
+      cell["parameters"].erase("B_SIGNED");
+      cell["parameters"].erase("B_WIDTH");
+      const auto circuit =
+          std::make_shared<Circuit>(SILICON::yosys::deserialize(design.dump()));
+      EXPECT_EQ(componentTypes(*circuit).count("Complementer"), 1);
+      EXPECT_EQ(componentTypes(*circuit).count("AdderNBits"), 0);
+      for (unsigned int a = 0; a < 8; ++a) {
+        SCOPED_TRACE(a);
+        const int operand = sign && (a & 4u) ? static_cast<int>(a) - 8
+                                             : static_cast<int>(a);
+        EXPECT_EQ(evaluateBinaryCircuit(circuit, a, 0),
+                  valueFor(resultWidth, static_cast<unsigned int>(-operand)
+                                            & ((1u << resultWidth) - 1)));
+      }
+    }
+  }
+}
+
 TEST(YosysTest, ImportsSubWithYosysWidthAndSignednessSemantics)
 {
   const auto import = [](const std::size_t aWidth, const std::size_t bWidth,

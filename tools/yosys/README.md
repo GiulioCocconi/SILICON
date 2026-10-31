@@ -23,10 +23,15 @@ canonical type once; a second invocation leaves those cells unchanged.
 ## Canonical cells
 
 The importer accepts `$and`, `$or`, `$xor`, `$not`, `$_NAND_`, `$_NOR_`,
-`$pos`, `$add`, `$sub`, `$mux`, `$bmux`, `$demux`, supported `$dff`, `$dffsr`,
+`$pos`, `$add`, `$sub`, `$neg`, `$mux`, `$bmux`, `$demux`, supported `$dff`, `$dffsr`,
 `$dffsre`, `$dlatch`, `$adffe`, declared module instances, and the existing
 `SILICON_*` technology cells listed in `cells.hpp`, including `SILICON_ROM`.
 `$add` and `$sub` retain their existing importer width handling.
+`$neg` cells map directly to the two's-complement `Complementer` component,
+which also exports as `$neg`. Zero-minus-operand `$sub` cells are lowered to
+`$neg` by the technology map, sign extending only when both subtraction operands
+are signed. Negation operands are sign or zero extended, or truncated, to the
+output width before negation.
 
 Additional expression contracts:
 

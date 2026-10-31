@@ -298,20 +298,12 @@ void Complementer::serializeYosys(SerializationContext& context) const
   const auto& input    = requireBusWidth(*this, true, 0, busWidth);
   const auto& output   = requireBusWidth(*this, false, 0, busWidth);
 
-  Json zero = Json::array();
-  for (int bit = 0; bit < *width; ++bit)
-    zero.push_back("0");
-
-  context.addCell("complement", "$sub",
+  context.addCell("complement", "$neg",
                   Json{{"A_SIGNED", SerializationContext::parameter(0, 1)},
-                       {"B_SIGNED", SerializationContext::parameter(0, 1)},
                        {"A_WIDTH", SerializationContext::parameter(*width)},
-                       {"B_WIDTH", SerializationContext::parameter(*width)},
                        {"Y_WIDTH", SerializationContext::parameter(*width)}},
-                  directions({{"A", "input"}, {"B", "input"}, {"Y", "output"}}),
-                  Json{{"A", std::move(zero)},
-                       {"B", context.bits(input)},
-                       {"Y", context.bits(output)}});
+                  directions({{"A", "input"}, {"Y", "output"}}),
+                  Json{{"A", context.bits(input)}, {"Y", context.bits(output)}});
 }
 
 void HalfAdder::serializeYosys(SerializationContext& context) const

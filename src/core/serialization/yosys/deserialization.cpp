@@ -1039,6 +1039,19 @@ namespace {
       return result;
     }
 
+    void importNeg(const Cell& cell)
+    {
+      cell.requireConnections({"A", "Y"});
+      const auto aWidth = cell.width("A_WIDTH");
+      const auto yWidth = cell.width("Y_WIDTH");
+      const bool sign   = cell.flag("A_SIGNED");
+      const Bus  a      = cell.consumer("A", aWidth);
+      const Bus  y      = cell.driver("Y", yWidth);
+      auto complementer = std::make_shared<Complementer>(
+          resizeArithmeticOperand(a, yWidth, sign), y);
+      addWithZeroDelay(std::move(complementer));
+    }
+
     void importSub(const Cell& cell)
     {
       cell.requireConnections({"A", "B", "Y"});
@@ -1048,15 +1061,6 @@ namespace {
       const bool signedArithmetic = cell.flag("A_SIGNED") && cell.flag("B_SIGNED");
       const Bus  b                = cell.consumer("B", bWidth);
       const Bus  y                = cell.driver("Y", yWidth);
-
-      // A complementer is serialized as 0 - B. Recover it directly so repeated
-      // Yosys round trips do not add a redundant zero-plus adder each time.
-      if (cell.rawConstant("A", "0", aWidth)) {
-        auto complementer = std::make_shared<Complementer>(
-            resizeArithmeticOperand(b, yWidth, signedArithmetic), y);
-        addWithZeroDelay(std::move(complementer));
-        return;
-      }
 
       const Bus a = cell.consumer("A", aWidth);
 
@@ -1456,6 +1460,7 @@ namespace {
               {"$_NOR_", &Importer::importFineBinaryGate<NorGate>},
               {"$pos", &Importer::importPos},
               {"$add", &Importer::importAdd},
+              {"$neg", &Importer::importNeg},
               {"$sub", &Importer::importSub},
               {cells::COMPARE, &Importer::importSiliconCompare},
               {cells::SHIFT, &Importer::importSiliconShift},

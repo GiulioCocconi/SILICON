@@ -144,21 +144,22 @@ TEST(YosysTest, ExtenderLowersToPosAndRoundTripsWithItsModeAndWidths)
             (std::multiset<std::string>{"$pos", "$pos"}));
 }
 
-TEST(YosysTest, ComplementerLowersToSubAndRoundTripsWithoutAnAdder)
+TEST(YosysTest, ComplementerLowersToNegAndRoundTripsWithoutAnAdder)
 {
   auto complementer = std::make_shared<Complementer>(Bus(5), Bus(5));
   auto exported     = exportComponent(complementer);
-  EXPECT_EQ(cellTypes(onlyModule(exported)), std::multiset<std::string>{"$sub"});
+  EXPECT_EQ(cellTypes(onlyModule(exported)), std::multiset<std::string>{"$neg"});
 
   const auto& cell = onlyCell(exported);
   EXPECT_EQ(cell.at("parameters").at("A_WIDTH"),
             SILICON::yosys::SerializationContext::parameter(5));
-  EXPECT_EQ(cell.at("parameters").at("B_WIDTH"),
-            SILICON::yosys::SerializationContext::parameter(5));
   EXPECT_EQ(cell.at("parameters").at("Y_WIDTH"),
             SILICON::yosys::SerializationContext::parameter(5));
-  EXPECT_TRUE(std::ranges::all_of(cell.at("connections").at("A"),
-                                  [](const auto& bit) { return bit == "0"; }));
+  EXPECT_EQ(cell.at("parameters").at("A_SIGNED"), "0");
+  EXPECT_EQ(cell.at("connections").size(), 2);
+  EXPECT_FALSE(cell.at("parameters").contains("B_WIDTH"));
+  EXPECT_FALSE(cell.at("parameters").contains("B_SIGNED"));
+  EXPECT_EQ(cell.at("connections").at("A").size(), 5);
 
   const Circuit imported = SILICON::yosys::deserialize(exported.dump());
   const auto    restored = findComponent<Complementer>(imported);
@@ -167,7 +168,7 @@ TEST(YosysTest, ComplementerLowersToSubAndRoundTripsWithoutAnAdder)
   EXPECT_FALSE(findComponent<AdderNBits>(imported));
   EXPECT_EQ(cellTypes(onlyModule(
                 nlohmann::json::parse(SILICON::yosys::serialize(imported, "top")))),
-            (std::multiset<std::string>{"$pos", "$sub"}));
+            (std::multiset<std::string>{"$pos", "$neg"}));
 }
 
 TEST(YosysTest, ComparatorLowersToNativeComparisonCellsAndRoundTrips)
