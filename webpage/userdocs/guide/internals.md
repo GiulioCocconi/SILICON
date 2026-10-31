@@ -160,7 +160,11 @@ Converting a circuit to Verilog creates or replaces the corresponding code docum
 Converting a single-module Verilog file back creates or replaces that circuit directly.
 For a multi-module file, the editor presents the prepared dependency choices and accepts
 one or more roots; each selected root and its recursive dependencies are created together
-as one undoable batch. Editing a code document hides circuit-only tools and disables
+as one undoable batch. Module names that cannot be circuit document names, including
+Yosys-generated parameter variants, receive stable names with conflicting names
+disambiguated by numeric suffixes. The conversion updates module references to match;
+existing valid module names are reserved before assigning replacements.
+Editing a code document hides circuit-only tools and disables
 simulation.
 
 Circuit documents retain only their canonical path and serialized scene contents. Core

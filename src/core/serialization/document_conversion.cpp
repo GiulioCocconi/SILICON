@@ -18,8 +18,10 @@
 #include "document_conversion.hpp"
 
 #include <format>
+#include <map>
 #include <ranges>
 #include <stdexcept>
+#include <unordered_set>
 #include <utility>
 
 #include <core/circuitDocument.hpp>
@@ -40,6 +42,54 @@ namespace {
     std::string                           json;
     SILICON::yosys::ModuleDependencyGraph modules;
   };
+
+  [[nodiscard]] std::string withCircuitModuleNames(std::string json)
+  {
+    auto                               design  = SILICON::yosys::Json::parse(json);
+    auto&                              modules = design.at("modules");
+    std::unordered_set<std::string>    reserved;
+    std::map<std::string, std::string> replacements;
+    for (const auto& [name, _module] : modules.items()) {
+      reserved.insert(name);
+      if (SILICON::project::isValidDocumentSlug(name))
+        continue;
+      std::string candidate = name;
+      for (char& c : candidate)
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+              || c == '_'))
+          c = '_';
+      if (candidate.empty())
+        candidate = "module";
+      if (candidate.front() >= '0' && candidate.front() <= '9')
+        candidate.insert(0, "module_");
+      replacements.emplace(name, std::move(candidate));
+    }
+    if (replacements.empty())
+      return json;
+
+    // Allocate in name order so suffixes are stable across JSON object orderings.
+    for (auto& [_name, replacement] : replacements) {
+      const auto base = replacement;
+      for (std::size_t suffix = 2; reserved.contains(replacement); ++suffix)
+        replacement = std::format("{}_{}", base, suffix);
+      reserved.insert(replacement);
+    }
+    for (auto& module : modules)
+      for (auto& cell : module.at("cells"))
+        if (const auto replacement =
+                replacements.find(cell.at("type").get<std::string>());
+            replacement != replacements.end())
+          cell["type"] = replacement->second;
+
+    auto renamed = SILICON::yosys::Json::object();
+    for (auto& [name, module] : modules.items()) {
+      const auto replacement = replacements.find(name);
+      renamed[replacement == replacements.end() ? name : replacement->second] =
+          std::move(module);
+    }
+    modules = std::move(renamed);
+    return design.dump();
+  }
 
   PreparedSemanticConversion
   prepareCircuitToVerilog(const Document&                         source,
@@ -104,8 +154,8 @@ namespace {
     }
 
     YosysDesign design{
-        .json = SILICON::yosys::elaborateHierarchy(
-            SILICON::verilog::read(sources, source.getPath())),
+        .json    = withCircuitModuleNames(SILICON::yosys::elaborateHierarchy(
+            SILICON::verilog::read(sources, source.getPath()))),
         .modules = {},
     };
     design.modules = SILICON::yosys::moduleDependencyGraph(design.json);
