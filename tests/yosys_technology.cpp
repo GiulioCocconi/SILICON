@@ -731,6 +731,61 @@ TEST(YosysToolTest, VerilogConversionAvoidsModuleNameCollisions)
   EXPECT_EQ(references, (std::set<std::string>{"a_b", "a_b_2", "a_b_3"}));
 }
 
+TEST(YosysToolTest, VerilogConversionPreservesHierarchyWithUnusedOutputs)
+{
+  using SILICON::project::Document;
+  using SILICON::project::DocumentType;
+  for (bool explicitlyDisconnected : {false, true}) {
+    const Document source{
+        "code/design.v",
+        std::format(R"(
+      module helper(input [3:0] a, output [3:0] kept,
+                    output unused_bit, output [3:0] unused_bus);
+        assign kept = ~a;
+        assign unused_bit = |a;
+        assign unused_bus = a ^ {{a[0], a[3:1]}};
+      endmodule
+      module top(input [3:0] a, output [3:0] y);
+        helper child(.a(a), .kept(y){});
+      endmodule
+    )",
+                    explicitlyDisconnected ? ", .unused_bit(), .unused_bus()" : "")};
+    std::vector<Document>            documents{source};
+    SILICON::project::ProjectContext project;
+    project.setDocuments(documents);
+    auto registry = ComponentRegistry::empty();
+    registerAllComponents(registry);
+    SILICON::project::ProjectCircuitResolver resolver{project, registry};
+    auto prepared = SILICON::conversion::prepareDocumentConversion(
+        source, DocumentType::Circuit, documents, registry, resolver);
+    const std::array<std::string, 1> selected{"top"};
+    const auto                       converted = prepared.execute(selected);
+    ASSERT_EQ(converted.documents.size(), 2);
+    std::string topContents;
+    for (const auto& document : converted.documents) {
+      const auto contents = std::get<Circuit>(document.payload).serialize();
+      documents.emplace_back(document.path, contents);
+      if (document.path == "circuits/top.json")
+        topContents = contents;
+    }
+    project.setDocuments(documents);
+    auto circuit = std::make_shared<Circuit>(
+        deserializeCircuitDocument(topContents, registry, &resolver));
+    const auto input  = findNamedComponent<DummyBusInputComponent>(*circuit, "a");
+    const auto output = findNamedComponent<DummyBusOutputComponent>(*circuit, "y");
+    ASSERT_TRUE(input);
+    ASSERT_TRUE(output);
+    CircuitElaborator elaborator(registry, &resolver);
+    auto              runtime = elaborator.elaborate(*circuit);
+    for (unsigned int a = 0; a < 16; ++a) {
+      input->setBusValue(valueFor(4, a));
+      Simulator simulator(runtime);
+      ASSERT_EQ(simulator.runUntilIdle(), Simulator::RunResult::Completed);
+      EXPECT_EQ(output->inputBuses()[0].getCurrentValue(), valueFor(4, a ^ 15u));
+    }
+  }
+}
+
 TEST(YosysToolTest, CircuitConversionPreservesModulePortsAndLogic)
 {
   auto    wire = std::make_shared<Wire>();
