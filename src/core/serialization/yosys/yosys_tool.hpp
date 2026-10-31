@@ -40,7 +40,7 @@ struct ScriptResult {
 [[nodiscard]] ScriptResult runScript(std::string_view   script,
                                      const ToolOptions& options = {});
 
-/** Run the Yosys Verilog frontend and return unelaborated write_json output. */
+/** Read Verilog, resolve parameterized instances, and return raw Yosys JSON. */
 [[nodiscard]] std::string readVerilog(std::string_view   source,
                                       const ToolOptions& options = {});
 [[nodiscard]] std::string readVerilog(std::span<const SILICON::core::SourceFile> sources,

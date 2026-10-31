@@ -258,6 +258,47 @@ TEST(YosysToolTest, BuildsDependencyGraphFromMultiModuleVerilog)
   EXPECT_EQ(componentTypes(top).count("Subcircuit"), 2);
 }
 
+TEST(YosysToolTest, ResolvesParameterizedInstancesBeforeJsonExport)
+{
+  constexpr std::string_view SOURCE = R"(
+    module leaf #(parameter WIDTH = 1)(input [WIDTH-1:0] a, output [WIDTH-1:0] y);
+      assign y = ~a;
+    endmodule
+    module helper #(parameter WIDTH = 1)(input [WIDTH-1:0] a, output [WIDTH-1:0] y);
+      leaf #(.WIDTH(WIDTH)) child(.a(a), .y(y));
+    endmodule
+    module top(input [7:0] a, output [7:0] y, output [3:0] z);
+      helper #(.WIDTH(8)) wide(.a(a), .y(y));
+      helper #(.WIDTH(4)) narrow(.a(a[3:0]), .y(z));
+    endmodule
+    module unused(input a, output y);
+      assign y = a;
+    endmodule
+  )";
+
+  const auto  designJson = SILICON::verilog::read(SOURCE);
+  const auto  design     = SILICON::yosys::Json::parse(designJson);
+  const auto& modules    = design.at("modules");
+  EXPECT_TRUE(modules.contains("unused"));
+
+  for (const auto& [instance, expectedWidth] :
+       std::array{std::pair{"wide", 8}, std::pair{"narrow", 4}}) {
+    const auto& cell = modules.at("top").at("cells").at(instance);
+    EXPECT_TRUE(cell.at("parameters").empty());
+    const auto& helper = modules.at(cell.at("type").get<std::string>());
+    EXPECT_EQ(helper.at("ports").at("a").at("bits").size(), expectedWidth);
+    const auto& child = helper.at("cells").at("child");
+    EXPECT_TRUE(child.at("parameters").empty());
+    const auto& leaf = modules.at(child.at("type").get<std::string>());
+    EXPECT_EQ(leaf.at("ports").at("y").at("bits").size(), expectedWidth);
+  }
+
+  const auto legalized = SILICON::yosys::elaborateHierarchy(designJson);
+  const auto graph     = SILICON::yosys::moduleDependencyGraph(legalized);
+  for (const auto& module : graph.dependencyOrder({"top"}))
+    EXPECT_NO_THROW((void)SILICON::yosys::deserialize(legalized, module));
+}
+
 TEST(YosysToolTest, ImportsCombinationalVerilogPreservingHelperHierarchy)
 {
   constexpr std::string_view SOURCE = R"(

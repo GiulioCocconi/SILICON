@@ -442,9 +442,14 @@ std::string readVerilog(const std::span<const SILICON::core::SourceFile> sources
   const auto jsonPath   = workspace.path() / "design.json";
 
   (void)runScript(std::format("read_verilog -noautowire {}\n"
+                              // Parameterized modules require the frontend AST to derive
+                              // each instance. JSON cannot preserve that AST, so resolve
+                              // the hierarchy before crossing the JSON boundary. Leave
+                              // library-cell validation to elaborateHierarchy.
+                              "hierarchy\n"
                               // `proc` converts processes ($dff/$mux cells) so the JSON
                               // backend can emit them; it is required before write_json
-                              // even though readVerilog performs no further elaboration.
+                              // without performing SILICON legalization here.
                               "proc\n"
                               "memory_collect\n"
                               "write_json {}\n",
