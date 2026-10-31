@@ -29,6 +29,7 @@
 #include <set>
 #include <list>
 #include <algorithm>
+#include <vector>
 
 #include "libavoid/router.h"
 #include "libavoid/geomtypes.h"
@@ -646,9 +647,9 @@ struct CmpVertInf
 
 typedef std::set<VertInf *, CmpVertInf> VertSet;
 
-// A set of points to break the line segment,
-// along with vertices for these points.
-typedef std::set<PosVertInf> BreakpointSet;
+// Breakpoints are collected during the sweep and ordered once when the
+// segment is complete, rather than allocating a tree node for each insertion.
+typedef std::vector<PosVertInf> BreakpointVector;
 
 // Temporary structure used to store the possible horizontal visibility
 // lines arising from the vertical sweep.
@@ -766,12 +767,18 @@ public:
     VertInf *commitPositionX(Router *router, double posX)
     {
         VertInf *found = nullptr;
-        for (VertSet::iterator v = vertInfs.begin();
-                v != vertInfs.end(); ++v)
+        VertSet::iterator v = vertInfs.begin();
+        for (; v != vertInfs.end(); ++v)
         {
             if ((*v)->point.x == posX)
             {
                 found = *v;
+                break;
+            }
+            // Horizontal vertices are ordered by x.  Remaining vertices
+            // cannot match, and v is the insertion hint for a new one.
+            if ((*v)->point.x > posX)
+            {
                 break;
             }
         }
@@ -782,7 +789,7 @@ public:
                 vertId = dummyOrthogShapeID;
             }
             found = new VertInf(router, vertId, Point(posX, pos));
-            vertInfs.insert(found);
+            vertInfs.insert(v, found);
         }
         return found;
     }
@@ -838,7 +845,7 @@ public:
                 break;
             }
 
-            breakPoints.insert(PosVertInf((*vert)->point.x, (*vert),
+            breakPoints.push_back(PosVertInf((*vert)->point.x, (*vert),
                         getPosVertInfDirections(*vert, XDIM)));
 
             if ((firstIntersectionPt == vertInfs.end()) &&
@@ -869,7 +876,7 @@ public:
         // First, travel in one direction
         bool seenConnPt = false;
         bool seenShapeEdge = false;
-        for (BreakpointSet::iterator nvert = breakPoints.begin();
+        for (BreakpointVector::iterator nvert = breakPoints.begin();
                 nvert != breakPoints.end(); ++nvert)
         {
             VertIDProps mask = 0;
@@ -909,7 +916,7 @@ public:
         // Then in the other direction
         seenConnPt = false;
         seenShapeEdge = false;
-        for (BreakpointSet::reverse_iterator rvert = breakPoints.rbegin();
+        for (BreakpointVector::reverse_iterator rvert = breakPoints.rbegin();
                 rvert != breakPoints.rend(); ++rvert)
         {
             VertIDProps mask = 0;
@@ -953,11 +960,10 @@ public:
     // later only consider the remainder of the segment.
     // There may be multiple segments added to the graph if the beginning
     // endpoint of the segment is shared by multiple connector endpoints.
-    VertSet addEdgeHorizontalTillIntersection(Router *router,
+    std::pair<VertSet::iterator, VertSet::iterator>
+    addEdgeHorizontalTillIntersection(Router *router,
             LineSegment& vertLine)
     {
-        VertSet intersectionSet;
-
         horiCommitBegin(router);
 
         // Does a vertex already exist for this point.
@@ -967,20 +973,19 @@ public:
         // at the intersection position.
         VertSet::iterator restBegin = addSegmentsUpTo(vertLine.pos);
 
-        // Add the intersections points to intersectionSet.
+        // Keep the intersection vertices in place.  Erasing the preceding
+        // vertices below does not invalidate this range of set iterators.
         VertSet::iterator restEnd = restBegin;
         while ((restEnd != vertInfs.end()) &&
                 (*restEnd)->point.x == vertLine.pos)
         {
             ++restEnd;
         }
-        intersectionSet.insert(restBegin, restEnd);
-
         // Adjust segment to remove processed portion.
         begin = vertLine.pos;
         vertInfs.erase(vertInfs.begin(), restBegin);
 
-        return intersectionSet;
+        return std::make_pair(restBegin, restEnd);
     }
 
     // Insert vertical breakpoints.
@@ -1002,7 +1007,7 @@ public:
         {
             if ((*v)->point.x == begin)
             {
-                vertLine.breakPoints.insert(PosVertInf(pos, *v,
+                vertLine.breakPoints.push_back(PosVertInf(pos, *v,
                         getPosVertInfDirections(*v, YDIM)));
             }
         }
@@ -1027,13 +1032,22 @@ public:
         {
             if ((*v)->point.x == finish)
             {
-                vertLine.breakPoints.insert(PosVertInf(pos, *v,
+                vertLine.breakPoints.push_back(PosVertInf(pos, *v,
                         getPosVertInfDirections(*v, YDIM)));
             }
         }
     }
-    void generateVisibilityEdgesFromBreakpointSet(Router *router, size_t dim)
+    void generateVisibilityEdgesFromBreakpoints(Router *router, size_t dim)
     {
+        // Preserve the first equivalent vertex, as std::set insertion did.
+        // In particular, coincident dummy vertices compare equal even when
+        // they belong to different connection pins.
+        std::stable_sort(breakPoints.begin(), breakPoints.end());
+        breakPoints.erase(std::unique(breakPoints.begin(), breakPoints.end(),
+                [](const PosVertInf& lhs, const PosVertInf& rhs) {
+                    return !(lhs < rhs) && !(rhs < lhs);
+                }), breakPoints.end());
+
         if (breakPoints.empty() || ((breakPoints.begin())->pos > begin))
         {
             // Add a begin point if there was not already an intersection
@@ -1052,7 +1066,7 @@ public:
                 Point point(pos, pos);
                 point[dim] = begin;
                 VertInf *vert = new VertInf(router, dummyOrthogID, point);
-                breakPoints.insert(PosVertInf(begin, vert));
+                breakPoints.insert(breakPoints.begin(), PosVertInf(begin, vert));
             }
         }
         if (breakPoints.empty() || ((breakPoints.rbegin())->pos < finish))
@@ -1072,7 +1086,7 @@ public:
                 Point point(pos, pos);
                 point[dim] = finish;
                 VertInf *vert = new VertInf(router, dummyOrthogID, point);
-                breakPoints.insert(PosVertInf(finish, vert));
+                breakPoints.push_back(PosVertInf(finish, vert));
             }
         }
 
@@ -1080,7 +1094,7 @@ public:
         setLongRangeVisibilityFlags(dim);
 
         const bool orthogonal = true;
-        BreakpointSet::iterator vert, last;
+        BreakpointVector::iterator vert, last;
 #if 0
         last = breakPoints.end();
         for (vert = breakPoints.begin(); vert != breakPoints.end();)
@@ -1106,7 +1120,7 @@ public:
 #endif
         for (vert = last = breakPoints.begin(); vert != breakPoints.end();)
         {
-            BreakpointSet::iterator firstPrev = last;
+            BreakpointVector::iterator firstPrev = last;
             while (last->vert->point[dim] != vert->vert->point[dim])
             {
                 COLA_ASSERT(vert != last);
@@ -1120,7 +1134,7 @@ public:
 
                     // Give vert visibility back to the first non-connector
                     // endpoint vertex (i.e., the side of the shape).
-                    BreakpointSet::iterator side = last;
+                    BreakpointVector::iterator side = last;
                     while (side->vert->id.isConnPt())
                     {
                         if (side == breakPoints.begin())
@@ -1211,7 +1225,7 @@ public:
     bool shapeSide;
 
     VertSet vertInfs;
-    BreakpointSet breakPoints;
+    BreakpointVector breakPoints;
 private:
     // MSVC wants to generate the assignment operator and the default
     // constructor, but fails.  Therefore we declare them private and
@@ -1312,7 +1326,7 @@ static void intersectSegments(Router *router, SegmentList& segments,
                 horiLine.insertBreakpointsFinish(router, vertLine);
 
                 size_t dim = XDIM; // x-dimension
-                horiLine.generateVisibilityEdgesFromBreakpointSet(router, dim);
+                horiLine.generateVisibilityEdgesFromBreakpoints(router, dim);
 
                 // And we've now finished with the segment, so delete.
                 it = segments.erase(it);
@@ -1325,7 +1339,7 @@ static void intersectSegments(Router *router, SegmentList& segments,
             horiLine.addEdgeHorizontal(router);
 
             size_t dim = XDIM; // x-dimension
-            horiLine.generateVisibilityEdgesFromBreakpointSet(router, dim);
+            horiLine.generateVisibilityEdgesFromBreakpoints(router, dim);
 
             // We've now swept past this horizontal segment, so delete.
             it = segments.erase(it);
@@ -1339,14 +1353,14 @@ static void intersectSegments(Router *router, SegmentList& segments,
             if (inVertSegRegion)
             {
                 // Add horizontal visibility segment.
-                VertSet intersectionVerts =
+                const auto intersectionVerts =
                         horiLine.addEdgeHorizontalTillIntersection(
                             router, vertLine);
 
-                for (VertSet::iterator v = intersectionVerts.begin();
-                        v != intersectionVerts.end(); ++v)
+                for (VertSet::iterator v = intersectionVerts.first;
+                        v != intersectionVerts.second; ++v)
                 {
-                    vertLine.breakPoints.insert(PosVertInf(horiLine.pos, *v,
+                    vertLine.breakPoints.push_back(PosVertInf(horiLine.pos, *v,
                             getPosVertInfDirections(*v, YDIM)));
                 }
             }
@@ -1356,7 +1370,7 @@ static void intersectSegments(Router *router, SegmentList& segments,
 
     // Split breakPoints set into visibility segments.
     size_t dimension = YDIM; // y-dimension
-    vertLine.generateVisibilityEdgesFromBreakpointSet(router, dimension);
+    vertLine.generateVisibilityEdgesFromBreakpoints(router, dimension);
 }
 
 
@@ -1978,7 +1992,7 @@ extern void generateStaticOrthogonalVisGraph(Router *router)
         horiLine.addEdgeHorizontal(router);
 
         size_t dim = XDIM; // x-dimension
-        horiLine.generateVisibilityEdgesFromBreakpointSet(router, dim);
+        horiLine.generateVisibilityEdgesFromBreakpoints(router, dim);
 
         it = segments.list().erase(it);
     }
