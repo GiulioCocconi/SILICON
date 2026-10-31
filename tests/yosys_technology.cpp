@@ -17,6 +17,8 @@
 
 #include "yosys_test_helpers.hpp"
 
+#include <core/elaboration.hpp>
+
 #ifdef SILICON_TEST_YOSYS_EXECUTABLE
 
 TEST(YosysToolTest, MapsVerilogToSiliconTechnologyCells)
@@ -613,6 +615,120 @@ TEST(YosysToolTest, VerilogConversionNamesCircuitAfterSelectedModule)
     const auto slug = SILICON::project::documentSlugForPath(document.path);
     ASSERT_TRUE(slug);
   }
+}
+
+TEST(YosysToolTest, VerilogConversionNamesParameterizedModulesAndPreservesReferences)
+{
+  using SILICON::project::Document;
+  using SILICON::project::DocumentType;
+  const Document                   source{"code/design.v", R"(
+    module leaf #(parameter WIDTH = 1)
+        (input [WIDTH-1:0] a, output [WIDTH-1:0] y);
+      assign y = ~a;
+    endmodule
+    module helper #(parameter WIDTH = 1)
+        (input [WIDTH-1:0] a, output [WIDTH-1:0] y);
+      leaf #(.WIDTH(WIDTH)) child(.a(a), .y(y));
+    endmodule
+    module top(input [7:0] a, output [7:0] y);
+      wire [7:0] wide;
+      wire [3:0] narrow;
+      helper #(.WIDTH(8)) first(.a(a), .y(wide));
+      helper #(.WIDTH(4)) second(.a(a[3:0]), .y(narrow));
+      assign y = wide ^ {4'b0, narrow};
+    endmodule
+  )"};
+  std::vector<Document>            documents{source};
+  SILICON::project::ProjectContext project;
+  project.setDocuments(documents);
+  auto registry = ComponentRegistry::empty();
+  registerAllComponents(registry);
+  SILICON::project::ProjectCircuitResolver resolver{project, registry};
+  auto prepared = SILICON::conversion::prepareDocumentConversion(
+      source, DocumentType::Circuit, documents, registry, resolver);
+  const auto repeated = SILICON::conversion::prepareDocumentConversion(
+      source, DocumentType::Circuit, documents, registry, resolver);
+  ASSERT_EQ(prepared.choices.size(), repeated.choices.size());
+  for (std::size_t index = 0; index < prepared.choices.size(); ++index) {
+    EXPECT_TRUE(SILICON::project::isValidDocumentSlug(prepared.choices[index].id));
+    EXPECT_EQ(prepared.choices[index].id, repeated.choices[index].id);
+    EXPECT_EQ(prepared.choices[index].dependencies, repeated.choices[index].dependencies);
+  }
+  const std::array<std::string, 1> selected{"top"};
+  const auto                       converted = prepared.execute(selected);
+  ASSERT_EQ(converted.documents.size(), 5);
+  EXPECT_EQ(converted.activatePath, "circuits/top.json");
+  std::set<std::string> names;
+  std::string           topContents;
+  for (const auto& document : converted.documents) {
+    const auto slug = SILICON::project::documentSlugForPath(document.path);
+    ASSERT_TRUE(slug);
+    EXPECT_TRUE(names.insert(*slug).second);
+    const auto contents = std::get<Circuit>(document.payload).serialize();
+    documents.emplace_back(document.path, contents);
+    if (*slug == "top")
+      topContents = contents;
+  }
+  for (const auto& document : converted.documents)
+    for (const auto& component : componentsIn(std::get<Circuit>(document.payload)))
+      if (const auto child = std::dynamic_pointer_cast<SubcircuitComponent>(component)) {
+        const auto slug = child->getPropertyValue<std::string>("slug");
+        ASSERT_TRUE(slug);
+        EXPECT_TRUE(names.contains(*slug));
+      }
+  project.setDocuments(documents);
+  const auto circuit = std::make_shared<Circuit>(
+      deserializeCircuitDocument(topContents, registry, &resolver));
+  const auto input  = findNamedComponent<DummyBusInputComponent>(*circuit, "a");
+  const auto output = findNamedComponent<DummyBusOutputComponent>(*circuit, "y");
+  ASSERT_TRUE(input);
+  ASSERT_TRUE(output);
+  CircuitElaborator elaborator(registry, &resolver);
+  const auto        runtime = elaborator.elaborate(*circuit);
+  for (unsigned int a : {0u, 1u, 15u, 128u, 255u}) {
+    input->setBusValue(valueFor(8, a));
+    Simulator simulator(runtime);
+    ASSERT_EQ(simulator.runUntilIdle(), Simulator::RunResult::Completed);
+    EXPECT_EQ(output->inputBuses()[0].getCurrentValue(),
+              valueFor(8, (a ^ 255u) ^ ((a & 15u) ^ 15u)));
+  }
+}
+
+TEST(YosysToolTest, VerilogConversionAvoidsModuleNameCollisions)
+{
+  using SILICON::project::Document;
+  using SILICON::project::DocumentType;
+  const Document                   source{"code/design.v", R"(
+    module \a/b (input a, output y); assign y = ~a; endmodule
+    module \a\b (input a, output y); assign y = a; endmodule
+    module a_b(input a, output y); assign y = a; endmodule
+    module top(input a, output y0, y1, y2);
+      \a/b first(.a(a), .y(y0));
+      \a\b second(.a(a), .y(y1));
+      a_b third(.a(a), .y(y2));
+    endmodule
+  )"};
+  const std::vector<Document>      documents{source};
+  SILICON::project::ProjectContext project;
+  project.setDocuments(documents);
+  auto registry = ComponentRegistry::empty();
+  registerAllComponents(registry);
+  SILICON::project::ProjectCircuitResolver resolver{project, registry};
+  auto prepared = SILICON::conversion::prepareDocumentConversion(
+      source, DocumentType::Circuit, documents, registry, resolver);
+  const std::array<std::string, 1> selected{"top"};
+  const auto                       converted = prepared.execute(selected);
+  std::set<std::string>            paths;
+  std::set<std::string>            references;
+  for (const auto& document : converted.documents) {
+    EXPECT_TRUE(paths.insert(document.path).second);
+    for (const auto& component : componentsIn(std::get<Circuit>(document.payload)))
+      if (const auto child = std::dynamic_pointer_cast<SubcircuitComponent>(component))
+        references.insert(*child->getPropertyValue<std::string>("slug"));
+  }
+  EXPECT_EQ(paths, (std::set<std::string>{"circuits/a_b.json", "circuits/a_b_2.json",
+                                          "circuits/a_b_3.json", "circuits/top.json"}));
+  EXPECT_EQ(references, (std::set<std::string>{"a_b", "a_b_2", "a_b_3"}));
 }
 
 TEST(YosysToolTest, CircuitConversionPreservesModulePortsAndLogic)
