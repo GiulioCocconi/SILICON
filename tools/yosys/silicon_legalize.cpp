@@ -94,7 +94,8 @@ void runCompare(RTLIL::Design* design)
 {
   for (auto* module : design->selected_modules())
     for (auto* cell : module->selected_cells()) {
-      int mode = cell->type == ID($eq) ? 0 : cell->type == ID($lt) ? 1
+      bool invert = cell->type == ID($ne);
+      int mode = (cell->type == ID($eq) || invert) ? 0 : cell->type == ID($lt) ? 1
                  : cell->type == ID($le) ? 2 : cell->type == ID($gt) ? 3
                  : cell->type == ID($ge) ? 4 : -1;
       if (mode < 0) continue;
@@ -108,6 +109,11 @@ void runCompare(RTLIL::Design* design)
       normalizeOperand(module, cell, ID::A, aWidth, targetWidth, sign);
       normalizeOperand(module, cell, ID::B, bWidth, targetWidth, sign);
       narrowTruth(module, cell, yWidth);
+      if (invert) {
+        RTLIL::SigSpec equal(module->addWire(NEW_ID));
+        module->addNot(NEW_ID, equal, cell->getPort(ID::Y));
+        cell->setPort(ID::Y, equal);
+      }
       cell->parameters.clear();
       cell->setParam(ID::WIDTH, targetWidth);
       cell->setParam(id("MODE"), mode);

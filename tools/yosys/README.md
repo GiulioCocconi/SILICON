@@ -35,7 +35,8 @@ Additional expression contracts:
 - `SILICON_COMPARE`: `WIDTH` equals both input port widths; `MODE` 0..4 means
   EQ/LT/LE/GT/GE; `SIGNED` is 0 or 1; `Y` is one bit. Inputs are already
   sign or zero extended according to Yosys semantics. Wider results are
-  zero-filled by RTLIL connections.
+  zero-filled by RTLIL connections. Raw `$ne` comparisons use EQ followed by
+  a one-bit NOT, with any upper result bits still zero-filled.
 - `SILICON_SHIFT`: `WIDTH` equals `A` and `Y` widths; `B_WIDTH` equals `B`
   width; `DIRECTION` 0/1 means left/right; `ARITHMETIC` 0/1 controls right
   sign fill. `A` is already truncated or extended to `WIDTH`. Signed shift

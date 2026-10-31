@@ -83,6 +83,32 @@ TEST(YosysLegalizationTest, ComparisonPassNormalizesWidthsModesAndSignedness)
   }
 }
 
+TEST(YosysLegalizationTest, InequalityPassInvertsEqualityAndIsIdempotent)
+{
+  const auto  source = comparisonDesign("$ne", 3, 5, 3, true, true);
+  const auto  first  = Json::parse(legalizeExpressions(source.dump(), "silicon_compare"));
+  const auto& module = first.at("modules").at("top");
+  const auto& cells  = module.at("cells");
+  ASSERT_EQ(cells.size(), 2);
+  const auto& compare = cells.at("compare");
+  EXPECT_EQ(compare.at("type"), "SILICON_COMPARE");
+  EXPECT_EQ(parameter(compare, "MODE"), 0);
+  EXPECT_EQ(parameter(compare, "WIDTH"), 5);
+  EXPECT_EQ(parameter(compare, "SIGNED"), 1);
+  for (const auto& cell : cells) {
+    if (cell.at("type") != "$not")
+      continue;
+    EXPECT_EQ(cell.at("connections").at("A"), compare.at("connections").at("Y"));
+    EXPECT_EQ(cell.at("connections").at("Y").at(0),
+              module.at("ports").at("y").at("bits").at(0));
+  }
+  EXPECT_EQ(module.at("ports").at("y").at("bits").at(1), "0");
+  EXPECT_EQ(module.at("ports").at("y").at("bits").at(2), "0");
+  const auto second = Json::parse(legalizeExpressions(first.dump(), "silicon_compare"));
+  EXPECT_EQ(second.at("modules"), first.at("modules"));
+  EXPECT_NO_THROW((void)SILICON::yosys::deserialize(first.dump()));
+}
+
 TEST(YosysLegalizationTest, ShiftPassNormalizesWidthDirectionAndArithmeticMode)
 {
   for (const auto& [type, direction] : std::array<std::pair<const char*, int>, 3>{
@@ -136,6 +162,37 @@ TEST(YosysLegalizationEndToEndTest, ImportsComparisonsAndShiftsFromVerilog)
     const auto circuit = std::make_shared<Circuit>(importVerilog(source, "top"));
     EXPECT_EQ(componentTypes(*circuit).count(item.component), 1);
     EXPECT_EQ(evaluateBinaryCircuit(circuit, item.a, item.b), valueFor(item.width, item.y));
+  }
+#else
+  GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
+#endif
+}
+
+TEST(YosysLegalizationEndToEndTest, ImportsInequalityWithMixedWidthsAndSignedness)
+{
+#ifdef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
+  for (const auto& [aSigned, bSigned] :
+       {std::pair{false, false}, std::pair{true, true}, std::pair{true, false},
+        std::pair{false, true}}) {
+    for (int resultWidth : {1, 4}) {
+      SCOPED_TRACE(std::format("aSigned={} bSigned={} resultWidth={}", aSigned, bSigned,
+                               resultWidth));
+      const auto source =
+          std::format("module top(input {} [2:0] a, input {} [4:0] b, output [{}:0] y); "
+                      "assign y = a != b; endmodule",
+                      aSigned ? "signed" : "", bSigned ? "signed" : "", resultWidth - 1);
+      const auto circuit = std::make_shared<Circuit>(importVerilog(source, "top"));
+      EXPECT_EQ(componentTypes(*circuit).count("Comparator"), 1);
+      EXPECT_EQ(componentTypes(*circuit).count("NotGate"), 1);
+      for (unsigned int a : {0u, 1u, 4u, 7u}) {
+        for (unsigned int b : {0u, 1u, 4u, 7u, 28u, 31u}) {
+          SCOPED_TRACE(std::format("a={} b={}", a, b));
+          const auto extendedA = aSigned && bSigned && (a & 4u) ? a | 24u : a;
+          EXPECT_EQ(evaluateBinaryCircuit(circuit, a, b),
+                    valueFor(resultWidth, extendedA != b));
+        }
+      }
+    }
   }
 #else
   GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
