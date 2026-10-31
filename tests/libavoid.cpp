@@ -400,6 +400,91 @@ TEST(LibavoidTest, RoutesAroundObstacle)
   router.deleteShape(obstacle);
 }
 
+TEST(LibavoidTest, CoincidentEndpointsKeepTheirOwnDirections)
+{
+  Avoid::Router router(Avoid::OrthogonalRouting);
+  const std::vector<std::pair<Avoid::Point, Avoid::ConnDirFlags>> targets = {
+      {{100, 0}, Avoid::ConnDirRight},
+      {{-100, 0}, Avoid::ConnDirLeft},
+      {{0, 100}, Avoid::ConnDirDown},
+      {{0, -100}, Avoid::ConnDirUp}};
+  std::vector<Avoid::ConnRef*> connectors;
+  for (const auto& [target, direction] : targets) {
+    auto* connector = new Avoid::ConnRef(
+        &router, Avoid::ConnEnd(Avoid::Point(0, 0), direction), Avoid::ConnEnd(target));
+    connector->setRoutingType(Avoid::ConnType_Orthogonal);
+    connectors.push_back(connector);
+  }
+
+  ASSERT_TRUE(router.processTransaction());
+  for (std::size_t i = 0; i < connectors.size(); ++i) {
+    const auto& route = connectors[i]->displayRoute();
+    ASSERT_EQ(route.size(), 2U);
+    EXPECT_TRUE(route.at(0).equals(Avoid::Point(0, 0)));
+    EXPECT_TRUE(route.at(1).equals(targets[i].first));
+  }
+}
+
+TEST(LibavoidTest, DensePinnedRowsKeepTerminalsAndAvoidObstacles)
+{
+  constexpr int COUNT = 12;
+  for (const bool transpose : {false, true}) {
+    SCOPED_TRACE(transpose);
+    auto point = [transpose](const double x, const double y) {
+      return transpose ? QPointF(y, x) : QPointF(x, y);
+    };
+    auto bounds = [transpose](const QRectF& rect) {
+      return transpose ? QRectF(rect.top(), rect.left(), rect.height(), rect.width())
+                       : rect;
+    };
+    Avoid::Router router(Avoid::OrthogonalRouting);
+    const QRectF  sourceBounds   = bounds(QRectF(-240, -330, 40, 660));
+    const QRectF  targetBounds   = bounds(QRectF(200, -330, 40, 660));
+    const QRectF  blockedBounds  = bounds(QRectF(-40, -150, 80, 300));
+    auto          sourcePolygon  = Avoid::rectangleFromQRectF(sourceBounds);
+    auto          targetPolygon  = Avoid::rectangleFromQRectF(targetBounds);
+    auto          blockedPolygon = Avoid::rectangleFromQRectF(blockedBounds);
+    auto*         sourceShape    = new Avoid::ShapeRef(&router, sourcePolygon);
+    auto*         targetShape    = new Avoid::ShapeRef(&router, targetPolygon);
+    new Avoid::ShapeRef(&router, blockedPolygon);
+    std::vector<Avoid::ConnRef*> connectors;
+    for (int i = 0; i < COUNT; ++i) {
+      const auto source =
+          pinnedTerminal(sourceShape, sourceBounds, point(-200, -110 + i * 20),
+                         transpose ? Avoid::ConnDirDown : Avoid::ConnDirRight, i + 1);
+      const auto target =
+          pinnedTerminal(targetShape, targetBounds, point(200, 110 - i * 20),
+                         transpose ? Avoid::ConnDirUp : Avoid::ConnDirLeft, i + 1);
+      auto* connector = new Avoid::ConnRef(&router, source, target);
+      connector->setRoutingType(Avoid::ConnType_Orthogonal);
+      connectors.push_back(connector);
+    }
+
+    ASSERT_TRUE(router.processTransaction());
+    for (int i = 0; i < COUNT; ++i) {
+      SCOPED_TRACE(i);
+      const auto route = snappedDisplayRoute(*connectors[i]);
+      ASSERT_GE(route.size(), 2U);
+      EXPECT_EQ(route.front(), point(-200, -110 + i * 20));
+      EXPECT_EQ(route.back(), point(200, 110 - i * 20));
+      EXPECT_TRUE(isOrthogonalRoute(route));
+      EXPECT_FALSE(orthogonalRouteSelfIntersects(route));
+      const auto coordinate = [transpose](const QPointF p) {
+        return transpose ? p.y() : p.x();
+      };
+      EXPECT_GT(coordinate(route[1]), coordinate(route.front()));
+      EXPECT_LT(coordinate(route[route.size() - 2]), coordinate(route.back()));
+      for (std::size_t j = 1; j < route.size(); ++j)
+        for (const auto& obstacle : {sourceBounds, targetBounds, blockedBounds})
+          EXPECT_FALSE(segmentCrossesRectInterior(route[j - 1], route[j], obstacle))
+              << "segment " << route[j - 1].x() << ',' << route[j - 1].y() << " -> "
+              << route[j].x() << ',' << route[j].y() << " obstacle " << obstacle.left()
+              << ',' << obstacle.top() << ' ' << obstacle.width() << 'x'
+              << obstacle.height();
+    }
+  }
+}
+
 TEST(WireRoutingTest, RoutesAroundBufferedObstacle)
 {
   const QPointF start(0.0, 0.0);
