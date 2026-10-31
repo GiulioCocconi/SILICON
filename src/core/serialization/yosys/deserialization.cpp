@@ -220,13 +220,11 @@ namespace {
         return requireObjectMember(connectionsJson, name, context);
       }
 
-      void requireConnectionNames(const std::span<const std::string> names) const
+      void requireKnownConnectionNames(const std::span<const std::string> names) const
       {
-        if (connectionsJson.size() != names.size())
-          fail(context, "cell has missing or unexpected connections");
-        for (const auto& name : names)
-          if (!connectionsJson.contains(name))
-            fail(context, std::format("missing '{}' connection", name));
+        for (const auto& [name, _] : connectionsJson.items())
+          if (!std::ranges::contains(names, name))
+            fail(context, std::format("unexpected '{}' connection", name));
       }
 
       [[nodiscard]] std::size_t width(const std::string_view name) const
@@ -289,6 +287,20 @@ namespace {
              const std::optional<std::size_t> expectedWidth = std::nullopt) const
       {
         return bus(port, ConnectionRole::Driver, expectedWidth);
+      }
+
+      [[nodiscard]] Bus optionalDriver(const std::string_view port,
+                                       const std::size_t      width) const
+      {
+        const auto connection = connectionsJson.find(port);
+        if (connection == connectionsJson.end()
+            || (connection->is_array() && connection->empty())) {
+          if (width == 0 || width > std::numeric_limits<unsigned short>::max())
+            fail(context, std::format("'{}' is outside Silicon's supported width", port));
+          // Preserve the module interface with private wires for each unused output.
+          return Bus(static_cast<unsigned short>(width));
+        }
+        return driver(port, width);
       }
 
       [[nodiscard]] Wire_ptr consumerBit(const std::string_view port) const
@@ -1515,7 +1527,7 @@ namespace {
       portNames.reserve(ports.size());
       for (const auto& [portName, _] : ports.items())
         portNames.push_back(portName);
-      cell.requireConnectionNames(portNames);
+      cell.requireKnownConnectionNames(portNames);
 
       std::vector<Bus>         inputs;
       std::vector<Bus>         outputs;
@@ -1537,7 +1549,7 @@ namespace {
           inputs.push_back(cell.consumer(portName, bitsJson.size()));
         } else if (direction == "output") {
           outputNames.push_back(portName);
-          outputs.push_back(cell.driver(portName, bitsJson.size()));
+          outputs.push_back(cell.optionalDriver(portName, bitsJson.size()));
         } else if (direction == "inout")
           fail(context, "inout ports are not supported");
         else

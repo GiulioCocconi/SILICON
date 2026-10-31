@@ -534,6 +534,72 @@ TEST(YosysTest, ImportsDeclaredModuleCellsAsSubcircuits)
   EXPECT_EQ(serializedInstance->at("properties").at("slug"), "leaf");
 }
 
+TEST(YosysTest, ImportsUnconnectedModuleOutputsWithoutRelaxingInputValidation)
+{
+  using SILICON::yosys::Json;
+  Json  design;
+  auto& leaf    = design["modules"]["leaf"];
+  leaf["ports"] = {
+      {"a", {{"direction", "input"}, {"bits", Json::array({2})}}},
+      {"unused_bit", {{"direction", "output"}, {"bits", Json::array({3})}}},
+      {"unused_bus", {{"direction", "output"}, {"bits", Json::array({4, 5, 6, 7})}}},
+      {"y", {{"direction", "output"}, {"bits", Json::array({8})}}},
+  };
+  leaf["cells"]         = Json::object();
+  auto& top             = design["modules"]["top"];
+  top["ports"]          = Json::object();
+  top["cells"]["first"] = {
+      {"type", "leaf"},
+      {"parameters", Json::object()},
+      {"connections", {{"a", Json::array({20})}, {"y", Json::array({21})}}}};
+  top["cells"]["second"]                     = top["cells"]["first"];
+  top["cells"]["second"]["connections"]["y"] = Json::array({22});
+
+  for (bool explicitlyDisconnected : {false, true}) {
+    auto source = design;
+    if (explicitlyDisconnected)
+      for (auto& cell : source["modules"]["top"]["cells"])
+        for (const auto name : {"unused_bit", "unused_bus"})
+          cell["connections"][name] = Json::array();
+    const auto circuit = SILICON::yosys::deserialize(source.dump(), "top");
+    EXPECT_EQ(componentTypes(circuit).count("Subcircuit"), 2);
+    std::set<const Wire*> outputs;
+    for (const auto& component : componentsIn(circuit)) {
+      const auto child = std::dynamic_pointer_cast<SubcircuitComponent>(component);
+      ASSERT_TRUE(child);
+      EXPECT_EQ(child->importedOutputNames(),
+                (std::vector<std::string>{"unused_bit", "unused_bus", "y"}));
+      ASSERT_EQ(child->outputBuses().size(), 3);
+      EXPECT_EQ(child->outputBuses()[0].size(), 1);
+      EXPECT_EQ(child->outputBuses()[1].size(), 4);
+      EXPECT_EQ(child->outputBuses()[2].size(), 1);
+      for (const auto& bus : child->outputBuses())
+        for (const auto& wire : bus) {
+          ASSERT_TRUE(wire);
+          EXPECT_TRUE(outputs.insert(wire.get()).second);
+          EXPECT_NE(wire, child->inputBuses()[0][0]);
+        }
+    }
+    EXPECT_EQ(outputs.size(), 12);
+
+    auto malformed = source;
+    malformed["modules"]["top"]["cells"]["first"]["connections"].erase("a");
+    EXPECT_THROW((void)SILICON::yosys::deserialize(malformed.dump(), "top"),
+                 std::runtime_error);
+    for (const auto& [name, bits] : std::vector<std::pair<std::string, Json>>{
+             {"a", Json::array()},
+             {"typo", Json::array({23})},
+             {"y", Json::array({21, 23})},
+             {"unused_bit", nullptr},
+             {"unused_bus", Json::array({"0", "0", "0", "0"})}}) {
+      malformed                                                          = source;
+      malformed["modules"]["top"]["cells"]["first"]["connections"][name] = bits;
+      EXPECT_THROW((void)SILICON::yosys::deserialize(malformed.dump(), "top"),
+                   std::runtime_error);
+    }
+  }
+}
+
 TEST(YosysTest, RejectsMalformedModuleDependencyGraphInput)
 {
   using SILICON::yosys::Json;
