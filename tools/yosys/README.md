@@ -13,7 +13,8 @@ The ordered entry point runs:
 2. `pmuxtree`, `delete t:$scopeinfo`, `opt -nosdff`, `memory_dff`: Yosys preparation.
 3. `silicon_memrd_address`, `silicon_memory_lower`: legalize read-only memories.
 4. `silicon_logic`, `silicon_compare`, `silicon_shift`: normalize expression semantics.
-5. Selective `simplemap`, `extract_fa`, SILICON `techmap`, `opt_clean`.
+5. Selective `simplemap` (including `$reduce_bool` to OR gates), `extract_fa`,
+   SILICON `techmap`, `opt_clean`.
 6. `silicon_validate`: reject unsupported cells before `write_json`.
 
 The expression passes only touch selected cells. Each changes raw cells to a

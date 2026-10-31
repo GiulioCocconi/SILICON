@@ -199,6 +199,31 @@ TEST(YosysLegalizationEndToEndTest, ImportsInequalityWithMixedWidthsAndSignednes
 #endif
 }
 
+TEST(YosysLegalizationEndToEndTest, ImportsVectorConditionsUsingWholeOperandTruth)
+{
+#ifdef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
+  for (int width : {2, 3, 8}) {
+    for (bool sign : {false, true}) {
+      SCOPED_TRACE(std::format("width={} signed={}", width, sign));
+      const auto source =
+          std::format("module top(input {} [{}:0] a, input [3:0] b, output [3:0] y); "
+                      "assign y = a ? b : 4'h9; endmodule",
+                      sign ? "signed" : "", width - 1);
+      const auto circuit = std::make_shared<Circuit>(importVerilog(source, "top"));
+      EXPECT_GT(componentTypes(*circuit).count("OrGate"), 0);
+      for (unsigned int a = 0; a < (1u << width); ++a) {
+        for (unsigned int b : {0u, 5u, 15u}) {
+          SCOPED_TRACE(std::format("a={} b={}", a, b));
+          EXPECT_EQ(evaluateBinaryCircuit(circuit, a, b), valueFor(4, a ? b : 9));
+        }
+      }
+    }
+  }
+#else
+  GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
+#endif
+}
+
 TEST(YosysCanonicalImporterTest, ImportsCanonicalExpressionCellsWithoutYosys)
 {
   using SILICON::yosys::Json;
