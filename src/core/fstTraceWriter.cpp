@@ -22,6 +22,8 @@
 #include <stdexcept>
 #include <utility>
 
+#include <nlohmann/json.hpp>
+
 #include <utils/ranges_wrapper.hpp>
 
 namespace SILICON::waveform::fst {
@@ -65,8 +67,9 @@ TraceWriter::TraceWriter(std::string_view                fileName,
 
         const auto handle = builder.createVar(FST_VT_VCD_WIRE, FST_VD_IMPLICIT,
                                               checkedFstWidth(signal.width), signal.name);
-        registeredSignals.push_back(RegisteredSignal{
-            signal.name, static_cast<std::size_t>(index), signal.width, handle});
+        registeredSignals.push_back(
+            RegisteredSignal{signal.name, static_cast<std::size_t>(index), signal.width,
+                             handle, signal.errorMask});
         handlesBySignalName.try_emplace(signal.name, handle);
       }
 
@@ -80,13 +83,29 @@ void TraceWriter::emitSnapshot(const uint64_t                     time,
                                const std::span<const std::string> values)
 {
   writer.emitTimeChange(time);
+  auto errorMasks = nlohmann::json::object();
 
   for (const auto& signal : registeredSignals) {
     const std::string_view value = signal.valueIndex < values.size()
                                        ? std::string_view(values[signal.valueIndex])
                                        : std::string_view{};
-    writer.emitValueChange(signal.handle, normalizeValue(value, signal.width));
+    auto                   normalized = normalizeValue(value, signal.width);
+    std::string            errors(signal.width, '0');
+    for (std::size_t i = 0; i < normalized.size(); ++i) {
+      if (normalized[i] == 'E') {
+        normalized[i] = 'x';
+        errors[i]     = '1';
+      }
+    }
+    writer.emitValueChange(signal.handle, normalized);
+    if (signal.errorMask)
+      errorMasks[signal.name + "__error"] = errors;
   }
+
+  if (!errorMasks.empty())
+    writer.emitComment(
+        nlohmann::json{{"silicon_error_masks", {{"time", time}, {"values", errorMasks}}}}
+            .dump());
 }
 
 void TraceWriter::flush()
@@ -110,7 +129,11 @@ std::string TraceWriter::normalizeValue(std::string_view value, const std::size_
     normalized = "x";
 
   for (char& ch : normalized) {
-    if (ch != '0' && ch != '1' && ch != 'x' && ch != 'z')
+    if (ch == 'X')
+      ch = 'x';
+    else if (ch == 'Z')
+      ch = 'z';
+    else if (ch != '0' && ch != '1' && ch != 'x' && ch != 'z' && ch != 'E')
       ch = 'x';
   }
 

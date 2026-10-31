@@ -192,8 +192,12 @@ void writeTrace(std::string_view fileName, const Trace& trace,
   traceSignals.reserve(trace.signalDefinitions.size());
 
   for (std::size_t i = 0; i < trace.signalDefinitions.size(); ++i) {
-    traceSignals.push_back(
-        {trace.signalDefinitions[i].name, signalWidth(trace, static_cast<int>(i))});
+    const bool hasErrors = std::ranges::any_of(trace.samples, [i](const auto& sample) {
+      return i < sample.values.size()
+             && std::ranges::contains(sample.values[i], core::State::ERROR);
+    });
+    traceSignals.push_back({trace.signalDefinitions[i].name,
+                            signalWidth(trace, static_cast<int>(i)), hasErrors});
   }
 
   TraceWriter writer(fileName, traceSignals, std::move(options));

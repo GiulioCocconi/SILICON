@@ -423,6 +423,18 @@ public:
     fstWriterEmitTimeChange(context.get(), time);
   }
 
+  /**
+   * @brief Appends a standard FST comment, without declaring a signal.
+   *
+   * Custom metadata can be embedded in the payload. Standard comments are supported
+   * by both GTKWave and Surfer; unknown miscellaneous attributes can crash readers.
+   */
+  void emitComment(const std::string& payload)
+  {
+    assert(context);
+    fstWriterSetComment(context.get(), payload.c_str());
+  }
+
   // --- String/Binary Encoded Value Emission --------------------------------------------
 
   inline void emitValueChange(fstHandle handle, const std::string& val)

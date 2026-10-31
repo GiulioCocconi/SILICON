@@ -38,6 +38,8 @@ using namespace SILICON::core;
  * The low-level FST wrapper exposes libfst concepts such as scopes, variables, and
  * handles. This class lifts that API to SILICON concepts by registering circuit buses as
  * vector signals and emitting snapshots from the buses' current simulation states.
+ * Each bus has a same-width <name>__error metadata bitmask so errors arising in
+ * future snapshots can be distinguished from unknowns. Error data bits are x.
  */
 class CircuitWriter final {
 public:

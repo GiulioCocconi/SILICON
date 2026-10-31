@@ -70,7 +70,7 @@ namespace {
       if (bus.size() == 0)
         continue;
 
-      signals.push_back({name, bus.size()});
+      signals.push_back({name, bus.size(), true});
     }
 
     return signals;
@@ -86,7 +86,9 @@ namespace {
       if (!*it) {
         value.push_back('x');
       } else {
-        value.push_back(CircuitWriter::stateToFstValue((*it)->getCurrentState()));
+        const auto state = (*it)->getCurrentState();
+        value.push_back(state == State::ERROR ? 'E'
+                                              : CircuitWriter::stateToFstValue(state));
       }
     }
 
@@ -146,7 +148,7 @@ char CircuitWriter::stateToFstValue(const State state)
     case State::LOW: return '0';
     case State::HIGH: return '1';
     case State::UNKNOWN: return 'x';
-    case State::ERROR: return 'z';
+    case State::ERROR: return 'x';
   }
 
   return 'x';

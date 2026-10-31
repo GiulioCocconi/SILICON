@@ -219,6 +219,19 @@ snapshots observe the same named buses and timestamps. The waveform viewer can a
 export its already-collected snapshots to an FST file; FST is an interchange/output
 format, not the in-memory editing model.
 
+FST exports encode both unknown and error states as `x`; errors never use the
+high-impedance `z` symbol. A same-width metadata bitmask named `<signal>__error`
+preserves error positions: a high bit marks the corresponding data bit as an error
+and overrides its value. If the metadata field is absent, the signal has no errors.
+Live tracing includes masks for every bus so later errors can be recorded;
+snapshot exports include masks only for signals containing errors. Masks are stored
+as JSON in standard FST comments, for example,
+`{"silicon_error_masks":{"time":5,"values":{"data__error":"1000"}}}`.
+The timestamp uses the file's timescale. Both GTKWave and Surfer support standard
+comments without showing them in the signal list. Metadata fields are separate
+from signal names. Unknown miscellaneous attributes are avoided because some FST
+readers panic on them.
+
 Relevant source: the [waveform data model](https://github.com/GiulioCocconi/SILICON/blob/main/src/core/siliconWaveform.hpp),
 [simulation/UI bridge](https://github.com/GiulioCocconi/SILICON/blob/main/src/ui/circuit/diagram/scene/diagramSceneSimulationController.cpp),
 and [FST adapter](https://github.com/GiulioCocconi/SILICON/blob/main/src/core/siliconFst.hpp).

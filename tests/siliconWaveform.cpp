@@ -20,6 +20,8 @@
 #include <core/fstWrapper.hpp>
 #include <core/siliconWaveform.hpp>
 
+#include <nlohmann/json.hpp>
+
 #include <algorithm>
 #include <cstdio>
 #include <map>
@@ -132,4 +134,57 @@ TEST(SiliconWaveformTest, WritesFstTrace)
                         {5, "clk", "1"},
                         {5, "data", "1010"},
                     }));
+}
+
+TEST(SiliconWaveformTest, ExportsErrorsAsUnknownWithPerBitMasks)
+{
+  const std::string filename = "test_silicon_waveform_errors.fst";
+  FileCleanup       cleanup{filename};
+
+  Trace trace;
+  resetTrace(trace, {{"data", 4}, {"unknown", 1}, {"scalar", 1}}, 0);
+  appendSnapshot(
+      trace, 0, {busValueFromBits("E01X"), busValueFromBits("X"), busValueFromBits("E")});
+  appendSnapshot(
+      trace, 5, {busValueFromBits("X01E"), busValueFromBits("0"), busValueFromBits("X")});
+  appendSnapshot(
+      trace, 10,
+      {busValueFromBits("0011"), busValueFromBits("1"), busValueFromBits("1")});
+  writeTrace(filename, trace);
+
+  Reader     reader(filename);
+  const auto hierarchy = reader.buildHierarchyTree();
+  ASSERT_EQ(hierarchy.vars.size(), 3);
+  std::map<fstHandle, std::string> names;
+  for (const auto& var : hierarchy.vars) {
+    names.emplace(var.handle, var.name);
+    EXPECT_NE(var.name, "unknown__error");
+  }
+  std::map<uint64_t, nlohmann::json> masks;
+  reader.iterateHierarchy([&](const fstHier* h) {
+    if (h->htyp == FST_HT_ATTRBEGIN && h->u.attr.typ == FST_AT_MISC
+        && h->u.attr.subtype == FST_MT_COMMENT) {
+      EXPECT_EQ(h->u.attr.arg, 0);
+      const auto metadata =
+          nlohmann::json::parse(h->u.attr.name).at("silicon_error_masks");
+      masks[metadata.at("time").get<uint64_t>()] = metadata.at("values");
+      EXPECT_FALSE(metadata.at("values").contains("unknown__error"));
+    }
+  });
+  std::map<std::pair<uint64_t, std::string>, std::string> values;
+  reader.setFacProcessMaskAll();
+  reader.readIterateBlocks(
+      [&](uint64_t time, fstHandle handle, std::string_view value, uint32_t) {
+        values[{time, names.at(handle)}] = std::string(value);
+      });
+
+  EXPECT_EQ((values[{0, "data"}]), "x01x");
+  EXPECT_EQ((masks[0]["data__error"]), "1000");
+  EXPECT_EQ((masks[5]["data__error"]), "0001");
+  EXPECT_EQ((values[{10, "data"}]), "0011");
+  EXPECT_EQ((masks[10]["data__error"]), "0000");
+  EXPECT_EQ((values[{0, "unknown"}]), "x");
+  EXPECT_EQ((values[{0, "scalar"}]), "x");
+  EXPECT_EQ((masks[0]["scalar__error"]), "1");
+  EXPECT_EQ((masks[5]["scalar__error"]), "0");
 }

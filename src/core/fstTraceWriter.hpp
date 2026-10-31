@@ -56,6 +56,16 @@ public:
      * Number of bits in the emitted vector. Zero-width signals are ignored.
      */
     std::size_t width = 1;
+
+    /**
+     * Emit a same-width <name>__error metadata bitmask. A high bit marks an
+     * error and overrides the corresponding data bit, which is emitted as x.
+     * Masks and their snapshot timestamps are stored in JSON comments under
+     * silicon_error_masks, using time and values fields. GTKWave and Surfer read
+     * standard FST comments without displaying them as signals. Absent masks mean
+     * no errors.
+     */
+    bool errorMask = false;
   };
 
   /**
@@ -108,7 +118,8 @@ public:
    * are left-padded, and longer values keep their rightmost bits.
    *
    * @param time Timestamp for this snapshot.
-   * @param values Encoded FST/VCD-style values using 0, 1, x, and z symbols.
+   * @param values MSB-first values using 0, 1, x/X, z/Z, and E (SILICON error).
+   * Errors are emitted as x, with their positions preserved in enabled error masks.
    */
   void emitSnapshot(uint64_t time, std::span<const std::string> values);
 
@@ -133,6 +144,7 @@ private:
     std::size_t valueIndex;
     std::size_t width;
     fstHandle   handle;
+    bool        errorMask;
   };
 
   [[nodiscard]] static std::string normalizeValue(std::string_view value,

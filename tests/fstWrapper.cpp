@@ -22,6 +22,8 @@
 #include <core/siliconFst.hpp>
 #include <core/simulator.hpp>
 
+#include <nlohmann/json.hpp>
+
 #include <algorithm>
 #include <cstdio>
 #include <map>
@@ -425,6 +427,82 @@ TEST(FstTraceWriterTest, NormalizesSampledValues)
   EXPECT_EQ((values[{0, h_missing}]), "xx");
 }
 
+TEST(FstTraceWriterTest, NormalizesErrorMasksAndClearsMissingValues)
+{
+  const std::string filename = "test_trace_writer_error_masks.fst";
+  FileCleanup       cleanup{filename};
+  fstHandle         data;
+  {
+    TraceWriter writer(filename, {{"data", 4, true}, {"empty", 0, true}});
+    EXPECT_EQ(writer.signalCount(), 1);
+    EXPECT_FALSE(writer.handleForSignal("empty").has_value());
+    data = *writer.handleForSignal("data");
+    writer.emitSnapshot(0, std::vector<std::string>{"E1"});
+    writer.emitSnapshot(5, std::vector<std::string>{"E0E10"});
+    writer.emitSnapshot(10, {});
+  }
+  Reader     reader(filename);
+  const auto hierarchy = reader.buildHierarchyTree();
+  ASSERT_EQ(hierarchy.vars.size(), 1);
+  EXPECT_EQ(hierarchy.vars[0].name, "data");
+  std::map<uint64_t, nlohmann::json> masks;
+  reader.iterateHierarchy([&](const fstHier* h) {
+    if (h->htyp == FST_HT_ATTRBEGIN && h->u.attr.typ == FST_AT_MISC
+        && h->u.attr.subtype == FST_MT_COMMENT) {
+      EXPECT_EQ(h->u.attr.arg, 0);
+      const auto metadata =
+          nlohmann::json::parse(h->u.attr.name).at("silicon_error_masks");
+      masks[metadata.at("time").get<uint64_t>()] = metadata.at("values");
+    }
+  });
+  std::map<std::pair<uint64_t, fstHandle>, std::string> values;
+  reader.setFacProcessMaskAll();
+  reader.readIterateBlocks(
+      [&](uint64_t time, fstHandle handle, std::string_view value, uint32_t) {
+        values[{time, handle}] = std::string(value);
+      });
+  EXPECT_EQ((values[{0, data}]), "xxx1");
+  EXPECT_EQ((masks[0]["data__error"]), "0010");
+  EXPECT_EQ((values[{5, data}]), "0x10");
+  EXPECT_EQ((masks[5]["data__error"]), "0100");
+  EXPECT_EQ((values[{10, data}]), "xxxx");
+  EXPECT_EQ((masks[10]["data__error"]), "0000");
+}
+
+TEST(FstTraceWriterTest, KeepsMetadataSeparateFromSimilarlyNamedSignals)
+{
+  const std::string filename = "test_trace_writer_metadata_names.fst";
+  FileCleanup       cleanup{filename};
+  {
+    TraceWriter writer(filename, {{"data", 1, true}, {"data__error", 1}});
+    writer.emitSnapshot(0, std::vector<std::string>{"E", "0"});
+  }
+  Reader     reader(filename);
+  const auto hierarchy = reader.buildHierarchyTree();
+  ASSERT_EQ(hierarchy.vars.size(), 2);
+  EXPECT_EQ(hierarchy.vars[1].name, "data__error");
+  bool found = false;
+  reader.iterateHierarchy([&](const fstHier* h) {
+    if (h->htyp == FST_HT_ATTRBEGIN && h->u.attr.typ == FST_AT_MISC
+        && h->u.attr.subtype == FST_MT_COMMENT) {
+      const auto metadata =
+          nlohmann::json::parse(h->u.attr.name).at("silicon_error_masks");
+      EXPECT_EQ(metadata.at("time"), 0);
+      EXPECT_EQ(metadata.at("values").at("data__error"), "1");
+      found = true;
+    }
+  });
+  EXPECT_TRUE(found);
+}
+
+TEST(SiliconFstWriterTest, MapsErrorsToUnknown)
+{
+  EXPECT_EQ(CircuitWriter::stateToFstValue(State::LOW), '0');
+  EXPECT_EQ(CircuitWriter::stateToFstValue(State::HIGH), '1');
+  EXPECT_EQ(CircuitWriter::stateToFstValue(State::UNKNOWN), 'x');
+  EXPECT_EQ(CircuitWriter::stateToFstValue(State::ERROR), 'x');
+}
+
 TEST(SiliconFstWriterTest, RegistersCircuitBusesAndEmitsSnapshots)
 {
   const std::string filename = "test_silicon_writer.fst";
@@ -484,6 +562,17 @@ TEST(SiliconFstWriterTest, RegistersCircuitBusesAndEmitsSnapshots)
   EXPECT_EQ(hierarchy.vars[2].name, "output_0");
   EXPECT_EQ(hierarchy.vars[2].length, 1);
 
+  std::map<uint64_t, nlohmann::json> masks;
+  reader.iterateHierarchy([&](const fstHier* h) {
+    if (h->htyp == FST_HT_ATTRBEGIN && h->u.attr.typ == FST_AT_MISC
+        && h->u.attr.subtype == FST_MT_COMMENT) {
+      EXPECT_EQ(h->u.attr.arg, 0);
+      const auto metadata =
+          nlohmann::json::parse(h->u.attr.name).at("silicon_error_masks");
+      masks[metadata.at("time").get<uint64_t>()] = metadata.at("values");
+    }
+  });
+
   std::map<std::pair<uint64_t, fstHandle>, std::string> values;
   reader.setFacProcessMaskAll();
   reader.readIterateBlocks([&values](uint64_t t, fstHandle h, std::string_view v,
@@ -494,8 +583,13 @@ TEST(SiliconFstWriterTest, RegistersCircuitBusesAndEmitsSnapshots)
   EXPECT_EQ((values[{0, h_output0}]), "x");
 
   EXPECT_EQ((values[{5, h_input0}]), "01");
-  EXPECT_EQ((values[{5, h_input1}]), "zx");
-  EXPECT_EQ((values[{5, h_output0}]), "z");
+  EXPECT_EQ((values[{5, h_input1}]), "xx");
+  EXPECT_EQ((values[{5, h_output0}]), "x");
+  EXPECT_EQ((masks[0]["input_0__error"]), "00");
+  EXPECT_EQ((masks[0]["input_1__error"]), "00");
+  EXPECT_EQ((masks[0]["output_0__error"]), "0");
+  EXPECT_EQ((masks[5]["input_1__error"]), "10");
+  EXPECT_EQ((masks[5]["output_0__error"]), "1");
 }
 
 TEST(SiliconFstWriterTest, SimulatorFstTraceUsesConfiguredBusNames)

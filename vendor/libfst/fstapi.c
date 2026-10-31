@@ -1990,6 +1990,9 @@ void fstWriterClose(fstWriterContext *xc)
             char *fnam = (char *)malloc(fnam_len);
 #endif
 
+            /* Attributes may have been appended after the initial time change. */
+            fflush(xc->hier_handle);
+
             fixup_offs = ftello(xc->handle);
             fputc(FST_BL_SKIP, xc->handle); /* temporary tag */
             hlen = ftello(xc->handle);
