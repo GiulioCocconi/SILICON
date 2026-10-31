@@ -282,6 +282,9 @@ public:
                                                          GUIComponentFactory&  factory);
 
 private:
+  /** @brief Reuses a shape image while building a batch of port lines. */
+  void setPortLine(Port* port, QImage& shapeImage);
+
   /**
    * @brief Scans image for first non-transparent pixel.
    *
