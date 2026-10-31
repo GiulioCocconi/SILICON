@@ -24,6 +24,7 @@
 #include <QDialog>
 #include <QFontMetricsF>
 #include <QGraphicsView>
+#include <QImage>
 #include <QLabel>
 #include <QMarginsF>
 #include <QPainter>
@@ -267,6 +268,7 @@ void GraphicalComponent::setPorts(const std::vector<PortPair>& busToPortInputs,
                                   const std::vector<PortPair>& busToPortOutputs)
 {
   clearPorts();
+  QImage shapeImage;
 
   for (const auto& [index, pair] : busToPortInputs | SILICON::views::enumerate) {
     const auto& [name, pos] = pair;
@@ -275,7 +277,7 @@ void GraphicalComponent::setPorts(const std::vector<PortPair>& busToPortInputs,
     // ReSharper disable once CppDFAMemoryLeak
     auto p = new Port(index, pos, name);
     this->inputPorts.push_back(p);
-    this->setPortLine(p);
+    this->setPortLine(p, shapeImage);
   }
 
   for (const auto& [index, pair] : busToPortOutputs | SILICON::views::enumerate) {
@@ -284,7 +286,7 @@ void GraphicalComponent::setPorts(const std::vector<PortPair>& busToPortInputs,
     // ReSharper disable once CppDFAMemoryLeak
     auto p = new Port(index, pos, name);
     this->outputPorts.push_back(p);
-    this->setPortLine(p);
+    this->setPortLine(p, shapeImage);
   }
   if (auto* diagram = qobject_cast<DiagramScene*>(scene()))
     diagram->requestConnectionsRefresh();
@@ -340,6 +342,12 @@ QPoint GraphicalComponent::scanImage(const QImage& image, const PortSide side,
 
 void GraphicalComponent::setPortLine(Port* port)
 {
+  QImage shapeImage;
+  setPortLine(port, shapeImage);
+}
+
+void GraphicalComponent::setPortLine(Port* port, QImage& shapeImage)
+{
   if (!itemShape)
     throw std::logic_error("setPortLine: item shape not set");
 
@@ -352,13 +360,11 @@ void GraphicalComponent::setPortLine(Port* port)
   if (shapeSize.width() <= 0 || shapeSize.height() <= 0)
     throw std::logic_error("setPortLine: shape dimensions must be positive");
 
-  // Create an image that supports transparency in order to alpha-scan
-  auto image = QImage(shapeSize, QImage::Format_ARGB32);
-
-  // Paint the shape on the image
-  if (this->scanShape) {
-    image.fill(Qt::transparent);
-    QPainter painter(&image);
+  // Render once per port batch, only when alpha scanning is needed.
+  if (scanShape && shapeImage.isNull()) {
+    shapeImage = QImage(shapeSize, QImage::Format_ARGB32);
+    shapeImage.fill(Qt::transparent);
+    QPainter painter(&shapeImage);
     painter.setRenderHint(QPainter::Antialiasing);
     painter.translate(-shapeRect.topLeft());
 
@@ -375,11 +381,11 @@ void GraphicalComponent::setPortLine(Port* port)
 
   const auto [portSide, naiveProjection] = nearestPortSide(portPos, portRect);
 
-  const QPoint projectionOnShape = scanImage(image, portSide, naiveProjection);
+  const QPoint projectionOnShape = scanImage(shapeImage, portSide, naiveProjection);
 
   // Create the line from port position to the projection
   prepareGeometryChange();
-  port->side = portSide;
+  port->side      = portSide;
   port->printName = printPortNames;
   port->setLine(new ThemedPortLineItem(QLineF(portPos, projectionOnShape), this));
 
