@@ -3,7 +3,8 @@
 `elaborateHierarchy` accepts raw Yosys JSON. It runs `silicon_legalize` after
 hierarchy/proc/muxpack and writes **SILICON-legalized Yosys JSON** for
 `deserialize`. Direct `deserialize` callers must supply that legalized form.
-`readVerilog` returns raw JSON; `serialize` also emits raw Yosys cells and may
+`readVerilog` resolves parameterized module instances while the frontend AST is
+available, then returns raw JSON; `serialize` also emits raw Yosys cells and may
 need legalization before import.
 
 The ordered entry point runs:

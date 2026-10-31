@@ -139,8 +139,8 @@ private:
 #endif
 
 // Local composition of the primitive Yosys API (the convenience wrappers were
-// removed from the library): parse-only read, then elaborate preserving the
-// module hierarchy, then deserialize into a Silicon circuit.
+// removed from the library): read and resolve parameters, then elaborate
+// preserving the module hierarchy, then deserialize into a Silicon circuit.
 [[nodiscard]] inline Circuit importVerilog(const std::string_view             source,
                                            const std::string_view             topModule,
                                            const SILICON::yosys::ToolOptions& options = {})
