@@ -138,6 +138,58 @@ TEST(YosysLegalizationTest, FinalValidationRejectsUnsupportedCell)
   EXPECT_THROW((void)legalizeExpressions(expression("$mul", 3, 3, 3).dump(),
                                           "silicon_validate"), std::runtime_error);
 }
+
+TEST(YosysLegalizationTest, ZeroMinusOperandLowersToNegWithSubtractionSignedness)
+{
+  for (bool aSigned : {false, true}) {
+    for (bool bSigned : {false, true}) {
+      for (int resultWidth : {2, 3, 6}) {
+        SCOPED_TRACE(std::format("aSigned={} bSigned={} resultWidth={}",
+                                 aSigned, bSigned, resultWidth));
+        auto source = subtractionDesign(5, 3, resultWidth, aSigned, bSigned);
+        auto& sourceCell = onlyModule(source)["cells"].begin().value();
+        sourceCell["connections"]["A"] = Json::array({"0", "0", "0", "0", "0"});
+        const auto passes = std::format("techmap -map \"{}/silicon_techmap.v\"\n"
+                                        "silicon_validate", SILICON_TEST_YOSYS_RESOURCE_DIR);
+        const auto mapped = Json::parse(legalizeExpressions(source.dump(), passes));
+        const auto cell = onlyCell(mapped);
+        ASSERT_EQ(cell.at("type"), "$neg");
+        EXPECT_EQ(parameter(cell, "A_SIGNED"), aSigned && bSigned);
+        EXPECT_EQ(parameter(cell, "A_WIDTH"), 3);
+        EXPECT_EQ(parameter(cell, "Y_WIDTH"), resultWidth);
+        EXPECT_EQ(cell.at("connections").at("A"),
+                  sourceCell.at("connections").at("B"));
+        EXPECT_EQ(Json::parse(legalizeExpressions(mapped.dump(), passes)).at("modules"),
+                  mapped.at("modules"));
+
+        const auto circuit =
+            std::make_shared<Circuit>(SILICON::yosys::deserialize(mapped.dump()));
+        EXPECT_EQ(componentTypes(*circuit).count("Complementer"), 1);
+        EXPECT_EQ(componentTypes(*circuit).count("AdderNBits"), 0);
+        for (unsigned int b = 0; b < 8; ++b) {
+          const int operand = aSigned && bSigned && (b & 4u)
+                                  ? static_cast<int>(b) - 8 : static_cast<int>(b);
+          EXPECT_EQ(evaluateBinaryCircuit(circuit, 0, b),
+                    valueFor(resultWidth, static_cast<unsigned int>(-operand)
+                                              & ((1u << resultWidth) - 1)));
+        }
+      }
+    }
+  }
+}
+
+TEST(YosysLegalizationTest, SubtractionWithNonzeroOrUnknownMinuendStaysSub)
+{
+  for (const auto& bits : {Json::array({"1", "0", "0"}),
+                           Json::array({"x", "0", "0"}),
+                           Json::array({2, "0", "0"})}) {
+    auto source = subtractionDesign(3, 3, 3, false, false);
+    onlyModule(source)["cells"].begin().value()["connections"]["A"] = bits;
+    const auto mapped = Json::parse(legalizeExpressions(source.dump(), std::format(
+        "techmap -map \"{}/silicon_techmap.v\"", SILICON_TEST_YOSYS_RESOURCE_DIR)));
+    EXPECT_EQ(onlyCell(mapped).at("type"), "$sub");
+  }
+}
 #endif
 
 TEST(YosysLegalizationEndToEndTest, ImportsComparisonsAndShiftsFromVerilog)
@@ -216,6 +268,41 @@ TEST(YosysLegalizationEndToEndTest, ImportsVectorConditionsUsingWholeOperandTrut
           SCOPED_TRACE(std::format("a={} b={}", a, b));
           EXPECT_EQ(evaluateBinaryCircuit(circuit, a, b), valueFor(4, a ? b : 9));
         }
+      }
+    }
+  }
+#else
+  GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
+#endif
+}
+
+TEST(YosysLegalizationEndToEndTest, ImportsNegationAsTwosComplementWithWidthConversion)
+{
+#ifdef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
+  for (bool sign : {false, true}) {
+    for (int resultWidth : {2, 3, 5}) {
+      SCOPED_TRACE(std::format("signed={} resultWidth={}", sign, resultWidth));
+      const auto source = std::format(
+          "module top(input {} [2:0] a, output [{}:0] y); assign y = -a; endmodule",
+          sign ? "signed" : "", resultWidth - 1);
+      const auto circuit = std::make_shared<Circuit>(importVerilog(source, "top"));
+      EXPECT_EQ(componentTypes(*circuit).count("Complementer"), 1);
+      EXPECT_EQ(componentTypes(*circuit).count("AdderNBits"), 0);
+      const auto input  = findNamedComponent<DummyBusInputComponent>(*circuit, "a");
+      const auto output = findNamedComponent<DummyBusOutputComponent>(*circuit, "y");
+      ASSERT_TRUE(input);
+      ASSERT_TRUE(output);
+      for (unsigned int a = 0; a < 8; ++a) {
+        SCOPED_TRACE(std::format("a={}", a));
+        input->setBusValue(valueFor(3, a));
+        Simulator simulator(circuit);
+        ASSERT_EQ(simulator.runUntilIdle(), Simulator::RunResult::Completed);
+        const int operand =
+            sign && (a & 4u) ? static_cast<int>(a) - 8 : static_cast<int>(a);
+        const auto expected =
+            static_cast<unsigned int>(-operand) & ((1u << resultWidth) - 1);
+        EXPECT_EQ(output->inputBuses()[0].getCurrentValue(),
+                  valueFor(resultWidth, expected));
       }
     }
   }

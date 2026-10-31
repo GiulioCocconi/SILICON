@@ -153,7 +153,7 @@ bool supported(RTLIL::IdString type)
 {
   static const pool<RTLIL::IdString> types = {
     ID($and), ID($or), ID($xor), ID($not), ID($_NAND_), ID($_NOR_),
-    ID($pos), ID($add), ID($sub), ID($mux), ID($bmux), ID($demux),
+    ID($pos), ID($add), ID($sub), ID($neg), ID($mux), ID($bmux), ID($demux),
     ID($dff), ID($dffsr), ID($dffsre), ID($dlatch), ID($adffe),
     id("SILICON_ROM"), id("SILICON_LOGIC"), id("SILICON_COMPARE"),
     id("SILICON_SHIFT"), id("SILICON_DFF"), id("SILICON_DFFE"),
