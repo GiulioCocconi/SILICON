@@ -225,7 +225,7 @@ struct SiliconLegalizePass : Pass {
     Pass::call(design, "silicon_shift");
     Pass::call(design, "simplemap t:$and r:Y_WIDTH=1 %i t:$or r:Y_WIDTH=1 %i "
                        "t:$xor r:Y_WIDTH=1 %i t:$not r:Y_WIDTH=1 %i "
-                       "t:$reduce_and t:$reduce_or t:$reduce_xor");
+                       "t:$reduce_and t:$reduce_or t:$reduce_xor t:$reduce_bool");
     Pass::call(design, "extract_fa");
     // The vector overload preserves a parsed path as one argument, including spaces.
     Pass::call(design, std::vector<std::string>{"techmap", "-map", args[1]});
