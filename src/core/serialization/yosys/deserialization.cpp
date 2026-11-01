@@ -161,9 +161,10 @@ namespace {
       importModule(module);
       normalizeBusConnections();
 
-      Component_set componentSet(components.begin(), components.end());
-      Circuit       result(componentSet, false);
-      return result;
+      // Boundary ports and imported instances both follow the JSON port order.
+      // Sorting components by shared_ptr ownership would make the definition's
+      // interface depend on allocation order and miswire positional instances.
+      return Circuit(components, false);
     }
 
   private:

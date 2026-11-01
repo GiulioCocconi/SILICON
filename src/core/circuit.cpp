@@ -245,6 +245,11 @@ std::vector<Component_weakPtr> Circuit::getListenersForWire(uint64_t wireId) con
 // --- Constructors ----------------------------------------------------------------------
 
 Circuit::Circuit(const Component_set& components, bool explore)
+  : Circuit(std::vector<Component_ptr>(components.begin(), components.end()), explore)
+{
+}
+
+Circuit::Circuit(const std::vector<Component_ptr>& components, bool explore)
 {
   if (!explore) {
     for (const auto& c : components)

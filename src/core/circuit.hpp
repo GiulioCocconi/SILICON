@@ -190,6 +190,14 @@ public:
   explicit Circuit(const Component_set& components, bool explore = false);
 
   /**
+   * @brief Constructs a circuit preserving the supplied component and boundary port
+   * order.
+   * @param components The ordered components to include
+   * @param explore If true, recursively explore and add connected components
+   */
+  explicit Circuit(const std::vector<Component_ptr>& components, bool explore = false);
+
+  /**
    * @brief Constructs a circuit from a single component
    * @param component The root component to add
    * @param explore If true, recursively explore and add connected components
