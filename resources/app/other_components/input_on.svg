@@ -1,44 +1,9 @@
-<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<!-- Created with Inkscape (http://www.inkscape.org/) -->
-
-<svg
-   width="40"
-   height="40"
-   viewBox="0 0 10.583333 10.583333"
-   version="1.1"
-   id="svg1"
-   xmlns="http://www.w3.org/2000/svg"
-   xmlns:svg="http://www.w3.org/2000/svg">
-  <defs
-     id="defs1" />
-  <g
-     id="layer1">
-    <rect
-       style="fill:#ffe6d5;stroke:#000000;stroke-width:0.78226;stroke-dasharray:none;stroke-opacity:1"
-       id="rect1"
-       width="9.801074"
-       height="9.801074"
-       x="0.39112931"
-       y="0.39112955" data-silicon-fill="SILICON_INTERNAL" data-silicon-stroke="SILICON_INK" />
-    <rect
-       style="fill:#ff9845;stroke:#000000;stroke-width:0.374272;stroke-dasharray:none;stroke-opacity:1"
-       id="rect5"
-       width="3.5746167"
-       height="7.034061"
-       x="3.5043581"
-       y="1.7746363" data-silicon-fill="SILICON_ORANGE" data-silicon-stroke="SILICON_INK" />
-    <rect
-       style="fill:#cccccc;stroke:#000000;stroke-width:0.388927;stroke-dasharray:none;stroke-opacity:1"
-       id="rect6"
-       width="3.9229667"
-       height="1.7563759"
-       x="3.330183"
-       y="1.7819635" data-silicon-fill="SILICON_GREY" data-silicon-stroke="SILICON_INK" />
-    <path
-       style="font-size:5.17438px;font-family:'Iosevka Nerd Font Mono';-inkscape-font-specification:'Iosevka Nerd Font Mono';fill:#2a2730;stroke:#000000;stroke-width:0.0808499"
-       d="M 4.8846064,8.7157974 V 5.3421018 L 4.1601932,5.9112836 3.9376949,5.6577389 4.8846064,4.9126283 H 5.288208 v 3.8031691 z"
-       id="text6"
-       transform="scale(1.0731044,0.93187579)"
-       aria-label="1" data-silicon-fill="SILICON_INK" data-silicon-stroke="SILICON_INK" />
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" id="svg1" width="40" height="40" version="1.1" viewBox="0 0 10.58333 10.58333">
+  <g id="layer1">
+    <path id="rect1" fill="#fff0e3" stroke="#292c31" d="M.39113.39113h9.80107v9.80107H.39113z" data-silicon-fill="SILICON_INTERNAL" data-silicon-stroke="SILICON_INK" style="fill:#fff0e3 !important; stroke:#292c31 !important; stroke-width: 0.78226; stroke-dasharray: none; stroke-opacity: 1;" />
+    <path id="rect5" fill="#ff8c42" stroke="#292c31" d="M3.50436 1.77464h3.57462V8.8087H3.50436z" data-silicon-fill="SILICON_ORANGE" data-silicon-stroke="SILICON_INK" style="fill:#ff8c42 !important; stroke:#292c31 !important; stroke-width: 0.374272; stroke-dasharray: none; stroke-opacity: 1;" />
+    <path id="rect6" fill="#68717c" stroke="#292c31" d="M3.33018 1.78196h3.92297v1.75638H3.33018z" data-silicon-fill="SILICON_GREY" data-silicon-stroke="SILICON_INK" style="fill:#68717c !important; stroke:#292c31 !important; stroke-width: 0.388927; stroke-dasharray: none; stroke-opacity: 1;" />
+    <path id="text6" fill="#292c31" stroke="#292c31" d="M4.8846 8.7158V5.3421l-.7244.56918-.2225-.25354.9469-.74511h.4036V8.7158z" aria-label="1" data-silicon-fill="SILICON_INK" data-silicon-stroke="SILICON_INK" style="font-size: 5.17438px; font-family: &quot;Iosevka Nerd Font Mono&quot;; fill:#292c31 !important; stroke:#292c31 !important; stroke-width: 0.0808499;" transform="scale(1.0731044,0.93187579)" />
   </g>
 </svg>

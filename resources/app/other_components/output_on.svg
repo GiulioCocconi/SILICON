@@ -1,30 +1,7 @@
-<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<!-- Created with Inkscape (http://www.inkscape.org/) -->
-
-<svg
-   width="40"
-   height="40"
-   viewBox="0 0 10.583333 10.583333"
-   version="1.1"
-   id="svg1"
-   xmlns="http://www.w3.org/2000/svg"
-   xmlns:svg="http://www.w3.org/2000/svg">
-  <defs
-     id="defs1" />
-  <g
-     id="layer1">
-    <rect
-       style="fill:#46a6ef;fill-opacity:1;stroke:#000000;stroke-width:0.78226;stroke-dasharray:none;stroke-opacity:1"
-       id="rect1"
-       width="9.8010731"
-       height="9.801074"
-       x="0.39112997"
-       y="0.39112997" data-silicon-fill="SILICON_BLUE" data-silicon-stroke="SILICON_INK" />
-    <path
-       style="font-size:9.14117px;font-family:'Iosevka Nerd Font Mono';-inkscape-font-specification:'Iosevka Nerd Font Mono';fill:#2a2730;stroke:#000000;stroke-width:0.142831"
-       d="M 4.8489054,9.0378904 V 3.0778479 L 3.5691417,4.0833765 3.1760714,3.6354592 4.8489054,2.3191308 h 0.7130112 v 6.7187596 z"
-       id="text6"
-       transform="scale(1.0731044,0.93187579)"
-       aria-label="1" data-silicon-fill="SILICON_INK" data-silicon-stroke="SILICON_INK" />
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" id="svg1" width="40" height="40" version="1.1" viewBox="0 0 10.58333 10.58333">
+  <g id="layer1">
+    <path id="rect1" fill="#329deb" stroke="#292c31" d="M.39113.39113h9.80107v9.80107H.39113z" data-silicon-fill="SILICON_BLUE" data-silicon-stroke="SILICON_INK" style="fill:#329deb !important; fill-opacity: 1; stroke:#292c31 !important; stroke-width: 0.78226; stroke-dasharray: none; stroke-opacity: 1;" />
+    <path id="text6" fill="#292c31" stroke="#292c31" d="M4.8489 9.03789V3.07785L3.56915 4.08338l-.39307-.44792 1.67284-1.31633h.713V9.0379z" aria-label="1" data-silicon-fill="SILICON_INK" data-silicon-stroke="SILICON_INK" style="font-size: 9.14117px; font-family: &quot;Iosevka Nerd Font Mono&quot;; fill:#292c31 !important; stroke:#292c31 !important; stroke-width: 0.142831;" transform="scale(1.0731044,0.93187579)" />
   </g>
 </svg>
