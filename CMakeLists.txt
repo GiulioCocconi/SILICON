@@ -473,20 +473,6 @@ if (SILICON_BUILD_BENCHMARKS AND NOT EMSCRIPTEN)
     add_subdirectory("${CMAKE_SOURCE_DIR}/benchmarks")
 endif ()
 
-if (NOT EMSCRIPTEN)
-    find_program(SILICON_YOSYS_EXECUTABLE yosys)
-    if (SILICON_YOSYS_EXECUTABLE AND EXISTS "${CMAKE_SOURCE_DIR}/examples/yosys_roundtrip.cpp")
-        add_executable(yosys_roundtrip examples/yosys_roundtrip.cpp)
-        target_link_libraries(yosys_roundtrip PRIVATE silicon_core)
-        target_compile_definitions(yosys_roundtrip PRIVATE
-                SILICON_YOSYS_EXECUTABLE="${SILICON_YOSYS_EXECUTABLE}")
-        set_target_properties(yosys_roundtrip PROPERTIES
-                AUTOMOC OFF
-                AUTOUIC OFF
-                AUTORCC OFF)
-    endif ()
-endif ()
-
 install(TARGETS SILICON
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
