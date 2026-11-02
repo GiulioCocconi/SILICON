@@ -110,6 +110,8 @@ enum SiliconTypes {
   SUBCIRCUIT,
   D_LATCH,
   SHIFTER,
+  MULTIPLIER,
+  DIVIDER,
 
   SILICON_END,
 };

@@ -67,6 +67,8 @@ void registerAllComponents(ComponentRegistry& registry)
   registerComponent<FullAdder>(registry);
   registerComponent<AdderNBits>(registry);
   registerComponent<Shifter>(registry);
+  registerComponent<Multiplier>(registry);
+  registerComponent<Divider>(registry);
   registerComponent<Comparator>(registry);
   registerComponent<Multiplexer>(registry);
   registerComponent<Demultiplexer>(registry);

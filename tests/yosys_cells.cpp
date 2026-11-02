@@ -322,6 +322,9 @@ TEST(YosysTest, CustomTechnologyCellsRoundTripToNativeComponents)
   const auto  adderDesign = exportComponent(adder);
   const auto& adderCell   = onlyCell(adderDesign);
   EXPECT_EQ(adderCell.at("type"), "SILICON_ADDER");
+  EXPECT_EQ(adderCell.at("parameters").at("SIGNED"), "0");
+  EXPECT_FALSE(adderCell.at("parameters").contains("A_SIGNED"));
+  EXPECT_FALSE(adderCell.at("parameters").contains("B_SIGNED"));
   EXPECT_EQ(adderCell.at("connections").at("A").size(), 5);
   const auto importedAdder = roundTrip(adder);
   ASSERT_TRUE(findComponent<AdderNBits>(importedAdder));
@@ -658,4 +661,144 @@ TEST(YosysTest, ImportsGeneralCombinationalNetlistWithConstants)
   ASSERT_EQ(simulator.runUntilIdle(), Simulator::RunResult::Completed);
   EXPECT_EQ(outputComponent->inputBuses()[0].getCurrentValue(),
             valueFor(outputComponent->inputBuses()[0], 2));
+}
+
+TEST(YosysTest, ExportsArithmeticCellsAndPreservesComponentProperties)
+{
+  for (const bool sign : {false, true}) {
+    std::vector<Component_ptr> components{
+        std::make_shared<Multiplier>(std::array<Bus, 2>{Bus(5), Bus(5)}, Bus(5)),
+        std::make_shared<Divider>(std::array<Bus, 2>{Bus(5), Bus(5)}, Bus(5), Bus(5))};
+    for (const auto& component : components) {
+      component->setProperty("signed", sign);
+      component->setProperty("delay", 7);
+      const auto design         = exportComponent(component);
+      const bool multiplication = component->typeName() == Multiplier::Type;
+      EXPECT_EQ(cellTypes(onlyModule(design)),
+                std::multiset<std::string>{multiplication ? "SILICON_MULTIPLIER"
+                                                          : "SILICON_DIVIDER"});
+      for (const auto& cell : onlyModule(design).at("cells")) {
+        EXPECT_EQ(cell.at("parameters").at("SIGNED"), sign ? "1" : "0");
+        EXPECT_FALSE(cell.at("parameters").contains("A_SIGNED"));
+        EXPECT_FALSE(cell.at("parameters").contains("B_SIGNED"));
+        EXPECT_EQ(
+            cell.at("connections").at(multiplication ? "PRODUCT" : "div").size(), 5);
+      }
+      const auto imported = SILICON::yosys::deserialize(design.dump());
+      EXPECT_EQ(componentTypes(imported).count(multiplication ? "Multiplier" : "Divider"),
+                1);
+      const auto importedComponent =
+          multiplication
+              ? std::static_pointer_cast<Component>(findComponent<Multiplier>(imported))
+              : std::static_pointer_cast<Component>(findComponent<Divider>(imported));
+      ASSERT_TRUE(importedComponent);
+      EXPECT_EQ(importedComponent->getPropertyValue<bool>("signed"), sign);
+      EXPECT_EQ(importedComponent->getPropertyValue<int>("size"), 5);
+      auto registry = ComponentRegistry::empty();
+      registerAllComponents(registry);
+      const auto circuit  = circuitWithBoundaryPorts(component);
+      const auto restored = Circuit::deserialize(circuit.serialize(), registry);
+      const auto restoredComponent =
+          multiplication
+              ? std::static_pointer_cast<Component>(findComponent<Multiplier>(restored))
+              : std::static_pointer_cast<Component>(findComponent<Divider>(restored));
+      ASSERT_TRUE(restoredComponent);
+      EXPECT_EQ(restoredComponent->getPropertyValue<int>("size"), 5);
+      EXPECT_EQ(restoredComponent->getPropertyValue<int>("delay"), 7);
+      EXPECT_EQ(restoredComponent->getPropertyValue<bool>("signed"), sign);
+#ifdef SILICON_TEST_YOSYS_EXECUTABLE
+      EXPECT_EQ(validateWithYosys(circuit, multiplication ? "multiplier" : "divider"), 0);
+#endif
+    }
+  }
+}
+
+TEST(YosysTest, ImportsMultiplyDivideAndModuloWithMixedWidthsAndSignedness)
+{
+  for (const auto type : {"$mul", "$div", "$mod"}) {
+    for (const bool aSigned : {false, true}) {
+      for (const bool bSigned : {false, true}) {
+        for (const int yWidth : {2, 6}) {
+          auto design = subtractionDesign(3, 5, yWidth, aSigned, bSigned);
+          onlyModule(design)["cells"].begin().value()["type"] = type;
+          const auto circuit =
+              std::make_shared<Circuit>(SILICON::yosys::deserialize(design.dump()));
+          const bool multiplication = std::string_view(type) == "$mul";
+          const auto component =
+              multiplication
+                  ? std::static_pointer_cast<Component>(
+                        findComponent<Multiplier>(*circuit))
+                  : std::static_pointer_cast<Component>(findComponent<Divider>(*circuit));
+          ASSERT_TRUE(component);
+          EXPECT_EQ(component->getPropertyValue<bool>("signed"), aSigned && bSigned);
+          for (const unsigned a : {0u, 1u, 3u, 7u}) {
+            for (const unsigned b : {0u, 1u, 3u, 16u, 31u}) {
+              SCOPED_TRACE(std::format("{} {} {} {}: {}, {}", type, aSigned, bSigned,
+                                       yWidth, a, b));
+              const auto actual = evaluateBinaryCircuit(circuit, a, b);
+              if (!multiplication && b == 0) {
+                EXPECT_EQ(actual, BusValue(yWidth, State::UNKNOWN));
+                continue;
+              }
+              const int lhs = aSigned && bSigned && a >= 4 ? static_cast<int>(a) - 8 : a;
+              const int rhs =
+                  aSigned && bSigned && b >= 16 ? static_cast<int>(b) - 32 : b;
+              const int expected = multiplication                     ? lhs * rhs
+                                   : std::string_view(type) == "$div" ? lhs / rhs
+                                                                      : lhs % rhs;
+              EXPECT_EQ(actual, valueFor(yWidth, expected & ((1u << yWidth) - 1)));
+            }
+          }
+          // Export and re-import preserve the observable result, including truncation.
+          const auto roundTripped = std::make_shared<Circuit>(
+              SILICON::yosys::deserialize(SILICON::yosys::serialize(*circuit, "top")));
+          EXPECT_EQ(evaluateBinaryCircuit(roundTripped, 7, 3),
+                    evaluateBinaryCircuit(circuit, 7, 3));
+        }
+      }
+    }
+  }
+}
+
+TEST(YosysTest, RejectsMalformedArithmeticCells)
+{
+  for (const auto type : {"$mul", "$div", "$mod"}) {
+    auto  design      = subtractionDesign(3, 3, 3, false, false);
+    auto& cell        = onlyModule(design)["cells"].begin().value();
+    cell["type"]      = type;
+    auto invalidWidth = design;
+    onlyModule(invalidWidth)["cells"].begin().value()["parameters"]["A_WIDTH"] =
+        SILICON::yosys::SerializationContext::parameter(4);
+    EXPECT_THROW((void)SILICON::yosys::deserialize(invalidWidth.dump()),
+                 std::runtime_error);
+    cell["parameters"]["A_SIGNED"] = "10";
+    EXPECT_THROW((void)SILICON::yosys::deserialize(design.dump()), std::runtime_error);
+  }
+}
+
+TEST(YosysTest, RejectsMalformedArithmeticTechnologyCells)
+{
+  for (const auto& component : std::vector<Component_ptr>{
+           std::make_shared<AdderNBits>(std::array<Bus, 2>{Bus(4), Bus(4)}, Bus(4),
+                                         std::make_shared<Wire>()),
+           std::make_shared<Multiplier>(std::array<Bus, 2>{Bus(4), Bus(4)}, Bus(4)),
+           std::make_shared<Divider>(std::array<Bus, 2>{Bus(4), Bus(4)}, Bus(4),
+                                     Bus(4))}) {
+    const auto design     = exportComponent(component);
+    auto       wrongWidth = design;
+    onlyModule(wrongWidth)["cells"].begin().value()["parameters"]["WIDTH"] =
+        SILICON::yosys::SerializationContext::parameter(3);
+    EXPECT_THROW((void)SILICON::yosys::deserialize(wrongWidth.dump()),
+                 std::runtime_error);
+    auto missingOutput = design;
+    onlyModule(missingOutput)["cells"].begin().value()["connections"].erase(
+        component->typeName() == AdderNBits::Type ? "SUM"
+        : component->typeName() == Multiplier::Type ? "PRODUCT" : "mod");
+    EXPECT_THROW((void)SILICON::yosys::deserialize(missingOutput.dump()),
+                 std::runtime_error);
+    auto invalidFlag                                                           = design;
+    onlyModule(invalidFlag)["cells"].begin().value()["parameters"]["SIGNED"] = "10";
+    EXPECT_THROW((void)SILICON::yosys::deserialize(invalidFlag.dump()),
+                 std::runtime_error);
+  }
 }

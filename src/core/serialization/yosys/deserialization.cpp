@@ -1017,6 +1017,37 @@ namespace {
       addWithZeroDelay(std::move(adder));
     }
 
+    template <bool multiplication, bool remainder = false>
+    void importMulDiv(const Cell& cell)
+    {
+      cell.requireConnections({"A", "B", "Y"});
+      const auto aWidth  = cell.width("A_WIDTH");
+      const auto bWidth  = cell.width("B_WIDTH");
+      const auto yWidth  = cell.width("Y_WIDTH");
+      const bool aSigned = cell.flag("A_SIGNED");
+      const bool bSigned = cell.flag("B_SIGNED");
+      const bool sign    = aSigned && bSigned;
+      const auto width   = std::max({aWidth, bWidth, yWidth});
+      const Bus  a = resizeArithmeticOperand(cell.consumer("A", aWidth), width, sign);
+      const Bus  b = resizeArithmeticOperand(cell.consumer("B", bWidth), width, sign);
+      // Preserve all operand bits during division, even when Y is narrower.
+      auto result = static_cast<std::vector<Wire_ptr>>(cell.driver("Y", yWidth));
+      while (result.size() < width)
+        result.push_back(std::make_shared<Wire>(State::UNKNOWN));
+      Component_ptr component;
+      if constexpr (multiplication) {
+        component = std::make_shared<Multiplier>(std::array<Bus, 2>{a, b},
+                                                 Bus(std::move(result)));
+      } else {
+        Bus unused(static_cast<unsigned short>(width));
+        component = std::make_shared<Divider>(std::array<Bus, 2>{a, b},
+                                              remainder ? unused : Bus(result),
+                                              remainder ? Bus(result) : unused);
+      }
+      component->setProperty("signed", sign);
+      addWithZeroDelay(std::move(component));
+    }
+
     void importSiliconShift(const Cell& cell)
     {
       cell.requireSchema(
@@ -1381,12 +1412,12 @@ namespace {
     void importSiliconAdder(const Cell& cell)
     {
       static constexpr auto PARAMETERS =
-          std::to_array<std::string_view>({"WIDTH", "A_SIGNED", "B_SIGNED"});
+          std::to_array<std::string_view>({"WIDTH", "SIGNED"});
       static constexpr auto CONNECTIONS =
           std::to_array<std::string_view>({"A", "B", "SUM", "COUT"});
       cell.requireSchema(PARAMETERS, CONNECTIONS);
       const auto width = cell.width("WIDTH");
-      if (cell.flag("A_SIGNED") || cell.flag("B_SIGNED"))
+      if (cell.flag("SIGNED"))
         fail(cell.where(), "SILICON_ADDER supports unsigned operands only");
 
       const auto a    = cell.consumer("A", width);
@@ -1395,6 +1426,32 @@ namespace {
       const auto cout = cell.driverBit("COUT");
       auto adder      = std::make_shared<AdderNBits>(std::array<Bus, 2>{a, b}, sum, cout);
       addWithZeroDelay(std::move(adder));
+    }
+
+    template <bool multiplication> void importSiliconMulDiv(const Cell& cell)
+    {
+      static constexpr auto PARAMETERS =
+          std::to_array<std::string_view>({"WIDTH", "SIGNED"});
+      if constexpr (multiplication)
+        cell.requireSchema(PARAMETERS,
+                           std::to_array<std::string_view>({"A", "B", "PRODUCT"}));
+      else
+        cell.requireSchema(PARAMETERS, std::to_array<std::string_view>(
+                                           {"A", "B", "div", "mod"}));
+      const auto    width   = cell.width("WIDTH");
+      const bool    sign    = cell.flag("SIGNED");
+      const auto    a       = cell.consumer("A", width);
+      const auto    b       = cell.consumer("B", width);
+      Component_ptr component;
+      if constexpr (multiplication)
+        component = std::make_shared<Multiplier>(std::array<Bus, 2>{a, b},
+                                                 cell.driver("PRODUCT", width));
+      else
+        component = std::make_shared<Divider>(std::array<Bus, 2>{a, b},
+                                              cell.driver("div", width),
+                                              cell.driver("mod", width));
+      component->setProperty("signed", sign);
+      addWithZeroDelay(std::move(component));
     }
 
     template <bool ParallelInput, bool ParallelOutput>
@@ -1460,6 +1517,8 @@ namespace {
               {cells::HALF_ADDER, &Importer::importSiliconHalfAdder},
               {cells::FULL_ADDER, &Importer::importSiliconFullAdder},
               {cells::ADDER, &Importer::importSiliconAdder},
+              {cells::MULTIPLIER, &Importer::importSiliconMulDiv<true>},
+              {cells::DIVIDER, &Importer::importSiliconMulDiv<false>},
               {cells::PIPO, &Importer::importSiliconRegister<true, true>},
               {cells::PISO, &Importer::importSiliconRegister<true, false>},
               {cells::SIPO, &Importer::importSiliconRegister<false, true>},
@@ -1473,6 +1532,9 @@ namespace {
               {"$_NOR_", &Importer::importFineBinaryGate<NorGate>},
               {"$pos", &Importer::importPos},
               {"$add", &Importer::importAdd},
+              {"$mul", &Importer::importMulDiv<true>},
+              {"$div", &Importer::importMulDiv<false>},
+              {"$mod", &Importer::importMulDiv<false, true>},
               {"$neg", &Importer::importNeg},
               {"$sub", &Importer::importSub},
               {cells::COMPARE, &Importer::importSiliconCompare},

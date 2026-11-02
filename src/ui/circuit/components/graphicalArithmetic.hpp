@@ -65,6 +65,22 @@ public:
   int type() const override { return SiliconTypes::ADDER_N_BITS; }
 };
 
+class GraphicalMultiplier : public GraphicalLogicComponent {
+  Q_OBJECT
+public:
+  explicit GraphicalMultiplier(QGraphicsItem* parent = nullptr);
+
+  int type() const override { return SiliconTypes::MULTIPLIER; }
+};
+
+class GraphicalDivider : public GraphicalLogicComponent {
+  Q_OBJECT
+public:
+  explicit GraphicalDivider(QGraphicsItem* parent = nullptr);
+
+  int type() const override { return SiliconTypes::DIVIDER; }
+};
+
 class GraphicalShifter : public GraphicalLogicComponent {
   Q_OBJECT
 public:

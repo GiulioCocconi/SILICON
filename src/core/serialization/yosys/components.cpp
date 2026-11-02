@@ -359,13 +359,55 @@ void AdderNBits::serializeYosys(SerializationContext& context) const
   context.addCell(
       "adder", SILICON::yosys::cells::ADDER,
       Json{{"WIDTH", SerializationContext::parameter(*width)},
-           {"A_SIGNED", SerializationContext::parameter(0, 1)},
-           {"B_SIGNED", SerializationContext::parameter(0, 1)}},
+           {"SIGNED", SerializationContext::parameter(0, 1)}},
       directions({{"A", "input"}, {"B", "input"}, {"SUM", "output"}, {"COUT", "output"}}),
       Json{{"A", context.bits(a)},
            {"B", context.bits(b)},
            {"SUM", context.bits(sum)},
            {"COUT", context.bits(carry)}});
+}
+
+void Multiplier::serializeYosys(SerializationContext& context) const
+{
+  requireBusCounts(*this, 2, 1);
+  const auto width = getPropertyValue<int>("size");
+  const auto sign  = getPropertyValue<bool>("signed");
+  if (!width || *width < 1 || !sign)
+    throw std::runtime_error("Cannot export malformed 'Multiplier': invalid properties");
+  const auto& a       = requireBusWidth(*this, true, 0, *width);
+  const auto& b       = requireBusWidth(*this, true, 1, *width);
+  const auto& product = requireBusWidth(*this, false, 0, *width);
+  context.addCell("multiplier", SILICON::yosys::cells::MULTIPLIER,
+                  Json{{"WIDTH", SerializationContext::parameter(*width)},
+                       {"SIGNED", SerializationContext::parameter(*sign, 1)}},
+                  directions({{"A", "input"}, {"B", "input"}, {"PRODUCT", "output"}}),
+                  Json{{"A", context.bits(a)},
+                       {"B", context.bits(b)},
+                       {"PRODUCT", context.bits(product)}});
+}
+
+void Divider::serializeYosys(SerializationContext& context) const
+{
+  requireBusCounts(*this, 2, 2);
+  const auto width = getPropertyValue<int>("size");
+  const auto sign  = getPropertyValue<bool>("signed");
+  if (!width || *width < 1 || !sign)
+    throw std::runtime_error("Cannot export malformed 'Divider': invalid properties");
+  const auto& a         = requireBusWidth(*this, true, 0, *width);
+  const auto& b         = requireBusWidth(*this, true, 1, *width);
+  const auto& quotient  = requireBusWidth(*this, false, 0, *width);
+  const auto& remainder = requireBusWidth(*this, false, 1, *width);
+  context.addCell("divider", SILICON::yosys::cells::DIVIDER,
+                  Json{{"WIDTH", SerializationContext::parameter(*width)},
+                       {"SIGNED", SerializationContext::parameter(*sign, 1)}},
+                  directions({{"A", "input"},
+                              {"B", "input"},
+                              {"div", "output"},
+                              {"mod", "output"}}),
+                  Json{{"A", context.bits(a)},
+                       {"B", context.bits(b)},
+                       {"div", context.bits(quotient)},
+                       {"mod", context.bits(remainder)}});
 }
 
 void Shifter::serializeYosys(SerializationContext& context) const
