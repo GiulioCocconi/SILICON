@@ -33,7 +33,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 CMAKE_FILE = ROOT / "CMakeLists.txt"
 VCPKG_FILE = ROOT / "vcpkg.json"
-NIX_FILE = ROOT / "flake.nix"
+NIX_FILE = ROOT / "nix" / "silicon.nix"
 
 
 SEMVER_RE = re.compile(
@@ -66,7 +66,6 @@ VCPKG_VERSION_RE = re.compile(
 
 NIX_VERSION_RE = re.compile(
     r'(?P<prefix>'
-    r'mkSilicon\s*=.*?'
     r'pname\s*=\s*"SILICON";.*?'
     r'version\s*=\s*")'
     r'(?P<version>[^"]+)'
