@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Silicon · SVG palette editor</title>
+  <link rel="stylesheet" href="/editor.css">
+  <script src="/editor.js" defer></script>
+</head>
+<body>
+  <header>
+    <div class="brand"><span class="brand-mark">Si</span><div><strong>SVG palette editor</strong><small>Silicon design tools</small></div></div>
+    <div class="toolbar">
+      <label class="file-button">Open SVGs<input id="open-files" type="file" accept=".svg,image/svg+xml" multiple></label>
+      <label class="theme-control">Theme <select id="theme"><option value="light">Light</option><option value="dark">Dark</option></select></label>
+      <button id="save" class="primary" disabled>Save As…</button>
+      <button id="save-all" disabled title="Save every open SVG to a folder, or download a ZIP archive">Save All…</button>
+      <label class="overwrite-control" title="Use original filenames. Save All replaces matching files in the chosen folder."><input id="overwrite" type="checkbox">Overwrite existing files</label>
+    </div>
+  </header>
+  <div id="dependency" class="banner" hidden>Opening SVGs requires SVGO. Install it with <code>npm install -g svgo</code>, then open your files again.</div>
+  <main>
+    <aside class="navigator">
+      <section class="files-section"><h2>Files <span id="file-count">0</span></h2><ul id="files" aria-label="Open SVG files"></ul><p id="files-empty" class="muted">Open SVGs to begin.</p></section>
+      <section class="elements-section"><h2>Elements</h2><div id="elements" aria-label="SVG elements"></div></section>
+    </aside>
+    <section class="canvas" aria-label="SVG preview">
+      <div class="canvas-heading"><span id="active-name">No SVG selected</span><button id="reset" disabled>Reset edits</button></div>
+      <div class="preview-container">
+        <div id="empty-preview"><div class="empty-mark">&lt;svg&gt;</div><h1>Put your SVG in the palette.</h1><p>Open a file, select an element, and choose its fill and stroke.</p></div>
+        <iframe id="preview" title="SVG preview — click an element to select it" sandbox="allow-same-origin" hidden></iframe>
+      </div>
+      <div class="canvas-footer"><span>Click the artwork or choose an element in the list.</span><span id="save-state">No unsaved changes</span></div>
+    </section>
+    <aside class="inspector">
+      <h2>Element colors</h2>
+      <p id="selection-label" class="selection-label">Select an element</p>
+      <p id="selection-hint" class="muted">Every shape can use palette colors, including SVGs without Silicon metadata.</p>
+      <div id="paint-controls" hidden>
+        <section class="paint-control" data-property="fill">
+          <h3>Fill</h3>
+          <div class="current-paint"><span id="fill-swatch" class="swatch"></span><output id="fill-current"></output></div>
+          <p class="detail">Original: <span id="fill-original"></span></p>
+          <label for="fill-select">Palette assignment</label><select id="fill-select"></select>
+          <div id="fill-palette" class="palette" aria-label="Fill palette"></div>
+          <p id="fill-mapping" class="mapping"></p>
+        </section>
+        <section class="paint-control" data-property="stroke">
+          <h3>Stroke</h3>
+          <div class="current-paint"><span id="stroke-swatch" class="swatch"></span><output id="stroke-current"></output></div>
+          <p class="detail">Original: <span id="stroke-original"></span></p>
+          <label for="stroke-select">Palette assignment</label><select id="stroke-select"></select>
+          <div id="stroke-palette" class="palette" aria-label="Stroke palette"></div>
+          <p id="stroke-mapping" class="mapping"></p>
+        </section>
+      </div>
+      <p class="export-note">SVGs are optimized when opened. Saves preserve palette metadata and light-theme fallback colors.</p>
+    </aside>
+  </main>
+  <footer id="status" role="status" aria-live="polite">Loading palette…</footer>
+</body>
+</html>

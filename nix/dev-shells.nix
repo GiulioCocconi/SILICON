@@ -30,6 +30,7 @@ let
     opencode
     codex
     graphviz
+    svgo
   ] ++ lightCIPackages;
 
   bun = pkgs.buildPackages.bun;
