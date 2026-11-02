@@ -254,16 +254,109 @@ module _silicon_map_add #(
   generate
     if (!A_SIGNED && !B_SIGNED && A_WIDTH == B_WIDTH && Y_WIDTH == A_WIDTH) begin
       wire cout;
-      SILICON_ADDER #(.WIDTH(A_WIDTH), .A_SIGNED(0), .B_SIGNED(0))
+      SILICON_ADDER #(.WIDTH(A_WIDTH), .SIGNED(0))
         _TECHMAP_REPLACE_ (.A(A), .B(B), .SUM(Y), .COUT(cout));
     end else if (!A_SIGNED && !B_SIGNED && A_WIDTH == B_WIDTH &&
                  Y_WIDTH == A_WIDTH + 1) begin
-      SILICON_ADDER #(.WIDTH(A_WIDTH), .A_SIGNED(0), .B_SIGNED(0))
+      SILICON_ADDER #(.WIDTH(A_WIDTH), .SIGNED(0))
         _TECHMAP_REPLACE_ (.A(A), .B(B), .SUM(Y[A_WIDTH-1:0]), .COUT(Y[A_WIDTH]));
     end else begin
       wire _TECHMAP_FAIL_ = 1;
     end
   endgenerate
+endmodule
+
+(* techmap_celltype = "$mul" *)
+module _silicon_map_mul #(
+    parameter A_SIGNED = 0,
+    parameter B_SIGNED = 0,
+    parameter A_WIDTH = 1,
+    parameter B_WIDTH = 1,
+    parameter Y_WIDTH = 1
+) (
+    input [A_WIDTH-1:0] A,
+    input [B_WIDTH-1:0] B,
+    output [Y_WIDTH-1:0] Y
+);
+  localparam WIDTH = (A_WIDTH > B_WIDTH ? A_WIDTH : B_WIDTH) > Y_WIDTH
+      ? (A_WIDTH > B_WIDTH ? A_WIDTH : B_WIDTH) : Y_WIDTH;
+  wire [WIDTH-1:0] a_extended, b_extended, result;
+  generate
+    if (A_SIGNED && B_SIGNED) begin
+      assign a_extended = $signed(A);
+      assign b_extended = $signed(B);
+    end else begin
+      assign a_extended = A;
+      assign b_extended = B;
+    end
+  endgenerate
+  SILICON_MULTIPLIER #(.WIDTH(WIDTH), .SIGNED(A_SIGNED && B_SIGNED))
+    _TECHMAP_REPLACE_ (.A(a_extended), .B(b_extended), .PRODUCT(result));
+  assign Y = result[Y_WIDTH-1:0];
+endmodule
+
+(* techmap_celltype = "$div" *)
+module _silicon_map_div #(
+    parameter A_SIGNED = 0,
+    parameter B_SIGNED = 0,
+    parameter A_WIDTH = 1,
+    parameter B_WIDTH = 1,
+    parameter Y_WIDTH = 1
+) (
+    input [A_WIDTH-1:0] A,
+    input [B_WIDTH-1:0] B,
+    output [Y_WIDTH-1:0] Y
+);
+  localparam WIDTH = (A_WIDTH > B_WIDTH ? A_WIDTH : B_WIDTH) > Y_WIDTH
+      ? (A_WIDTH > B_WIDTH ? A_WIDTH : B_WIDTH) : Y_WIDTH;
+  wire [WIDTH-1:0] a_extended, b_extended, result;
+  generate
+    if (A_SIGNED && B_SIGNED) begin
+      assign a_extended = $signed(A);
+      assign b_extended = $signed(B);
+    end else begin
+      assign a_extended = A;
+      assign b_extended = B;
+    end
+  endgenerate
+  wire [WIDTH-1:0] unused;
+  SILICON_DIVIDER #(.WIDTH(WIDTH), .SIGNED(A_SIGNED && B_SIGNED))
+    _TECHMAP_REPLACE_ (
+        .A(a_extended), .B(b_extended), .div(result), .mod(unused)
+    );
+  assign Y = result[Y_WIDTH-1:0];
+endmodule
+
+(* techmap_celltype = "$mod" *)
+module _silicon_map_mod #(
+    parameter A_SIGNED = 0,
+    parameter B_SIGNED = 0,
+    parameter A_WIDTH = 1,
+    parameter B_WIDTH = 1,
+    parameter Y_WIDTH = 1
+) (
+    input [A_WIDTH-1:0] A,
+    input [B_WIDTH-1:0] B,
+    output [Y_WIDTH-1:0] Y
+);
+  localparam WIDTH = (A_WIDTH > B_WIDTH ? A_WIDTH : B_WIDTH) > Y_WIDTH
+      ? (A_WIDTH > B_WIDTH ? A_WIDTH : B_WIDTH) : Y_WIDTH;
+  wire [WIDTH-1:0] a_extended, b_extended, result;
+  generate
+    if (A_SIGNED && B_SIGNED) begin
+      assign a_extended = $signed(A);
+      assign b_extended = $signed(B);
+    end else begin
+      assign a_extended = A;
+      assign b_extended = B;
+    end
+  endgenerate
+  wire [WIDTH-1:0] unused;
+  SILICON_DIVIDER #(.WIDTH(WIDTH), .SIGNED(A_SIGNED && B_SIGNED))
+    _TECHMAP_REPLACE_ (
+        .A(a_extended), .B(b_extended), .div(unused), .mod(result)
+    );
+  assign Y = result[Y_WIDTH-1:0];
 endmodule
 
 // Zero-minus-operand uses the native negation cell imported as a Complementer.

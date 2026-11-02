@@ -135,8 +135,9 @@ TEST(YosysLegalizationTest, ShiftPassNormalizesWidthDirectionAndArithmeticMode)
 
 TEST(YosysLegalizationTest, FinalValidationRejectsUnsupportedCell)
 {
-  EXPECT_THROW((void)legalizeExpressions(expression("$mul", 3, 3, 3).dump(),
-                                          "silicon_validate"), std::runtime_error);
+  EXPECT_THROW(
+      (void)legalizeExpressions(expression("$pow", 3, 3, 3).dump(), "silicon_validate"),
+      std::runtime_error);
 }
 
 TEST(YosysLegalizationTest, ZeroMinusOperandLowersToNegWithSubtractionSignedness)
@@ -355,4 +356,74 @@ TEST(YosysCanonicalImporterTest, ImportsCanonicalExpressionCellsWithoutYosys)
       EXPECT_TRUE(shifter->getPropertyValue<bool>("signed"));
     }
   }
+}
+
+TEST(YosysLegalizationEndToEndTest, ImportsMultiplyDivideAndModuloFromVerilog)
+{
+#ifdef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
+  for (const bool sign : {false, true}) {
+    for (const auto op : {"*", "/", "%"}) {
+      SCOPED_TRACE(std::format("{} signed={}", op, sign));
+      const auto source =
+          std::format("module top(input {} [3:0] a, input {} [3:0] b, output [3:0] y); "
+                      "assign y = a {} b; endmodule",
+                      sign ? "signed" : "", sign ? "signed" : "", op);
+      const auto circuit        = std::make_shared<Circuit>(importVerilog(source, "top"));
+      const bool multiplication = std::string_view(op) == "*";
+      EXPECT_EQ(componentTypes(*circuit).count(multiplication ? "Multiplier" : "Divider"),
+                1);
+      const int lhs      = sign ? -7 : 9;
+      const int expected = multiplication                ? lhs * 2
+                           : std::string_view(op) == "/" ? lhs / 2
+                                                         : lhs % 2;
+      EXPECT_EQ(evaluateBinaryCircuit(circuit, 9, 2), valueFor(4, expected & 15));
+      if (!multiplication) {
+        EXPECT_EQ(evaluateBinaryCircuit(circuit, 9, 0), BusValue(4, State::UNKNOWN));
+      }
+    }
+  }
+#else
+  GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
+#endif
+}
+
+TEST(YosysLegalizationEndToEndTest, ArithmeticTechnologyMappingsNormalizeWidths)
+{
+#ifdef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
+  for (const auto type : {"$mul", "$div", "$mod"}) {
+    for (const bool aSigned : {false, true}) {
+      for (const bool bSigned : {false, true}) {
+        for (const int yWidth : {2, 6}) {
+          auto source = subtractionDesign(3, 5, yWidth, aSigned, bSigned);
+          onlyModule(source)["cells"].begin().value()["type"] = type;
+          const auto passes =
+              std::format("techmap -map \"{}/silicon_techmap.v\"\nsilicon_validate",
+                          SILICON_TEST_YOSYS_RESOURCE_DIR);
+          const auto mapped =
+              SILICON::yosys::Json::parse(legalizeExpressions(source.dump(), passes));
+          const bool multiplication = std::string_view(type) == "$mul";
+          EXPECT_EQ(onlyCell(mapped).at("type"),
+                    multiplication ? "SILICON_MULTIPLIER" : "SILICON_DIVIDER");
+          EXPECT_EQ(parameter(onlyCell(mapped), "SIGNED"), aSigned && bSigned);
+          EXPECT_FALSE(onlyCell(mapped).at("parameters").contains("A_SIGNED"));
+          EXPECT_FALSE(onlyCell(mapped).at("parameters").contains("B_SIGNED"));
+          const auto circuit =
+              std::make_shared<Circuit>(SILICON::yosys::deserialize(mapped.dump()));
+          const auto direct =
+              std::make_shared<Circuit>(SILICON::yosys::deserialize(source.dump()));
+          for (const unsigned a : {1u, 7u}) {
+            for (const unsigned b : {0u, 3u, 31u}) {
+              SCOPED_TRACE(std::format("{} {} {} {}: {}, {}", type, aSigned, bSigned,
+                                       yWidth, a, b));
+              EXPECT_EQ(evaluateBinaryCircuit(circuit, a, b),
+                        evaluateBinaryCircuit(direct, a, b));
+            }
+          }
+        }
+      }
+    }
+  }
+#else
+  GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
+#endif
 }

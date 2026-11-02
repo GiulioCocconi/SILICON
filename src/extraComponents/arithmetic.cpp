@@ -24,6 +24,7 @@
 #include <limits>
 #include <ranges>
 #include <stdexcept>
+#include <tuple>
 #include <utility>
 #include <variant>
 
@@ -392,6 +393,123 @@ void Shifter::simulate(SILICON::simulation::Simulator& sim)
   }
   sim.updateBus(outputs[0], result, getPropertyValue<int>("delay").value_or(0),
                 weak_from_this());
+}
+
+namespace {
+int resizeBinaryArithmetic(Component& component, const int width,
+                           const std::size_t outputCount)
+{
+  if (width < 1 || width > std::numeric_limits<unsigned short>::max())
+    return component.getPropertyValue<int>("size").value_or(4);
+  auto inputs = component.getInputs();
+  inputs.resize(2);
+  for (auto& bus : inputs)
+    bus.setSize(static_cast<unsigned short>(width));
+  component.setInputs(inputs);
+  auto outputs = component.getOutputs();
+  outputs.resize(outputCount);
+  for (auto& bus : outputs)
+    bus.setSize(static_cast<unsigned short>(width));
+  component.setOutputs(outputs);
+  return width;
+}
+}  // namespace
+
+Multiplier::Multiplier()
+{
+  defineProperty("delay", 0, [](const PropertyValue& value) {
+    return requireNonNegative("Multiplier delay", value);
+  });
+  defineProperty("size", 4, [this](const PropertyValue& value) {
+    const int width = std::get<int>(requireValidSize("Multiplier size", value));
+    if (!inputs.empty() && !outputs.empty())
+      setSize(width);
+    return value;
+  });
+  defineProperty("signed", false);
+}
+
+Multiplier::Multiplier(std::array<Bus, 2> inputBuses, Bus product) : Multiplier()
+{
+  const auto width = inputBuses[0].size();
+  if (width == 0 || inputBuses[1].size() != width || product.size() != width)
+    throw std::invalid_argument(
+        "Multiplier: all buses must have the same non-zero width");
+  inputs  = {std::move(inputBuses[0]), std::move(inputBuses[1])};
+  outputs = {std::move(product)};
+  setProperty("size", static_cast<int>(width));
+}
+
+int Multiplier::setSize(const int width)
+{
+  return resizeBinaryArithmetic(*this, width, 1);
+}
+
+Divider::Divider()
+{
+  defineProperty("delay", 0, [](const PropertyValue& value) {
+    return requireNonNegative("Divider delay", value);
+  });
+  defineProperty("size", 4, [this](const PropertyValue& value) {
+    const int width = std::get<int>(requireValidSize("Divider size", value));
+    if (!inputs.empty() && !outputs.empty())
+      setSize(width);
+    return value;
+  });
+  defineProperty("signed", false);
+}
+
+Divider::Divider(std::array<Bus, 2> inputBuses, Bus quotient, Bus remainder) : Divider()
+{
+  const auto width = inputBuses[0].size();
+  if (width == 0 || inputBuses[1].size() != width || quotient.size() != width
+      || remainder.size() != width)
+    throw std::invalid_argument("Divider: all buses must have the same non-zero width");
+  inputs  = {std::move(inputBuses[0]), std::move(inputBuses[1])};
+  outputs = {std::move(quotient), std::move(remainder)};
+  setProperty("size", static_cast<int>(width));
+}
+
+int Divider::setSize(const int width)
+{
+  return resizeBinaryArithmetic(*this, width, 2);
+}
+
+void Multiplier::simulate(SILICON::simulation::Simulator& sim)
+{
+  if (inputs.size() != 2 || outputs.size() != 1 || inputs[0].size() == 0
+      || inputs[1].size() != inputs[0].size() || outputs[0].size() != inputs[0].size())
+    return;
+  const auto sign = getPropertyValue<bool>("signed").value_or(false)
+                        ? Signedness::SIGNED
+                        : Signedness::UNSIGNED;
+  const auto product =
+      multiply(inputs[0].getCurrentValue(), inputs[1].getCurrentValue(), sign);
+  sim.updateBus(outputs[0], wireUtils::normalizeBusValue(product, outputs[0].size()),
+                getPropertyValue<int>("delay").value_or(0), weak_from_this());
+}
+
+void Divider::simulate(SILICON::simulation::Simulator& sim)
+{
+  if (inputs.size() != 2 || outputs.size() != 2 || inputs[0].size() == 0
+      || inputs[1].size() != inputs[0].size() || outputs[0].size() != inputs[0].size()
+      || outputs[1].size() != inputs[0].size())
+    return;
+  const auto dividend = inputs[0].getCurrentValue();
+  const auto divisor  = inputs[1].getCurrentValue();
+  BusValue   quotient, remainder;
+  if (std::ranges::all_of(divisor, [](State state) { return state == State::LOW; })) {
+    quotient.assign(outputs[0].size(), State::UNKNOWN);
+    remainder.assign(outputs[1].size(), State::UNKNOWN);
+  } else {
+    const auto sign               = getPropertyValue<bool>("signed").value_or(false)
+                                        ? Signedness::SIGNED
+                                        : Signedness::UNSIGNED;
+    std::tie(quotient, remainder) = divide(dividend, divisor, sign);
+  }
+  const auto delay = getPropertyValue<int>("delay").value_or(0);
+  sim.updateBus(outputs[0], quotient, delay, weak_from_this());
+  sim.updateBus(outputs[1], remainder, delay, weak_from_this());
 }
 
 Comparator::Comparator()

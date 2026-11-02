@@ -183,6 +183,26 @@ GraphicalAdderNBits::GraphicalAdderNBits(QGraphicsItem* parent)
            {PortPair{"sum", QPoint(50, 120)}, PortPair{"of", QPoint(110, 40)}});
 }
 
+GraphicalMultiplier::GraphicalMultiplier(QGraphicsItem* parent)
+  : GraphicalLogicComponent(
+        std::make_shared<Multiplier>(std::array<Bus, 2>{Bus(4), Bus(4)}, Bus(4)),
+        new ThemedSvgItem(":/other_components/MULTIPLIER.svg"), parent, true)
+{
+  printPortNames = true;
+  setPorts({PortPair{"a", QPoint(20, -20)}, PortPair{"b", QPoint(80, -20)}},
+           {PortPair{"product", QPoint(50, 120)}});
+}
+
+GraphicalDivider::GraphicalDivider(QGraphicsItem* parent)
+  : GraphicalLogicComponent(
+        std::make_shared<Divider>(std::array<Bus, 2>{Bus(4), Bus(4)}, Bus(4), Bus(4)),
+        new ThemedSvgItem(":/other_components/DIVIDER.svg"), parent, true)
+{
+  printPortNames = true;
+  setPorts({PortPair{"a", QPoint(20, -20)}, PortPair{"b", QPoint(80, -20)}},
+           {PortPair{"div", QPoint(50, 120)}, PortPair{"mod", QPoint(110, 40)}});
+}
+
 GraphicalShifter::GraphicalShifter(QGraphicsItem* parent)
   : GraphicalLogicComponent(
         makeShifter(), new ThemedSvgItem(":/other_components/SHIFTR.svg"), parent, true)

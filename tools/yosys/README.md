@@ -23,7 +23,7 @@ canonical type once; a second invocation leaves those cells unchanged.
 ## Canonical cells
 
 The importer accepts `$and`, `$or`, `$xor`, `$not`, `$_NAND_`, `$_NOR_`,
-`$pos`, `$add`, `$sub`, `$neg`, `$mux`, `$bmux`, `$demux`, supported `$dff`, `$dffsr`,
+`$pos`, `$add`, `$sub`, `$neg`, `$mul`, `$div`, `$mod`, `$mux`, `$bmux`, `$demux`, supported `$dff`, `$dffsr`,
 `$dffsre`, `$dlatch`, `$adffe`, declared module instances, and the existing
 `SILICON_*` technology cells listed in `cells.hpp`, including `SILICON_ROM`.
 `$add` and `$sub` retain their existing importer width handling.
@@ -33,6 +33,18 @@ which also exports as `$neg`. Zero-minus-operand `$sub` cells are lowered to
 `$neg` by the technology map, sign extending only when both subtraction operands
 are signed. Negation operands are sign or zero extended, or truncated, to the
 output width before negation.
+
+`$mul` maps to `SILICON_MULTIPLIER`; `$div` and `$mod` map to the `div` and
+`mod` outputs of `SILICON_DIVIDER`, whose inputs are `A` and `B`. Like
+`SILICON_ADDER`, these technology
+cells use `WIDTH` and a single `SIGNED` parameter and have behavioral,
+black-box, and export mappings in `silicon_cells.v`. `SILICON_ADDER` requires
+`SIGNED=0`, matching the unsigned adder component. They round-trip directly
+to the `Multiplier` and `Divider` components. Both components expose `size`, `delay`, and
+`signed` properties. All component buses have `size` bits; multiplication keeps
+the low bits and signed division truncates toward zero. Division by zero drives
+unknown outputs. Import extends operands to the widest input/output width,
+using sign extension only when both inputs are signed, then truncates the result.
 
 Declared module instances may omit unused output ports or connect them to empty
 arrays. Each unused output receives a private bus at its declared width. Inputs

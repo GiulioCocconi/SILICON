@@ -267,8 +267,7 @@ endmodule
 
 `SILICON_CELL(SILICON_ADDER, _silicon_export_adder, "SILICON_ADDER") #(
     parameter WIDTH = 1,
-    parameter A_SIGNED = 0,
-    parameter B_SIGNED = 0
+    parameter SIGNED = 0
 ) (
     input [WIDTH-1:0] A,
     input [WIDTH-1:0] B,
@@ -277,11 +276,52 @@ endmodule
 );
 `ifndef SILICON_BLACKBOX
   `ifdef SILICON_EXPORT_MAP
-    wire _TECHMAP_FAIL_ = A_SIGNED || B_SIGNED;
+    wire _TECHMAP_FAIL_ = SIGNED;
     assign {COUT, SUM} = A + B;
   `else
     assign {COUT, SUM} = {1'b0, A} + {1'b0, B};
   `endif
+`endif
+endmodule
+
+`SILICON_CELL(SILICON_MULTIPLIER, _silicon_export_multiplier, "SILICON_MULTIPLIER") #(
+    parameter WIDTH = 1,
+    parameter SIGNED = 0
+) (
+    input [WIDTH-1:0] A,
+    input [WIDTH-1:0] B,
+    output [WIDTH-1:0] PRODUCT
+);
+`ifndef SILICON_BLACKBOX
+  generate
+    if (SIGNED) begin
+      assign PRODUCT = $signed(A) * $signed(B);
+    end else begin
+      assign PRODUCT = A * B;
+    end
+  endgenerate
+`endif
+endmodule
+
+`SILICON_CELL(SILICON_DIVIDER, _silicon_export_divider, "SILICON_DIVIDER") #(
+    parameter WIDTH = 1,
+    parameter SIGNED = 0
+) (
+    input [WIDTH-1:0] A,
+    input [WIDTH-1:0] B,
+    output [WIDTH-1:0] div,
+    output [WIDTH-1:0] mod
+);
+`ifndef SILICON_BLACKBOX
+  generate
+    if (SIGNED) begin
+      assign div = $signed(A) / $signed(B);
+      assign mod = $signed(A) % $signed(B);
+    end else begin
+      assign div = A / B;
+      assign mod = A % B;
+    end
+  endgenerate
 `endif
 endmodule
 

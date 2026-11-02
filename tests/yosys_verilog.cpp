@@ -43,6 +43,16 @@ TEST(YosysTest, YosysAcceptsEveryBuiltInLowering)
       std::make_shared<Wire>()));
   components.push_back(std::make_shared<Extender>(Bus(3), Bus(5)));
   components.push_back(std::make_shared<Complementer>(Bus(4), Bus(4)));
+  for (const bool sign : {false, true}) {
+    auto multiplier =
+        std::make_shared<Multiplier>(std::array<Bus, 2>{Bus(4), Bus(4)}, Bus(4));
+    multiplier->setProperty("signed", sign);
+    components.push_back(multiplier);
+    auto divider =
+        std::make_shared<Divider>(std::array<Bus, 2>{Bus(4), Bus(4)}, Bus(4), Bus(4));
+    divider->setProperty("signed", sign);
+    components.push_back(divider);
+  }
   components.push_back(std::make_shared<HalfAdder>(
       std::array<Wire_ptr, 2>{std::make_shared<Wire>(), std::make_shared<Wire>()},
       std::make_shared<Wire>(), std::make_shared<Wire>()));

@@ -289,6 +289,51 @@ public:
   void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
 };
 
+/** Fixed-width product, retaining the least-significant size bits. */
+class Multiplier : public Component {
+public:
+  static constexpr std::string_view Type = "Multiplier";
+  enum class Inputs : unsigned int { A = 0, B = 1 };
+  enum class Outputs : unsigned int { Product = 0 };
+
+  std::string_view  typeName() const override { return Type; }
+  ComponentMetadata metadata() const override
+  {
+    return {"Multiplier", "Multiplies two fixed-width signed or unsigned buses.",
+            ComponentCategory::Arithmetic};
+  }
+
+  Multiplier();
+  Multiplier(std::array<Bus, 2> inputs, Bus product);
+  int  setSize(int width);
+  void simulate(SILICON::simulation::Simulator& sim) override;
+  void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
+};
+
+/** Fixed-width division, truncating toward zero. Remainder follows the dividend's sign.
+ * Division by zero drives UNKNOWN on both outputs.
+ */
+class Divider : public Component {
+public:
+  static constexpr std::string_view Type = "Divider";
+  enum class Inputs : unsigned int { A = 0, B = 1 };
+  enum class Outputs : unsigned int { Div = 0, Mod = 1 };
+
+  std::string_view  typeName() const override { return Type; }
+  ComponentMetadata metadata() const override
+  {
+    return {"Divider",
+            "Divides two fixed-width buses and outputs quotient and remainder.",
+            ComponentCategory::Arithmetic};
+  }
+
+  Divider();
+  Divider(std::array<Bus, 2> inputs, Bus quotient, Bus remainder);
+  int  setSize(int width);
+  void simulate(SILICON::simulation::Simulator& sim) override;
+  void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
+};
+
 class Comparator : public Component {
 
 public:

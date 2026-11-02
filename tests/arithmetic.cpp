@@ -337,3 +337,113 @@ TEST(ArithmeticTest, AdderNBitsSizePropertyReshapesIO)
   EXPECT_EQ(adder->getOutputs()[0].size(), 8);
   EXPECT_EQ(adder->getOutputs()[1].size(), 1);
 }
+
+TEST(ArithmeticTest, MultiplierAndDividerComputeSignedAndUnsignedResults)
+{
+  for (const bool sign : {false, true}) {
+    Bus  a(4), b(4), product(4), quotient(4), remainder(4);
+    auto multiplier = std::make_shared<Multiplier>(std::array<Bus, 2>{a, b}, product);
+    auto divider =
+        std::make_shared<Divider>(std::array<Bus, 2>{a, b}, quotient, remainder);
+    multiplier->setProperty("signed", sign);
+    divider->setProperty("signed", sign);
+    Simulator sim(std::make_shared<Circuit>(Component_set{multiplier, divider}));
+    for (unsigned av = 0; av < 16; ++av) {
+      for (unsigned bv = 0; bv < 16; ++bv) {
+        SCOPED_TRACE(::testing::Message() << sign << ": " << av << ", " << bv);
+        sim.setBus(a, valueFor(a, av));
+        sim.setBus(b, valueFor(b, bv));
+        ASSERT_EQ(sim.runUntilIdle(), Simulator::RunResult::Completed);
+        const int lhs = sign && av >= 8 ? static_cast<int>(av) - 16 : av;
+        const int rhs = sign && bv >= 8 ? static_cast<int>(bv) - 16 : bv;
+        EXPECT_EQ(product.getCurrentValue(), valueFor(product, (lhs * rhs) & 15));
+        if (rhs == 0) {
+          EXPECT_EQ(quotient.getCurrentValue(), BusValue(4, State::UNKNOWN));
+          EXPECT_EQ(remainder.getCurrentValue(), BusValue(4, State::UNKNOWN));
+        } else {
+          EXPECT_EQ(quotient.getCurrentValue(), valueFor(quotient, (lhs / rhs) & 15));
+          EXPECT_EQ(remainder.getCurrentValue(), valueFor(remainder, (lhs % rhs) & 15));
+        }
+      }
+    }
+  }
+}
+
+TEST(ArithmeticTest, MultiplierAndDividerSupportWideBuses)
+{
+  Bus  a(128), b(128), product(128), quotient(128), remainder(128);
+  auto multiplier = std::make_shared<Multiplier>(std::array<Bus, 2>{a, b}, product);
+  auto divider = std::make_shared<Divider>(std::array<Bus, 2>{a, b}, quotient, remainder);
+  Simulator    sim(std::make_shared<Circuit>(Component_set{multiplier, divider}));
+  const BigInt lhs = (BigInt(1) << 100) + 5;
+  const BigInt rhs = (BigInt(1) << 70) + 3;
+  sim.setBus(a, busValueFromInteger(lhs, 128));
+  sim.setBus(b, busValueFromInteger(rhs, 128));
+  ASSERT_EQ(sim.runUntilIdle(), Simulator::RunResult::Completed);
+  EXPECT_EQ(product.getCurrentValue(), busValueFromInteger(lhs * rhs, 128));
+  EXPECT_EQ(quotient.getCurrentValue(), busValueFromInteger(lhs / rhs, 128));
+  EXPECT_EQ(remainder.getCurrentValue(), busValueFromInteger(lhs % rhs, 128));
+}
+
+TEST(ArithmeticTest, MultiplierAndDividerPropagateNonBinaryInputs)
+{
+  Bus  a(4), b(4), product(4), quotient(4), remainder(4);
+  auto multiplier = std::make_shared<Multiplier>(std::array<Bus, 2>{a, b}, product);
+  auto divider = std::make_shared<Divider>(std::array<Bus, 2>{a, b}, quotient, remainder);
+  Simulator sim(std::make_shared<Circuit>(Component_set{multiplier, divider}));
+  for (const auto state : {State::UNKNOWN, State::ERROR}) {
+    sim.setBus(a, BusValue(4, state));
+    sim.setBus(b, valueFor(b, 1));
+    ASSERT_EQ(sim.runUntilIdle(), Simulator::RunResult::Completed);
+    EXPECT_EQ(product.getCurrentValue(), BusValue(4, state));
+    EXPECT_EQ(quotient.getCurrentValue(), BusValue(4, state));
+    EXPECT_EQ(remainder.getCurrentValue(), BusValue(4, state));
+  }
+  // A known zero divisor produces X even when the dividend contains an error.
+  sim.setBus(b, valueFor(b, 0));
+  ASSERT_EQ(sim.runUntilIdle(), Simulator::RunResult::Completed);
+  EXPECT_EQ(quotient.getCurrentValue(), BusValue(4, State::UNKNOWN));
+  EXPECT_EQ(remainder.getCurrentValue(), BusValue(4, State::UNKNOWN));
+}
+
+TEST(ArithmeticTest, MultiplierAndDividerValidateAndResizeProperties)
+{
+  std::vector<Component_ptr> components{
+      std::make_shared<Multiplier>(std::array<Bus, 2>{Bus(4), Bus(4)}, Bus(4)),
+      std::make_shared<Divider>(std::array<Bus, 2>{Bus(4), Bus(4)}, Bus(4), Bus(4))};
+  for (const auto& component : components) {
+    EXPECT_EQ(component->getPropertyValue<bool>("signed"), false);
+    component->setProperty("size", 7);
+    for (const auto& bus : component->inputBuses())
+      EXPECT_EQ(bus.size(), 7);
+    for (const auto& bus : component->outputBuses())
+      EXPECT_EQ(bus.size(), 7);
+    EXPECT_THROW(component->setProperty("size", 0), std::invalid_argument);
+    EXPECT_THROW(component->setProperty("size", 65536), std::invalid_argument);
+    EXPECT_THROW(component->setProperty("delay", -1), std::invalid_argument);
+  }
+  EXPECT_THROW((void)Multiplier({Bus(3), Bus(4)}, Bus(4)), std::invalid_argument);
+  EXPECT_THROW((void)Multiplier({Bus(), Bus()}, Bus()), std::invalid_argument);
+  EXPECT_THROW((void)Divider({Bus(4), Bus(4)}, Bus(4), Bus(3)), std::invalid_argument);
+  EXPECT_THROW((void)Divider({Bus(), Bus()}, Bus(), Bus()), std::invalid_argument);
+}
+
+TEST(ArithmeticTest, MultiplierAndDividerApplyPropagationDelay)
+{
+  Bus  a(4), b(4), product(4), quotient(4), remainder(4);
+  auto multiplier = std::make_shared<Multiplier>(std::array<Bus, 2>{a, b}, product);
+  auto divider = std::make_shared<Divider>(std::array<Bus, 2>{a, b}, quotient, remainder);
+  multiplier->setProperty("delay", 5);
+  divider->setProperty("delay", 5);
+  Simulator sim(std::make_shared<Circuit>(Component_set{multiplier, divider}));
+  sim.setBus(a, valueFor(a, 7));
+  sim.setBus(b, valueFor(b, 2));
+  ASSERT_EQ(sim.run(4), Simulator::RunResult::Completed);
+  EXPECT_EQ(product.getCurrentValue(), BusValue(4, State::UNKNOWN));
+  EXPECT_EQ(quotient.getCurrentValue(), BusValue(4, State::UNKNOWN));
+  EXPECT_EQ(remainder.getCurrentValue(), BusValue(4, State::UNKNOWN));
+  ASSERT_EQ(sim.run(1), Simulator::RunResult::Completed);
+  EXPECT_EQ(product.getCurrentValue(), valueFor(product, 14));
+  EXPECT_EQ(quotient.getCurrentValue(), valueFor(quotient, 3));
+  EXPECT_EQ(remainder.getCurrentValue(), valueFor(remainder, 1));
+}
