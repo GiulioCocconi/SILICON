@@ -274,6 +274,23 @@ TEST(NumFormattingTest, ConvertsArbitraryPrecisionIntegersToFixedWidthBusValues)
   EXPECT_TRUE(busValueFromInteger(value, 0).empty());
 }
 
+TEST(NumFormattingTest, ConvertsBusValuesToUnsignedArbitraryPrecisionIntegers)
+{
+  const BigInt value = (BigInt{1} << 128) + 5;
+  EXPECT_EQ(integerFromBusValue(busValueFromInteger(value, 256)), value);
+  EXPECT_EQ(integerFromBusValue(busValueFromBits("1111")), 15);
+  EXPECT_EQ(integerFromBusValue(BusValue(128, State::LOW)), 0);
+  EXPECT_EQ(integerFromBusValue({}), 0);
+}
+
+TEST(NumFormattingTest, RejectsNonbinaryBusValuesWhenConvertingToIntegers)
+{
+  EXPECT_THROW((void)integerFromBusValue(busValueFromBits("10X1")),
+               std::invalid_argument);
+  EXPECT_THROW((void)integerFromBusValue(busValueFromBits("10E1")),
+               std::invalid_argument);
+}
+
 TEST(NumFormattingTest, ConvertsNegativeIntegersToTwosComplementBusValues)
 {
   EXPECT_EQ(busValueFromInteger(-1, 1), busValueFromBits("1"));

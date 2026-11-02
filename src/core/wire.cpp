@@ -24,29 +24,31 @@
 
 #include <core/wireUtils.hpp>
 #include <logging/logger.hpp>
+
+#include <utils/num_formatting.hpp>
 #include <utils/ranges_wrapper.hpp>
 
 namespace SILICON::core {
 
 State operator&&(const State& a, const State& b)
 {
+  if (a == State::HIGH && b == State::HIGH)
+    return State::HIGH;
   if (a == State::ERROR || b == State::ERROR)
     return State::ERROR;
   if (a == State::LOW || b == State::LOW)
     return State::LOW;
-  if (a == State::HIGH && b == State::HIGH)
-    return State::HIGH;
   return State::UNKNOWN;
 }
 
 State operator||(const State& a, const State& b)
 {
+  if (a == State::LOW && b == State::LOW)
+    return State::LOW;
   if (a == State::ERROR || b == State::ERROR)
     return State::ERROR;
   if (a == State::HIGH || b == State::HIGH)
     return State::HIGH;
-  if (a == State::LOW && b == State::LOW)
-    return State::LOW;
   return State::UNKNOWN;
 }
 
@@ -381,6 +383,74 @@ BusValue shift(const BusValue& v, const ptrdiff_t amount, const Signedness signe
   }
 
   return res;
+}
+
+BusValue multiply(const BusValue& a, const BusValue& b, const Signedness signedness)
+{
+  if (a.empty() || b.empty())
+    throw std::invalid_argument("BusValue multiplication arguments can't be empty");
+
+  const auto width = a.size() + b.size();
+  const auto aExtension = (signedness == Signedness::SIGNED) ? a.back() : State::LOW;
+  const auto aExtended  = wireUtils::normalizeBusValue(a, width, aExtension);
+
+  BusValue res(width, State::LOW);
+
+  for (auto [index, s] : b | SILICON::views::enumerate) {
+    // If s is LOW then the partial sum would be 0 and can be ignored
+    if (s == State::LOW)
+      continue;
+
+    // The partial sum bit is 1 iff both operands bit are 1 (follow and semantics)
+    const auto intermediateResult = aExtended
+    | std::views::transform([s](const State bit) {
+            return bit && s;
+          })
+    | std::ranges::to<BusValue>();
+
+    // Calculate the partial sum
+    auto partial = shift(intermediateResult, -index);
+
+    // In two's complement, the sign bit has negative weight.
+    const bool isSignBit = index == static_cast<long>(b.size() - 1);
+    if (signedness == Signedness::SIGNED && isSignBit)
+      partial = twosComplement(partial);
+
+    res = wireUtils::normalizeBusValue(res + partial, width);
+  }
+
+  return res;
+}
+
+std::pair<BusValue, BusValue> divide(const BusValue& a, const BusValue& b,
+                                     Signedness signedness)
+{
+  if (a.empty() || b.empty())
+    throw std::invalid_argument("BusValue division arguments can't be empty");
+
+  if (std::ranges::all_of(b, [](const auto s) { return s == State::LOW; })) {
+    throw std::invalid_argument("BusValue division by 0");
+  }
+
+  const auto hasState = [](const BusValue& v, const State s) {
+    return std::ranges::contains(v, s);
+  };
+
+  if (hasState(a, State::ERROR) || hasState(b, State::ERROR))
+    return {BusValue(a.size(), State::ERROR), BusValue(b.size(), State::ERROR)};
+
+  if (hasState(a, State::UNKNOWN) || hasState(b, State::UNKNOWN))
+    return {BusValue(a.size(), State::UNKNOWN), BusValue(b.size(), State::UNKNOWN)};
+
+  const BigInt dividend = integerFromBusValue(a, signedness);
+  const BigInt divisor  = integerFromBusValue(b, signedness);
+
+  BigInt       quotient;
+  BigInt       remainder;
+  boost::multiprecision::divide_qr(dividend, divisor, quotient, remainder);
+
+  return {busValueFromInteger(quotient, a.size()),
+          busValueFromInteger(remainder, b.size())};
 }
 
 Bus::Bus(const unsigned short size)

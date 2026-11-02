@@ -24,6 +24,7 @@
 #include <functional>
 #include <limits>
 #include <string>
+#include <tuple>
 #include <utility>
 
 using namespace SILICON::core;
@@ -377,6 +378,65 @@ TEST(BusValueArithmeticTest, TwosComplementUsesFourStateOperators)
   EXPECT_EQ(twosComplement(BusValue{State::ERROR}), BusValue{State::ERROR});
   EXPECT_EQ(twosComplement(busValueFromBits("0X")), busValueFromBits("XX"));
   EXPECT_EQ(twosComplement(busValueFromBits("0E")), busValueFromBits("EE"));
+}
+
+TEST(BusValueArithmeticTest, DivisionPreservesOperandWidths)
+{
+  const auto expectDivision = [](const std::string& dividend, const std::string& divisor,
+                                 const std::string& quotient,
+                                 const std::string& remainder) {
+    const auto [actualQuotient, actualRemainder] =
+        divide(busValueFromBits(dividend), busValueFromBits(divisor));
+    EXPECT_EQ(actualQuotient, busValueFromBits(quotient));
+    EXPECT_EQ(actualRemainder, busValueFromBits(remainder));
+  };
+
+  expectDivision("001101", "011", "000100", "001");
+  expectDivision("11", "00101", "00", "00011");
+  expectDivision("0000", "1", "0000", "0");
+  expectDivision("1111", "1", "1111", "0");
+  expectDivision("1111", "0011", "0101", "0000");
+  expectDivision("1", "1", "1", "0");
+}
+
+TEST(BusValueArithmeticTest, DivisionSupportsArbitraryPrecision)
+{
+  const BigInt divisor   = (BigInt{1} << 100) + 3;
+  const BigInt quotient  = (BigInt{1} << 130) + 5;
+  const BigInt remainder = (BigInt{1} << 80) + 7;
+  const BigInt dividend  = divisor * quotient + remainder;
+
+  const auto [actualQuotient, actualRemainder] =
+      divide(busValueFromInteger(dividend, 256), busValueFromInteger(divisor, 128));
+  EXPECT_EQ(actualQuotient, busValueFromInteger(quotient, 256));
+  EXPECT_EQ(actualRemainder, busValueFromInteger(remainder, 128));
+}
+
+TEST(BusValueArithmeticTest, DivisionPropagatesErrorBeforeUnknown)
+{
+  for (const auto& [dividend, divisor, state] :
+       {std::tuple{"00X1", "01", State::UNKNOWN},
+        std::tuple{"0011", "0X", State::UNKNOWN}, std::tuple{"00E1", "0X", State::ERROR},
+        std::tuple{"00X1", "0E", State::ERROR}}) {
+    const auto a                     = busValueFromBits(dividend);
+    const auto b                     = busValueFromBits(divisor);
+    const auto [quotient, remainder] = divide(a, b);
+    EXPECT_EQ(quotient, BusValue(a.size(), state));
+    EXPECT_EQ(remainder, BusValue(b.size(), state));
+  }
+}
+
+TEST(BusValueArithmeticTest, DivisionRejectsEmptyOperandsAndZeroDivisors)
+{
+  const auto one = busValueFromBits("1");
+  EXPECT_THROW((void)(divide(BusValue{}, one)), std::invalid_argument);
+  EXPECT_THROW((void)(divide(one, BusValue{})), std::invalid_argument);
+  EXPECT_THROW((void)(divide(BusValue{}, BusValue{})), std::invalid_argument);
+  EXPECT_THROW((void)(divide(one, busValueFromBits("0000"))), std::invalid_argument);
+  EXPECT_THROW((void)(divide(busValueFromBits("X"), busValueFromBits("0"))),
+               std::invalid_argument);
+  EXPECT_THROW((void)(divide(busValueFromBits("E"), busValueFromBits("0"))),
+               std::invalid_argument);
 }
 
 TEST(LogicTest, And)
