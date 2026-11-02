@@ -128,7 +128,14 @@ BusValue               operator+(const BusValue& a, const BusValue& b);
 [[nodiscard]] BusValue shift(const BusValue& v, ptrdiff_t amount,
                              Signedness signedness = Signedness::UNSIGNED);
 
-    class Bus {
+[[nodiscard]] BusValue multiply(const BusValue& a, const BusValue& b,
+                                Signedness signedness = Signedness::UNSIGNED);
+
+[[nodiscard]] std::pair<BusValue, BusValue>
+divide(const BusValue& a, const BusValue& b,
+       Signedness signedness = Signedness::UNSIGNED);
+
+class Bus {
 private:
   std::vector<Wire_ptr> busData;
 
