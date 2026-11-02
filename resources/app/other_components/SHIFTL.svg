@@ -1,11 +1,12 @@
-<svg width="70" height="40" viewBox="0 0 70 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-<g clip-path="url(#clip0_24_8)">
-<path d="M2.42773 38.5L20.9277 1.5L67.5723 1.5L49.0723 38.5L2.42773 38.5Z" fill="#D8FFFF" stroke="black" stroke-width="3" data-silicon-fill="SILICON_INTERNAL" data-silicon-stroke="SILICON_INK" />
-<path d="M44 30L35.4737 20.5L44 11M34.5263 30L26 20.5L34.5263 11" stroke="black" stroke-width="2" stroke-linecap="round" data-silicon-stroke="SILICON_INK" />
-</g>
-<defs>
-<clipPath id="clip0_24_8">
-<rect width="70" height="40" fill="white" transform="matrix(-1 0 0 -1 70 40)"/>
-</clipPath>
-</defs>
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" width="70" height="40" fill="none" viewBox="0 0 70 40">
+  <g clip-path="url(#clip0_24_8)">
+    <path fill="#fff0e3" stroke="#292c31" stroke-width="3" d="m2.42773 38.5 18.49997-37h46.6446l-18.5 37z" data-silicon-fill="SILICON_INTERNAL" data-silicon-stroke="SILICON_INK" style="fill:#fff0e3 !important; stroke:#292c31 !important;" />
+    <path stroke="#292c31" stroke-linecap="round" stroke-width="2" d="m44 30-8.5263-9.5L44 11m-9.4737 19L26 20.5l8.5263-9.5" data-silicon-stroke="SILICON_INK" style="stroke:#292c31 !important;" />
+  </g>
+  <defs>
+    <clipPath id="clip0_24_8">
+      <path fill="#fff" d="M0 0h70v40H0z" transform="matrix(-1 0 0 -1 70 40)" />
+    </clipPath>
+  </defs>
 </svg>

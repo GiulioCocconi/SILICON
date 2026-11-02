@@ -1,13 +1,14 @@
-<svg width="100" height="100" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-<g clip-path="url(#clip0_4_289)">
-<path d="M39.0723 1.5L48.6582 20.6709L50 23.3545L51.3418 20.6709L60.9277 1.5H98.1709L78.7705 98.5H21.2295L1.8291 1.5H39.0723Z" fill="#D8FFFF" stroke="black" stroke-width="3" data-silicon-fill="SILICON_INTERNAL" data-silicon-stroke="SILICON_INK" />
-<circle cx="50" cy="60" r="14" stroke="black" stroke-width="2" data-silicon-stroke="SILICON_INK" />
-<path d="M50 52.5V67.5" stroke="black" stroke-width="2" stroke-linecap="round" data-silicon-stroke="SILICON_INK" />
-<path d="M57.875 60.375H42.125" stroke="black" stroke-width="2" stroke-linecap="round" data-silicon-stroke="SILICON_INK" />
-</g>
-<defs>
-<clipPath id="clip0_4_289">
-<rect width="100" height="100" fill="white"/>
-</clipPath>
-</defs>
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" fill="none" viewBox="0 0 100 100">
+  <g clip-path="url(#clip0_4_289)">
+    <path fill="#fff0e3" stroke="#292c31" stroke-width="3" d="m39.0723 1.5 9.5859 19.1709L50 23.3545l1.3418-2.6836L60.9277 1.5h37.2432l-19.4004 97h-57.541L1.8291 1.5z" data-silicon-fill="SILICON_INTERNAL" data-silicon-stroke="SILICON_INK" style="fill:#fff0e3 !important; stroke:#292c31 !important;" />
+    <circle cx="50" cy="60" r="14" stroke="#292c31" stroke-width="2" data-silicon-stroke="SILICON_INK" style="stroke:#292c31 !important;" />
+    <path stroke="#292c31" stroke-linecap="round" stroke-width="2" d="M50 52.5v15" data-silicon-stroke="SILICON_INK" style="stroke:#292c31 !important;" />
+    <path stroke="#292c31" stroke-linecap="round" stroke-width="2" d="M57.875 60.375h-15.75" data-silicon-stroke="SILICON_INK" style="stroke:#292c31 !important;" />
+  </g>
+  <defs>
+    <clipPath id="clip0_4_289">
+      <path fill="#fff" d="M0 0h100v100H0z" />
+    </clipPath>
+  </defs>
 </svg>

@@ -1,11 +1,12 @@
-<svg width="70" height="40" viewBox="0 0 70 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-<g clip-path="url(#clip0_4_282)">
-<circle cx="65" cy="20" r="5" fill="black" data-silicon-fill="SILICON_INK" />
-<path d="M55.2568 20L1.5 37.9189V2.08105L55.2568 20Z" fill="#D8FFFF" stroke="black" stroke-width="3" data-silicon-fill="SILICON_BLUE" data-silicon-stroke="SILICON_INK" />
-</g>
-<defs>
-<clipPath id="clip0_4_282">
-<rect width="70" height="40" fill="white"/>
-</clipPath>
-</defs>
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" width="70" height="40" fill="none" viewBox="0 0 70 40">
+  <g clip-path="url(#clip0_4_282)">
+    <circle cx="65" cy="20" r="5" fill="#292c31" data-silicon-fill="SILICON_INK" style="fill:#292c31 !important;" />
+    <path fill="#329deb" stroke="#292c31" stroke-width="3" d="M55.2568 20 1.5 37.9189V2.08105z" data-silicon-fill="SILICON_BLUE" data-silicon-stroke="SILICON_INK" style="fill:#329deb !important; stroke:#292c31 !important;" />
+  </g>
+  <defs>
+    <clipPath id="clip0_4_282">
+      <path fill="#fff" d="M0 0h70v40H0z" />
+    </clipPath>
+  </defs>
 </svg>
