@@ -20,12 +20,15 @@
 #include <core/wire.hpp>
 
 #include <cstddef>
-#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
 
+#include <boost/multiprecision/cpp_int.hpp>
+
 namespace SILICON::core {
+
+using BigInt = boost::multiprecision::cpp_int;
 
 enum class BusValueFormat { Raw, Signed, Unsigned, Hex, Oct, Bin, Unknown };
 
@@ -40,17 +43,18 @@ struct ParsedBusValue {
                                       std::size_t fixedWidth = 0);
 
 /**
- * Format the low @p bitWidth bits of a machine integer without constructing a
- * BusValue. Prefixes are omitted; binary output is padded to the full bit width.
+ * Format the low @p bitWidth bits of an arbitrary-precision integer.
+ * Prefixes are omitted; binary output is padded to the full bit width.
+ * A zero bit width throws std::invalid_argument.
  */
-[[nodiscard]] std::string formatInteger(std::uint64_t value, BusValueFormat format,
+[[nodiscard]] std::string formatInteger(const BigInt& value, BusValueFormat format,
                                         std::size_t bitWidth);
 
 /**
  * Parse an integer in the explicitly selected format and return its width-limited
  * two's-complement bit pattern. Invalid and out-of-range values return nullopt.
  */
-[[nodiscard]] std::optional<std::uint64_t>
+[[nodiscard]] std::optional<BigInt>
 parseInteger(std::string_view text, BusValueFormat format, std::size_t bitWidth);
 
 /**
@@ -74,8 +78,19 @@ parseInteger(std::string_view text, BusValueFormat format, std::size_t bitWidth)
 
 [[nodiscard]] BusValue maxValueForBusWidth(std::size_t width);
 
-/** @brief Builds a fixed-width BusValue from an unsigned integer (LSB-first). */
-[[nodiscard]] BusValue busValueFromInteger(std::uint64_t value, std::size_t width);
+/**
+ * @brief Builds an LSB-first BusValue from the low @p width bits of an integer.
+ * Negative values use two's complement and sign extension; nonnegative values
+ * use zero extension. Values are truncated to @p width bits; zero width is empty.
+ */
+[[nodiscard]] BusValue busValueFromInteger(const BigInt& value, std::size_t width);
+
+/**
+ * @brief Decodes an LSB-first BusValue as an unsigned arbitrary-precision integer.
+ * Empty values yield zero. UNKNOWN or ERROR bits throw std::invalid_argument.
+ */
+[[nodiscard]] BigInt integerFromBusValue(const BusValue& value,
+                                         Signedness signedness = Signedness::UNSIGNED);
 
 /** @brief Strictly decodes an MSB-first raw string containing 0, 1, X, or E. */
 [[nodiscard]] BusValue busValueFromBits(std::string_view bits);

@@ -586,7 +586,7 @@ void BinaryEditor::commitInspector(Inspector& inspector)
   }
   inspector.edit->setModified(false);
   inspector.edit->setToolTip({});
-  overwriteValue(*parsed, inspector.width,
+  overwriteValue(parsed->convert_to<std::uint64_t>(), inspector.width,
                  tr("Edit %1").arg(inspectorLabel(inspector.format, inspector.width)));
 }
 

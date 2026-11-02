@@ -20,7 +20,6 @@
 #include <core/wireUtils.hpp>
 #include <utils/num_formatting.hpp>
 
-#include <limits>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -185,7 +184,7 @@ TEST(NumFormattingTest, PreservesExplicitBaseWidthsWhenParsingLeadingZeroes)
   EXPECT_EQ(valueFromStr("0o01").value, busValueFromBits("000001"));
 }
 
-TEST(NumFormattingTest, FormatsMachineIntegersWithoutBusValues)
+TEST(NumFormattingTest, FormatsWidthLimitedIntegers)
 {
   EXPECT_EQ(formatInteger(0xf3, BusValueFormat::Signed, 8), "-13");
   EXPECT_EQ(formatInteger(0xf3, BusValueFormat::Unsigned, 8), "243");
@@ -195,7 +194,7 @@ TEST(NumFormattingTest, FormatsMachineIntegersWithoutBusValues)
   EXPECT_EQ(formatInteger(0xffffffffffffffffULL, BusValueFormat::Signed, 64), "-1");
 }
 
-TEST(NumFormattingTest, ParsesWidthLimitedMachineIntegers)
+TEST(NumFormattingTest, ParsesWidthLimitedIntegers)
 {
   EXPECT_EQ(parseInteger("-128", BusValueFormat::Signed, 8), 0x80);
   EXPECT_EQ(parseInteger("127", BusValueFormat::Signed, 8), 0x7f);
@@ -204,11 +203,108 @@ TEST(NumFormattingTest, ParsesWidthLimitedMachineIntegers)
   EXPECT_EQ(parseInteger("0o363", BusValueFormat::Oct, 8), 0xf3);
   EXPECT_EQ(parseInteger("0xF3", BusValueFormat::Hex, 8), 0xf3);
   EXPECT_EQ(parseInteger("18446744073709551615", BusValueFormat::Unsigned, 64),
-            std::numeric_limits<std::uint64_t>::max());
+            BigInt("18446744073709551615"));
   EXPECT_FALSE(parseInteger("-129", BusValueFormat::Signed, 8));
   EXPECT_FALSE(parseInteger("128", BusValueFormat::Signed, 8));
   EXPECT_FALSE(parseInteger("256", BusValueFormat::Unsigned, 8));
   EXPECT_FALSE(parseInteger("0b102", BusValueFormat::Bin, 8));
   EXPECT_FALSE(parseInteger("1", BusValueFormat::Raw, 8));
   EXPECT_FALSE(parseInteger("1", BusValueFormat::Unknown, 8));
+}
+
+TEST(NumFormattingTest, FormatsArbitraryPrecisionIntegers)
+{
+  const BigInt value("340282366920938463463374607431768211455");
+  EXPECT_EQ(formatInteger(value, BusValueFormat::Unsigned, 128), value.str());
+  EXPECT_EQ(formatInteger(value, BusValueFormat::Signed, 128), "-1");
+  EXPECT_EQ(formatInteger(value, BusValueFormat::Hex, 128), std::string(32, 'F'));
+  EXPECT_EQ(formatInteger(value, BusValueFormat::Oct, 128), "3" + std::string(42, '7'));
+  EXPECT_EQ(formatInteger(value, BusValueFormat::Bin, 128), std::string(128, '1'));
+  EXPECT_EQ(formatInteger(value, BusValueFormat::Unsigned, 65), "36893488147419103231");
+  EXPECT_EQ(formatInteger(value, BusValueFormat::Unsigned, 8), "255");
+  EXPECT_EQ(formatInteger(value, BusValueFormat::Bin, 129), "0" + std::string(128, '1'));
+  EXPECT_EQ(formatInteger(-value, BusValueFormat::Unsigned, 128), "1");
+  EXPECT_EQ(formatInteger(-1, BusValueFormat::Hex, 128), std::string(32, 'F'));
+
+  const BigInt minimum = -(BigInt{1} << 127);
+  EXPECT_EQ(formatInteger(minimum, BusValueFormat::Signed, 128), minimum.str());
+}
+
+TEST(NumFormattingTest, ParsesArbitraryPrecisionIntegersAcrossNumericBases)
+{
+  const BigInt maximum("340282366920938463463374607431768211455");
+  EXPECT_EQ(parseInteger(maximum.str(), BusValueFormat::Unsigned, 128), maximum);
+  EXPECT_EQ(parseInteger(" +" + maximum.str() + " ", BusValueFormat::Unsigned, 128),
+            maximum);
+  EXPECT_EQ(parseInteger("0x" + std::string(32, 'F'), BusValueFormat::Hex, 128), maximum);
+  EXPECT_EQ(parseInteger("0o3" + std::string(42, '7'), BusValueFormat::Oct, 128),
+            maximum);
+  EXPECT_EQ(parseInteger("0b" + std::string(128, '1'), BusValueFormat::Bin, 128),
+            maximum);
+
+  const BigInt overflow = maximum + 1;
+  EXPECT_FALSE(parseInteger(overflow.str(), BusValueFormat::Unsigned, 128));
+  EXPECT_FALSE(parseInteger("0x1" + std::string(32, '0'), BusValueFormat::Hex, 128));
+  EXPECT_FALSE(parseInteger("0o4" + std::string(42, '0'), BusValueFormat::Oct, 128));
+  EXPECT_FALSE(parseInteger("0b1" + std::string(128, '0'), BusValueFormat::Bin, 128));
+}
+
+TEST(NumFormattingTest, ParsesArbitraryPrecisionSignedBounds)
+{
+  const BigInt signBit = BigInt{1} << 127;
+  const BigInt minimum = -signBit;
+  const BigInt maximum = signBit - 1;
+  EXPECT_EQ(parseInteger(minimum.str(), BusValueFormat::Signed, 128), signBit);
+  EXPECT_EQ(parseInteger(maximum.str(), BusValueFormat::Signed, 128), maximum);
+  EXPECT_EQ(parseInteger("-1", BusValueFormat::Signed, 128), (BigInt{1} << 128) - 1);
+  EXPECT_EQ(parseInteger("-0", BusValueFormat::Signed, 128), 0);
+
+  const BigInt underflow = minimum - 1;
+  EXPECT_FALSE(parseInteger(underflow.str(), BusValueFormat::Signed, 128));
+  EXPECT_FALSE(parseInteger(signBit.str(), BusValueFormat::Signed, 128));
+}
+
+TEST(NumFormattingTest, ConvertsArbitraryPrecisionIntegersToFixedWidthBusValues)
+{
+  const BigInt value = (BigInt{1} << 128) + 5;
+  EXPECT_EQ(busValueFromInteger(value, 129),
+            busValueFromBits("1" + std::string(125, '0') + "101"));
+  EXPECT_EQ(busValueFromInteger(value, 8), busValueFromBits("00000101"));
+  EXPECT_EQ(busValueFromInteger(0, 128), BusValue(128, State::LOW));
+  EXPECT_TRUE(busValueFromInteger(value, 0).empty());
+}
+
+TEST(NumFormattingTest, ConvertsNegativeIntegersToTwosComplementBusValues)
+{
+  EXPECT_EQ(busValueFromInteger(-1, 1), busValueFromBits("1"));
+  EXPECT_EQ(busValueFromInteger(-1, 128), BusValue(128, State::HIGH));
+  EXPECT_EQ(busValueFromInteger(-8, 4), busValueFromBits("1000"));
+  EXPECT_EQ(busValueFromInteger(-8, 8), busValueFromBits("11111000"));
+  EXPECT_EQ(busValueFromInteger(-129, 8), busValueFromBits("01111111"));
+  EXPECT_TRUE(busValueFromInteger(-1, 0).empty());
+
+  const BigInt minimum = -(BigInt{1} << 127);
+  EXPECT_EQ(busValueFromInteger(minimum, 128),
+            busValueFromBits("1" + std::string(127, '0')));
+  EXPECT_EQ(busValueFromInteger(minimum + 5, 128),
+            busValueFromBits("1" + std::string(124, '0') + "101"));
+  EXPECT_EQ(busValueFromInteger(minimum - 1, 128),
+            busValueFromBits("0" + std::string(127, '1')));
+  EXPECT_EQ(busValueFromInteger(minimum - 5, 8), busValueFromBits("11111011"));
+}
+
+TEST(NumFormattingTest, EnforcesIntegerWidthsAndFormats)
+{
+  EXPECT_THROW((void)formatInteger(1, BusValueFormat::Unsigned, 0),
+               std::invalid_argument);
+  EXPECT_THROW((void)formatInteger(1, BusValueFormat::Raw, 128), std::invalid_argument);
+  EXPECT_THROW((void)formatInteger(1, BusValueFormat::Unknown, 128),
+               std::invalid_argument);
+  EXPECT_FALSE(parseInteger("1", BusValueFormat::Unsigned, 0));
+  EXPECT_FALSE(parseInteger("", BusValueFormat::Unsigned, 128));
+  EXPECT_FALSE(parseInteger("-1", BusValueFormat::Unsigned, 128));
+  EXPECT_FALSE(parseInteger("+", BusValueFormat::Signed, 128));
+  EXPECT_EQ(parseInteger("-1", BusValueFormat::Signed, 1), 1);
+  EXPECT_EQ(parseInteger("0", BusValueFormat::Signed, 1), 0);
+  EXPECT_FALSE(parseInteger("1", BusValueFormat::Signed, 1));
 }
