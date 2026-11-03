@@ -9,7 +9,13 @@ import sys
 ROOT = Path(__file__).resolve().parents[2]
 PALETTE = ROOT / 'resources/app/palette.json'
 OUTPUT = ROOT / 'webpage/theme/palette.css'
-REQUIRED = set('ORANGE LORANGE BLUE GREEN VIOLET INTERNAL INK BACKGROUND SURFACE SURFACE_RAISED GRID GREY DISABLED SELECTED HOVER MENU_HOVER ERROR ERROR_HOVER ERROR_FILL SIGNAL_LOW ON_ACCENT ON_VIOLET'.split())
+REQUIRED = {
+    'SILICON_' + name for name in (
+        'ORANGE LORANGE BLUE GREEN VIOLET INTERNAL INK BACKGROUND SURFACE '
+        'SURFACE_RAISED GRID GREY DISABLED SELECTED HOVER MENU_HOVER ERROR '
+        'ERROR_HOVER ERROR_FILL SIGNAL_LOW ON_ACCENT ON_VIOLET'
+    ).split()
+}
 
 
 def load_palette(path=PALETTE):
@@ -25,15 +31,12 @@ def load_palette(path=PALETTE):
     if not isinstance(palette, dict) or set(palette) != {'light', 'dark'}:
         raise ValueError('Palette must contain exactly light and dark modes')
     for mode, tokens in palette.items():
-        if not isinstance(tokens, dict) or not {'SILICON_' + key for key in REQUIRED} <= tokens.keys():
-            raise ValueError(f'{mode}: missing required palette tokens')
+        # Match the C++ ColorToken schema exactly; both modes must define every token.
+        if not isinstance(tokens, dict) or tokens.keys() != REQUIRED:
+            raise ValueError(f'{mode}: missing or unknown palette tokens')
         for key, value in tokens.items():
-            if not re.fullmatch(r'SILICON_[A-Z][A-Z0-9_]*', key):
-                raise ValueError(f'Invalid token name: {key}')
             if not isinstance(value, str) or not re.fullmatch(r'#[0-9a-fA-F]{6}', value):
                 raise ValueError(f'{mode}.{key}: expected #RRGGBB')
-    if palette['light'].keys() != palette['dark'].keys():
-        raise ValueError('Light and dark token sets must match')
     return palette
 
 

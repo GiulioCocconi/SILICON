@@ -18,6 +18,7 @@
 #include <ui/documents/code/codeSyntaxHighlighter.hpp>
 
 #include <algorithm>
+#include <initializer_list>
 #include <stdexcept>
 
 #include <QPalette>
@@ -118,37 +119,22 @@ void CodeSyntaxHighlighter::setPalette(const QPalette& palette)
 {
   const bool dark = palette.color(QPalette::Base).lightness()
                     < palette.color(QPalette::Text).lightness();
-  const auto tokens = dark ? SILICON::ui::theme::dark() : SILICON::ui::theme::light();
-  const auto color  = [&tokens](const QString& name) { return tokens.value(name); };
-
-  formats[static_cast<std::size_t>(CodeSyntaxStyle::Statement)] =
-      colored(color("SILICON_BLUE"));
-  formats[static_cast<std::size_t>(CodeSyntaxStyle::Label)] =
-      colored(color("SILICON_BLUE"));
-  formats[static_cast<std::size_t>(CodeSyntaxStyle::Conditional)] =
-      colored(color("SILICON_VIOLET"));
-  formats[static_cast<std::size_t>(CodeSyntaxStyle::Repeat)] =
-      colored(color("SILICON_VIOLET"));
-  formats[static_cast<std::size_t>(CodeSyntaxStyle::Todo)] =
-      colored(color("SILICON_ORANGE"));
-  formats[static_cast<std::size_t>(CodeSyntaxStyle::Operator)] =
-      colored(color("SILICON_VIOLET"));
-  formats[static_cast<std::size_t>(CodeSyntaxStyle::Comment)] =
-      colored(color("SILICON_GREY"));
-  formats[static_cast<std::size_t>(CodeSyntaxStyle::Global)] =
-      colored(color("SILICON_VIOLET"));
-  formats[static_cast<std::size_t>(CodeSyntaxStyle::Constant)] =
-      colored(color("SILICON_ORANGE"));
-  formats[static_cast<std::size_t>(CodeSyntaxStyle::Number)] =
-      colored(color("SILICON_ORANGE"));
-  QColor stringColor = color("SILICON_GREEN");
+  // Use the editor's palette so previews can differ from the application theme.
+  const auto& colors = (dark ? theme::dark() : theme::light()).colors;
+  const auto  set    = [&](theme::ColorToken                      token,
+                       std::initializer_list<CodeSyntaxStyle> styles) {
+    for (const auto style : styles)
+      formats[static_cast<std::size_t>(style)] = colored(colors[token]);
+  };
+  using enum CodeSyntaxStyle;
+  set(theme::ColorToken::Blue, {Statement, Label});
+  set(theme::ColorToken::Violet, {Conditional, Repeat, Operator, Global});
+  set(theme::ColorToken::Orange, {Todo, Constant, Number, Escape, Directive});
+  set(theme::ColorToken::Grey, {Comment});
+  QColor stringColor = colors[theme::ColorToken::Green];
   if (!dark)
     stringColor = stringColor.darker(180);
-  formats[static_cast<std::size_t>(CodeSyntaxStyle::String)] = colored(stringColor);
-  formats[static_cast<std::size_t>(CodeSyntaxStyle::Escape)] =
-      colored(color("SILICON_ORANGE"));
-  formats[static_cast<std::size_t>(CodeSyntaxStyle::Directive)] =
-      colored(color("SILICON_ORANGE"));
+  formats[static_cast<std::size_t>(String)] = colored(stringColor);
 
   formats[static_cast<std::size_t>(CodeSyntaxStyle::Statement)].setFontWeight(
       QFont::DemiBold);

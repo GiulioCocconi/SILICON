@@ -109,11 +109,14 @@ set(EXTRA_COMPONENTS_SOURCE_FILES
         ${src_dir}/extraComponents/multiplexer.cpp
         ${src_dir}/extraComponents/utils.cpp)
 
+set(SILICON_STYLE_SOURCE_FILES
+        ${src_dir}/ui/shell/theme.cpp
+        ${src_dir}/ui/shell/icons.cpp
+        ${src_dir}/ui/shell/style/siliconStyle.cpp)
+
 set(UI_SOURCE_FILES
         ${src_dir}/ui/shell/logging/graphicalLogStream.cpp
         ${src_dir}/ui/shell/logging/logSideView.cpp
-        ${src_dir}/ui/shell/theme.cpp
-        ${src_dir}/ui/shell/themedSvgItem.cpp
         ${src_dir}/ui/shell/fileDialogUtils.cpp
         ${src_dir}/ui/shell/inputDialogUtils.cpp
         ${src_dir}/ui/circuit/editor/componentSearchMatcher.cpp
@@ -134,7 +137,6 @@ set(UI_SOURCE_FILES
         ${src_dir}/ui/circuit/diagram/graphicalComponent.cpp
         ${src_dir}/ui/circuit/diagram/graphicalItem.cpp
         ${src_dir}/ui/circuit/diagram/undoCommands.cpp
-        ${src_dir}/ui/shell/icons.cpp
         ${src_dir}/ui/shell/aboutDialog.cpp
         ${src_dir}/ui/shell/siliconSettings.cpp
         ${src_dir}/ui/shell/settingsWindow.cpp
@@ -419,6 +421,10 @@ if (UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
 endif ()
 qt_standard_project_setup()
 
+add_library(silicon_style STATIC ${SILICON_STYLE_SOURCE_FILES})
+target_link_libraries(silicon_style PUBLIC Qt6::Widgets Qt6::SvgWidgets)
+target_compile_options(silicon_style PRIVATE -Werror)
+
 set(app_icon_resource_windows "${resources_dir}/app_icon.rc")
 
 
@@ -437,6 +443,7 @@ endif ()
 target_compile_options(SILICON PRIVATE -Werror)
 
 target_link_libraries(SILICON PRIVATE
+        silicon_style
         Qt6::Widgets
         Qt6::SvgWidgets
         OGDF

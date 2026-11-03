@@ -4,6 +4,20 @@
 
 
 namespace SILICON::ui {
+namespace {
+  class ThemedPathItem : public QGraphicsPathItem {
+  public:
+    using QGraphicsPathItem::QGraphicsPathItem;
+    void paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
+               QWidget* widget) override
+    {
+      auto themedPen = pen();
+      themedPen.setColor(ThemeEngine::getColor(theme::ColorToken::Ink));
+      setPen(themedPen);
+      QGraphicsPathItem::paint(painter, option, widget);
+    }
+  };
+}  // namespace
 using namespace SILICON::core;
 using namespace SILICON::extra;
 
@@ -54,8 +68,8 @@ int GraphicalWireSplitter::setSize(const int newSize)
     outputPorts.emplace_back(QString("b[%1]").arg(i - 1), portLoc + QPoint(20, 0));
   }
 
-  auto shape = new QGraphicsPathItem(path, this);
-  shape->setPen(QPen(ThemeEngine::getColor("SILICON_INK"), 3));
+  auto shape = new ThemedPathItem(path, this);
+  shape->setPen(QPen(ThemeEngine::getColor(theme::ColorToken::Ink), 3));
 
   this->setItemShape(shape);
   this->setPorts({PortPair{"b", QPoint(-20, 0)}}, outputPorts);
@@ -109,8 +123,8 @@ int GraphicalWireMerger::setSize(const int newSize)
     inputPorts.emplace_back(QString("b[%1]").arg(i - 1), portLoc + QPoint(-20, 0));
   }
 
-  auto shape = new QGraphicsPathItem(path, this);
-  shape->setPen(QPen(ThemeEngine::getColor("SILICON_INK"), 3));
+  auto shape = new ThemedPathItem(path, this);
+  shape->setPen(QPen(ThemeEngine::getColor(theme::ColorToken::Ink), 3));
 
   this->setItemShape(shape);
   this->setPorts(inputPorts, {PortPair{"b", QPoint(20, 0)}});

@@ -47,18 +47,18 @@ namespace {
       Q_UNUSED(option);
       Q_UNUSED(widget);
 
-      const QColor ink = ThemeEngine::getColor("SILICON_INK");
+      const QColor ink = ThemeEngine::getColor(theme::ColorToken::Ink);
 
       painter->setRenderHint(QPainter::Antialiasing, false);
       painter->setPen(QPen(ink, 3));
-      painter->setBrush(ThemeEngine::getColor("SILICON_INTERNAL"));
+      painter->setBrush(ThemeEngine::getColor(theme::ColorToken::Internal));
       painter->drawRect(rect());
 
       const int    iconWidth = rect().width() - 5;
       const QPoint leftPoint =
           rect().center().toPoint() - QPoint(iconWidth / 2, iconWidth / 2);
       painter->setPen(QPen(ink));
-      Icon(iconName, {QSize(iconWidth, iconWidth)})
+      Icon(iconName)
           .paint(painter, leftPoint.x(), leftPoint.y(), iconWidth, iconWidth);
     }
 
@@ -85,7 +85,7 @@ namespace {
       ThemedSvgItem::paint(painter, option, widget);
 
       painter->save();
-      painter->setPen(QPen(ThemeEngine::getColor("SILICON_INK")));
+      painter->setPen(QPen(ThemeEngine::getColor(theme::ColorToken::Ink)));
       painter->setFont(QFont("Quicksand", 12, QFont::Bold));
       painter->drawText(QRect(QPoint(40, 30), QPoint(60, 40)), mode, QTextOption(Qt::AlignCenter));
       painter->restore();

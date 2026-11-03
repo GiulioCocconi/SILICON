@@ -100,6 +100,11 @@ namespace {
 
 DiagramScene::DiagramScene(QObject* parent) : QGraphicsScene(parent)
 {
+  connect(&ThemeEngine::instance(), &ThemeEngine::themeChanged, this, [this] {
+    // QGraphicsItem and background caches do not follow widget palette propagation.
+    invalidate(sceneRect(), QGraphicsScene::AllLayers);
+    update();
+  });
   simulationController = std::make_unique<DiagramSceneSimulationController>(*this);
   serializer           = std::make_unique<DiagramSceneSerializer>(*this);
 
@@ -938,9 +943,9 @@ void DiagramScene::applyItemMoves(std::span<const ItemPositionChange> moves,
 
 void DiagramScene::drawBackground(QPainter* painter, const QRectF& rect)
 {
-  painter->fillRect(rect, ThemeEngine::getColor("SILICON_BACKGROUND"));
+  painter->fillRect(rect, ThemeEngine::getColor(theme::ColorToken::Background));
 
-  QPen pen(ThemeEngine::getColor("SILICON_GRID"));
+  QPen pen(ThemeEngine::getColor(theme::ColorToken::Grid));
   painter->setPen(pen);
 
   const qreal left = int(rect.left()) - (int(rect.left()) % GRID_SIZE);

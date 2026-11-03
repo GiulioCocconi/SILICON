@@ -104,12 +104,12 @@ namespace {
   QColor colorForTraceValue(const BusValue& value)
   {
     if (std::ranges::any_of(value, [](const auto s) { return s == State::ERROR; }))
-      return ThemeEngine::getColor("SILICON_ERROR");
+      return ThemeEngine::getColor(theme::ColorToken::Error);
     if (std::ranges::any_of(value, [](const auto s) { return s == State::UNKNOWN; }))
-      return ThemeEngine::getColor("SILICON_VIOLET");
+      return ThemeEngine::getColor(theme::ColorToken::Violet);
     if (std::ranges::all_of(value, [](const auto s) { return s == State::LOW; }))
-      return ThemeEngine::getColor("SILICON_LORANGE");
-    return ThemeEngine::getColor("SILICON_ORANGE");
+      return ThemeEngine::getColor(theme::ColorToken::Lorange);
+    return ThemeEngine::getColor(theme::ColorToken::Orange);
   }
 
   /** @brief Theme colors shared by the signal list and the waveform canvas. */
@@ -123,10 +123,11 @@ namespace {
 
   TraceTheme traceTheme()
   {
-    return {ThemeEngine::getColor("SILICON_SURFACE"),
-            ThemeEngine::getColor("SILICON_SURFACE_RAISED"),
-            ThemeEngine::getColor("SILICON_GRID"), ThemeEngine::getColor("SILICON_INK"),
-            ThemeEngine::getColor("SILICON_SELECTED")};
+    return {ThemeEngine::getColor(theme::ColorToken::Surface),
+            ThemeEngine::getColor(theme::ColorToken::SurfaceRaised),
+            ThemeEngine::getColor(theme::ColorToken::Grid),
+            ThemeEngine::getColor(theme::ColorToken::Ink),
+            ThemeEngine::getColor(theme::ColorToken::Selected)};
   }
 
   /** @brief Draws a group band; pass an empty label for a plain spacer row. */
@@ -589,7 +590,7 @@ void Canvas::paintEvent(QPaintEvent* event)
     const int     x0             = xForTime(startTime);
     const int     x1             = xForTime(endTime);
     const int     y              = yForSignalRow(editSignalIndex);
-    const QColor  selectionColor = ThemeEngine::getColor("SILICON_SELECTED");
+    const QColor  selectionColor = ThemeEngine::getColor(theme::ColorToken::Selected);
     painter.fillRect(
         QRect(std::min(x0, x1), y, std::max(2, std::abs(x1 - x0)), TRACE_ROW_HEIGHT_PX),
         selectionColor.lighter(170));
@@ -630,7 +631,7 @@ void Canvas::paintEvent(QPaintEvent* event)
 
   if (selectedSampleIndex >= 0 && selectedSampleIndex < static_cast<int>(samples.size())
       && isSelectedSignalTick(selectedSampleIndex)) {
-    const QPen selectionPen(ThemeEngine::getColor("SILICON_SELECTED"), 2);
+    const QPen selectionPen(ThemeEngine::getColor(theme::ColorToken::Selected), 2);
     drawTimeMarker(samples[static_cast<std::size_t>(selectedSampleIndex)].time,
                    selectionPen, selectionPen, false);
   }
@@ -771,7 +772,7 @@ void Canvas::drawBus(QPainter& painter, int row, int x0, int x1,
   painter.drawLine(x1 - offset, bottom, x1, mid);
 
   if (x1 - x0 > 28) {
-    painter.setPen(ThemeEngine::getColor("SILICON_INK"));
+    painter.setPen(ThemeEngine::getColor(theme::ColorToken::Ink));
     const QString displayValue =
         QString::fromStdString(formatValue(value, formatForSignal(signalFormats, row)));
     painter.drawText(QRect(x0 + 7, top, x1 - x0 - 14, bottom - top), Qt::AlignCenter,

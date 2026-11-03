@@ -1,4 +1,6 @@
 #include "sislVisualizer.hpp"
+#include <QEvent>
+#include <QScrollBar>
 
 #include <algorithm>
 #include <cmath>
@@ -222,6 +224,7 @@ void SislVisualizer::finalizeScene() {
 // --- Overview Routines ---
 
 void SislVisualizer::showOverview() {
+  overview = true;
   resetScene(true);
   ThemeColors theme(palette());
 
@@ -303,6 +306,8 @@ void SislVisualizer::drawAllEnums(const ThemeColors& theme, qreal& y) {
 // --- Format Detail Routines ---
 
 void SislVisualizer::showFormat(const std::optional<std::string>& formatName) {
+  overview      = false;
+  currentFormat = formatName;
   resetScene(false);
   ThemeColors theme(palette());
 
@@ -316,6 +321,25 @@ void SislVisualizer::showFormat(const std::optional<std::string>& formatName) {
 
   drawInstructionsForFormat(formatName, theme, y);
   finalizeScene();
+}
+
+void SislVisualizer::changeEvent(QEvent* event)
+{
+  QWidget::changeEvent(event);
+  if (event->type() != QEvent::PaletteChange || !scene || scene->items().isEmpty())
+    return;
+  // Scene brushes are snapshots of QPalette. Rebuild the active view while retaining
+  // navigation, zoom and scroll position; scene items do not receive PaletteChange.
+  const auto transform  = view->transform();
+  const int  horizontal = view->horizontalScrollBar()->value();
+  const int  vertical   = view->verticalScrollBar()->value();
+  if (overview)
+    showOverview();
+  else
+    showFormat(currentFormat);
+  view->setTransform(transform);
+  view->horizontalScrollBar()->setValue(horizontal);
+  view->verticalScrollBar()->setValue(vertical);
 }
 
 void SislVisualizer::drawFormatHeader(const std::string& formatName, const ThemeColors& theme, qreal& y) {

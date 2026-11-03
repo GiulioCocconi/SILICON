@@ -16,6 +16,7 @@
  */
 
 #include "graphicalWire.hpp"
+#include <QFontInfo>
 
 #include "utils/ranges_wrapper.hpp"
 
@@ -101,26 +102,26 @@ void GraphicalWire::setConnectionError(std::optional<QString> reason)
 QColor GraphicalWire::getColor() const
 {
   if (connectionError.has_value() || bus.isInErrorState())
-    return ThemeEngine::getColor("SILICON_ERROR");
+    return ThemeEngine::getColor(theme::ColorToken::Error);
 
   // Show simulation state visually for single wires
   if (bus.size() == 1 && bus[0]) {
     switch (bus[0]->getCurrentState()) {
-      case State::HIGH: return ThemeEngine::getColor("SILICON_ORANGE");
-      case State::LOW: return ThemeEngine::getColor("SILICON_LORANGE");
-      case State::UNKNOWN: return ThemeEngine::getColor("SILICON_VIOLET");
+      case State::HIGH: return ThemeEngine::getColor(theme::ColorToken::Orange);
+      case State::LOW: return ThemeEngine::getColor(theme::ColorToken::Lorange);
+      case State::UNKNOWN: return ThemeEngine::getColor(theme::ColorToken::Violet);
       default:
         qWarning() << "Unhandled wire status in getColor()";
-        return ThemeEngine::getColor("SILICON_VIOLET");
+        return ThemeEngine::getColor(theme::ColorToken::Violet);
     }
   }
-  return ThemeEngine::getColor("SILICON_GREEN");
+  return ThemeEngine::getColor(theme::ColorToken::Green);
 }
 
 QColor GraphicalWire::getColor(const GraphicalWire* w)
 {
   if (!w)
-    return ThemeEngine::getColor("SILICON_BLUE");
+    return ThemeEngine::getColor(theme::ColorToken::Blue);
   return w->getColor();
 }
 
@@ -273,7 +274,7 @@ void GraphicalWireSegment::paint(QPainter*                       painter,
   painter->setPen(QPen(color, 3));
   painter->drawPath(path);
 
-  painter->setPen(QPen(ThemeEngine::getColor("SILICON_ERROR"), 3));
+  painter->setPen(QPen(ThemeEngine::getColor(theme::ColorToken::Error), 3));
   painter->drawPath(showPath);
 
   // Draw junction ellipses independently: a segment may connect two junctions.
@@ -291,8 +292,8 @@ void GraphicalWireSegment::paint(QPainter*                       painter,
     painter->setPen(Qt::NoPen);
     for (size_t i = 0; i < points.size(); ++i) {
       const bool hovered = hoveredPointIndex && i == *hoveredPointIndex;
-      QColor     pointColor =
-          ThemeEngine::getColor(hovered ? "SILICON_ERROR_HOVER" : "SILICON_ERROR_FILL");
+      QColor pointColor  = ThemeEngine::getColor(hovered ? theme::ColorToken::ErrorHover
+                                                         : theme::ColorToken::ErrorFill);
       if (!hovered)
         pointColor.setAlpha(160);
       painter->setBrush(pointColor);
@@ -311,7 +312,10 @@ void GraphicalWireSegment::paint(QPainter*                       painter,
     return;
 
   painter->setPen(QPen(color, 2.0));
-  painter->setFont(QFont("NovaMono", painter->font().pointSize() * 0.8));
+  QFont font("NovaMono");
+  // Resolve pixel-sized application fonts before scaling the bus label.
+  font.setPointSizeF(QFontInfo(painter->font()).pointSizeF() * 0.8);
+  painter->setFont(font);
 
   const QString   sizeText = QString::number(size);
   const QRectF    boxRect(-BOX_WIDTH / 2.0, -BOX_HEIGHT / 2.0, BOX_WIDTH, BOX_HEIGHT);
@@ -349,9 +353,9 @@ void GraphicalWireSegment::paint(QPainter*                       painter,
       if (pathAngle == 180.0)
         painter->rotate(180.0);
 
-      painter->setBrush(ThemeEngine::getColor("SILICON_INTERNAL"));
+      painter->setBrush(ThemeEngine::getColor(theme::ColorToken::Internal));
       painter->drawRoundedRect(boxRect, 5, 5);
-      painter->setBrush(ThemeEngine::getColor("SILICON_INK"));
+      painter->setBrush(ThemeEngine::getColor(theme::ColorToken::Ink));
       painter->drawText(boxRect, sizeText, QTextOption(Qt::AlignCenter));
     }
 
