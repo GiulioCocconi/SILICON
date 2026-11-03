@@ -150,7 +150,7 @@ protected:
           painter.fillRect(cell, palette().brush(QPalette::Highlight));
           painter.setPen(palette().color(QPalette::HighlightedText));
         } else {
-          painter.setPen(byte == 0 ? ThemeEngine::getColor("SILICON_GREY")
+          painter.setPen(byte == 0 ? ThemeEngine::getColor(theme::ColorToken::Grey)
                                    : palette().color(QPalette::Text));
         }
         painter.drawText(cell.left(), textBaseline, value);

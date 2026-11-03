@@ -18,12 +18,17 @@ namespace SILICON::ui {
 class ThemedSvgItem : public QGraphicsSvgItem {
 public:
   explicit ThemedSvgItem(QString path, QGraphicsItem* parent = nullptr);
+  ~ThemedSvgItem() override;
 
 private:
   void refreshTheme();
 
-  QString       path;
-  CallbackScope callbacks;
+  QString path;
+  class RendererLease;
+  // QObject child teardown follows QGraphicsSvgItem teardown, preserving the lease
+  // throughout the base item's lifetime as required by setSharedRenderer().
+  RendererLease* rendererLease;
+  CallbackScope  callbacks;
 };
 
 }  // namespace SILICON::ui

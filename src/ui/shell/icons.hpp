@@ -17,89 +17,29 @@
 
 #pragma once
 
+#include <memory>
+
+#include <QByteArray>
 #include <QColor>
-#include <QFile>
 #include <QIcon>
-#include <QPainter>
-#include <QPixmap>
-#include <QSize>
-#include <QSvgRenderer>
 
-#include <QDebug>
-
-#include <vector>
-
+class QSvgRenderer;
 
 namespace SILICON::ui {
 
+namespace svg {
+  // GUI thread only. Shared ownership keeps renderers alive across cache eviction.
+  // Resolve data-silicon-fill/stroke annotations; invalid XML/tokens return empty.
+  QByteArray                    preprocess(const QByteArray& source);
+  std::shared_ptr<QSvgRenderer> renderer(const QString& path);
+}  // namespace svg
+
+// Rasterize lazily for the current theme and device scale. The application logo
+// retains its source colors; other icons default to Ink unless explicitly colored.
 class Icon : public QIcon {
 public:
-  explicit Icon(const QString&            commonName,
-                const std::vector<QSize>& targetSizes = {QSize(32, 32)});
-
-  explicit Icon(const QString& commonName, const QColor& color,
-                const std::vector<QSize>& targetSizes = {QSize(32, 32)});
-
-private:
-  static const QHash<QString, QString>& getCommonToLucideMap()
-  {
-    static const QHash<QString, QString> commonToLucideMap{
-        {"silicon", "silicon-icon"},
-        {"mouse-pointer", "mouse-pointer-2"},
-        {"pan", "move"},
-        {"chart", "file-chart-line"},
-        {"check", "circle-check"},
-        {"info", "info"},
-        {"xmark-circle", "circle-alert"},
-        {"copy", "copy"},
-        {"explosion", "zap"},
-        {"import", "file-input"},
-        {"export", "file-output"},
-        {"file", "file"},
-        {"save", "save"},
-        {"open", "folder-open"},
-        {"link", "link"},
-        {"paste", "clipboard-paste"},
-        {"pencil", "pencil"},
-        {"plug-error", "circle-alert"},
-        {"play", "play"},
-        {"plug", "plug"},
-        {"plus", "circle-plus"},
-        {"minus", "circle-minus"},
-        {"print", "printer"},
-        {"undo", "undo-2"},
-        {"redo", "redo-2"},
-        {"rotate", "rotate-cw"},
-        {"cut", "scissors"},
-        {"delete", "trash"},
-        {"xmark", "x"},
-        {"binary", "binary"},
-        {"build", "hammer"},
-        {"diagram", "layout-template"},
-        {"lock", "lock"},
-        {"box", "box"},
-        {"expand", "expand"},
-        {"circle-power", "circle-power"},
-        {"circuit-board", "circuit-board"},
-        {"clock", "clock"},
-        {"code", "code"},
-        {"container", "container"},
-        {"cpu", "cpu"},
-        {"file-cog", "file-cog"},
-        {"funnel", "funnel"},
-        {"hard-drive", "hard-drive"},
-        {"memory-stick", "memory-stick"},
-        {"puzzle", "puzzle"},
-        {"settings", "settings"},
-        {"sticky-note", "sticky-note"},
-        {"rearrange", "layout-freeform"},
-        {"text-cursor-input", "text-cursor-input"},
-        {"toy-brick", "toy-brick"},
-        {"usb", "usb"}};
-    return commonToLucideMap;
-  }
-
-  static QString getPathFromCommonName(const QString& commonName);
+  explicit Icon(const QString& commonName);
+  explicit Icon(const QString& commonName, const QColor& color);
 };
 
 }  // namespace SILICON::ui

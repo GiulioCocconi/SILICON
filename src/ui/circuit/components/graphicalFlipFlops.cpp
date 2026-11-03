@@ -67,11 +67,11 @@ public:
     Q_UNUSED(option);
     Q_UNUSED(widget);
 
-    const QColor ink = ThemeEngine::getColor("SILICON_INK");
+    const QColor ink = ThemeEngine::getColor(theme::ColorToken::Ink);
 
     painter->setRenderHint(QPainter::Antialiasing, false);
     painter->setPen(QPen(ink, 3));
-    painter->setBrush(ThemeEngine::getColor("SILICON_INTERNAL"));
+    painter->setBrush(ThemeEngine::getColor(theme::ColorToken::Internal));
     painter->drawRect(rect());
   }
 };

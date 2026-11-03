@@ -62,11 +62,11 @@ public:
 
     painter->save();
     painter->setRenderHint(QPainter::Antialiasing, false);
-    painter->setPen(QPen(ThemeEngine::getColor("SILICON_INK"), 3));
-    painter->setBrush(ThemeEngine::getColor("SILICON_INTERNAL"));
+    painter->setPen(QPen(ThemeEngine::getColor(theme::ColorToken::Ink), 3));
+    painter->setBrush(ThemeEngine::getColor(theme::ColorToken::Internal));
     painter->drawRect(rect());
 
-    painter->setPen(QPen(ThemeEngine::getColor("SILICON_INK")));
+    painter->setPen(QPen(ThemeEngine::getColor(theme::ColorToken::Ink)));
     painter->setFont(QFont("Quicksand", 8, QFont::Bold));
     painter->drawText(rect().adjusted(6, 26, -6, -6), label,
                       QTextOption(Qt::AlignCenter));

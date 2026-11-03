@@ -41,12 +41,13 @@
 #include <QVBoxLayout>
 
 #include <core/projectDocument.hpp>
-#include <ui/circuit/editor/componentSearchMatcher.hpp>
-#include <ui/circuit/diagram/scene/diagramScene.hpp>
 #include <ui/circuit/components/graphicalLogicComponent.hpp>
 #include <ui/circuit/components/subcircuit/graphicalSubcircuit.hpp>
 #include <ui/circuit/components/subcircuit/metadata.hpp>
+#include <ui/circuit/diagram/scene/diagramScene.hpp>
+#include <ui/circuit/editor/componentSearchMatcher.hpp>
 #include <ui/serialization/gui_component_factory.hpp>
+#include <ui/shell/theme.hpp>
 
 namespace SILICON::ui {
   using namespace SILICON::core;
@@ -174,6 +175,22 @@ namespace SILICON::ui {
     layout->addWidget(table);
 
     callbacks.connect(searchInput, &QLineEdit::textChanged, [this] { rebuildRows(); });
+    callbacks.connect(&ThemeEngine::instance(), &ThemeEngine::themeChanged, [this] {
+      // These circuit previews are snapshots, not SvgIconEngine icons. Hidden
+      // catalogs rebuild on open(); refresh only displayed rows, retaining selection.
+      if (!isVisible())
+        return;
+      for (int row = 0; row < table->rowCount(); ++row) {
+        const auto* name    = table->item(row, 1);
+        auto*       preview = qobject_cast<QLabel*>(table->cellWidget(row, 0));
+        if (!name || !preview)
+          continue;
+        const int index = name->data(Qt::UserRole + 1).toInt();
+        if (index >= 0 && static_cast<std::size_t>(index) < catalogRows.size())
+          preview->setPixmap(
+              componentPreviewPixmap(catalogRows[index], this->documents, this->resolver));
+      }
+    });
     callbacks.connect(table, &QTableWidget::cellDoubleClicked,
             [this](int row, int) { activateRow(row); });
     callbacks.connect(table, &QTableWidget::itemActivated, [this](QTableWidgetItem* item) {

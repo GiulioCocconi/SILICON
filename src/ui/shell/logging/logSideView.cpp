@@ -40,19 +40,19 @@ bool isBold(const QString& level)
 QColor levelColor(const QString& level)
 {
   if (level == "TRACE")
-    return ThemeEngine::getColor("SILICON_BACKGROUND").darker(160);
+    return ThemeEngine::getColor(theme::ColorToken::Background).darker(160);
   if (level == "DEBUG")
-    return ThemeEngine::getColor("SILICON_BLUE");
+    return ThemeEngine::getColor(theme::ColorToken::Blue);
   if (level == "INFO")
-    return ThemeEngine::getColor("SILICON_INK").lighter(145);
+    return ThemeEngine::getColor(theme::ColorToken::Ink).lighter(145);
   if (level == "WARNING")
-    return ThemeEngine::getColor("SILICON_ORANGE");
+    return ThemeEngine::getColor(theme::ColorToken::Orange);
   if (level == "ERROR")
-    return ThemeEngine::getColor("SILICON_VIOLET");
+    return ThemeEngine::getColor(theme::ColorToken::Violet);
   if (level == "FATAL" || level == "CRITICAL")
-    return ThemeEngine::getColor("SILICON_VIOLET").darker(150);
+    return ThemeEngine::getColor(theme::ColorToken::Violet).darker(150);
 
-  return ThemeEngine::getColor("SILICON_INK");
+  return ThemeEngine::getColor(theme::ColorToken::Ink);
 }
 
 QTextCharFormat formatForLine(const QString& line)

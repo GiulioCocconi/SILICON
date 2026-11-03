@@ -38,8 +38,11 @@ ComponentSearchBox::ComponentSearchBox(std::vector<std::string> list, QString ti
 
   titleItem = new QGraphicsTextItem(this);
   titleItem->setFont(QFont("Chango"));
-  titleItem->setDefaultTextColor(ThemeEngine::getColor("SILICON_INK"));
+  titleItem->setDefaultTextColor(ThemeEngine::getColor(theme::ColorToken::Ink));
   titleItem->setPlainText(title);
+  connect(&ThemeEngine::instance(), &ThemeEngine::themeChanged, this, [this] {
+    titleItem->setDefaultTextColor(ThemeEngine::getColor(theme::ColorToken::Ink));
+  });
 
   const QFontMetrics fm(titleItem->font());
   titleItem->setPos(0, -fm.ascent() * 1.5);
@@ -76,7 +79,7 @@ ComponentSearchBox::ComponentSearchBox(std::vector<std::string> list, QString ti
 
 void ComponentSearchBox::showCompleter() const
 {
-  titleItem->setDefaultTextColor(ThemeEngine::getColor("SILICON_INK"));
+  titleItem->setDefaultTextColor(ThemeEngine::getColor(theme::ColorToken::Ink));
   updateCompletionModel();
   if (completionModel->rowCount() == 0) {
     completer->popup()->hide();

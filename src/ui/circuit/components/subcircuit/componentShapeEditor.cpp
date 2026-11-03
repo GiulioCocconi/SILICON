@@ -150,14 +150,16 @@ namespace SILICON::ui {
         Q_UNUSED(option);
         Q_UNUSED(widget);
 
-        const QColor portColor = inputPort ? ThemeEngine::getColor("SILICON_BLUE")
-                                           : ThemeEngine::getColor("SILICON_ORANGE");
+        const QColor portColor = inputPort
+                                     ? ThemeEngine::getColor(theme::ColorToken::Blue)
+                                     : ThemeEngine::getColor(theme::ColorToken::Orange);
         painter->setRenderHint(QPainter::Antialiasing);
-        painter->setPen(QPen(ThemeEngine::getColor("SILICON_INK"), hovered ? 3 : 2));
+        painter->setPen(
+            QPen(ThemeEngine::getColor(theme::ColorToken::Ink), hovered ? 3 : 2));
         painter->setBrush(hovered ? portColor.lighter(125) : portColor);
         painter->drawEllipse(markerRect());
 
-        painter->setPen(ThemeEngine::getColor("SILICON_INK"));
+        painter->setPen(ThemeEngine::getColor(theme::ColorToken::Ink));
         painter->setFont(QFont("NovaMono", 9));
         painter->drawText(labelRect(), Qt::AlignCenter, label);
       }
@@ -284,6 +286,23 @@ namespace SILICON::ui {
         fitPreview();
       }
 
+      void drawBackground(QPainter* painter, const QRectF& rect) override
+      {
+        QGraphicsView::drawBackground(painter, rect);
+        // Paint with the current theme instead of storing colors in scene items.
+        const QRectF sceneBounds = scene->sceneRect();
+        const QPen   gridPen(ThemeEngine::getColor(theme::ColorToken::Grid), 1);
+        painter->setPen(gridPen);
+        for (qreal x = sceneBounds.left(); x <= sceneBounds.right();
+             x += DiagramScene::GRID_SIZE) {
+          painter->drawLine(QLineF(x, sceneBounds.top(), x, sceneBounds.bottom()));
+        }
+        for (qreal y = sceneBounds.top(); y <= sceneBounds.bottom();
+             y += DiagramScene::GRID_SIZE) {
+          painter->drawLine(QLineF(sceneBounds.left(), y, sceneBounds.right(), y));
+        }
+      }
+
     private:
       struct PortVisual {
         PreviewPortItem* item = nullptr;
@@ -299,7 +318,6 @@ namespace SILICON::ui {
         const int gridMargin = gridToPixels(EXTERNAL_PORT_MARGIN_GRID + 3);
         scene->setSceneRect(-gridMargin, -gridMargin, shapeSize.width() + gridMargin * 2,
                             shapeSize.height() + gridMargin * 2);
-        addGrid();
         addComponent(metadata);
 
         addPorts(metadata.inputs, true);
@@ -315,22 +333,6 @@ namespace SILICON::ui {
             new SubcircuitRectShape(shapeSize), nullptr, false);
         component->setZValue(1);
         scene->addItem(component);
-      }
-
-      void addGrid()
-      {
-        const QRectF sceneBounds = scene->sceneRect();
-        const QPen   gridPen(ThemeEngine::getColor("SILICON_GRID"), 1);
-        for (qreal x = sceneBounds.left(); x <= sceneBounds.right();
-             x += DiagramScene::GRID_SIZE) {
-          scene->addLine(x, sceneBounds.top(), x, sceneBounds.bottom(), gridPen)
-              ->setZValue(0);
-        }
-        for (qreal y = sceneBounds.top(); y <= sceneBounds.bottom();
-             y += DiagramScene::GRID_SIZE) {
-          scene->addLine(sceneBounds.left(), y, sceneBounds.right(), y, gridPen)
-              ->setZValue(0);
-        }
       }
 
       void addPorts(const std::vector<GraphicalSubcircuitPortMetadata>& ports,

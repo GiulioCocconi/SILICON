@@ -25,7 +25,6 @@
 #include <QIcon>
 #include <QLabel>
 #include <QMainWindow>
-#include <QSplashScreen>
 
 #ifdef SILICON_HAS_FONTCONFIG
   #include <fontconfig/fontconfig.h>
@@ -36,10 +35,10 @@
 #include <core/serialization/component_registration.hpp>
 #include <logging/logger.hpp>
 
-#include <ui/shell/icons.hpp>
-#include <ui/shell/theme.hpp>
-#include <ui/shell/siliconWindow.hpp>
 #include <ui/serialization/gui_component_registration.hpp>
+#include <ui/shell/icons.hpp>
+#include <ui/shell/siliconWindow.hpp>
+#include <ui/shell/style/siliconStyle.hpp>
 
 using namespace SILICON::logging;
 using namespace SILICON::ui;
@@ -65,7 +64,6 @@ int siliconMain(int argc, char** argv)
   {
     QApplication app(argc, argv);
     QApplication::setApplicationName("SILICON");
-    QApplication::setStyle("Fusion");
     QApplication::setApplicationVersion(SILICON_VERSION);
 
     // LOAD THE FONTS
@@ -73,10 +71,23 @@ int siliconMain(int argc, char** argv)
     QFontDatabase::addApplicationFont(":/fonts/Quicksand.ttf");
     QFontDatabase::addApplicationFont(":/fonts/NovaMono.ttf");
 
-    QApplication::setFont(
-        QFont("Quicksand", app.font().pointSize() * 1.2, QFont::Medium));
+    // Installing a style resets Qt's class-specific fonts. Assign them afterwards.
+    QApplication::setStyle(new SiliconStyle);
 
-    QApplication::setWindowIcon(Icon("silicon", {QSize(32, 32), QSize(128, 128)}));
+    QFont regular("Quicksand");
+    regular.setPixelSize(14);
+    QApplication::setFont(regular);
+
+    QFont bold = regular;
+    bold.setWeight(QFont::Bold);
+    QApplication::setFont(bold, "QPushButton");
+
+    QFont monospace("NovaMono");
+    monospace.setPixelSize(14);
+    monospace.setFixedPitch(true);
+    QApplication::setFont(monospace, "QPlainTextEdit");
+
+    QApplication::setWindowIcon(Icon("silicon"));
 
     // Command Line Parser
     QCommandLineParser parser;
@@ -86,22 +97,11 @@ int siliconMain(int argc, char** argv)
     parser.addVersionOption();
     parser.process(app);
 
-    // Theme
-    ThemeEngine::apply(app, SILICON::ui::theme::Mode::Light);
-
 #ifdef __MINGW32__
     QFont font = QApplication::font();
     font.setHintingPreference(QFont::PreferNoHinting);
     QApplication::setFont(font);
 #endif
-
-    // Splash screen
-    QSplashScreen splashScreen(QPixmap(":/splash.jpg"));
-    splashScreen.show();
-    splashScreen.showMessage("Loading...", Qt::AlignBottom | Qt::AlignHCenter, Qt::white);
-
-    // Force processing of events to show the splash screen immediately
-    QApplication::processEvents();
 
     // Register all components explicitly
     ComponentRegistry::instance();
@@ -120,7 +120,6 @@ int siliconMain(int argc, char** argv)
       Logger uiLog("ui");
       uiLog.info("SILICON UI started");
 
-      splashScreen.finish(&mainWindow);
       exitCode = QApplication::exec();
       mainWindow.close();
     }

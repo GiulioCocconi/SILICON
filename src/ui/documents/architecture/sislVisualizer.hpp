@@ -34,6 +34,7 @@ public:
   void setDescription(sisl::IsaDescription description);
 
 private:
+  void changeEvent(QEvent* event) override;
   void setupUI();
 
   // High-level views
@@ -84,6 +85,8 @@ private:
   QGraphicsView*       view = nullptr;
   QPushButton*         backButton = nullptr;
   QLabel*              hintLabel = nullptr;
+  bool                       overview   = true;
+  std::optional<std::string> currentFormat;
   CallbackScope        callbacks;
 };
 

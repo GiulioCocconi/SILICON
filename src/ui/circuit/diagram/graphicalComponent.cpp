@@ -16,6 +16,7 @@
  */
 
 #include "graphicalComponent.hpp"
+#include <QFontInfo>
 
 #include <algorithm>
 #include <stdexcept>
@@ -57,14 +58,14 @@ public:
   ThemedPortLineItem(const QLineF& line, QGraphicsItem* parent)
     : QGraphicsLineItem(line, parent)
   {
-    setPen(QPen(ThemeEngine::getColor("SILICON_INK"), PortPenWidth));
+    setPen(QPen(ThemeEngine::getColor(theme::ColorToken::Ink), PortPenWidth));
   }
 
   void paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
              QWidget* widget) override
   {
     auto themedPen = pen();
-    themedPen.setColor(ThemeEngine::getColor("SILICON_INK"));
+    themedPen.setColor(ThemeEngine::getColor(theme::ColorToken::Ink));
     painter->setPen(themedPen);
     painter->drawLine(line());
   }
@@ -72,7 +73,10 @@ public:
 
 QFont portMarkerFont(const QFont& baseFont)
 {
-  return QFont("NovaMono", baseFont.pointSize() * 0.6);
+  QFont font("NovaMono");
+  // Application fonts use pixels; pointSize() would return -1 for those fonts.
+  font.setPointSizeF(QFontInfo(baseFont).pointSizeF());
+  return font;
 }
 
 QRectF strokedLineRect(const QLineF& line, const qreal width)
@@ -198,8 +202,8 @@ void GraphicalComponent::paint(QPainter* painter, const QStyleOptionGraphicsItem
                                QWidget* widget)
 {
   if (isSelected()) {
-    auto color = isColliding() ? ThemeEngine::getColor("SILICON_ERROR")
-                               : ThemeEngine::getColor("SILICON_INK");
+    auto color = isColliding() ? ThemeEngine::getColor(theme::ColorToken::Error)
+                               : ThemeEngine::getColor(theme::ColorToken::Ink);
     auto style = isColliding() ? Qt::SolidLine : Qt::DotLine;
 
     painter->setPen(QPen(color, SelectionPenWidth, style));
@@ -508,8 +512,9 @@ void Port::paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
   const bool   isBusPort  = (size != 1);
   const QLineF portLine   = connectionLine();
   const QFont  markerFont = portMarkerFont(painter->font());
-  const QColor portColor  = inputAssignmentError ? ThemeEngine::getColor("SILICON_ERROR")
-                                                 : ThemeEngine::getColor("SILICON_INK");
+  const QColor portColor  = inputAssignmentError
+                                ? ThemeEngine::getColor(theme::ColorToken::Error)
+                                : ThemeEngine::getColor(theme::ColorToken::Ink);
 
   if (inputAssignmentError) {
     painter->save();

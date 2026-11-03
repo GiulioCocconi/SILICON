@@ -157,7 +157,7 @@ public:
   void paint(QPainter* painter, const QStyleOptionGraphicsItem* /*option*/,
              QWidget* /*widget*/) override
   {
-    const QColor ink = ThemeEngine::getColor("SILICON_INK");
+    const QColor ink = ThemeEngine::getColor(theme::ColorToken::Ink);
 
     painter->setRenderHint(QPainter::Antialiasing, false);
     painter->setPen(QPen(ink, 3));
@@ -209,15 +209,15 @@ private:
   QColor backgroundColor() const
   {
     if (kind == BusIoKind::Input)
-      return ThemeEngine::getColor("SILICON_INTERNAL");
+      return ThemeEngine::getColor(theme::ColorToken::Internal);
 
     switch (displayState) {
-      case State::HIGH: return ThemeEngine::getColor("SILICON_BLUE");
-      case State::LOW: return ThemeEngine::getColor("SILICON_SIGNAL_LOW");
-      case State::UNKNOWN: return ThemeEngine::getColor("SILICON_VIOLET");
-      case State::ERROR: return ThemeEngine::getColor("SILICON_ERROR");
+      case State::HIGH: return ThemeEngine::getColor(theme::ColorToken::Blue);
+      case State::LOW: return ThemeEngine::getColor(theme::ColorToken::SignalLow);
+      case State::UNKNOWN: return ThemeEngine::getColor(theme::ColorToken::Violet);
+      case State::ERROR: return ThemeEngine::getColor(theme::ColorToken::Error);
     }
-    return ThemeEngine::getColor("SILICON_VIOLET");
+    return ThemeEngine::getColor(theme::ColorToken::Violet);
   }
 
   BusIoKind    kind;
@@ -256,11 +256,11 @@ public:
   void paint(QPainter* painter, const QStyleOptionGraphicsItem* /*option*/,
              QWidget* /*widget*/) override
   {
-    const QColor ink = ThemeEngine::getColor("SILICON_INK");
+    const QColor ink = ThemeEngine::getColor(theme::ColorToken::Ink);
 
     painter->setRenderHint(QPainter::Antialiasing, false);
     painter->setPen(QPen(ink, 3));
-    painter->setBrush(ThemeEngine::getColor("SILICON_INTERNAL"));
+    painter->setBrush(ThemeEngine::getColor(theme::ColorToken::Internal));
     painter->drawRect(boundingRect().adjusted(1.5, 1.5, -1.5, -1.5));
 
     painter->setPen(ink);
