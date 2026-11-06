@@ -45,6 +45,7 @@ struct EditActions {
 
 /** Main-window actions driven by the circuit editor. */
 struct CircuitActions {
+  QAction* selectAll               = nullptr;
   QAction* rotate                  = nullptr;
   QAction* autoPlace               = nullptr;
   QAction* centerView              = nullptr;

@@ -56,6 +56,8 @@ DiagramInteractionController::DiagramInteractionController(
 
 void DiagramInteractionController::bindActions(const CircuitActions& actions)
 {
+  connect(actions.selectAll, &QAction::triggered, this,
+          &DiagramInteractionController::selectAll);
   connect(actions.rotate, &QAction::triggered, this,
           &DiagramInteractionController::rotate);
   connect(actions.autoPlace, &QAction::triggered, this,
@@ -78,6 +80,19 @@ void DiagramInteractionController::bindActions(const CircuitActions& actions)
           &DiagramInteractionController::showComponentCatalog);
   connect(actions.editSubcircuitShape, &QAction::triggered, this,
           &DiagramInteractionController::editActiveSubcircuitShape);
+}
+
+void DiagramInteractionController::selectAll()
+{
+  auto* scene = circuit.scene();
+  scene->setInteractionMode(InteractionMode::NORMAL_MODE);
+  if (scene->getInteractionMode() != InteractionMode::NORMAL_MODE)
+    return;
+  for (auto* item : scene->items()) {
+    if (hasCategory(item, ItemCategory::Component)
+        || hasCategory(item, ItemCategory::WireSegment))
+      item->setSelected(true);
+  }
 }
 
 void DiagramInteractionController::rotate()
