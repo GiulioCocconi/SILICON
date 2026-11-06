@@ -713,69 +713,6 @@ TEST(YosysTest, ExportsArithmeticCellsAndPreservesComponentProperties)
   }
 }
 
-TEST(YosysTest, ImportsMultiplyDivideAndModuloWithMixedWidthsAndSignedness)
-{
-  for (const auto type : {"$mul", "$div", "$mod"}) {
-    for (const bool aSigned : {false, true}) {
-      for (const bool bSigned : {false, true}) {
-        for (const int yWidth : {2, 6}) {
-          auto design = subtractionDesign(3, 5, yWidth, aSigned, bSigned);
-          onlyModule(design)["cells"].begin().value()["type"] = type;
-          const auto circuit =
-              std::make_shared<Circuit>(SILICON::yosys::deserialize(design.dump()));
-          const bool multiplication = std::string_view(type) == "$mul";
-          const auto component =
-              multiplication
-                  ? std::static_pointer_cast<Component>(
-                        findComponent<Multiplier>(*circuit))
-                  : std::static_pointer_cast<Component>(findComponent<Divider>(*circuit));
-          ASSERT_TRUE(component);
-          EXPECT_EQ(component->getPropertyValue<bool>("signed"), aSigned && bSigned);
-          for (const unsigned a : {0u, 1u, 3u, 7u}) {
-            for (const unsigned b : {0u, 1u, 3u, 16u, 31u}) {
-              SCOPED_TRACE(std::format("{} {} {} {}: {}, {}", type, aSigned, bSigned,
-                                       yWidth, a, b));
-              const auto actual = evaluateBinaryCircuit(circuit, a, b);
-              if (!multiplication && b == 0) {
-                EXPECT_EQ(actual, BusValue(yWidth, State::UNKNOWN));
-                continue;
-              }
-              const int lhs = aSigned && bSigned && a >= 4 ? static_cast<int>(a) - 8 : a;
-              const int rhs =
-                  aSigned && bSigned && b >= 16 ? static_cast<int>(b) - 32 : b;
-              const int expected = multiplication                     ? lhs * rhs
-                                   : std::string_view(type) == "$div" ? lhs / rhs
-                                                                      : lhs % rhs;
-              EXPECT_EQ(actual, valueFor(yWidth, expected & ((1u << yWidth) - 1)));
-            }
-          }
-          // Export and re-import preserve the observable result, including truncation.
-          const auto roundTripped = std::make_shared<Circuit>(
-              SILICON::yosys::deserialize(SILICON::yosys::serialize(*circuit, "top")));
-          EXPECT_EQ(evaluateBinaryCircuit(roundTripped, 7, 3),
-                    evaluateBinaryCircuit(circuit, 7, 3));
-        }
-      }
-    }
-  }
-}
-
-TEST(YosysTest, RejectsMalformedArithmeticCells)
-{
-  for (const auto type : {"$mul", "$div", "$mod"}) {
-    auto  design      = subtractionDesign(3, 3, 3, false, false);
-    auto& cell        = onlyModule(design)["cells"].begin().value();
-    cell["type"]      = type;
-    auto invalidWidth = design;
-    onlyModule(invalidWidth)["cells"].begin().value()["parameters"]["A_WIDTH"] =
-        SILICON::yosys::SerializationContext::parameter(4);
-    EXPECT_THROW((void)SILICON::yosys::deserialize(invalidWidth.dump()),
-                 std::runtime_error);
-    cell["parameters"]["A_SIGNED"] = "10";
-    EXPECT_THROW((void)SILICON::yosys::deserialize(design.dump()), std::runtime_error);
-  }
-}
-
 TEST(YosysTest, RejectsMalformedArithmeticTechnologyCells)
 {
   for (const auto& component : std::vector<Component_ptr>{
@@ -800,5 +737,46 @@ TEST(YosysTest, RejectsMalformedArithmeticTechnologyCells)
     onlyModule(invalidFlag)["cells"].begin().value()["parameters"]["SIGNED"] = "10";
     EXPECT_THROW((void)SILICON::yosys::deserialize(invalidFlag.dump()),
                  std::runtime_error);
+  }
+}
+
+TEST(YosysTest, RejectsCellsThatRequireTechnologyMapping)
+{
+  using SILICON::yosys::Json;
+  using SILICON::yosys::SerializationContext;
+  std::vector<Json> designs;
+  for (const auto type : {"$mul", "$div", "$mod"}) {
+    auto design = subtractionDesign(3, 3, 3, false, false);
+    onlyModule(design)["cells"].begin().value()["type"] = type;
+    designs.push_back(std::move(design));
+  }
+  const auto wire = [] { return std::make_shared<Wire>(); };
+  const std::array<std::pair<Component_ptr, const char*>, 4> storage{
+      std::pair{
+          std::make_shared<DFlipFlop>(wire(), wire(), nullptr, nullptr, wire(), wire()),
+          "$dff"},
+      std::pair{
+          std::make_shared<DFlipFlop>(wire(), wire(), wire(), wire(), wire(), wire()),
+          "$dffsr"},
+      std::pair{std::make_shared<EFlipFlop>(wire(), wire(), wire(), wire(), wire(),
+                                            wire(), wire()),
+                "$dffsre"},
+      std::pair{std::make_shared<DLatch>(wire(), wire(), wire(), wire()), "$dlatch"}};
+  for (const auto& [component, type] : storage) {
+    auto  design                = exportComponent(component);
+    auto& cell                  = onlyModule(design)["cells"].begin().value();
+    cell["type"]                = type;
+    cell["parameters"]["WIDTH"] = SerializationContext::parameter(1);
+    cell["connections"].erase("QN");
+    cell["port_directions"].erase("QN");
+    designs.push_back(std::move(design));
+  }
+  for (const auto& design : designs) {
+    SCOPED_TRACE(onlyCell(design).at("type"));
+    EXPECT_THROW((void)SILICON::yosys::deserialize(design.dump()), std::runtime_error);
+#ifdef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
+    EXPECT_THROW((void)legalizeExpressions(design.dump(), "silicon_validate"),
+                 std::runtime_error);
+#endif
   }
 }

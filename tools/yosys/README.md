@@ -1,11 +1,11 @@
 # SILICON RTLIL import boundary
 
 `elaborateHierarchy` accepts raw Yosys JSON. It runs `silicon_legalize` after
-hierarchy/proc/muxpack and writes **SILICON-legalized Yosys JSON** for
+hierarchy/muxpack and writes **SILICON-legalized Yosys JSON** for
 `deserialize`. Direct `deserialize` callers must supply that legalized form.
 `readVerilog` resolves parameterized module instances while the frontend AST is
-available, then returns raw JSON; `serialize` also emits raw Yosys cells and may
-need legalization before import.
+available, lowers processes, and then returns raw JSON. `serialize` also emits
+raw Yosys cells and may need legalization before import.
 
 The ordered entry point runs:
 
@@ -23,10 +23,15 @@ canonical type once; a second invocation leaves those cells unchanged.
 ## Canonical cells
 
 The importer accepts `$and`, `$or`, `$xor`, `$not`, `$_NAND_`, `$_NOR_`,
-`$pos`, `$add`, `$sub`, `$neg`, `$mul`, `$div`, `$mod`, `$mux`, `$bmux`, `$demux`, supported `$dff`, `$dffsr`,
-`$dffsre`, `$dlatch`, `$adffe`, declared module instances, and the existing
+`$pos`, `$add`, `$sub`, `$neg`, `$mux`, `$bmux`, `$demux`, scalar zero-reset
+`$adffe`, declared module instances, and the existing
 `SILICON_*` technology cells listed in `cells.hpp`, including `SILICON_ROM`.
-`$add` and `$sub` retain their existing importer width handling.
+Native `$mul`, `$div`, `$mod`, `$dff`, `$dffsr`, `$dffsre`, and supported `$dlatch`
+cells are converted to technology cells before this boundary and are rejected by
+both `silicon_validate` and the direct importer if they remain. Native `$add` and
+`$sub` still reach the importer when their geometry is not covered by technology
+mapping; their width handling remains necessary. Vector `$adffe` cells map to
+`SILICON_PIPO`; only scalar zero-reset `$adffe` cells reach the native handler.
 
 `$neg` cells map directly to the two's-complement `Complementer` component,
 which also exports as `$neg`. Zero-minus-operand `$sub` cells are lowered to
@@ -49,9 +54,6 @@ using sign extension only when both inputs are signed, then truncates the result
 Declared module instances may omit unused output ports or connect them to empty
 arrays. Each unused output receives a private bus at its declared width. Inputs
 are required, and connected ports retain width and driver-ownership validation.
-Raw `$neg` cells are mapped to zero-minus-operand, which the importer recovers
-as the existing two's-complement `Complementer` component. Operands are sign
-or zero extended, or truncated, to the output width before negation.
 
 Additional expression contracts:
 

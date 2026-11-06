@@ -886,28 +886,34 @@ TEST(YosysToolTest, ImportsCaseLiteralLanesAsSizedConstants)
             (std::set<BusValue>{busValueFromBits("0011"), busValueFromBits("0100")}));
 }
 
-TEST(YosysTest, ImportsScalarActiveHighNativeDlatch)
+TEST(YosysTest, LegalizesScalarActiveHighNativeDlatch)
 {
   using SILICON::yosys::SerializationContext;
 
   auto latch =
       std::make_shared<DLatch>(std::make_shared<Wire>(), std::make_shared<Wire>(),
                                std::make_shared<Wire>(), std::make_shared<Wire>());
-  auto  design                = exportComponent(latch);
+  auto design = nlohmann::json::parse(
+      SILICON::yosys::serialize(circuitWithBoundaryPorts(latch), "top"));
   auto& cell                  = onlyModule(design)["cells"].begin().value();
   cell["type"]                = "$dlatch";
   cell["parameters"]["WIDTH"] = SerializationContext::parameter(1);
   cell["connections"].erase("QN");
   cell["port_directions"].erase("QN");
 
-  EXPECT_TRUE(findComponent<DLatch>(SILICON::yosys::deserialize(design.dump())));
+  EXPECT_TRUE(findComponent<DLatch>(SILICON::yosys::deserialize(
+      SILICON::yosys::elaborateHierarchy(design.dump()), "top")));
 
   cell["parameters"]["EN_POLARITY"] = SerializationContext::parameter(0, 1);
-  EXPECT_THROW((void)SILICON::yosys::deserialize(design.dump()), std::runtime_error);
+  EXPECT_THROW((void)SILICON::yosys::deserialize(
+                   SILICON::yosys::elaborateHierarchy(design.dump()), "top"),
+               std::runtime_error);
 
   cell["parameters"]["EN_POLARITY"] = SerializationContext::parameter(1, 1);
   cell["parameters"]["WIDTH"]       = SerializationContext::parameter(2);
-  EXPECT_THROW((void)SILICON::yosys::deserialize(design.dump()), std::runtime_error);
+  EXPECT_THROW((void)SILICON::yosys::deserialize(
+                   SILICON::yosys::elaborateHierarchy(design.dump()), "top"),
+               std::runtime_error);
 }
 
 #endif

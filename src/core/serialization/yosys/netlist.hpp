@@ -236,11 +236,9 @@ private:
  *
  * When @p moduleName is absent, the sole module or unique module carrying the Yosys
  * `top` attribute is selected. Input must already use the canonical cells supported
- * by the direct importer. Cells naming another non-blackbox module in the same design
- * become project subcircuit placeholders. Synthesis patterns such as equality banks are
- * normalized by the selected HDL frontend when the SILICON Yosys plugin is available.
- * Unsupported
- * or ambiguous designs fail atomically.
+ * by the direct importer; call elaborateHierarchy() first for raw frontend JSON.
+ * Cells naming another non-blackbox module in the same design become project
+ * subcircuit placeholders. Unsupported or ambiguous designs fail atomically.
  */
 [[nodiscard]] core::Circuit
 deserialize(std::string_view                json,

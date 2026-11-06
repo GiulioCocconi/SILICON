@@ -387,43 +387,109 @@ TEST(YosysLegalizationEndToEndTest, ImportsMultiplyDivideAndModuloFromVerilog)
 #endif
 }
 
-TEST(YosysLegalizationEndToEndTest, ArithmeticTechnologyMappingsNormalizeWidths)
+TEST(YosysLegalizationEndToEndTest,
+     ImportsMultiplyDivideAndModuloWithMixedWidthsAndSignedness)
 {
-#ifdef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
+#ifndef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
+  GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
+#endif
   for (const auto type : {"$mul", "$div", "$mod"}) {
     for (const bool aSigned : {false, true}) {
       for (const bool bSigned : {false, true}) {
         for (const int yWidth : {2, 6}) {
-          auto source = subtractionDesign(3, 5, yWidth, aSigned, bSigned);
-          onlyModule(source)["cells"].begin().value()["type"] = type;
-          const auto passes =
-              std::format("techmap -map \"{}/silicon_techmap.v\"\nsilicon_validate",
-                          SILICON_TEST_YOSYS_RESOURCE_DIR);
-          const auto mapped =
-              SILICON::yosys::Json::parse(legalizeExpressions(source.dump(), passes));
-          const bool multiplication = std::string_view(type) == "$mul";
-          EXPECT_EQ(onlyCell(mapped).at("type"),
+          const auto op = std::string_view(type) == "$mul" ? "*"
+                          : std::string_view(type) == "$div" ? "/" : "%";
+          const auto source = std::format(
+              "module top(input {} [2:0] a, input {} [4:0] b, output [{}:0] y); "
+              "assign y = a {} b; endmodule", aSigned ? "signed" : "",
+              bSigned ? "signed" : "", yWidth - 1, op);
+          const auto mapped = nlohmann::json::parse(SILICON::yosys::elaborateHierarchy(
+              SILICON::verilog::read(source)));
+          const auto circuit = std::make_shared<Circuit>(
+              SILICON::yosys::deserialize(mapped.dump(), "top"));
+          const bool  multiplication = std::string_view(type) == "$mul";
+          const auto& cell = mapped.at("modules").at("top").at("cells").begin().value();
+          EXPECT_EQ(cell.at("type"),
                     multiplication ? "SILICON_MULTIPLIER" : "SILICON_DIVIDER");
-          EXPECT_EQ(parameter(onlyCell(mapped), "SIGNED"), aSigned && bSigned);
-          EXPECT_FALSE(onlyCell(mapped).at("parameters").contains("A_SIGNED"));
-          EXPECT_FALSE(onlyCell(mapped).at("parameters").contains("B_SIGNED"));
-          const auto circuit =
-              std::make_shared<Circuit>(SILICON::yosys::deserialize(mapped.dump()));
-          const auto direct =
-              std::make_shared<Circuit>(SILICON::yosys::deserialize(source.dump()));
-          for (const unsigned a : {1u, 7u}) {
-            for (const unsigned b : {0u, 3u, 31u}) {
+          EXPECT_EQ(std::stoi(cell.at("parameters").at("SIGNED").get<std::string>(),
+                              nullptr, 2),
+                    aSigned && bSigned);
+          EXPECT_FALSE(cell.at("parameters").contains("A_SIGNED"));
+          EXPECT_FALSE(cell.at("parameters").contains("B_SIGNED"));
+          const auto component =
+              multiplication
+                  ? std::static_pointer_cast<Component>(
+                        findComponent<Multiplier>(*circuit))
+                  : std::static_pointer_cast<Component>(findComponent<Divider>(*circuit));
+          ASSERT_TRUE(component);
+          EXPECT_EQ(component->getPropertyValue<bool>("signed"), aSigned && bSigned);
+          for (const unsigned a : {0u, 1u, 3u, 7u}) {
+            for (const unsigned b : {0u, 1u, 3u, 16u, 31u}) {
               SCOPED_TRACE(std::format("{} {} {} {}: {}, {}", type, aSigned, bSigned,
                                        yWidth, a, b));
-              EXPECT_EQ(evaluateBinaryCircuit(circuit, a, b),
-                        evaluateBinaryCircuit(direct, a, b));
+              const auto actual = evaluateBinaryCircuit(circuit, a, b);
+              if (!multiplication && b == 0) {
+                EXPECT_EQ(actual, BusValue(yWidth, State::UNKNOWN));
+                continue;
+              }
+              const int lhs = aSigned && bSigned && a >= 4 ? static_cast<int>(a) - 8 : a;
+              const int rhs =
+                  aSigned && bSigned && b >= 16 ? static_cast<int>(b) - 32 : b;
+              const int expected = multiplication                     ? lhs * rhs
+                                   : std::string_view(type) == "$div" ? lhs / rhs
+                                                                      : lhs % rhs;
+              EXPECT_EQ(actual, valueFor(yWidth, expected & ((1u << yWidth) - 1)));
             }
           }
+          // Export and re-import preserve the observable result, including truncation.
+          const auto roundTripped = std::make_shared<Circuit>(
+              SILICON::yosys::deserialize(SILICON::yosys::serialize(*circuit, "top")));
+          EXPECT_EQ(evaluateBinaryCircuit(roundTripped, 7, 3),
+                    evaluateBinaryCircuit(circuit, 7, 3));
         }
       }
     }
   }
-#else
+}
+
+TEST(YosysLegalizationEndToEndTest, PreservesUnmappedArithmeticWidths)
+{
+#ifndef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
   GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
 #endif
+  for (const auto type : {"$add", "$sub"}) {
+    auto design = subtractionDesign(3, 5, 4, false, false);
+    onlyModule(design)["cells"].begin().value()["type"] = type;
+    const auto mapped =
+        nlohmann::json::parse(SILICON::yosys::elaborateHierarchy(design.dump()));
+    const auto& cell = mapped.at("modules").at("top").at("cells").begin().value();
+    EXPECT_EQ(cell.at("type"), type);
+    const auto circuit =
+        std::make_shared<Circuit>(SILICON::yosys::deserialize(mapped.dump(), "top"));
+    EXPECT_EQ(evaluateBinaryCircuit(circuit, 2, 5),
+              valueFor(4, std::string_view(type) == "$add" ? 7 : 13));
+  }
+}
+
+TEST(YosysLegalizationEndToEndTest, PreservesScalarAsyncEnableStorage)
+{
+#ifndef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
+  GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
+#endif
+  for (const bool positiveClock : {false, true}) {
+    const auto source =
+        std::format("module top(input clk, input rst, input en, input d, output reg q); "
+                    "always @({} clk or posedge rst) "
+                    "if (rst) q <= 1'b0; else if (en) q <= d; endmodule",
+                    positiveClock ? "posedge" : "negedge");
+    const auto mapped = nlohmann::json::parse(
+        SILICON::yosys::elaborateHierarchy(SILICON::verilog::read(source)));
+    const auto& cell = mapped.at("modules").at("top").at("cells").begin().value();
+    EXPECT_EQ(cell.at("type"), "$adffe");
+    const auto circuit  = SILICON::yosys::deserialize(mapped.dump(), "top");
+    const auto flipFlop = findComponent<EFlipFlop>(circuit);
+    ASSERT_TRUE(flipFlop);
+    EXPECT_EQ(flipFlop->getPropertyValue<std::string>("triggerEdge"),
+              positiveClock ? "PET" : "NET");
+  }
 }
