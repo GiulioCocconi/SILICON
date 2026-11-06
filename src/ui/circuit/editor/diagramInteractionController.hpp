@@ -41,6 +41,7 @@ public:
   /** @brief Connects the main-window diagram actions to their diagram commands. */
   void bindActions(const CircuitActions& actions);
 
+  void selectAll();
   void rotate();
   void autoPlace();
   void centerView();

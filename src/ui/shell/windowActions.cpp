@@ -204,6 +204,9 @@ void WindowActions::updateCodeAction()
        circuit.setSimulationMode, waveform.toggleTrace, circuit.openComponentCatalog,
        circuit.setComponentPlacingMode, circuit.autoPlace, circuit.centerView},
       !nonGraphical);
+  circuit.selectAll->setEnabled(type
+                                && SILICON::project::categoryOf(*type)
+                                       == SILICON::project::DocumentCategory::Diagram);
 
   updateDocumentActionVisibility();
 }
@@ -289,6 +292,8 @@ void WindowActions::createActions()
   edit.paste =
       makeAction(&window, Icon("paste"), tr("&Paste"),
                  tr("Paste the clipboard's contents into the current selection"));
+  circuit.selectAll = makeAction(&window, tr("Select All"));
+  window.addAction(circuit.selectAll);
   circuit.rotate    = makeAction(&window, Icon("rotate"), tr("&Rotate"));
   circuit.autoPlace = makeAction(&window, Icon("rearrange"), tr("&Auto place"),
                                  tr("Automatically place components and reroute wires"));

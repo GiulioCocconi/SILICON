@@ -280,6 +280,8 @@ QVector<ShortcutSetting> WindowActions::shortcutSettings() const
                QKeySequence(QKeySequence::Copy)),
       shortcut(QStringLiteral("keybindings/paste"), tr("Paste"), edit.paste,
                QKeySequence(QKeySequence::Paste)),
+      shortcut(QStringLiteral("keybindings/selectAll"), tr("Select All"),
+               circuit.selectAll, QKeySequence(Qt::ControlModifier | Qt::Key_A)),
       shortcut(QStringLiteral("keybindings/rotate"), tr("Rotate"), circuit.rotate,
                QKeySequence(Qt::AltModifier | Qt::Key_R)),
       shortcut(QStringLiteral("keybindings/autoPlace"), tr("Auto place"),
