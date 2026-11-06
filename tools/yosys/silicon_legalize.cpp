@@ -151,10 +151,11 @@ void runShift(RTLIL::Design* design)
 
 bool supported(RTLIL::IdString type)
 {
+  // clang-format off
   static const pool<RTLIL::IdString> types = {
     ID($and), ID($or), ID($xor), ID($not), ID($_NAND_), ID($_NOR_),
-    ID($pos), ID($add), ID($sub), ID($neg), ID($mul), ID($div), ID($mod), ID($mux), ID($bmux), ID($demux),
-    ID($dff), ID($dffsr), ID($dffsre), ID($dlatch), ID($adffe),
+    ID($pos), ID($add), ID($sub), ID($neg), ID($mux), ID($bmux), ID($demux),
+    ID($adffe),
     id("SILICON_ROM"), id("SILICON_LOGIC"), id("SILICON_COMPARE"),
     id("SILICON_SHIFT"), id("SILICON_DFF"), id("SILICON_DFFE"),
     id("SILICON_DLATCH"), id("SILICON_DFFSR"), id("SILICON_DFFSRE"),
@@ -162,6 +163,7 @@ bool supported(RTLIL::IdString type)
     id("SILICON_ADDER"), id("SILICON_MULTIPLIER"), id("SILICON_DIVIDER"),
     id("SILICON_PIPO"), id("SILICON_PISO"),
     id("SILICON_SIPO"), id("SILICON_SISO")};
+  // clang-format on
   return types.count(type);
 }
 

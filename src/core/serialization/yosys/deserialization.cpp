@@ -213,14 +213,6 @@ namespace {
         return requireObjectMember(parametersJson, name, context);
       }
 
-      // Exposes the original JSON connection for structural import passes. Normal
-      // cell import should prefer consumer()/driver(), which also interns wires and
-      // enforces the single-driver rule.
-      [[nodiscard]] const Json& connection(const std::string_view name) const
-      {
-        return requireObjectMember(connectionsJson, name, context);
-      }
-
       void requireKnownConnectionNames(const std::span<const std::string> names) const
       {
         for (const auto& [name, _] : connectionsJson.items())
@@ -994,15 +986,6 @@ namespace {
       const Bus  b      = cell.consumer("B", bWidth);
       const Bus  y      = cell.driver("Y", yWidth);
 
-      if (aWidth == bWidth && (yWidth == aWidth || yWidth == aWidth + 1)) {
-        const Bus  sum   = slice(y, 0, aWidth);
-        const auto carry = yWidth == aWidth + 1 ? y[static_cast<unsigned short>(aWidth)]
-                                                : std::make_shared<Wire>(State::UNKNOWN);
-        auto adder = std::make_shared<AdderNBits>(std::array<Bus, 2>{a, b}, sum, carry);
-        addWithZeroDelay(std::move(adder));
-        return;
-      }
-
       const auto arithmeticWidth = std::max({aWidth, bWidth, yWidth});
       const Bus  extendedA       = resizeArithmeticOperand(a, arithmeticWidth, false);
       const Bus  extendedB       = resizeArithmeticOperand(b, arithmeticWidth, false);
@@ -1015,37 +998,6 @@ namespace {
                                                 Bus(std::move(sumWires)),
                                                 std::make_shared<Wire>(State::UNKNOWN));
       addWithZeroDelay(std::move(adder));
-    }
-
-    template <bool multiplication, bool remainder = false>
-    void importMulDiv(const Cell& cell)
-    {
-      cell.requireConnections({"A", "B", "Y"});
-      const auto aWidth  = cell.width("A_WIDTH");
-      const auto bWidth  = cell.width("B_WIDTH");
-      const auto yWidth  = cell.width("Y_WIDTH");
-      const bool aSigned = cell.flag("A_SIGNED");
-      const bool bSigned = cell.flag("B_SIGNED");
-      const bool sign    = aSigned && bSigned;
-      const auto width   = std::max({aWidth, bWidth, yWidth});
-      const Bus  a = resizeArithmeticOperand(cell.consumer("A", aWidth), width, sign);
-      const Bus  b = resizeArithmeticOperand(cell.consumer("B", bWidth), width, sign);
-      // Preserve all operand bits during division, even when Y is narrower.
-      auto result = static_cast<std::vector<Wire_ptr>>(cell.driver("Y", yWidth));
-      while (result.size() < width)
-        result.push_back(std::make_shared<Wire>(State::UNKNOWN));
-      Component_ptr component;
-      if constexpr (multiplication) {
-        component = std::make_shared<Multiplier>(std::array<Bus, 2>{a, b},
-                                                 Bus(std::move(result)));
-      } else {
-        Bus unused(static_cast<unsigned short>(width));
-        component = std::make_shared<Divider>(std::array<Bus, 2>{a, b},
-                                              remainder ? unused : Bus(result),
-                                              remainder ? Bus(result) : unused);
-      }
-      component->setProperty("signed", sign);
-      addWithZeroDelay(std::move(component));
     }
 
     void importSiliconShift(const Cell& cell)
@@ -1201,89 +1153,23 @@ namespace {
       addMuxLike<Demultiplexer>(selectionWidth, width, {a, s}, std::move(outputs));
     }
 
-    void validateScalarStorage(const Cell&                                   cell,
-                               const std::initializer_list<std::string_view> ports)
-    {
-      cell.requireConnections(ports);
-      if (cell.width("WIDTH") != 1)
-        fail(cell.where(), "only scalar flip-flop cells are supported");
-      if (!cell.flag("SET_POLARITY") || !cell.flag("CLR_POLARITY"))
-        fail(cell.where(), "only active-high SET and CLR are supported");
-    }
-
-    void importDffsr(const Cell& cell)
-    {
-      validateScalarStorage(cell, {"CLK", "SET", "CLR", "D", "Q"});
-      auto dff = std::make_shared<DFlipFlop>(
-          cell.consumerBit("D"), cell.consumerBit("CLK"), cell.consumerBit("CLR"),
-          cell.consumerBit("SET"), cell.driverBit("Q"), std::make_shared<Wire>());
-      addFlipFlop(std::move(dff), cell.flag("CLK_POLARITY"));
-    }
-
-    void importDff(const Cell& cell)
-    {
-      cell.requireConnections({"CLK", "D", "Q"});
-      if (cell.width("WIDTH") != 1)
-        fail(cell.where(), "only scalar flip-flop cells are supported");
-
-      auto dff = std::make_shared<DFlipFlop>(
-          cell.consumerBit("D"), cell.consumerBit("CLK"), nullptr, nullptr,
-          cell.driverBit("Q"), std::make_shared<Wire>());
-      addFlipFlop(std::move(dff), cell.flag("CLK_POLARITY"));
-    }
-
-    void importDffsre(const Cell& cell)
-    {
-      validateScalarStorage(cell, {"CLK", "EN", "SET", "CLR", "D", "Q"});
-      if (!cell.flag("EN_POLARITY"))
-        fail(cell.where(), "only active-high EN is supported");
-      auto dff = std::make_shared<EFlipFlop>(
-          cell.consumerBit("D"), cell.consumerBit("EN"), cell.consumerBit("CLK"),
-          cell.consumerBit("CLR"), cell.consumerBit("SET"), cell.driverBit("Q"),
-          std::make_shared<Wire>());
-      addFlipFlop(std::move(dff), cell.flag("CLK_POLARITY"));
-    }
-
-    void importDlatch(const Cell& cell)
-    {
-      cell.requireConnections({"EN", "D", "Q"});
-      if (cell.width("WIDTH") != 1)
-        fail(cell.where(), "only scalar D latch cells are supported");
-      if (!cell.flag("EN_POLARITY"))
-        fail(cell.where(), "only active-high EN is supported");
-
-      auto latch =
-          std::make_shared<DLatch>(cell.consumerBit("D"), cell.consumerBit("EN"),
-                                   cell.driverBit("Q"), std::make_shared<Wire>());
-      addWithZeroDelay(std::move(latch), "propagationDelay");
-    }
-
     void importAdffe(const Cell& cell)
     {
       cell.requireConnections({"CLK", "ARST", "EN", "D", "Q"});
-      const auto width = cell.width("WIDTH");
+      // Vector $adffe cells are already mapped to SILICON_PIPO. Only the scalar
+      // zero-reset form can survive the technology map and reach this handler.
+      if (cell.width("WIDTH") != 1)
+        fail(cell.where(), "only scalar $adffe cells may remain after legalization");
       if (!cell.flag("EN_POLARITY") || !cell.flag("ARST_POLARITY"))
         fail(cell.where(), "only active-high EN and ARST are supported");
       if (!cell.zeroParameter("ARST_VALUE"))
         fail(cell.where(), "only an all-zero asynchronous reset value is supported");
 
-      const auto clock  = cell.consumerBit("CLK");
-      const auto reset  = cell.consumerBit("ARST");
-      const auto enable = cell.consumerBit("EN");
-      const Bus  data   = cell.consumer("D", width);
-      const Bus  q      = cell.driver("Q", width);
-
-      const bool positiveClock = cell.flag("CLK_POLARITY");
-      if (width == 1) {
-        auto dff = std::make_shared<EFlipFlop>(data[0], enable, clock, reset, nullptr,
-                                               q[0], std::make_shared<Wire>());
-        addFlipFlop(std::move(dff), positiveClock);
-        return;
-      }
-      if (!positiveClock)
-        fail(cell.where(), "multi-bit registers require a positive-edge clock");
-
-      addWithZeroDelay(std::make_shared<Register>(data, clock, enable, reset, q));
+      auto dff = std::make_shared<EFlipFlop>(
+          cell.consumerBit("D"), cell.consumerBit("EN"), cell.consumerBit("CLK"),
+          cell.consumerBit("ARST"), nullptr, cell.driverBit("Q"),
+          std::make_shared<Wire>());
+      addFlipFlop(std::move(dff), cell.flag("CLK_POLARITY"));
     }
 
     template <bool Enabled, bool SetReset> void importSiliconDff(const Cell& cell)
@@ -1532,9 +1418,6 @@ namespace {
               {"$_NOR_", &Importer::importFineBinaryGate<NorGate>},
               {"$pos", &Importer::importPos},
               {"$add", &Importer::importAdd},
-              {"$mul", &Importer::importMulDiv<true>},
-              {"$div", &Importer::importMulDiv<false>},
-              {"$mod", &Importer::importMulDiv<false, true>},
               {"$neg", &Importer::importNeg},
               {"$sub", &Importer::importSub},
               {cells::COMPARE, &Importer::importSiliconCompare},
@@ -1542,10 +1425,6 @@ namespace {
               {"$mux", &Importer::importMux},
               {"$bmux", &Importer::importBmux},
               {"$demux", &Importer::importDemux},
-              {"$dff", &Importer::importDff},
-              {"$dffsr", &Importer::importDffsr},
-              {"$dffsre", &Importer::importDffsre},
-              {"$dlatch", &Importer::importDlatch},
               {"$adffe", &Importer::importAdffe},
           });
 

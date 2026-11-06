@@ -410,7 +410,7 @@ module _silicon_map_fa #(
 endmodule
 
 // extract_fa operates on fine-grained gates.  Convert unmatched primitives back
-// to the generic cells handled by SILICON's compatibility importer.
+// to the generic cells accepted at SILICON's legalized import boundary.
 (* techmap_celltype = "$_AND_" *)
 module _silicon_unmap_and(input A, input B, output Y);
   assign Y = A & B;

@@ -479,7 +479,8 @@ std::string elaborateHierarchy(const std::string_view json, const ToolOptions& o
                               "read_json {}\n"
                               "{}"
                               "hierarchy -check\n"
-                              "proc\n"
+                              // The JSON boundary requires processes to be lowered
+                              // by the frontend before elaborateHierarchy is called.
                               "muxpack\n"
                               "{}"
                               "write_json {}\n",
