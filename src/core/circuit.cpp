@@ -24,6 +24,7 @@
 #include <stdexcept>
 
 #include <core/component.hpp>
+#include <core/memory.hpp>
 #include <core/serialization/component_registry.hpp>
 #include <core/subcircuit.hpp>
 #include <utils/num_formatting.hpp>
@@ -736,6 +737,9 @@ std::string Circuit::serialize() const
                                  {"properties", propsJson},
                                  {"inputs", serializeBusList(cPtr->getInputs())},
                                  {"outputs", serializeBusList(cPtr->getOutputs())}});
+      if (const auto rom = std::dynamic_pointer_cast<ROM>(cPtr);
+          rom && rom->memoryDepth() != 0)
+        j["components"].back()["memoryDepth"] = rom->memoryDepth();
     }
   }
 
@@ -832,6 +836,15 @@ Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry
 
         for (const auto& [key, value] : propsIt->items())
           applyProperty(component, key, value, true);
+      }
+
+      if (const auto rom = std::dynamic_pointer_cast<ROM>(component)) {
+        if (const auto depth = compJson.find("memoryDepth"); depth != compJson.end()) {
+          if (!depth->is_number_integer()
+              || (!depth->is_number_unsigned() && depth->get<std::int64_t>() < 0))
+            throw std::invalid_argument("ROM memoryDepth must be a non-negative integer");
+          rom->setMemoryDepth(depth->get<std::size_t>());
+        }
       }
 
       const auto deserializeInterface = [&](std::string_view        name,

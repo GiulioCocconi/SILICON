@@ -27,6 +27,7 @@
 #include <nlohmann/json.hpp>
 
 using namespace SILICON::core;
+
 using namespace SILICON::project;
 
 namespace {
@@ -324,8 +325,9 @@ TEST(CircuitDependencyGraphTest, CodeDocumentsAreExcludedFromRebuild)
 TEST(CircuitDependencyGraphTest, BinaryDocumentsAreExcludedFromRebuild)
 {
   CircuitDependencyGraph graph;
-  graph.rebuildFromProject({circuit("circuits/main.json", emptyScene()),
-                            Document("bin/firmware", std::string("\0\xff", 2))});
+  graph.rebuildFromProject(
+      {circuit("circuits/main.json", emptyScene()),
+       Document("bin/firmware", (std::vector<std::uint8_t>{0x00, 0xFF}))});
   EXPECT_TRUE(graph.containsDocument("circuits/main.json"));
   EXPECT_FALSE(graph.containsDocument("bin/firmware"));
   EXPECT_THROW(graph.addDocument("bin/firmware"), std::invalid_argument);

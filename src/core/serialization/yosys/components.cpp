@@ -90,15 +90,12 @@ void Component::serializeYosys(SerializationContext&) const
 
 void ROM::serializeYosys(SerializationContext& context) const
 {
-  const auto snapshot = binaryContentsSnapshot();
-  const auto width = static_cast<std::size_t>(getPropertyValue<int>("dataWidth").value_or(8));
-  if (!snapshot || snapshot->empty() || width == 0)
+  const auto image = memoryImageSnapshot();
+  if (!image)
     throw std::runtime_error("Cannot export ROM without resolved binary contents");
-  const auto count = resolvedWordCount();
-  const auto derivedCount = (snapshot->size() * 8 + width - 1) / width;
-  if (!std::has_single_bit(count)
-      || (snapshot->size() != (count * width + 7) / 8 && derivedCount != count))
-    throw std::runtime_error("Cannot export ROM with invalid packed word count");
+  const auto  width        = image->wordWidth();
+  const auto  count        = image->depth();
+  const auto& bits         = image->bits();
   const auto addressWidth = std::max<std::size_t>(1, std::bit_width(count - 1));
   if (inputBuses().size() != 3 || outputBuses().size() != 1
       || inputBuses()[0].size() != addressWidth || outputBuses()[0].size() != width)
@@ -106,9 +103,7 @@ void ROM::serializeYosys(SerializationContext& context) const
 
   std::string init(count * width, '0');
   for (std::size_t bit = 0; bit < init.size(); ++bit) {
-    const auto byte = bit / 8 < snapshot->size()
-                          ? static_cast<unsigned char>((*snapshot)[bit / 8]) : 0;
-    init[init.size() - bit - 1] = (byte & (1u << (bit % 8))) ? '1' : '0';
+    init[init.size() - bit - 1] = bits[bit] ? '1' : '0';
   }
   const auto p = [](std::uint64_t value) { return SerializationContext::parameter(value); };
   const auto readData = context.allocateBits(width);

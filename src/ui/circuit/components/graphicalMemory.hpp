@@ -18,7 +18,9 @@
 #pragma once
 
 #include <core/memory.hpp>
+#include <cstdint>
 #include <ui/circuit/components/graphicalLogicComponent.hpp>
+#include <vector>
 
 namespace SILICON::project {
 class DocumentStore;
@@ -49,7 +51,7 @@ private:
   void subscribeToDocuments();
   void unsubscribeFromDocuments();
   void refreshBinaryContents();
-  [[nodiscard]] std::shared_ptr<const std::string>
+  [[nodiscard]] std::shared_ptr<const std::vector<std::uint8_t>>
                             resolveBinaryContents(std::string_view slug) const;
   [[nodiscard]] std::string currentSlug() const;
 };

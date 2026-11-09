@@ -16,8 +16,9 @@
  */
 
 #include <core/projectContext.hpp>
-#include <core/projectDocument.hpp>
+
 #include <core/isaArchitecture.hpp>
+#include <core/projectDocument.hpp>
 
 #include <algorithm>
 #include <cstdint>
@@ -31,6 +32,7 @@
 #include <sisl/sisl.hpp>
 
 using namespace SILICON::core;
+
 using namespace SILICON::project;
 
 using SILICON::project::Document;
@@ -125,11 +127,11 @@ TEST(ProjectDocumentTest, ImportsDocumentsFromDefinitiveExtensions)
   EXPECT_EQ(sisl.getPath(), "isa/RV32/instr_format.sisl");
   EXPECT_EQ(sisl.getContents(), "arch RV32 = {};\n");
 
-  const std::string bytes("\0\xfftext", 6);
-  const auto        binary = importDocument("firmware.BIN", bytes);
+  const std::vector<std::uint8_t> bytes{0, 0xFF, 't', 'e', 'x', 't'};
+  const auto                      binary = importDocument("firmware.BIN", bytes);
   EXPECT_EQ(binary.getType(), DocumentType::RawBinary);
   EXPECT_EQ(binary.getPath(), "bin/firmware.BIN");
-  EXPECT_EQ(binary.getContents(), bytes);
+  EXPECT_EQ(binary.getContents<std::vector<std::uint8_t>>(), bytes);
 }
 
 TEST(ProjectDocumentTest, ReadsArchitectureDeclarationWithoutCompilingTheBody)
@@ -156,7 +158,8 @@ TEST(ProjectDocumentTest, ImportsDocumentsDetectedFromContents)
   EXPECT_EQ(circuit.getType(), DocumentType::Circuit);
   EXPECT_EQ(circuit.getPath(), "circuits/Adder.json");
 
-  const auto binary = importDocument("assets/rom.dat", std::string("\x89PNG\r\n", 6));
+  const auto binary = importDocument(
+      "assets/rom.dat", (std::vector<std::uint8_t>{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A}));
   EXPECT_EQ(binary.getType(), DocumentType::RawBinary);
   EXPECT_EQ(binary.getPath(), "bin/rom.dat");
 }
@@ -178,7 +181,8 @@ TEST(ProjectDocumentTest, ExportsCanonicalDocumentLeafNames)
   EXPECT_EQ(documentFileName(Document("circuits/adder.json", "{}")), "adder.json");
   EXPECT_EQ(documentFileName(Document("code/adder.v", "")), "adder.v");
   EXPECT_EQ(documentFileName(Document("isa/rv32/instr_format.sisl", "")), "instr_format.sisl");
-  EXPECT_EQ(documentFileName(Document("bin/firmware.bin", "")), "firmware.bin");
+  EXPECT_EQ(documentFileName(Document("bin/firmware.bin", std::vector<std::uint8_t>{})),
+            "firmware.bin");
 }
 
 TEST(ProjectDocumentTest, DescribesRegisteredDocumentTypes)
@@ -217,7 +221,7 @@ TEST(ProjectDocumentStoreTest, PreservesOrderAcrossMixedKindsAndUpserts)
   project.setDocuments({{"circuits/main.json", "{}"},
                         {"circuits/adder.json", "{}"},
                         {"code/adder.v", "module adder; endmodule"},
-                        {"bin/firmware", std::string("\0\xff", 2)},
+                        {"bin/firmware", (std::vector<std::uint8_t>{0x00, 0xFF})},
                         {"circuits/control.json", "{}"}});
 
   project.upsertDocument({"circuits/adder.json", R"({"components":[]})"});
@@ -241,7 +245,8 @@ TEST(ProjectDocumentStoreTest, PreservesOrderAcrossMixedKindsAndUpserts)
   const auto binaryIt = std::ranges::find_if(
       allDocuments, [](const auto& d) { return d.getType() == DocumentType::RawBinary; });
   ASSERT_NE(binaryIt, allDocuments.end());
-  EXPECT_EQ(binaryIt->getContents(), std::string("\0\xff", 2));
+  EXPECT_EQ(binaryIt->getContents<std::vector<std::uint8_t>>(),
+            (std::vector<std::uint8_t>{0x00, 0xFF}));
 
   project.removeDocument("circuits/adder.json");
   EXPECT_FALSE(store.contains("circuits/adder.json"));
@@ -301,7 +306,7 @@ TEST(ProjectDocumentStoreTest, RenamesCircuitAndRewritesSubcircuitReferences)
         R"({"circuit":{"name":"main","components":[{"type":"Subcircuit","properties":{"slug":"child"}},{"type":"ROM","properties":{"binaryContents":"child"}}]},"visual":{"components":[],"wires":[]}})"},
        {"circuits/child.json",
         R"({"circuit":{"name":"Child title","components":[]},"visual":{"components":[],"wires":[]}})"},
-       {"bin/child", "binary"}});
+       {"bin/child", std::vector<std::uint8_t>({0xA5})}});
 
   project.renameDocument("circuits/child.json", "circuits/renamed child.json");
 
@@ -329,14 +334,15 @@ TEST(ProjectDocumentStoreTest, RenamesBinaryAndRewritesRomReferences)
         R"({"circuit":{"name":"main","components":[{"type":"ROM","properties":{"binaryContents":"program"}},{"type":"Subcircuit","properties":{"slug":"program"}}]},"visual":{"components":[],"wires":[]}})"},
        {"circuits/program.json",
         R"({"circuit":{"name":"program","components":[]},"visual":{"components":[],"wires":[]}})"},
-       {"bin/program", "binary"}});
+       {"bin/program", std::vector<std::uint8_t>({0xA5})}});
 
   project.renameDocument("bin/program", "bin/firmware");
 
   const auto& documents = project.documents().getDocuments();
   ASSERT_EQ(documents.size(), 3);
   EXPECT_EQ(documents[2].getPath(), "bin/firmware");
-  EXPECT_EQ(documents[2].getContents(), "binary");
+  EXPECT_EQ(documents[2].getContents<std::vector<std::uint8_t>>(),
+            std::vector<std::uint8_t>({0xA5}));
   const auto main = nlohmann::json::parse(documents[0].getContents());
   EXPECT_EQ(main["circuit"]["components"][0]["properties"]["binaryContents"], "firmware");
   EXPECT_EQ(main["circuit"]["components"][1]["properties"]["slug"], "program");

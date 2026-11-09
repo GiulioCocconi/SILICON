@@ -139,6 +139,7 @@ namespace {
 
     if (const auto sourceRom = std::dynamic_pointer_cast<ROM>(component)) {
       auto clonedRom = std::dynamic_pointer_cast<ROM>(cloned);
+      clonedRom->setMemoryDepth(sourceRom->memoryDepth());
       clonedRom->refreshBinaryContents(sourceRom->binaryContentsSnapshot());
     }
 

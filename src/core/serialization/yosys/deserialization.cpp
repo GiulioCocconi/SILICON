@@ -737,10 +737,10 @@ namespace {
       const auto init = binaryDigits(cell.parameter("INIT"), cell.where());
       if (init.size() != count * width)
         fail(cell.where(), "invalid canonical ROM initialization");
-      std::string bytes((init.size() + 7) / 8, '\0');
+      MemoryImage::Bits bits(init.size());
       for (std::size_t bit = 0; bit < init.size(); ++bit)
         if (init[init.size() - bit - 1] == '1')
-          bytes[bit / 8] = static_cast<char>(static_cast<unsigned char>(bytes[bit / 8]) | (1u << (bit % 8)));
+          bits.set(bit);
 
       const auto& id = cell.parameter("ID");
       if (!id.is_string())
@@ -798,7 +798,8 @@ namespace {
       connectAndAdd(rom, {address, select,
                          readBus(Json::array({"1"}), ConnectionRole::Consumer, cell.where(), 1)},
                     {romOutput});
-      rom->refreshBinaryContents(std::make_shared<const std::string>(bytes), count);
+      rom->setMemoryImage(
+          std::make_shared<const MemoryImage>(std::move(bits), width, count));
       if (synchronous && count == 1) {
         const Bus registeredData = cell.driver("DATA", width);
         std::vector<Wire_ptr> data(romOutput.begin(), romOutput.end());

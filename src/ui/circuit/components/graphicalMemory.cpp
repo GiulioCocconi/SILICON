@@ -171,19 +171,10 @@ void GraphicalROM::refreshBinaryContents()
     rom->refreshBinaryContents(resolveBinaryContents(currentSlug()));
 }
 
-std::shared_ptr<const std::string>
+std::shared_ptr<const std::vector<std::uint8_t>>
 GraphicalROM::resolveBinaryContents(const std::string_view slug) const
 {
-  if (!documents || !SILICON::project::isValidDocumentSlug(slug))
-    return nullptr;
-
-  const auto path = SILICON::project::documentPathForSlug(
-      SILICON::project::DocumentType::RawBinary, slug);
-  const auto* document = documents->find(path);
-  if (!document)
-    return nullptr;
-
-  return std::make_shared<const std::string>(document->getContents());
+  return documents ? SILICON::project::binaryContentsSnapshot(*documents, slug) : nullptr;
 }
 
 }  // namespace SILICON::ui

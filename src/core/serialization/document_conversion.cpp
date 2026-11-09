@@ -109,12 +109,13 @@ namespace {
       if (!rom)
         continue;
       const auto slug = rom->getPropertyValue<std::string>("binaryContents");
-      std::shared_ptr<const std::string> snapshot;
+      std::shared_ptr<const std::vector<std::uint8_t>> snapshot;
       if (slug) {
         const auto path = SILICON::project::documentPathForSlug(DocumentType::RawBinary, *slug);
         for (const auto& document : projectDocuments)
           if (document.getPath() == path)
-            snapshot = std::make_shared<const std::string>(document.getContents());
+            snapshot = std::make_shared<const std::vector<std::uint8_t>>(
+                document.getContents<std::vector<std::uint8_t>>());
       }
       rom->refreshBinaryContents(std::move(snapshot));
     }
