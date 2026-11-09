@@ -522,13 +522,18 @@ void Multiplexer::serializeYosys(SerializationContext& context) const
     throw std::runtime_error("Cannot export malformed multiplexer properties");
   }
   const std::size_t laneCount      = std::size_t{1} << selectionWidth;
-  const std::size_t selectionIndex = laneCount;
+  const auto&       table          = selectionTableIndices();
+  const std::size_t dataCount =
+      table.empty() ? laneCount
+                    : static_cast<std::size_t>(*std::ranges::max_element(table)) + 1;
+  const std::size_t selectionIndex = dataCount;
 
-  requireBusCounts(*this, laneCount + 1, 1);
+  requireBusCounts(*this, dataCount + 1, 1);
   std::vector<Json> lanes;
   lanes.reserve(laneCount);
   for (std::size_t lane = 0; lane < laneCount; ++lane)
-    lanes.push_back(context.bits(requireBusWidth(*this, true, lane, busWidth)));
+    lanes.push_back(context.bits(
+        requireBusWidth(*this, true, table.empty() ? lane : table.at(lane), busWidth)));
   const auto& selection = requireBusWidth(*this, true, selectionIndex, selectionWidth);
   const auto& output    = requireBusWidth(*this, false, 0, busWidth);
 

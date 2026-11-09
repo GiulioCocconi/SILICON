@@ -18,6 +18,7 @@
 #include "multiplexer.hpp"
 
 #include <algorithm>
+#include <charconv>
 #include <cstddef>
 #include <limits>
 #include <optional>
@@ -181,14 +182,17 @@ namespace {
   }
 
   std::vector<Bus> shapedMultiplexerInputs(const std::vector<Bus>& currentInputs,
-                                           const int selectionSize, const int busSize)
+                                           const int selectionSize, const int busSize,
+                                           const std::vector<unsigned short>& table)
   {
     // The canonical shape is one equally-sized bus per lane followed by the
     // selector. Preserve existing lane wires and the final selector where possible.
     Bus selectionBus;
     if (!currentInputs.empty())
       selectionBus = currentInputs.back();
-    const std::size_t dataBusCount = dataBusCountForSelectionSize(selectionSize);
+    const std::size_t dataBusCount =
+        table.empty() ? dataBusCountForSelectionSize(selectionSize)
+                      : static_cast<std::size_t>(*std::ranges::max_element(table)) + 1;
     std::vector<Bus>  newInputs(dataBusCount + 1);
 
     const std::size_t oldDataBusCount =
@@ -259,10 +263,15 @@ Multiplexer::Multiplexer()
   defineProperty("selectionSize", 1);
   defineProperty("busSize", 1);
   defineProperty("delay", 0);
+  defineProperty("selectionTable", std::string{});
 
   setPropertyCallback("selectionSize", [this](const PropertyValue& value) {
     const int selectionSize = std::get<int>(value);
     validateSelectionSize("Multiplexer", selectionSize);
+    if (!selectionTable.empty()
+        && selectionTable.size() != dataBusCountForSelectionSize(selectionSize))
+      throw std::invalid_argument(
+          "Clear the multiplexer selectionTable before changing selectionSize");
 
     if (!inputs.empty() && !outputs.empty())
       setSelectionSize(selectionSize);
@@ -281,6 +290,9 @@ Multiplexer::Multiplexer()
 
   setPropertyCallback("delay", [](const PropertyValue& value) {
     return requireNonNegative("Multiplexer delay", value);
+  });
+  setPropertyCallback("selectionTable", [this](const PropertyValue& value) {
+    return setSelectionTable(std::get<std::string>(value));
   });
 }
 
@@ -305,8 +317,13 @@ Multiplexer::Multiplexer(Bus data, Bus selection, Wire_ptr output) : Multiplexer
 int Multiplexer::setSelectionSize(const int selectionSize)
 {
   const auto shape = checkedShapeProperties(*this, "Multiplexer", selectionSize);
+  if (!selectionTable.empty()
+      && selectionTable.size() != dataBusCountForSelectionSize(selectionSize))
+    throw std::invalid_argument(
+        "Clear the multiplexer selectionTable before changing selectionSize");
   applyShape(*this,
-             shapedMultiplexerInputs(getInputs(), shape.selectionSize, shape.busSize),
+             shapedMultiplexerInputs(getInputs(), shape.selectionSize, shape.busSize,
+                                     selectionTable),
              shapedMultiplexerOutputs(getOutputs(), shape.busSize));
 
   return selectionSize;
@@ -316,10 +333,51 @@ int Multiplexer::setBusSize(const int busSize)
 {
   const auto shape = checkedShapeProperties(*this, "Multiplexer", std::nullopt, busSize);
   applyShape(*this,
-             shapedMultiplexerInputs(getInputs(), shape.selectionSize, shape.busSize),
+             shapedMultiplexerInputs(getInputs(), shape.selectionSize, shape.busSize,
+                                     selectionTable),
              shapedMultiplexerOutputs(getOutputs(), shape.busSize));
 
   return busSize;
+}
+
+std::string Multiplexer::setSelectionTable(const std::string& specification)
+{
+  const auto laneCount =
+      dataBusCountForSelectionSize(getPropertyValue<int>("selectionSize").value_or(1));
+  std::vector<unsigned short> parsed;
+  std::string_view            text = specification;
+  while (!text.empty()) {
+    const auto   comma = text.find(',');
+    const auto   item  = text.substr(0, comma);
+    unsigned int index = 0;
+    const auto [end, error] =
+        std::from_chars(item.data(), item.data() + item.size(), index);
+    if (item.empty() || error != std::errc{} || end != item.data() + item.size()
+        || index >= laneCount || parsed.size() >= laneCount)
+      throw std::invalid_argument("Invalid multiplexer selectionTable data-port index");
+    parsed.push_back(static_cast<unsigned short>(index));
+    if (comma == std::string_view::npos)
+      break;
+    text.remove_prefix(comma + 1);
+    if (text.empty())
+      throw std::invalid_argument("Multiplexer selectionTable has a trailing comma");
+  }
+  if (!parsed.empty()) {
+    if (parsed.size() != laneCount)
+      throw std::invalid_argument(
+          "Multiplexer selectionTable must cover every selector value");
+    std::vector<bool> seen(static_cast<std::size_t>(*std::ranges::max_element(parsed))
+                           + 1);
+    for (const auto index : parsed)
+      seen[index] = true;
+    if (std::ranges::find(seen, false) != seen.end())
+      throw std::invalid_argument(
+          "Multiplexer selectionTable data-port indices must be contiguous from zero");
+  }
+  selectionTable = std::move(parsed);
+  if (!inputs.empty() && !outputs.empty())
+    setSelectionSize(getPropertyValue<int>("selectionSize").value_or(1));
+  return specification;
 }
 
 void Multiplexer::simulate(SILICON::simulation::Simulator& sim)
@@ -363,6 +421,10 @@ void Multiplexer::simulate(SILICON::simulation::Simulator& sim)
         selectionState);
     return;
   }
+
+  if (!selectionTable.empty())
+    selectedIndex =
+        selectedIndex < selectionTable.size() ? selectionTable[selectedIndex] : laneCount;
 
   for (unsigned short bit = 0; bit < outputBusSize(Outputs::Out); ++bit) {
     const State selectedState =
