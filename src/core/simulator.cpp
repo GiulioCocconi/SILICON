@@ -111,11 +111,6 @@ public:
     simulator.activePreviousWireStates = activePreviousWireStates;
   }
 
-  void setStageSequentialOutputs(bool enabled) const
-  {
-    simulator.stageSequentialOutputs = enabled;
-  }
-
 private:
   Simulator&                           simulator;
   std::unordered_map<uint64_t, State>* previousActivePreviousWireStates = nullptr;
@@ -676,6 +671,26 @@ void Simulator::updateBus(const Bus& bus, const BusValue& value, const uint64_t 
   }
 }
 
+bool Simulator::beginSequentialCapture(const Component_weakPtr& source,
+                                       std::function<void()>    restore)
+{
+  auto owner = source.lock();
+  if (!owner || !owner->usesStagedSequentialOutputs())
+    throw std::invalid_argument(
+        "Sequential capture requires a source with staged outputs");
+  if (!stageSequentialOutputs)
+    return true;
+  return sequentialCaptureRestores.try_emplace(owner.get(), std::move(restore)).second;
+}
+
+void Simulator::discardStagedSequentialTransitions()
+{
+  stagedSequentialTransitions.clear();
+  for (auto& [owner, restore] : sequentialCaptureRestores)
+    restore();
+  sequentialCaptureRestores.clear();
+}
+
 Simulator::RunResult
 Simulator::evaluateExecutionPlanAndTrace(std::span<const ExecutionStep> steps,
                                          const Context&                  context,
@@ -694,38 +709,43 @@ Simulator::RunResult Simulator::evaluateForwardConeAndTrace(
     const CancellationCheck& isCancelled, const bool enableSequentialStaging)
 {
   Context                    context{false, changedBuses, std::move(previousWireStates)};
-  const auto                 steps = getForwardExecutionSteps(changedBuses);
+  auto                       steps = getForwardExecutionSteps(changedBuses);
   const EvaluationStateGuard evaluationState(*this, &context.previousWireStates,
                                              enableSequentialStaging);
 
   try {
-    const auto completed = evaluateExecutionSteps(steps, context, isCancelled);
-    if (!completed) {
-      stagedSequentialTransitions.clear();
-      return RunResult::Cancelled;
-    }
-
-    evaluationState.setStageSequentialOutputs(false);
-    std::unordered_map<uint64_t, State> stagedPreviousWireStates;
-    const auto                          stagedChangedBuses =
-        enableSequentialStaging
-                                     ? commitStagedSequentialTransitions(stagedPreviousWireStates)
-                                     : std::vector<Bus>{};
-
-    if (!stagedChangedBuses.empty()) {
-      auto stagedContext =
-          Context{false, stagedChangedBuses, std::move(stagedPreviousWireStates)};
-      const auto stagedSteps = getForwardExecutionSteps(stagedChangedBuses);
-      evaluationState.setActivePreviousWireStates(&stagedContext.previousWireStates);
-      if (!evaluateExecutionSteps(stagedSteps, stagedContext, isCancelled)) {
+    std::vector<Bus> committedBuses;
+    // Keep every pass staged: a committed output may itself clock another storage
+    // element. Publishing that element's outputs immediately would let downstream
+    // components observe new data on the same edge, depending on plan order.
+    for (int delta = 0; ; ++delta) {
+      evaluationState.setActivePreviousWireStates(&context.previousWireStates);
+      if (!evaluateExecutionSteps(steps, context, isCancelled)
+          || cancellationRequested(isCancelled)) {
+        discardStagedSequentialTransitions();
         return RunResult::Cancelled;
       }
+      if (stagedSequentialTransitions.empty()) {
+        sequentialCaptureRestores.clear();
+        break;
+      }
+      if (delta >= maxTransitionsPerDeltaCycle)
+        throw std::runtime_error("Sequential delta cycle limit exceeded");
+
+      // Internal state is already captured. Only externally observable wire
+      // changes advance here; no owner or unchanged-output cone is rescheduled.
+      std::unordered_map<uint64_t, State> nextPreviousStates;
+      committedBuses = commitStagedSequentialTransitions(nextPreviousStates);
+      sequentialCaptureRestores.clear();
+      steps = getForwardExecutionSteps(committedBuses);
+      // Each output boundary gets fresh edge history and capture claims.
+      context = Context{false, committedBuses, std::move(nextPreviousStates)};
     }
 
     emitTraceSnapshot();
     return RunResult::Completed;
   } catch (...) {
-    stagedSequentialTransitions.clear();
+    discardStagedSequentialTransitions();
     throw;
   }
 }

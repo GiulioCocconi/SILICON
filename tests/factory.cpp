@@ -18,6 +18,7 @@
 #include "tests.hpp"
 
 #include <core/io.hpp>
+#include <core/memory.hpp>
 #include <core/serialization/component_registration.hpp>
 #include <core/serialization/component_registry.hpp>
 
@@ -49,12 +50,25 @@ TEST_F(FactoryTest, AvailableTypesIsNonEmpty)
   EXPECT_FALSE(registry.availableTypes().empty());
 }
 
-TEST_F(FactoryTest, CreatedComponentsHaveEmptyBuses)
+TEST_F(FactoryTest, CreatedComponentsHaveExpectedDefaultBuses)
 {
   for (const auto& typeName : registry.availableTypes()) {
+    SCOPED_TRACE(typeName);
     auto comp = registry.create(typeName);
-    EXPECT_TRUE(comp->getInputs().empty());
-    EXPECT_TRUE(comp->getOutputs().empty());
+    if (const auto memory = std::dynamic_pointer_cast<Memory>(comp)) {
+      EXPECT_EQ(memory->getInputs().size(), typeName == RAM::Type ? 5 : 3);
+      ASSERT_EQ(memory->getOutputs().size(), 1);
+      EXPECT_EQ(memory->getInputs()[0].size(), 1);
+      EXPECT_EQ(memory->getOutputs()[0].size(), 8);
+      const auto depth = typeName == RAM::Type
+                             ? std::dynamic_pointer_cast<RAM>(comp)->memoryDepth()
+                             : std::dynamic_pointer_cast<ROM>(comp)->memoryDepth();
+      EXPECT_EQ(depth, typeName == RAM::Type ? 1 : 0);
+      EXPECT_FALSE(memory->memoryImageSnapshot());
+    } else {
+      EXPECT_TRUE(comp->getInputs().empty());
+      EXPECT_TRUE(comp->getOutputs().empty());
+    }
   }
 }
 
