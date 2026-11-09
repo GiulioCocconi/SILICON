@@ -17,6 +17,184 @@
 
 #include "yosys_test_helpers.hpp"
 
+namespace {
+nlohmann::json gateTreeDesign(const bool conjunction)
+{
+  using Json = nlohmann::json;
+  using SILICON::yosys::SerializationContext;
+  Json ports = Json::object();
+  for (int i = 0; i < 4; ++i)
+    ports[std::string(1, 'a' + i)] = {{"direction", "input"},
+                                      {"bits", Json::array({2 + 2 * i, 3 + 2 * i})}};
+  ports["y"] = {{"direction", "output"}, {"bits", Json::array({14, 15})}};
+  const Json parameters{{"A_SIGNED", SerializationContext::parameter(0, 1)},
+                        {"B_SIGNED", SerializationContext::parameter(0, 1)},
+                        {"A_WIDTH", SerializationContext::parameter(2)},
+                        {"B_WIDTH", SerializationContext::parameter(2)},
+                        {"Y_WIDTH", SerializationContext::parameter(2)}};
+  const auto cell = [&](const Json& a, const Json& b, const Json& y) {
+    return Json{{"type", conjunction ? "$and" : "$or"},
+                {"parameters", parameters},
+                {"connections", {{"A", a}, {"B", b}, {"Y", y}}}};
+  };
+  const Json cells{{"left", cell({2, 3}, {4, 5}, {10, 11})},
+                   {"right", cell({6, 7}, {8, 9}, {12, 13})},
+                   {"root", cell({10, 11}, {12, 13}, {14, 15})}};
+  return Json{{"modules", {{"top", {{"ports", ports}, {"cells", cells}}}}}};
+}
+Circuit importGateStructure(const nlohmann::json& design)
+{
+  return SILICON::yosys::deserialize(
+      legalizeExpressions(design.dump(), "silicon_logic\nsilicon_gates"));
+}
+}  // namespace
+
+TEST(YosysTest, CollapsesGateTreesWithFourStateAndBusSemantics)
+{
+#ifndef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
+  GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
+#endif
+  for (const bool logical : {false, true})
+    for (const bool conjunction : {false, true}) {
+      SCOPED_TRACE(conjunction);
+      SCOPED_TRACE(logical);
+      auto design = gateTreeDesign(conjunction);
+      if (logical) {
+        auto& module                 = onlyModule(design);
+        module["ports"]["y"]["bits"] = nlohmann::json::array({14});
+        for (auto& cell : module["cells"]) {
+          cell["type"] = conjunction ? "$logic_and" : "$logic_or";
+          cell["parameters"]["Y_WIDTH"] =
+              SILICON::yosys::SerializationContext::parameter(1);
+          cell["connections"]["Y"].erase(1);
+        }
+        auto& root = module["cells"]["root"];
+        for (const auto port : {"A", "B"}) {
+          root["parameters"][std::string(port) + "_WIDTH"] =
+              SILICON::yosys::SerializationContext::parameter(1);
+          root["connections"][port].erase(1);
+        }
+      }
+      auto       circuit = std::make_shared<Circuit>(importGateStructure(design));
+      const auto type    = conjunction ? "AndGate" : "OrGate";
+      EXPECT_EQ(componentTypes(*circuit).count(type), 1);
+      for (const auto& component : componentsIn(*circuit)) {
+        if (component->typeName() == type) {
+          ASSERT_EQ(component->inputBuses().size(), 4);
+        }
+      }
+
+      ComponentRegistry registry;
+      registerAllComponents(registry);
+      circuit =
+          std::make_shared<Circuit>(Circuit::deserialize(circuit->serialize(), registry));
+#ifdef SILICON_TEST_YOSYS_EXECUTABLE
+      circuit = std::make_shared<Circuit>(importVerilog(
+          SILICON::yosys::writeVerilog(SILICON::yosys::serialize(*circuit, "top")),
+          "top"));
+      EXPECT_EQ(componentTypes(*circuit).count(type), 1);
+#endif
+
+      std::array<std::shared_ptr<DummyBusInputComponent>, 4> inputs;
+      for (std::size_t i = 0; i < inputs.size(); ++i) {
+        inputs[i] =
+            findNamedComponent<DummyBusInputComponent>(*circuit, std::string(1, 'a' + i));
+        ASSERT_TRUE(inputs[i]);
+      }
+      const auto output = findNamedComponent<BoundaryIoComponent>(*circuit, "y");
+      ASSERT_TRUE(output);
+      Simulator            simulator(circuit);
+      constexpr std::array states{State::LOW, State::HIGH, State::UNKNOWN, State::ERROR};
+      for (unsigned int pattern = 0; pattern < 256; ++pattern) {
+        BusValue expected(logical ? 1 : 2, conjunction ? State::HIGH : State::LOW);
+        for (std::size_t i = 0; i < inputs.size(); ++i) {
+          const auto     index = (pattern >> (2 * i)) & 3;
+          const BusValue value{states[index], states[(index + 1) & 3]};
+          simulator.setBus(inputs[i]->outputBuses()[0], value);
+          if (logical) {
+            State truth = State::LOW;
+            for (const auto state : value)
+              truth = truth || state;
+            expected[0] = conjunction ? expected[0] && truth : expected[0] || truth;
+          } else
+            for (std::size_t bit = 0; bit < value.size(); ++bit)
+              expected[bit] =
+                  conjunction ? expected[bit] && value[bit] : expected[bit] || value[bit];
+        }
+        ASSERT_EQ(simulator.runUntilIdle(), Simulator::RunResult::Completed);
+        EXPECT_EQ(output->inputBuses()[0].getCurrentValue(), expected);
+      }
+    }
+}
+
+TEST(YosysTest, KeepsSharedGateOutputsAndBitTaps)
+{
+#ifndef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
+  GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
+#endif
+  using SILICON::yosys::Json;
+  for (const bool conjunction : {false, true})
+    for (const auto& tap : {Json::array({10, 11}), Json::array({10})}) {
+      auto design                        = gateTreeDesign(conjunction);
+      onlyModule(design)["ports"]["tap"] = {{"direction", "output"}, {"bits", tap}};
+      const auto circuit                 = importGateStructure(design);
+      EXPECT_EQ(componentTypes(circuit).count(conjunction ? "AndGate" : "OrGate"), 2);
+    }
+
+  auto mixed                                 = gateTreeDesign(true);
+  onlyModule(mixed)["cells"]["root"]["type"] = "$or";
+  const auto circuit                         = importGateStructure(mixed);
+  EXPECT_EQ(componentTypes(circuit).count("AndGate"), 2);
+  EXPECT_EQ(componentTypes(circuit).count("OrGate"), 1);
+}
+
+TEST(YosysTest, LeavesGateFeedbackLoopsIntact)
+{
+#ifndef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
+  GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
+#endif
+  auto design = gateTreeDesign(true);
+  onlyModule(design)["cells"]["left"]["connections"]["A"] =
+      SILICON::yosys::Json::array({14, 15});
+  const auto circuit = importGateStructure(design);
+  // Reject the whole proposed contraction when it reaches the root again.
+  EXPECT_EQ(componentTypes(circuit).count("AndGate"), 3);
+}
+
+TEST(YosysTest, GatePassRespectsSelectionKeepAndRepeatedRuns)
+{
+#ifndef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
+  GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
+#endif
+  using Json        = nlohmann::json;
+  const auto source = gateTreeDesign(true);
+  const auto first  = Json::parse(legalizeExpressions(source.dump(), "silicon_gates"));
+  ASSERT_EQ(onlyModule(first).at("cells").size(), 1);
+  EXPECT_EQ(onlyCell(first).at("type"), "SILICON_GATE");
+  EXPECT_EQ(Json::parse(legalizeExpressions(first.dump(), "silicon_gates")).at("modules"),
+            first.at("modules"));
+  const auto selected = Json::parse(
+      legalizeExpressions(source.dump(), "select top/root\nsilicon_gates\nselect *"));
+  EXPECT_EQ(onlyModule(selected).at("cells").size(), 3);
+
+  auto kept                                               = source;
+  onlyModule(kept)["cells"]["left"]["attributes"]["keep"] = "1";
+  EXPECT_EQ(componentTypes(importGateStructure(kept)).count("AndGate"), 2);
+  kept                                       = source;
+  onlyModule(kept)["netnames"]["left_alias"] = {
+      {"hide_name", 0}, {"bits", Json::array({10, 11})}, {"attributes", {{"keep", "1"}}}};
+  EXPECT_EQ(componentTypes(importGateStructure(kept)).count("AndGate"), 2);
+
+  for (const auto& parameter : {"MODE", "INPUTS", "BITWISE", "WIDTH"}) {
+    auto malformed = first;
+    onlyModule(malformed)["cells"]["root"]["parameters"].erase(parameter);
+    EXPECT_THROW((void)SILICON::yosys::deserialize(malformed.dump()), std::runtime_error);
+  }
+  auto malformed                                              = first;
+  onlyModule(malformed)["cells"]["root"]["connections"]["A0"] = Json::array({2});
+  EXPECT_THROW((void)SILICON::yosys::deserialize(malformed.dump()), std::runtime_error);
+}
+
 TEST(YosysTest, ExportsNamedPortsAndNativeGate)
 {
   auto          a = std::make_shared<Wire>();
@@ -952,3 +1130,86 @@ TEST(YosysTest, ExportsBusReductionGates)
     }
   }
 }
+
+#ifdef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
+namespace {
+nlohmann::json gateChain(int count, bool reverseNames)
+{
+  using Json       = nlohmann::json;
+  Json       cells = Json::object();
+  const Json parameters{{"A_SIGNED", "0"},
+                        {"B_SIGNED", "0"},
+                        {"A_WIDTH", "1"},
+                        {"B_WIDTH", "1"},
+                        {"Y_WIDTH", "1"}};
+  for (int i = 0; i < count; ++i)
+    cells[std::format("g{:06}", reverseNames ? count - i - 1 : i)] = {
+        {"type", "$and"},
+        {"parameters", parameters},
+        {"connections",
+         {{"A", Json::array({i == 0 ? 2 : count + i + 2})},
+          {"B", Json::array({i + 3})},
+          {"Y", Json::array({count + i + 3})}}}};
+  Json inputs = Json::array();
+  for (int bit = 2; bit < count + 3; ++bit)
+    inputs.push_back(bit);
+  return {
+      {"modules",
+       {{"top",
+         {{"ports",
+           {{"a", {{"direction", "input"}, {"bits", inputs}}},
+            {"y", {{"direction", "output"}, {"bits", Json::array({2 * count + 2})}}}}},
+          {"cells", cells}}}}}};
+}
+}  // namespace
+
+TEST(YosysTest, FoldsLongGateChainOnceInEitherCellOrder)
+{
+  using Json          = nlohmann::json;
+  constexpr int count = 4096;
+  for (bool reversed : {false, true}) {
+    const auto result = Json::parse(
+        legalizeExpressions(gateChain(count, reversed).dump(), "silicon_gates"));
+    const auto& cells = onlyModule(result).at("cells");
+    ASSERT_EQ(cells.size(), 1);
+    const auto& cell = cells.begin().value();
+    EXPECT_EQ(cell.at("type"), "SILICON_GATE");
+    EXPECT_EQ(
+        std::stoi(cell.at("parameters").at("INPUTS").get<std::string>(), nullptr, 2),
+        count + 1);
+    // DFS must preserve original A/B order even when storage order is reversed.
+    const auto& inputPort = onlyModule(result).at("ports").at("a").at("bits");
+    for (int i = 0; i <= count; ++i)
+      EXPECT_EQ(cell.at("connections").at("A" + std::to_string(i)).at(0),
+                inputPort.at(i));
+  }
+}
+
+TEST(YosysTest, MaximalGateChainsStopAtSharedIntermediateOutputs)
+{
+  using Json = nlohmann::json;
+  for (bool reversed : {false, true}) {
+    auto source                        = gateChain(64, reversed);
+    onlyModule(source)["ports"]["tap"] = {{"direction", "output"},
+                                          {"bits", Json::array({98})}};
+    const auto result = Json::parse(legalizeExpressions(source.dump(), "silicon_gates"));
+    EXPECT_EQ(onlyModule(result).at("cells").size(), 2);
+  }
+}
+
+TEST(YosysTest, RootlessCompatibleGateCyclesAreUnchanged)
+{
+  using Json = nlohmann::json;
+  for (bool reversed : {false, true}) {
+    auto  source = gateChain(32, reversed);
+    auto& module = onlyModule(source);
+    module["ports"].erase("y");
+    const auto name                           = std::format("g{:06}", reversed ? 31 : 0);
+    module["cells"][name]["connections"]["A"] = Json::array({66});
+    const auto result = Json::parse(legalizeExpressions(source.dump(), "silicon_gates"));
+    ASSERT_EQ(onlyModule(result).at("cells").size(), 32);
+    for (const auto& cell : onlyModule(result).at("cells"))
+      EXPECT_EQ(cell.at("type"), "$and");
+  }
+}
+#endif
