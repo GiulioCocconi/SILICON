@@ -74,6 +74,30 @@ std::vector<Component_ptr> componentsIn(const Circuit& circuit)
 
 }  // namespace
 
+TEST(RegisterTest, GeneratedClockKeepsSameEdgeCapturesOnPreEdgeOutputs)
+{
+  const auto rootClock = std::make_shared<Wire>(State::LOW);
+  const auto clear     = std::make_shared<Wire>(State::HIGH);
+  const auto high      = std::make_shared<Wire>(State::HIGH);
+  const Bus  generatorData{high, high};
+  const Bus  generated(2);
+  const Bus  data{high, high};
+  const Bus  written(2);
+  const Bus  captured(2);
+  auto       generator =
+      std::make_shared<Register>(generatorData, rootClock, high, clear, generated);
+  auto writer = std::make_shared<Register>(data, generated[0], high, clear, written);
+  auto reader = std::make_shared<Register>(written, generated[0], high, clear, captured);
+  auto circuit =
+      std::make_shared<Circuit>(Component_set{generator, writer, reader}, false);
+  Simulator sim(circuit);
+  ASSERT_EQ(sim.setBus(Bus{clear}, valueFor(1, 0)), Simulator::RunResult::Completed);
+  ASSERT_EQ(sim.setBus(Bus{rootClock}, valueFor(1, 1)), Simulator::RunResult::Completed);
+  EXPECT_EQ(written.getCurrentValue(), valueFor(2, 3));
+  EXPECT_EQ(captured.getCurrentValue(), valueFor(2, 0));
+  EXPECT_EQ(sim.getCurrentTime(), 0);
+}
+
 TEST(RegisterTest, ValidatesPropertiesAndShapesBuses)
 {
   Register reg;

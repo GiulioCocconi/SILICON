@@ -259,6 +259,26 @@ public:
                  const Component_weakPtr& source);
 
   /**
+   * @brief Claims one immediate state capture in the current sequential output pass.
+   *
+   * Returns false on repeated SCC visits in the same pass. On true, the component
+   * updates its internal state immediately and publishes through updateWire/Bus
+   * with usesStagedSequentialOutputs(), just like other sequential components.
+   *
+   * The nonthrowing restore callback undoes that capture if evaluation is cancelled
+   * or throws before the staged outputs commit. It must not drive wires. Successful
+   * passes discard it, even when no output changes. This adds optional rollback to
+   * the existing output boundary; it does not schedule internal-state commits or
+   * owner reevaluation. Outside staged evaluation, returns true without saving it.
+   *
+   * @param source Component in this simulator that owns the state
+   * @param restore Restores the state preceding the capture
+   * @throws std::invalid_argument If source is expired or does not stage outputs
+   */
+  [[nodiscard]] bool beginSequentialCapture(const Component_weakPtr& source,
+                                            std::function<void()>    restore);
+
+  /**
    * @brief Gets the current simulation time.
    * @return Current time in simulation units
    */
@@ -347,6 +367,10 @@ private:
   /** @brief Zero-delay sequential writes waiting for the active pass to finish */
   StagedTransitions stagedSequentialTransitions;
 
+  /** @brief Optional undo actions for immediate captures in the staged output pass.
+   * Keys also prevent repeated sampling while an SCC settles. */
+  std::unordered_map<const Component*, std::function<void()>> sequentialCaptureRestores;
+
   /** @brief Active SCC's reusable staging buffer; null outside a cyclic step. */
   CyclicStaging* activeCyclicStaging = nullptr;
 
@@ -395,6 +419,8 @@ private:
 
   [[nodiscard]] std::vector<Bus> commitStagedSequentialTransitions(
       std::unordered_map<uint64_t, State>& previousWireStates);
+
+  void discardStagedSequentialTransitions();
 
   [[nodiscard]] RunResult
   evaluateForwardConeAndTrace(std::span<const Bus>                changedBuses,
