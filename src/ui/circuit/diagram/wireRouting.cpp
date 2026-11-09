@@ -22,9 +22,11 @@
 #include <bit>
 #include <cmath>
 #include <cstddef>
+#include <deque>
 #include <map>
 #include <set>
 #include <span>
+#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -397,7 +399,8 @@ std::vector<QPointF> canonicalizeOrthogonalRoute(std::vector<QPointF> points)
 }
 
 std::vector<std::vector<QPointF>>
-mergeOrthogonalRoutes(const std::vector<std::vector<QPointF>>& routes)
+mergeOrthogonalRoutes(const std::vector<std::vector<QPointF>>& routes,
+                      const std::function<void()>&             progress)
 {
   using Point = std::pair<int, int>;
   using Edge  = std::pair<Point, Point>;
@@ -420,7 +423,14 @@ mergeOrthogonalRoutes(const std::vector<std::vector<QPointF>>& routes)
   };
 
   std::vector<Edge> sourceSegments;
+  std::set<Point>   terminals;
   for (const auto& route : routes) {
+    if (route.size() > 1 && route.front() == route.back())
+      throw std::invalid_argument("A wire route must have distinct endpoints");
+    if (route.size() >= 2) {
+      terminals.insert(pointKey(route.front()));
+      terminals.insert(pointKey(route.back()));
+    }
     for (std::size_t i = 1; i < route.size(); ++i) {
       const Point a = pointKey(route[i - 1]);
       const Point b = pointKey(route[i]);
@@ -431,6 +441,8 @@ mergeOrthogonalRoutes(const std::vector<std::vector<QPointF>>& routes)
 
   std::set<Edge> edges;
   for (std::size_t i = 0; i < sourceSegments.size(); ++i) {
+    if (progress && i % 64 == 0)
+      progress();
     const Edge&     segment = sourceSegments[i];
     std::set<Point> cuts    = {segment.first, segment.second};
 
@@ -462,10 +474,55 @@ mergeOrthogonalRoutes(const std::vector<std::vector<QPointF>>& routes)
       edges.insert(edgeKey(ordered[j - 1], ordered[j]));
   }
 
+  // Independently routed branches can meet again and form redundant cycles.
+  // Keep a spanning forest before extracting paths, preserving every terminal
+  // and connection without ever constructing a closed path.
+  std::map<Point, Point> parents;
+  for (const auto& [a, b] : edges) {
+    parents.emplace(a, a);
+    parents.emplace(b, b);
+  }
+  auto root = [&parents](Point point) {
+    while (parents.at(point) != point) {
+      parents.at(point) = parents.at(parents.at(point));
+      point             = parents.at(point);
+    }
+    return point;
+  };
+  std::erase_if(edges, [&](const Edge& edge) {
+    const Point first  = root(edge.first);
+    const Point second = root(edge.second);
+    if (first == second)
+      return true;
+    parents.at(second) = first;
+    return false;
+  });
+
   std::map<Point, std::set<Point>> adjacency;
   for (const auto& [a, b] : edges) {
     adjacency[a].insert(b);
     adjacency[b].insert(a);
+  }
+
+  // Retraced portions and removed cycle edges can leave dangling geometry.
+  // Retain only branches needed to connect terminals: an artificial leaf
+  // would become an electrical endpoint and could short a crossing net.
+  std::deque<Point> leaves;
+  for (const auto& [point, neighbors] : adjacency)
+    if (neighbors.size() == 1 && !terminals.contains(point))
+      leaves.push_back(point);
+  while (!leaves.empty()) {
+    const Point point = leaves.front();
+    leaves.pop_front();
+    auto& neighbors = adjacency.at(point);
+    if (neighbors.size() != 1)
+      continue;
+    const Point neighbor = *neighbors.begin();
+    neighbors.clear();
+    adjacency.at(neighbor).erase(point);
+    edges.erase(edgeKey(point, neighbor));
+    if (adjacency.at(neighbor).size() == 1 && !terminals.contains(neighbor))
+      leaves.push_back(neighbor);
   }
 
   std::set<Edge>                    visited;
@@ -478,7 +535,7 @@ mergeOrthogonalRoutes(const std::vector<std::vector<QPointF>>& routes)
 
     while (true) {
       path.emplace_back(current.first, current.second);
-      if (adjacency.at(current).size() != 2)
+      if (adjacency.at(current).size() != 2 || terminals.contains(current))
         break;
       const auto& neighbors = adjacency.at(current);
       const Point next      = *std::ranges::find_if(
@@ -494,18 +551,15 @@ mergeOrthogonalRoutes(const std::vector<std::vector<QPointF>>& routes)
   };
 
   for (const auto& [point, neighbors] : adjacency) {
-    if (neighbors.size() == 2)
+    if (neighbors.size() == 2 && !terminals.contains(point))
       continue;
     for (const Point& neighbor : neighbors) {
       if (!visited.contains(edgeKey(point, neighbor)))
         appendPath(point, neighbor);
     }
   }
-  // A closed same-net loop has no non-degree-two start. Preserve it deterministically.
-  for (const Edge& edge : edges) {
-    if (!visited.contains(edge))
-      appendPath(edge.first, edge.second);
-  }
+  if (visited.size() != edges.size())
+    throw std::logic_error("Wire route merging left an unvisited cycle");
   return result;
 }
 

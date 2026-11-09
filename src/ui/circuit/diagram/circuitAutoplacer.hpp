@@ -50,10 +50,12 @@ struct CircuitAutoplacerOptions {
    * clearance. */
   int obstaclePadding = 20;
 
-  /** @brief Number of deterministic placement candidates to route and compare. */
+  /** @brief Maximum number of deterministic candidates. Large designs use fewer
+   * candidates and refinements to bound the total routing work. */
   int candidateCount = 16;
 
-  /** @brief Optional cooperative cancellation check, evaluated between candidates. */
+  /** @brief Optional cooperative cancellation check, also polled during routing.
+   * A candidate finishes routing before it can be used as a complete result. */
   std::function<bool()> isCancelled;
 
   /** @brief Optional notification after each completed candidate. */
@@ -108,7 +110,8 @@ public:
    * component moves. Boundary I/O port sides are selected from the proposed topology,
    * components are translated to libavoid shapes, and logical edges are translated to
    * orthogonal connectors. Returned route points are snapped to the DiagramScene grid
-   * and compacted to terminals, bends, and junctions.
+   * and compacted to terminals, bends, and junctions. Large designs use geometric
+   * terminal spanning trees instead of global Steiner-tree searches for fanout nets.
    *
    * @param circuit Logical circuit topology to place and route.
    * @param components Graphical logic components participating in the result.

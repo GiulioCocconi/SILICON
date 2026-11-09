@@ -11,7 +11,7 @@ The ordered entry point runs:
 
 1. `silicon_pmux_bmux`, `silicon_eq_decoder`: recognize mux and decoder patterns.
 2. `pmuxtree`, `delete t:$scopeinfo`, `opt -nosdff`, `memory_share -nosat -nowiden`,
-   `memory_dff`: Yosys preparation.
+   `memory_dff` for read-only memories: Yosys preparation.
 3. `silicon_memrd_address`, `silicon_memory_lower`: legalize ROMs and writable RAMs.
 4. `silicon_logic`, `silicon_compare`, `silicon_shift`: normalize expression semantics.
 5. Selective `simplemap` (including `$reduce_bool` to OR gates), `extract_fa`,
@@ -72,9 +72,11 @@ Additional expression contracts:
   sign fill. `A` is already truncated or extended to `WIDTH`. Signed shift
   amounts are rejected.
 
-`SILICON_RAM` is emitted only for writable memories. It has one asynchronous read
-port and one positive-edge write port with per-bit write enables. Parameters are
-`WIDTH`, `SIZE`, `ABITS`, `INIT`, and `ID`; ports are `RD_ADDR`, `RD_DATA`, `WR_ADDR`,
+`SILICON_RAM` is emitted only for writable memories. It has independent asynchronous
+read ports and one positive-edge write port with per-bit write enables. Parameters are
+`WIDTH`, `SIZE`, `ABITS`, `INIT`, and `ID`, plus `RD_PORTS` for multiple read ports
+(omitted for a single read port). `RD_ADDR` and `RD_DATA` pack read ports in
+least-significant-lane-first order. Ports are `RD_ADDR`, `RD_DATA`, `WR_ADDR`,
 `WR_DATA`, `WR_EN`, and `WR_CLK`. Initialization must be fully binary or entirely
 X. Address buses may be wider than the minimum needed for `SIZE`. Memory
 attributes, including `silicon_mem_slug`, survive lowering. Memories without

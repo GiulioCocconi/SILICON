@@ -19,6 +19,7 @@
 
 #include <memory>
 #include <stdexcept>
+#include <utility>
 
 #include <QGraphicsRectItem>
 #include <QPainter>
@@ -32,12 +33,10 @@ using namespace SILICON::core;
 
 namespace {
 
-  constexpr QRectF RomBodyRect(0.0, 0.0, 100.0, 80.0);
-
-  class RomShape final : public QGraphicsRectItem {
+  class MemoryShape final : public QGraphicsRectItem {
   public:
-    explicit RomShape(QGraphicsItem* parent = nullptr)
-      : QGraphicsRectItem(RomBodyRect, parent)
+    MemoryShape(QString label, const QRectF& bounds)
+      : QGraphicsRectItem(bounds), label(std::move(label))
     {
     }
 
@@ -54,9 +53,12 @@ namespace {
       painter->drawRect(rect());
       painter->setPen(QPen(ThemeEngine::getColor(theme::ColorToken::Ink)));
       painter->setFont(QFont("Quicksand", 10, QFont::Bold));
-      painter->drawText(rect(), QStringLiteral("ROM"), QTextOption(Qt::AlignCenter));
+      painter->drawText(rect(), label, QTextOption(Qt::AlignCenter));
       painter->restore();
     }
+
+  private:
+    QString label;
   };
 
   std::shared_ptr<ROM> makeRom()
@@ -67,62 +69,111 @@ namespace {
 
 }  // namespace
 
-GraphicalROM::GraphicalROM(QGraphicsItem* parent)
-  : GraphicalLogicComponent(makeRom(), new RomShape(), parent)
+GraphicalMemory::GraphicalMemory(const std::shared_ptr<Memory>& memory,
+                                 QGraphicsItem* shape, QGraphicsItem* parent)
+  : GraphicalLogicComponent(memory, shape, parent)
 {
   isEditable     = true;
   printPortNames = true;
+}
+
+GraphicalROM::GraphicalROM(QGraphicsItem* parent)
+  : GraphicalMemory(makeRom(),
+                    new MemoryShape(QStringLiteral("ROM"), QRectF(0, 0, 100, 80)), parent)
+{
   setPorts({PortPair{"addr", QPoint(-20, 20)}, PortPair{"CS", QPoint(-20, 40)},
             PortPair{"OE", QPoint(-20, 60)}},
            {PortPair{"d", QPoint(120, 40)}});
 }
 
-GraphicalROM::~GraphicalROM()
+GraphicalRAM::GraphicalRAM(QGraphicsItem* parent)
+  : GraphicalMemory(std::make_shared<RAM>(),
+                    new MemoryShape(QStringLiteral("RAM"), QRectF(0, 0, 100, 120)),
+                    parent)
+{
+  rebuildPorts();
+}
+
+void GraphicalRAM::setComponent(const Component_ptr& component)
+{
+  GraphicalMemory::setComponent(component);
+  rebuildPorts();
+}
+
+void GraphicalRAM::applyProperty(const std::string_view key, const PropertyValue& value)
+{
+  GraphicalMemory::applyProperty(key, value);
+  if (key == "readPorts")
+    rebuildPorts();
+}
+
+void GraphicalRAM::rebuildPorts()
+{
+  const auto ram = std::dynamic_pointer_cast<RAM>(associatedComponent);
+  const auto count = ram->readPortCount();
+  const auto height = static_cast<int>((count + 5) * 20);
+  setItemShape(new MemoryShape(QStringLiteral("RAM"), QRectF(0, 0, 100, height)));
+  std::vector<PortPair> inputs{
+      {"raddr", QPoint(-20, 20)}, {"waddr", QPoint(-20, 40)},
+      {"d", QPoint(-20, 60)}, {"WE", QPoint(-20, 80)}, {"CLK", QPoint(-20, 100)}};
+  std::vector<PortPair> outputs;
+  for (std::size_t port = 0; port < count; ++port) {
+    if (port != 0)
+      inputs.push_back({QString("raddr%1").arg(port),
+                        QPoint(-20, static_cast<int>((port + 5) * 20))});
+    outputs.push_back({count == 1 ? QStringLiteral("q") : QString("q%1").arg(port),
+                       QPoint(120, count == 1 ? 60 : static_cast<int>((port + 1) * 20))});
+  }
+  setPorts(inputs, outputs);
+}
+
+GraphicalMemory::~GraphicalMemory()
 {
   unsubscribeFromDocuments();
 }
 
-void GraphicalROM::mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event)
+void GraphicalMemory::mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event)
 {
   const auto slug = currentSlug();
   if (SILICON::project::isValidDocumentSlug(slug)
-      && openDocumentOnDoubleClick(event, SILICON::project::documentPathForSlug(
-                                             SILICON::project::DocumentType::RawBinary,
-                                             slug)))
+      && openDocumentOnDoubleClick(event,
+                                   SILICON::project::documentPathForSlug(
+                                       SILICON::project::DocumentType::RawBinary, slug)))
     return;
 
   GraphicalLogicComponent::mouseDoubleClickEvent(event);
 }
 
-void GraphicalROM::setComponent(const Component_ptr& component)
+void GraphicalMemory::setComponent(const Component_ptr& component)
 {
+  if (!component || component->typeName() != associatedComponent->typeName())
+    throw std::logic_error("Graphical memory component type mismatch");
   GraphicalLogicComponent::setComponent(component);
-  const auto rom = std::dynamic_pointer_cast<ROM>(component);
-  if (!rom)
-    throw std::logic_error("GraphicalROM requires a ROM component");
 
   if (documents)
     refreshBinaryContents();
 }
 
-void GraphicalROM::applyProperty(const std::string_view key, const PropertyValue& value)
+void GraphicalMemory::applyProperty(const std::string_view key,
+                                    const PropertyValue&   value)
 {
   if (key != "binaryContents") {
     GraphicalLogicComponent::applyProperty(key, value);
     return;
   }
 
-  const auto rom = std::dynamic_pointer_cast<ROM>(associatedComponent);
-  if (!rom)
+  const auto memory = std::dynamic_pointer_cast<Memory>(associatedComponent);
+  if (!memory)
     return;
 
   const auto& slug = std::get<std::string>(value);
   prepareGeometryChange();
-  rom->setBinaryDocument(slug, resolveBinaryContents(slug));
+  memory->setBinaryDocument(slug, resolveBinaryContents(slug));
   update();
 }
 
-void GraphicalROM::setDocumentStore(const SILICON::project::DocumentStore* newDocuments)
+void GraphicalMemory::setDocumentStore(
+    const SILICON::project::DocumentStore* newDocuments)
 {
   if (documents == newDocuments)
     return;
@@ -132,7 +183,7 @@ void GraphicalROM::setDocumentStore(const SILICON::project::DocumentStore* newDo
   refreshBinaryContents();
 }
 
-std::string GraphicalROM::currentSlug() const
+std::string GraphicalMemory::currentSlug() const
 {
   if (!associatedComponent)
     return {};
@@ -140,7 +191,7 @@ std::string GraphicalROM::currentSlug() const
       .value_or(std::string());
 }
 
-void GraphicalROM::subscribeToDocuments()
+void GraphicalMemory::subscribeToDocuments()
 {
   if (!documents || documentListenerId != 0)
     return;
@@ -158,21 +209,21 @@ void GraphicalROM::subscribeToDocuments()
       });
 }
 
-void GraphicalROM::unsubscribeFromDocuments()
+void GraphicalMemory::unsubscribeFromDocuments()
 {
   if (documents && documentListenerId != 0)
     documents->removeListener(documentListenerId);
   documentListenerId = 0;
 }
 
-void GraphicalROM::refreshBinaryContents()
+void GraphicalMemory::refreshBinaryContents()
 {
-  if (const auto rom = std::dynamic_pointer_cast<ROM>(associatedComponent))
-    rom->refreshBinaryContents(resolveBinaryContents(currentSlug()));
+  if (const auto memory = std::dynamic_pointer_cast<Memory>(associatedComponent))
+    memory->refreshBinaryContents(resolveBinaryContents(currentSlug()));
 }
 
 std::shared_ptr<const std::vector<std::uint8_t>>
-GraphicalROM::resolveBinaryContents(const std::string_view slug) const
+GraphicalMemory::resolveBinaryContents(const std::string_view slug) const
 {
   return documents ? SILICON::project::binaryContentsSnapshot(*documents, slug) : nullptr;
 }

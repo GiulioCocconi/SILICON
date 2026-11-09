@@ -287,6 +287,14 @@ enum RoutingOption
     nudgeSharedPathsWithCommonEndPoint,
 
 
+    //! Use weighted A* searches to favor routing speed over minimum path cost.
+    //! Obstacles and endpoint directions are still enforced. Defaults to false.
+    useWeightedAStar,
+
+    //! Run global orthogonal route nudging after path search. Defaults to true.
+    //! Callers doing their own lane separation can disable this expensive pass.
+    performOrthogonalNudging,
+
     // Used for determining the size of the routing options array.
     // This should always we the last value in the enum.
     lastRoutingOptionMarker
@@ -490,11 +498,15 @@ class AVOID_EXPORT Router {
         //! with the rest of their group.
         //!
         //! This method is intended to be called after processTransaction().
-        //! It modifies display routes only.
+        //! It modifies display routes only. Fixed-terminal branches may move
+        //! independently while remaining connected at their shared pins.
+        //!
+        //! @return true if all groups were separated. On failure some display
+        //!         routes may have changed; the caller must discard the candidate.
         //!
         //! @param[in] groups      Logical groups of routed connectors.
         //! @param[in] separation Distance between candidate routing lanes.
-        void separateOrthogonalRouteGroups(const ConnRefListVector& groups,
+        bool separateOrthogonalRouteGroups(const ConnRefListVector& groups,
                                            double                   separation);
 
         //! @brief Delete a shape from the router scene.

@@ -365,7 +365,7 @@ struct SiliconMemrdAddressPass : public Pass {
 // address register before the ROM (or a data register for SIZE=1). The
 // silicon_mem_slug attribute, when present, is a document *identifier*; the
 // importer alone chooses the project path and creates the binary document.
-// Writable memories instead emit one SILICON_RAM with WIDTH, SIZE, ABITS,
+// Writable memories instead emit one SILICON_RAM with WIDTH, SIZE, ABITS, RD_PORTS,
 // INIT and ID parameters, asynchronous RD_ADDR/RD_DATA, and a positive-edge
 // WR_CLK write port with WR_ADDR, WR_DATA and per-bit WR_EN. INIT may be fully
 // defined or entirely X. Read-only memories must retain the ROM contract.
@@ -411,15 +411,18 @@ struct SiliconMemoryLowerPass : public Pass {
               || abits < std::max(1, static_cast<int>(
                                          std::bit_width(static_cast<unsigned>(size - 1))))
               || abits > std::numeric_limits<unsigned short>::max()
-              || !isZero(mem->getParam(ID::OFFSET)) || ports != 1
+              || !isZero(mem->getParam(ID::OFFSET)) || ports <= 0
+              || ports > std::numeric_limits<unsigned short>::max()
+              || ports > std::numeric_limits<int>::max() / width
+              || ports > std::numeric_limits<int>::max() / std::max(1, abits)
               || mem->getParam(ID::WR_PORTS).as_int() != 1)
             reject("unsupported geometry or port count");
-          if (mem->getParam(ID::RD_CLK_ENABLE) != RTLIL::Const(0, 1)
+          if (mem->getParam(ID::RD_CLK_ENABLE) != RTLIL::Const(0, ports)
               || mem->getParam(ID::WR_CLK_ENABLE) != RTLIL::Const(1, 1)
               || mem->getParam(ID::WR_CLK_POLARITY) != RTLIL::Const(1, 1))
             reject("requires asynchronous reads and positive-edge writes");
           const auto polarity = mem->getParam(ID::RD_CLK_POLARITY);
-          if (polarity != RTLIL::Const(0, 1) && polarity != RTLIL::Const(1, 1))
+          if (GetSize(polarity) != ports || !polarity.is_fully_def())
             reject("undefined read clock polarity");
           for (auto key : {ID::RD_CE_OVER_SRST, ID::RD_TRANSPARENCY_MASK,
                            ID::RD_COLLISION_X_MASK, ID::RD_WIDE_CONTINUATION,
@@ -428,23 +431,23 @@ struct SiliconMemoryLowerPass : public Pass {
               reject("unsupported read controls or write behavior");
           for (auto key : {ID::RD_ARST_VALUE, ID::RD_SRST_VALUE, ID::RD_INIT_VALUE}) {
             const auto value = mem->getParam(key);
-            if (GetSize(value) != width)
+            if (GetSize(value) != ports * width)
               reject("invalid read register value width");
-            for (int bit = 0; bit < width; ++bit)
+            for (int bit = 0; bit < ports * width; ++bit)
               if (value[bit] != RTLIL::State::S0 && value[bit] != RTLIL::State::S1
                   && value[bit] != RTLIL::State::Sx)
                 reject("invalid read register value");
           }
-          if (mem->getPort(ID::RD_EN) != RTLIL::SigSpec(RTLIL::State::S1)
-              || mem->getPort(ID::RD_ARST) != RTLIL::SigSpec(RTLIL::State::S0)
-              || mem->getPort(ID::RD_SRST) != RTLIL::SigSpec(RTLIL::State::S0))
+          if (mem->getPort(ID::RD_EN) != RTLIL::SigSpec(RTLIL::State::S1, ports)
+              || mem->getPort(ID::RD_ARST) != RTLIL::SigSpec(RTLIL::State::S0, ports)
+              || mem->getPort(ID::RD_SRST) != RTLIL::SigSpec(RTLIL::State::S0, ports))
             reject("read enable must be constant one and resets constant zero");
-          if (GetSize(mem->getPort(ID::RD_ADDR)) != abits
+          if (GetSize(mem->getPort(ID::RD_ADDR)) != ports * abits
               || GetSize(mem->getPort(ID::WR_ADDR)) != abits
-              || GetSize(mem->getPort(ID::RD_DATA)) != width
+              || GetSize(mem->getPort(ID::RD_DATA)) != ports * width
               || GetSize(mem->getPort(ID::WR_DATA)) != width
               || GetSize(mem->getPort(ID::WR_EN)) != width
-              || GetSize(mem->getPort(ID::RD_CLK)) != 1
+              || GetSize(mem->getPort(ID::RD_CLK)) != ports
               || GetSize(mem->getPort(ID::WR_CLK)) != 1)
             reject("invalid read or write port widths");
           const auto init = mem->getParam(ID::INIT);
@@ -455,6 +458,8 @@ struct SiliconMemoryLowerPass : public Pass {
           auto* ram = module->addCell(NEW_ID, RTLIL::escape_id("SILICON_RAM"));
           for (auto key : {ID::WIDTH, ID::SIZE, ID::ABITS, ID::INIT})
             ram->setParam(key, mem->getParam(key));
+          if (ports != 1)
+            ram->setParam(ID::RD_PORTS, ports);
           ram->setParam(RTLIL::escape_id("ID"), mem->getParam(ID::MEMID));
           for (auto key : {ID::RD_ADDR, ID::RD_DATA, ID::WR_ADDR, ID::WR_DATA,
                            ID::WR_EN, ID::WR_CLK})

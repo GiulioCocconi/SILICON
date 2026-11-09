@@ -150,6 +150,7 @@ RAM::RAM()
 {
   defineProperty("dataWidth", 8);
   defineProperty("depth", 1);
+  defineProperty("readPorts", 1);
   defineProperty("binaryContents", std::string());
   setPropertyCallback("dataWidth", [this](const PropertyValue& value) {
     const auto width = std::get<int>(requireValidSize("RAM dataWidth", value));
@@ -169,6 +170,12 @@ RAM::RAM()
       configure(configuredDataWidth(), memoryDepth(), nullptr, false);
     return value;
   });
+  setPropertyCallback("readPorts", [this](const PropertyValue& value) {
+    const auto ports = std::get<int>(requireValidSize("RAM readPorts", value));
+    configure(configuredDataWidth(), memoryDepth(), content, true,
+              static_cast<std::size_t>(ports));
+    return value;
+  });
   configure(8, 1, nullptr, false);
 }
 
@@ -182,6 +189,11 @@ std::size_t RAM::memoryDepth() const
   return static_cast<std::size_t>(getPropertyValue<int>("depth").value_or(1));
 }
 
+std::size_t RAM::readPortCount() const
+{
+  return static_cast<std::size_t>(getPropertyValue<int>("readPorts").value_or(1));
+}
+
 void RAM::setMemoryDepth(const std::size_t depth)
 {
   if (depth == 0 || depth > static_cast<std::size_t>(std::numeric_limits<int>::max()))
@@ -191,8 +203,10 @@ void RAM::setMemoryDepth(const std::size_t depth)
 
 void RAM::configure(const int width, const std::size_t depth,
                     std::shared_ptr<const std::vector<std::uint8_t>> contents,
-                    const bool rejectInvalid)
+                    const bool rejectInvalid, std::size_t readPorts)
 {
+  if (readPorts == 0)
+    readPorts = readPortCount();
   const auto bits = bitCount(static_cast<std::size_t>(width), depth);
   std::shared_ptr<const MemoryImage> nextImage;
   if (contents) {
@@ -207,15 +221,17 @@ void RAM::configure(const int width, const std::size_t depth,
   }
 
   auto newInputs = inputs;
-  newInputs.resize(5);
-  newInputs[busIndex(Inputs::ReadAddress)].setSize(addressWidthFor(depth));
+  newInputs.resize(readPorts + 4);
+  for (std::size_t port = 0; port < readPorts; ++port)
+    newInputs[readAddressIndex(port)].setSize(addressWidthFor(depth));
   newInputs[busIndex(Inputs::WriteAddress)].setSize(addressWidthFor(depth));
   newInputs[busIndex(Inputs::WriteData)].setSize(static_cast<unsigned short>(width));
   newInputs[busIndex(Inputs::WriteEnable)].setSize(static_cast<unsigned short>(width));
   newInputs[busIndex(Inputs::Clock)].setSize(1);
   auto newOutputs = outputs;
-  newOutputs.resize(1);
-  newOutputs[0].setSize(static_cast<unsigned short>(width));
+  newOutputs.resize(readPorts);
+  for (auto& output : newOutputs)
+    output.setSize(static_cast<unsigned short>(width));
   content = std::move(contents);
   image = std::move(nextImage);
   words.clear();
@@ -308,14 +324,16 @@ void RAM::simulate(SILICON::simulation::Simulator& sim,
 {
   using Simulator = SILICON::simulation::Simulator;
   initializeWords();
-  std::size_t address = 0;
-  const auto status = addressState(inputBuses()[busIndex(Inputs::ReadAddress)].getCurrentValue(),
-                                    address);
-  const auto value = status == State::HIGH && address < words.size()
-                       ? words[address]
-                       : BusValue(static_cast<std::size_t>(configuredDataWidth()),
-                                  status == State::ERROR ? State::ERROR : State::UNKNOWN);
-  sim.updateBus(outputBuses()[0], value, 0, weak_from_this());
+  for (std::size_t port = 0; port < readPortCount(); ++port) {
+    std::size_t address = 0;
+    const auto status = addressState(
+        inputBuses()[readAddressIndex(port)].getCurrentValue(), address);
+    const auto value = status == State::HIGH && address < words.size()
+                         ? words[address]
+                         : BusValue(static_cast<std::size_t>(configuredDataWidth()),
+                                    status == State::ERROR ? State::ERROR : State::UNKNOWN);
+    sim.updateBus(outputBuses()[port], value, 0, weak_from_this());
+  }
 
   const auto clock = inputWire(Inputs::Clock);
   const auto edge = Simulator::edgeType(context, clock);

@@ -222,6 +222,11 @@ namespace {
         return requireObjectMember(parametersJson, name, context);
       }
 
+      [[nodiscard]] bool hasParameter(const std::string_view name) const
+      {
+        return parametersJson.contains(name);
+      }
+
       void requireKnownConnectionNames(const std::span<const std::string> names) const
       {
         for (const auto& [name, _] : connectionsJson.items())
@@ -263,6 +268,21 @@ namespace {
                                                    const std::size_t      laneWidth,
                                                    const std::size_t      laneCount) const
       {
+        return lanes(port, laneWidth, laneCount, ConnectionRole::Consumer);
+      }
+
+      [[nodiscard]] std::vector<Bus> driverLanes(const std::string_view port,
+                                                const std::size_t laneWidth,
+                                                const std::size_t laneCount) const
+      {
+        return lanes(port, laneWidth, laneCount, ConnectionRole::Driver);
+      }
+
+      [[nodiscard]] std::vector<Bus> lanes(const std::string_view port,
+                                          const std::size_t laneWidth,
+                                          const std::size_t laneCount,
+                                          const ConnectionRole role) const
+      {
         // Yosys flattens word lanes into one LSB-first JSON array. Decode each lane
         // separately so readBus() can recognize an all-literal word as a constant bus.
         const auto& bits          = requireObjectMember(connectionsJson, port, context);
@@ -278,7 +298,7 @@ namespace {
           for (std::size_t bit = 0; bit < laneWidth; ++bit)
             laneBits.push_back(bits[lane * laneWidth + bit]);
           lanes.push_back(importer.readBus(
-              laneBits, ConnectionRole::Consumer,
+              laneBits, role,
               std::format("{}.{} lane {}", context, port, lane), laneWidth));
         }
         return lanes;
@@ -752,10 +772,15 @@ namespace {
 
     void importRam(const Cell& cell)
     {
-      cell.requireSchema(
-          std::to_array<std::string_view>({"ID", "WIDTH", "SIZE", "ABITS", "INIT"}),
-          std::to_array<std::string_view>(
-              {"RD_ADDR", "RD_DATA", "WR_ADDR", "WR_DATA", "WR_EN", "WR_CLK"}));
+      const auto connections = std::to_array<std::string_view>(
+          {"RD_ADDR", "RD_DATA", "WR_ADDR", "WR_DATA", "WR_EN", "WR_CLK"});
+      const auto readPorts = cell.hasParameter("RD_PORTS") ? cell.width("RD_PORTS") : 1;
+      if (cell.hasParameter("RD_PORTS"))
+        cell.requireSchema(std::to_array<std::string_view>(
+            {"ID", "WIDTH", "SIZE", "ABITS", "INIT", "RD_PORTS"}), connections);
+      else
+        cell.requireSchema(std::to_array<std::string_view>(
+            {"ID", "WIDTH", "SIZE", "ABITS", "INIT"}), connections);
       const auto width = cell.width("WIDTH");
       const auto count = parseUnsigned(cell.parameter("SIZE"), cell.where());
       const auto abits = cell.width("ABITS");
@@ -779,6 +804,7 @@ namespace {
       const auto assetName = memoryAssetName(cell);
 
       auto ram = std::make_shared<RAM>();
+      ram->setProperty("readPorts", static_cast<int>(readPorts));
       ram->setProperty("dataWidth", static_cast<int>(width));
       ram->setMemoryDepth(count);
       if (!uninitialized) {
@@ -789,11 +815,12 @@ namespace {
         ram->setMemoryImage(
             std::make_shared<const MemoryImage>(std::move(bits), width, count));
       }
-      connectAndAdd(ram,
-                    {cell.consumer("RD_ADDR", abits), cell.consumer("WR_ADDR", abits),
-                     cell.consumer("WR_DATA", width), cell.consumer("WR_EN", width),
-                     cell.consumer("WR_CLK", 1)},
-                    {cell.driver("RD_DATA", width)});
+      const auto addresses = cell.consumerLanes("RD_ADDR", abits, readPorts);
+      std::vector<Bus> inputs{addresses[0], cell.consumer("WR_ADDR", abits),
+                              cell.consumer("WR_DATA", width),
+                              cell.consumer("WR_EN", width), cell.consumer("WR_CLK", 1)};
+      inputs.insert(inputs.end(), addresses.begin() + 1, addresses.end());
+      connectAndAdd(ram, std::move(inputs), cell.driverLanes("RD_DATA", width, readPorts));
     }
 
     void importRom(const Cell& cell)

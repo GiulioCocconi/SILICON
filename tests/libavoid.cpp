@@ -485,6 +485,60 @@ TEST(LibavoidTest, DensePinnedRowsKeepTerminalsAndAvoidObstacles)
   }
 }
 
+TEST(LibavoidTest, DenseGridRoutesRemainCompleteAcrossTransactions)
+{
+  Avoid::Router router(Avoid::OrthogonalRouting);
+  router.setRoutingOption(Avoid::useWeightedAStar, true);
+  router.setRoutingOption(Avoid::performOrthogonalNudging, false);
+  router.setRoutingParameter(Avoid::segmentPenalty, 50.0);
+  std::vector<QRectF> obstacles;
+  constexpr int       SIDE = 12;
+  for (int row = 0; row < SIDE; ++row) {
+    for (int column = 0; column < SIDE; ++column) {
+      const QRectF bounds(column * 100, row * 100, 40, 40);
+      obstacles.push_back(bounds);
+      auto polygon = Avoid::rectangleFromQRectF(bounds);
+      new Avoid::ShapeRef(&router, polygon);
+    }
+  }
+
+  std::vector<Avoid::ConnRef*> connectors;
+  for (int row = 0; row < SIDE; ++row) {
+    auto* connector = new Avoid::ConnRef(
+        &router, Avoid::ConnEnd(Avoid::Point(-20, row * 100 + 60), Avoid::ConnDirRight),
+        Avoid::ConnEnd(Avoid::Point(SIDE * 100, (SIDE - row) * 100 - 40),
+                       Avoid::ConnDirLeft));
+    connector->setRoutingType(Avoid::ConnType_Orthogonal);
+    connectors.push_back(connector);
+  }
+
+  // Reuse the visibility graph with different destinations. A search must clear
+  // all of its pending and visited state before the next connector/transaction.
+  for (int pass = 0; pass < 2; ++pass) {
+    for (int row = 0; row < SIDE; ++row) {
+      const int targetRow = pass == 0 ? SIDE - row - 1 : row;
+      connectors[row]->setDestEndpoint(Avoid::ConnEnd(
+          Avoid::Point(SIDE * 100, targetRow * 100 + 60), Avoid::ConnDirLeft));
+    }
+    ASSERT_TRUE(router.processTransaction());
+    for (int row = 0; row < SIDE; ++row) {
+      SCOPED_TRACE(row);
+      SCOPED_TRACE(pass);
+      const int  targetRow = pass == 0 ? SIDE - row - 1 : row;
+      const auto route     = snappedDisplayRoute(*connectors[row]);
+      ASSERT_GE(route.size(), 2U);
+      EXPECT_EQ(route.front(), QPointF(-20, row * 100 + 60));
+      EXPECT_EQ(route.back(), QPointF(SIDE * 100, targetRow * 100 + 60));
+      EXPECT_TRUE(isOrthogonalRoute(route));
+      EXPECT_FALSE(orthogonalRouteSelfIntersects(route));
+      for (std::size_t point = 1; point < route.size(); ++point)
+        for (const auto& obstacle : obstacles)
+          EXPECT_FALSE(
+              segmentCrossesRectInterior(route[point - 1], route[point], obstacle));
+    }
+  }
+}
+
 TEST(WireRoutingTest, RoutesAroundBufferedObstacle)
 {
   const QPointF start(0.0, 0.0);
@@ -648,6 +702,49 @@ TEST(LibavoidHyperedgeTest, ReportsEveryRegisteredNetAfterRouting)
   EXPECT_FALSE(secondChanges.newConnectorList.empty());
 }
 
+TEST(LibavoidHyperedgeTest, DenseFanoutConnectsEveryTerminal)
+{
+  Avoid::Router router(Avoid::OrthogonalRouting);
+  configureHyperedgeRouter(router);
+  router.setRoutingOption(Avoid::improveHyperedgeRoutesMovingJunctions, false);
+  std::vector<QPointF> positions{{-60, -60}};
+  Avoid::ConnEndList   terminals{
+      pinnedTerminal(router, positions.front(), Avoid::ConnDirRight)};
+  for (int row = 0; row < 6; ++row) {
+    for (int column = 0; column < 6; ++column) {
+      positions.emplace_back(column * 100 + 60, row * 100 + 60);
+      terminals.push_back(pinnedTerminal(router, positions.back(), Avoid::ConnDirLeft));
+      auto obstacle =
+          rectangle(column * 100, row * 100, column * 100 + 40, row * 100 + 40);
+      new Avoid::ShapeRef(&router, obstacle);
+    }
+  }
+  const auto index = router.hyperedgeRerouter()->registerHyperedgeForRerouting(terminals);
+  ASSERT_TRUE(router.processTransaction());
+  const auto changes = router.hyperedgeRerouter()->newAndDeletedObjectLists(index);
+  std::vector<std::vector<QPointF>> routes;
+  for (auto* connector : changes.newConnectorList) {
+    routes.push_back(snappedDisplayRoute(*connector));
+    ASSERT_GE(routes.back().size(), 2U);
+    EXPECT_TRUE(isOrthogonalRoute(routes.back()));
+  }
+  ASSERT_FALSE(routes.empty());
+  for (const QPointF position : positions)
+    EXPECT_TRUE(std::ranges::any_of(
+        routes,
+        [&](const auto& route) { return pointOnOrthogonalRoute(position, route); }))
+        << position.x() << ',' << position.y();
+
+  std::vector<bool> reached(routes.size());
+  reached.front() = true;
+  for (std::size_t pass = 0; pass < routes.size(); ++pass)
+    for (std::size_t first = 0; first < routes.size(); ++first)
+      for (std::size_t second = 0; second < routes.size(); ++second)
+        if (reached[first] && orthogonalRoutesTouch(routes[first], routes[second]))
+          reached[second] = true;
+  EXPECT_TRUE(std::ranges::all_of(reached, [](const bool value) { return value; }));
+}
+
 TEST(LibavoidHyperedgeTest, NudgesDistinctNetsApartAfterGridSnapping)
 {
   Avoid::Router router(Avoid::OrthogonalRouting);
@@ -673,7 +770,7 @@ TEST(LibavoidHyperedgeTest, NudgesDistinctNetsApartAfterGridSnapping)
   Avoid::ConnRefListVector groups(2);
   groups[0].push_back(first);
   groups[1].push_back(second);
-  router.separateOrthogonalRouteGroups(groups, 10.0);
+  ASSERT_TRUE(router.separateOrthogonalRouteGroups(groups, 10.0));
   const auto firstRoute  = snappedDisplayRoute(*first);
   const auto secondRoute = snappedDisplayRoute(*second);
   EXPECT_TRUE(isOrthogonalRoute(firstRoute));
@@ -716,7 +813,7 @@ TEST(LibavoidHyperedgeTest, ReservesFixedEndpointStubsBeforeSeparatingGroups)
   groups[0].push_back(first);
   groups[1].push_back(second);
   groups[2].push_back(third);
-  router.separateOrthogonalRouteGroups(groups, 10.0);
+  ASSERT_TRUE(router.separateOrthogonalRouteGroups(groups, 10.0));
 
   const auto firstRoute  = snappedDisplayRoute(*first);
   const auto secondRoute = snappedDisplayRoute(*second);
@@ -728,6 +825,88 @@ TEST(LibavoidHyperedgeTest, ReservesFixedEndpointStubsBeforeSeparatingGroups)
   EXPECT_EQ(secondRoute.back(), QPointF(170, 430));
   EXPECT_EQ(thirdRoute.front(), QPointF(150, 150));
   EXPECT_EQ(thirdRoute.back(), QPointF(110, 430));
+}
+
+TEST(LibavoidHyperedgeTest, SeparatesFixedPinBranchesIndependently)
+{
+  Avoid::Router router(Avoid::OrthogonalRouting);
+  auto          connector = [&](const std::vector<Avoid::Point>& points) {
+    auto* result = new Avoid::ConnRef(&router, Avoid::ConnEnd(points.front()),
+                                               Avoid::ConnEnd(points.back()));
+    result->setRoutingType(Avoid::ConnType_Orthogonal);
+    return result;
+  };
+  auto* first  = connector({{0, 0}, {100, 0}});
+  auto* second = connector({{100, 0}, {200, 0}});
+  auto* other  = connector({{30, 0}, {70, 0}});
+  ASSERT_TRUE(router.processTransaction());
+  auto setRoute = [](Avoid::ConnRef* target, std::vector<Avoid::Point> points) {
+    Avoid::PolyLine route;
+    route.ps = std::move(points);
+    target->set_route(route);
+  };
+  setRoute(first, {{0, 0}, {100, 0}});
+  setRoute(second, {{100, 0}, {200, 0}});
+  setRoute(other, {{30, 0}, {70, 0}});
+  ASSERT_TRUE(router.separateOrthogonalRouteGroups({{first, second}, {other}}, 10.0));
+  const auto firstRoute  = snappedDisplayRoute(*first);
+  const auto secondRoute = snappedDisplayRoute(*second);
+  const auto otherRoute  = snappedDisplayRoute(*other);
+  EXPECT_EQ(firstRoute.front(), QPointF(0, 0));
+  EXPECT_EQ(firstRoute.back(), QPointF(100, 0));
+  EXPECT_EQ(secondRoute, (std::vector<QPointF>{{100, 0}, {200, 0}}));
+  for (const auto& path : mergeOrthogonalRoutes({firstRoute, secondRoute}))
+    EXPECT_FALSE(orthogonalRoutesIntersect(path, otherRoute));
+}
+
+TEST(LibavoidHyperedgeTest, ReroutesBetweenOppositeTerminalEscapeCorridors)
+{
+  Avoid::Router                          router(Avoid::OrthogonalRouting);
+  std::vector<std::vector<Avoid::Point>> paths{
+      {{10, 1000}, {10, 10}, {1000, 10}, {1000, 0}, {20, 0}},
+      {{190, -1000}, {190, 90}, {-1000, 90}, {-1000, 100}, {180, 100}},
+      {{0, 0}, {100, 0}, {100, 100}, {200, 100}}};
+  Avoid::ConnRefListVector groups;
+  for (const auto& path : paths) {
+    auto* connector = new Avoid::ConnRef(&router, Avoid::ConnEnd(path.front()),
+                                         Avoid::ConnEnd(path.back()));
+    connector->setRoutingType(Avoid::ConnType_Orthogonal);
+    groups.push_back({connector});
+  }
+  ASSERT_TRUE(router.processTransaction());
+  for (size_t i = 0; i < paths.size(); ++i) {
+    Avoid::PolyLine route;
+    route.ps = paths[i];
+    groups[i].front()->set_route(route);
+  }
+  ASSERT_TRUE(router.separateOrthogonalRouteGroups(groups, 10.0));
+  const auto rerouted = snappedDisplayRoute(*groups.back().front());
+  ASSERT_GE(rerouted.size(), 2U);
+  EXPECT_EQ(rerouted.front(), QPointF(0, 0));
+  EXPECT_EQ(rerouted.back(), QPointF(200, 100));
+  EXPECT_EQ(rerouted[1].y(), 0);
+  EXPECT_GT(rerouted[1].x(), 0);
+  EXPECT_EQ(rerouted[rerouted.size() - 2].y(), 100);
+  EXPECT_LT(rerouted[rerouted.size() - 2].x(), 200);
+  EXPECT_TRUE(isOrthogonalRoute(rerouted));
+  EXPECT_FALSE(orthogonalRouteSelfIntersects(rerouted));
+  for (size_t i = 0; i + 1 < groups.size(); ++i)
+    for (const auto& route : mergeOrthogonalRoutes({rerouted}))
+      EXPECT_FALSE(
+          orthogonalRoutesIntersect(route, snappedDisplayRoute(*groups[i].front())));
+}
+
+TEST(LibavoidHyperedgeTest, RejectsDistinctNetsWithAnImmovableSharedTerminal)
+{
+  Avoid::Router router(Avoid::OrthogonalRouting);
+  auto*         first  = new Avoid::ConnRef(&router, Avoid::ConnEnd(Avoid::Point(0, 0)),
+                                            Avoid::ConnEnd(Avoid::Point(100, 0)));
+  auto*         second = new Avoid::ConnRef(&router, Avoid::ConnEnd(Avoid::Point(0, 0)),
+                                            Avoid::ConnEnd(Avoid::Point(100, 100)));
+  first->setRoutingType(Avoid::ConnType_Orthogonal);
+  second->setRoutingType(Avoid::ConnType_Orthogonal);
+  ASSERT_TRUE(router.processTransaction());
+  EXPECT_FALSE(router.separateOrthogonalRouteGroups({{first}, {second}}, 10.0));
 }
 
 TEST(LibavoidTest, DirectionalPointEndpointsRemainAtGraphicalPorts)
@@ -921,7 +1100,7 @@ TEST(LibavoidHyperedgeTest, RoutesCrossCoupledLatchWithoutSharedNetSegments)
       secondChanges.newConnectorList,
       Avoid::ConnRefList{inputConnector},
   };
-  router.separateOrthogonalRouteGroups(routeGroups, 10.0);
+  ASSERT_TRUE(router.separateOrthogonalRouteGroups(routeGroups, 10.0));
   firstRoutes.clear();
   secondRoutes.clear();
   for (Avoid::ConnRef* connector : firstChanges.newConnectorList)
@@ -976,6 +1155,48 @@ TEST(WireRoutingTest, MergesFanoutIntoTerminalToJunctionSegments)
   EXPECT_TRUE(std::ranges::any_of(merged, [](const auto& path) {
     return path.front() == QPointF(40, 0) && path.back() == QPointF(70, 0);
   }));
+}
+
+TEST(WireRoutingTest, RejectsClosedInputRoutes)
+{
+  EXPECT_THROW(
+      (void)mergeOrthogonalRoutes({{{0, 0}, {40, 0}, {40, 40}, {0, 40}, {0, 0}}}),
+      std::invalid_argument);
+}
+
+TEST(WireRoutingTest, KeepsComponentTerminalsAsPathEndpoints)
+{
+  const QPointF port(40, 0);
+  const auto    routes = mergeOrthogonalRoutes({{{0, 0}, port}, {port, {80, 0}}});
+  ASSERT_EQ(routes.size(), 2U);
+  for (const auto& route : routes)
+    EXPECT_TRUE(route.front() == port || route.back() == port);
+}
+
+TEST(WireRoutingTest, RemovesRedundantCyclesBeforeExtractingPaths)
+{
+  const auto routes =
+      mergeOrthogonalRoutes({{{0, 0}, {40, 0}, {40, 40}}, {{40, 40}, {0, 40}, {0, 0}}});
+  ASSERT_FALSE(routes.empty());
+  for (const auto& route : routes) {
+    ASSERT_GE(route.size(), 2U);
+    EXPECT_NE(route.front(), route.back());
+    EXPECT_TRUE(isOrthogonalRoute(route));
+    EXPECT_FALSE(orthogonalRouteSelfIntersects(route));
+  }
+  for (const QPointF corner : {QPointF(0, 0), QPointF(40, 40)})
+    EXPECT_TRUE(std::ranges::any_of(routes, [&](const auto& route) {
+      return pointOnOrthogonalRoute(corner, route);
+    }));
+}
+
+TEST(WireRoutingTest, RemovesRetracedSpursWithoutCreatingCrossNetJunctions)
+{
+  const std::vector<QPointF> crossing{{100, -10}, {100, 30}};
+  const auto routes = mergeOrthogonalRoutes({{{0, 0}, {100, 0}, {90, 0}, {90, 20}}});
+  ASSERT_EQ(routes.size(), 1U);
+  EXPECT_EQ(routes.front(), (std::vector<QPointF>{{0, 0}, {90, 0}, {90, 20}}));
+  EXPECT_FALSE(orthogonalRoutesIntersect(routes.front(), crossing));
 }
 
 TEST(LibavoidQtGeomTypesTest, ConvertsPoint)

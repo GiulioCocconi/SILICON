@@ -21,12 +21,13 @@
 #include <array>
 #include <cstdint>
 #include <map>
+#include <numeric>
 #include <ranges>
+#include <set>
 #include <stdexcept>
 #include <unordered_set>
 #include <utility>
 
-#include <boost/graph/connected_components.hpp>
 
 #include <QGraphicsScene>
 #include <QLineF>
@@ -135,14 +136,8 @@ uint64_t WireManager::createVertex(const QPointF position, const VertexKind kind
 {
   const uint64_t id = nextVertexId++;
   TopologyVertex vertex{id, position, kind, {}};
-  if (portAnchors) {
-    for (const auto& anchor : portAnchors()) {
-      if (anchor.position != position)
-        continue;
-      vertex.kind = VertexKind::Port;
-      vertex.ports.push_back({anchor.componentId, anchor.portIndex, anchor.output});
-    }
-  }
+  // Rebuild creates vertices in a batch and refreshPortAnchors binds all ports
+  // afterwards. Fetching the entire scene's ports for each vertex is quadratic.
   vertices.emplace(id, vertex);
   return id;
 }
@@ -249,27 +244,65 @@ void WireManager::rebuildFromGeometry()
   Batch batch(*this);
   std::vector<GraphicalWireSegment*> segments = allSegments;
   std::ranges::sort(segments, {}, &GraphicalWireSegment::getUiId);
-  // A crossing only creates an edge when an endpoint touches the other route.
-  // Test each pair once; Boost handles transitive connectivity and isolated segments.
-  using ContactGraph = boost::adjacency_list<boost::vecS, boost::vecS,
-                                            boost::undirectedS>;
-  ContactGraph contacts(segments.size());
-  const auto indexedSegments = segments | SILICON::views::enumerate;
-  for (const auto [i, segment] : indexedSegments)
-    for (const auto [j, candidate] : indexedSegments | std::views::drop(i + 1))
-      if (segmentsTouching(segment, candidate))
-        boost::add_edge(i, j, contacts);
-
-  std::vector<size_t> components(segments.size());
-  const auto componentCount = boost::connected_components(
-      contacts, boost::make_iterator_property_map(
-                    components.begin(), boost::get(boost::vertex_index, contacts)));
-  std::vector<std::vector<GraphicalWireSegment*>> groups(componentCount);
-  for (const auto [component, segment] : std::views::zip(components, segments))
-    groups[component].push_back(segment);
+  // Contacts require a route endpoint. Index horizontal and vertical spans so
+  // each endpoint only examines spans on its own coordinates, not every route.
+  using PointKey = std::pair<qreal, qreal>;
+  struct Span {
+    qreal       first, last;
+    std::size_t segment;
+  };
+  std::map<qreal, std::vector<Span>>        horizontal, vertical;
+  std::map<PointKey, std::set<std::size_t>> contactsAt;
+  std::vector<std::vector<QPointF>>         sceneRoutes;
+  sceneRoutes.reserve(segments.size());
+  for (std::size_t i = 0; i < segments.size(); ++i) {
+    auto points = segments[i]->getScenePoints();
+    if (points.size() >= 2) {
+      contactsAt[{points.front().x(), points.front().y()}].insert(i);
+      contactsAt[{points.back().x(), points.back().y()}].insert(i);
+      for (std::size_t j = 1; j < points.size(); ++j) {
+        const auto first = points[j - 1], last = points[j];
+        if (first.y() == last.y())
+          horizontal[first.y()].push_back(
+              {std::min(first.x(), last.x()), std::max(first.x(), last.x()), i});
+        else
+          vertical[first.x()].push_back(
+              {std::min(first.y(), last.y()), std::max(first.y(), last.y()), i});
+      }
+    }
+    sceneRoutes.push_back(std::move(points));
+  }
+  std::vector<std::size_t> components(segments.size());
+  std::iota(components.begin(), components.end(), 0);
+  auto root = [&components](std::size_t index) {
+    while (components[index] != index) {
+      components[index] = components[components[index]];
+      index             = components[index];
+    }
+    return index;
+  };
+  for (auto& [point, touching] : contactsAt) {
+    const auto collect = [&](const auto& lines, qreal coordinate, qreal position) {
+      if (const auto line = lines.find(coordinate); line != lines.end())
+        for (const auto& span : line->second)
+          if (span.first <= position && position <= span.last)
+            touching.insert(span.segment);
+    };
+    collect(horizontal, point.second, point.first);
+    collect(vertical, point.first, point.second);
+    for (const auto index : touching) {
+      const auto first = root(*touching.begin()), second = root(index);
+      components[std::max(first, second)] = std::min(first, second);
+    }
+  }
+  std::vector<std::vector<GraphicalWireSegment*>> groups(segments.size());
+  for (std::size_t i = 0; i < segments.size(); ++i)
+    groups[root(i)].push_back(segments[i]);
 
   std::unordered_set<GraphicalWire*> assigned;
   for (const auto& group : groups) {
+    if (group.empty())
+      continue;
     GraphicalWire* wire = nullptr;
     for (auto* member : group)
       if (auto* candidate = member->getGraphicalWire();
@@ -300,26 +333,22 @@ void WireManager::rebuildFromGeometry()
       id = createVertex(point);
     return id;
   };
-  for (auto* segment : segments) {
-    const auto points = segment->getScenePoints();
+  for (std::size_t i = 0; i < segments.size(); ++i) {
+    const auto& points = sceneRoutes[i];
     if (points.size() < 2)
       continue;
-    segmentTopology[segment->getUiId()] = {vertexFor(points.front()),
-                                           vertexFor(points.back()), {}, {}};
+    segmentTopology[segments[i]->getUiId()] = {
+        vertexFor(points.front()), vertexFor(points.back()), {}, {}};
   }
-  for (auto* segment : segments) {
-    const auto points = segment->getScenePoints();
-    if (points.size() < 2)
-      continue;
-    auto& topology = segmentTopology.at(segment->getUiId());
-    topology.junctions = vertexAt | std::views::transform([](const auto& entry) {
-      const auto& [key, vertex] = entry;
-      return std::pair{vertex, QPointF(key.first, key.second)};
-    }) | std::views::filter([&](const auto& junction) {
-      const auto& point = junction.second;
-      return point != points.front() && point != points.back()
-             && core::pointOnOrthogonalRoute(point, points);
-    }) | std::ranges::to<std::vector>();
+  for (const auto& [point, touching] : contactsAt) {
+    const QPointF position(point.first, point.second);
+    const auto    vertex = vertexAt.at(point);
+    for (const auto index : touching) {
+      const auto& route = sceneRoutes[index];
+      if (position != route.front() && position != route.back())
+        segmentTopology.at(segments[index]->getUiId())
+            .junctions.emplace_back(vertex, position);
+    }
   }
   rebuildTopologyEdges();
   refreshPortAnchors();
@@ -398,21 +427,18 @@ void WireManager::replaceSegments(QGraphicsScene&             scene,
   clearSegments(scene);
   Batch batch(*this);
 
-  std::map<uint64_t, std::shared_ptr<GraphicalWire>> wireById;
-  uint64_t                                           fallbackWireId = 1;
-
-  auto routeWireId = [&fallbackWireId](const Bus& bus) {
-    if (bus.size() > 0 && bus[0])
-      return bus[0]->getId();
-
-    return fallbackWireId++;
-  };
+  std::map<std::vector<uint64_t>, std::shared_ptr<GraphicalWire>> wireByBus;
 
   for (const RoutedWire& routed : routedSegments) {
     if (routed.points.size() < 2)
       continue;
 
-    auto& wire = wireById[routeWireId(routed.bus)];
+    std::vector<uint64_t> key;
+    for (const auto& bit : routed.bus)
+      key.push_back(bit ? bit->getId() : 0);
+    // A bus is its complete ordered bit vector. Sharing the first bit does not
+    // make two differently sized or differently ordered buses the same net.
+    auto& wire = wireByBus[key];
     if (!wire) {
       wire = createWire(
           static_cast<unsigned int>(std::max<std::size_t>(routed.bus.size(), 1)));

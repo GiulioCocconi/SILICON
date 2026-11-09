@@ -29,6 +29,10 @@
 #include <clocale>
 #include <cmath>
 #include <cstdlib>
+#include <functional>
+#include <limits>
+#include <map>
+#include <queue>
 
 #include "libavoid/shape.h"
 #include "libavoid/router.h"
@@ -101,6 +105,8 @@ Router::Router(const unsigned int flags)
     m_routing_options[improveHyperedgeRoutesMovingAddingAndDeletingJunctions] =
             false;
     m_routing_options[nudgeSharedPathsWithCommonEndPoint] = true;
+    m_routing_options[useWeightedAStar]                   = false;
+    m_routing_options[performOrthogonalNudging]           = true;
 
     m_hyperedge_improver.setRouter(this);
     m_hyperedge_rerouter.setRouter(this);
@@ -732,54 +738,6 @@ bool Router::processTransaction(void)
     return true;
 }
 
-static bool pointOnClosedInterval(const double point, const double first,
-                                  const double second)
-{
-  return point >= std::min(first, second) && point <= std::max(first, second);
-}
-
-static bool orthogonalRoutesCreateJunction(const Polygon& first, const Polygon& second)
-{
-  for (size_t i = 1; i < first.size(); ++i) {
-    const Point& a               = first.at(i - 1);
-    const Point& b               = first.at(i);
-    const bool   firstHorizontal = a.y == b.y;
-    for (size_t j = 1; j < second.size(); ++j) {
-      const Point& c                = second.at(j - 1);
-      const Point& d                = second.at(j);
-      const bool   secondHorizontal = c.y == d.y;
-      if (firstHorizontal == secondHorizontal) {
-        if (firstHorizontal && (a.y == c.y)
-            && (std::max(std::min(a.x, b.x), std::min(c.x, d.x))
-                <= std::min(std::max(a.x, b.x), std::max(c.x, d.x)))) {
-          return true;
-        }
-        if (!firstHorizontal && (a.x == c.x)
-            && (std::max(std::min(a.y, b.y), std::min(c.y, d.y))
-                <= std::min(std::max(a.y, b.y), std::max(c.y, d.y)))) {
-          return true;
-        }
-        continue;
-      }
-
-      const Point& horizontalStart = firstHorizontal ? a : c;
-      const Point& horizontalEnd   = firstHorizontal ? b : d;
-      const Point& verticalStart   = firstHorizontal ? c : a;
-      const Point& verticalEnd     = firstHorizontal ? d : b;
-      const Point  intersection(verticalStart.x, horizontalStart.y);
-      if (!pointOnClosedInterval(intersection.x, horizontalStart.x, horizontalEnd.x)
-          || !pointOnClosedInterval(intersection.y, verticalStart.y, verticalEnd.y)) {
-        continue;
-      }
-      if ((intersection == first.ps.front()) || (intersection == first.ps.back())
-          || (intersection == second.ps.front()) || (intersection == second.ps.back())) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
 static void appendRoutePoint(Polygon& route, const Point& point)
 {
   if (route.empty() || (route.ps.back() != point)) {
@@ -794,13 +752,20 @@ static double directionSign(const double difference)
 
 static Polygon offsetOrthogonalRoute(ConnRef* connector, const Point& offset,
                                      const double separation, const bool fixedSource,
-                                     const bool fixedTarget)
+                                     const bool fixedTarget, const double escapeScale)
 {
   const Polygon route = connector->displayRoute();
   if ((route.size() < 2) || ((offset.x == 0) && (offset.y == 0))) {
     return route;
   }
 
+  const double sourceLength = manhattanDist(route.ps[0], route.ps[1]);
+  const size_t last         = route.size() - 1;
+  const double targetLength = manhattanDist(route.ps[last - 1], route.ps[last]);
+  const double sourceStub =
+      escapeScale == 0 ? sourceLength : std::min(sourceLength, separation * escapeScale);
+  const double targetStub =
+      escapeScale == 0 ? targetLength : std::min(targetLength, separation * escapeScale);
   Polygon shifted = route;
   shifted.translate(offset.x, offset.y);
 
@@ -811,11 +776,11 @@ static Polygon offsetOrthogonalRoute(ConnRef* connector, const Point& offset,
     const Point stub =
         horizontal
             ? Point(route.ps.front().x
-                        + separation * directionSign(route.ps[1].x - route.ps.front().x),
+                        + sourceStub * directionSign(route.ps[1].x - route.ps.front().x),
                     route.ps.front().y)
             : Point(route.ps.front().x,
                     route.ps.front().y
-                        + separation * directionSign(route.ps[1].y - route.ps.front().y));
+                        + sourceStub * directionSign(route.ps[1].y - route.ps.front().y));
     appendRoutePoint(result, stub);
     appendRoutePoint(result, horizontal ? Point(stub.x, shifted.ps.front().y)
                                         : Point(shifted.ps.front().x, stub.y));
@@ -831,12 +796,12 @@ static Polygon offsetOrthogonalRoute(ConnRef* connector, const Point& offset,
     const Point  stub =
         horizontal
              ? Point(route.ps.back().x
-                         + separation
+                         + targetStub
                                * directionSign(route.ps[last - 1].x - route.ps.back().x),
                      route.ps.back().y)
              : Point(route.ps.back().x,
                      route.ps.back().y
-                         + separation
+                         + targetStub
                                * directionSign(route.ps[last - 1].y - route.ps.back().y));
     appendRoutePoint(result, horizontal ? Point(stub.x, shifted.ps.back().y)
                                         : Point(shifted.ps.back().x, stub.y));
@@ -904,70 +869,258 @@ static std::vector<Polygon> fixedEndpointStubs(const Polygon& route,
   return result;
 }
 
-static bool routeConflictsWithAny(const Polygon& route,
-                                  const std::vector<Polygon>& others)
-{
-  for (std::vector<Polygon>::const_iterator other = others.begin();
-       other != others.end(); ++other) {
-    if (orthogonalRoutesCreateJunction(route, *other)) {
-      return true;
+// Route conflicts only involve collinear segments or a route endpoint touching
+// another route. Index those coordinates instead of comparing every segment pair
+// for every candidate translation of every net.
+class OrthogonalRouteIndex {
+  struct Interval {
+    double low, high;
+    size_t group;
+  };
+  using Lines = std::map<double, std::vector<Interval>>;
+  Lines horizontal, vertical, horizontalEnds, verticalEnds;
+
+  static bool overlaps(const Lines& lines, double coordinate, double low, double high,
+                       size_t excludedGroup)
+  {
+    const auto line = lines.find(coordinate);
+    if (line == lines.end())
+      return false;
+    for (const Interval& interval : line->second)
+      if (interval.group != excludedGroup && interval.low <= high && low <= interval.high)
+        return true;
+    return false;
+  }
+
+  bool touches(const Point& point, size_t excludedGroup) const
+  {
+    return overlaps(horizontal, point.y, point.x, point.x, excludedGroup)
+           || overlaps(vertical, point.x, point.y, point.y, excludedGroup);
+  }
+
+public:
+  void add(const Polygon& route, size_t group = 0)
+  {
+    if (route.size() < 2)
+      return;
+    for (size_t i = 1; i < route.size(); ++i) {
+      const Point& a = route.ps[i - 1];
+      const Point& b = route.ps[i];
+      if (a.y == b.y)
+        horizontal[a.y].push_back({std::min(a.x, b.x), std::max(a.x, b.x), group});
+      else
+        vertical[a.x].push_back({std::min(a.y, b.y), std::max(a.y, b.y), group});
+    }
+    for (const Point& point : {route.ps.front(), route.ps.back()}) {
+      horizontalEnds[point.y].push_back({point.x, point.x, group});
+      verticalEnds[point.x].push_back({point.y, point.y, group});
     }
   }
-  return false;
+
+  bool contains(const Point& point, size_t excludedGroup) const
+  {
+    return touches(point, excludedGroup);
+  }
+
+  bool blocksSegment(const Point& a, const Point& b, size_t excludedGroup) const
+  {
+    if (a.y == b.y) {
+      const double low = std::min(a.x, b.x), high = std::max(a.x, b.x);
+      return overlaps(horizontal, a.y, low, high, excludedGroup)
+             || overlaps(horizontalEnds, a.y, low, high, excludedGroup);
+    }
+    const double low = std::min(a.y, b.y), high = std::max(a.y, b.y);
+    return overlaps(vertical, a.x, low, high, excludedGroup)
+           || overlaps(verticalEnds, a.x, low, high, excludedGroup);
+  }
+
+  bool conflicts(const Polygon& route, size_t excludedGroup) const
+  {
+    if (route.size() < 2)
+      return false;
+    if (touches(route.ps.front(), excludedGroup)
+        || touches(route.ps.back(), excludedGroup))
+      return true;
+    for (size_t i = 1; i < route.size(); ++i)
+      if (blocksSegment(route.ps[i - 1], route.ps[i], excludedGroup))
+        return true;
+    return false;
+  }
+};
+
+// Offset searches can be trapped by different corridors at the two terminals.
+// Search a small compressed grid around the existing bends in that case. A
+// straight interior crossing is legal; a bend or endpoint on another net is not.
+static Polygon rerouteSeparatedBranch(const Polygon& original, double separation,
+                                      size_t net, const OrthogonalRouteIndex& accepted,
+                                      const OrthogonalRouteIndex&  fixedStubs,
+                                      const std::function<void()>& progress)
+{
+  if (original.size() < 2)
+    return Polygon();
+  std::vector<double> xs, ys;
+  for (const Point& point : original.ps) {
+    xs.push_back(point.x);
+    ys.push_back(point.y);
+    for (double step : {1., 2., 4., 8., 16., 32., 64.}) {
+      xs.push_back(point.x - step * separation);
+      xs.push_back(point.x + step * separation);
+      ys.push_back(point.y - step * separation);
+      ys.push_back(point.y + step * separation);
+    }
+  }
+  for (auto* coordinates : {&xs, &ys}) {
+    std::sort(coordinates->begin(), coordinates->end());
+    coordinates->erase(std::unique(coordinates->begin(), coordinates->end()),
+                       coordinates->end());
+  }
+  const Point source = original.ps.front(), target = original.ps.back();
+  const Point sourceNext     = original.ps[1],
+              targetPrevious = original.ps[original.size() - 2];
+  auto pointIndex            = [&](const Point& point) {
+    return (std::lower_bound(ys.begin(), ys.end(), point.y) - ys.begin()) * xs.size()
+           + (std::lower_bound(xs.begin(), xs.end(), point.x) - xs.begin());
+  };
+  auto pointAt = [&](size_t state) {
+    return Point(xs[(state / 2) % xs.size()], ys[(state / 2) / xs.size()]);
+  };
+  const size_t        sourceIndex = pointIndex(source), targetIndex = pointIndex(target);
+  const size_t        start   = sourceIndex * 2 + (source.y != sourceNext.y);
+  const size_t        missing = std::numeric_limits<size_t>::max();
+  std::vector<double> distance(xs.size() * ys.size() * 2,
+                               std::numeric_limits<double>::infinity());
+  std::vector<size_t> previous(distance.size(), missing);
+  using Entry = std::pair<double, size_t>;
+  std::priority_queue<Entry, std::vector<Entry>, std::greater<Entry>> pending;
+  distance[start] = 0;
+  pending.emplace(manhattanDist(source, target), start);
+  size_t explored = 0;
+  while (!pending.empty()) {
+    const auto [score, state] = pending.top();
+    pending.pop();
+    const Point point = pointAt(state);
+    if (score > distance[state] + manhattanDist(point, target))
+      continue;
+    if ((++explored % 256) == 0)
+      progress();
+    if (state / 2 == targetIndex) {
+      Polygon result;
+      for (size_t current = state; current != missing; current = previous[current])
+        result.ps.push_back(pointAt(current));
+      std::reverse(result.ps.begin(), result.ps.end());
+      return result.simplify();
+    }
+    const size_t x = (state / 2) % xs.size(), y = (state / 2) / xs.size();
+    const bool   onOtherNet =
+        accepted.contains(point, net) || fixedStubs.contains(point, net);
+    for (int direction = 0; direction < 4; ++direction) {
+      if ((direction == 0 && x == 0) || (direction == 1 && x + 1 == xs.size())
+          || (direction == 2 && y == 0) || (direction == 3 && y + 1 == ys.size()))
+        continue;
+      const size_t nx   = direction < 2 ? (direction == 0 ? x - 1 : x + 1) : x;
+      const size_t ny   = direction < 2 ? y : (direction == 2 ? y - 1 : y + 1);
+      const size_t axis = direction / 2;
+      const Point  next(xs[nx], ys[ny]);
+      if (sourceIndex == state / 2
+          && ((axis != start % 2)
+              || (axis == 0 ? (next.x - point.x) * (sourceNext.x - source.x) <= 0
+                            : (next.y - point.y) * (sourceNext.y - source.y) <= 0)))
+        continue;
+      if (next == target
+          && ((axis != (target.y != targetPrevious.y))
+              || (axis == 0 ? (next.x - point.x) * (target.x - targetPrevious.x) <= 0
+                            : (next.y - point.y) * (target.y - targetPrevious.y) <= 0)))
+        continue;
+      if ((onOtherNet && axis != state % 2) || accepted.blocksSegment(point, next, net)
+          || fixedStubs.blocksSegment(point, next, net))
+        continue;
+      const size_t nextState = (ny * xs.size() + nx) * 2 + axis;
+      const double cost      = distance[state] + manhattanDist(point, next)
+                          + (axis != state % 2 ? 2 * separation : 0);
+      if (cost >= distance[nextState])
+        continue;
+      distance[nextState] = cost;
+      previous[nextState] = state;
+      pending.emplace(cost + manhattanDist(next, target), nextState);
+    }
+  }
+  return Polygon();
 }
 
-void Router::separateOrthogonalRouteGroups(const ConnRefListVector& groups,
+bool Router::separateOrthogonalRouteGroups(const ConnRefListVector& groups,
                                            const double             separation)
 {
   COLA_ASSERT(separation > 0);
-  ConnRefListVector orderedGroups = groups;
+  struct RoutingGroup {
+    ConnRefList connectors;
+    size_t      net;
+  };
+  std::vector<RoutingGroup> orderedGroups;
+  auto                      fixedSource = [](ConnRef* connector) {
+    return !(connector->m_src_connend
+             && connector->m_src_connend->type() == ConnEndJunction);
+  };
+  auto fixedTarget = [](ConnRef* connector) {
+    return !(connector->m_dst_connend
+             && connector->m_dst_connend->type() == ConnEndJunction);
+  };
+  for (size_t net = 0; net < groups.size(); ++net) {
+    const ConnRefList& group = groups[net];
+    const bool         fixedTerminals =
+        std::all_of(group.begin(), group.end(), [&](ConnRef* connector) {
+          return fixedSource(connector) && fixedTarget(connector);
+        });
+    // Terminal spanning trees stay connected through their shared fixed pins.
+    // Each branch can choose its own lane; forcing hundreds of branches to use
+    // one translation needlessly makes otherwise routable fanout nets fail.
+    if (fixedTerminals) {
+      for (ConnRef* connector : group)
+        orderedGroups.push_back({ConnRefList{connector}, net});
+    } else {
+      // A Steiner junction must move together with every incident branch.
+      orderedGroups.push_back({group, net});
+    }
+  }
   std::stable_sort(orderedGroups.begin(), orderedGroups.end(),
-                   [](const ConnRefList& first, const ConnRefList& second) {
-                     return connectorGroupLength(first) < connectorGroupLength(second);
+                   [](const RoutingGroup& first, const RoutingGroup& second) {
+                     return connectorGroupLength(first.connectors)
+                            > connectorGroupLength(second.connectors);
                    });
 
-  // Endpoint stubs cannot move because their connection ends are fixed. Reserve the
-  // stubs of later groups before accepting an earlier route; otherwise a greedy zero-
-  // offset choice can make every possible offset of a later group conflict.
+  // Reserve every fixed pin's escape stub, including those of branches which
+  // have not been placed yet. Sharing a stub within the same net is legal.
+  OrthogonalRouteIndex              fixedStubs;
   std::vector<std::vector<Polygon>> reservedStubs(orderedGroups.size());
-  for (size_t groupIndex = 0; groupIndex < orderedGroups.size(); ++groupIndex) {
-    const ConnRefList& group = orderedGroups[groupIndex];
-    for (ConnRefList::const_iterator connector = group.begin(); connector != group.end();
-         ++connector) {
-      const bool fixedSource =
-          !((*connector)->m_src_connend
-            && ((*connector)->m_src_connend->type() == ConnEndJunction));
-      const bool fixedTarget =
-          !((*connector)->m_dst_connend
-            && ((*connector)->m_dst_connend->type() == ConnEndJunction));
-      const std::vector<Polygon> stubs = fixedEndpointStubs(
-          (*connector)->displayRoute(), separation, fixedSource, fixedTarget);
-      reservedStubs[groupIndex].insert(reservedStubs[groupIndex].end(), stubs.begin(),
-                                       stubs.end());
+  for (size_t i = 0; i < orderedGroups.size(); ++i) {
+    for (ConnRef* connector : orderedGroups[i].connectors) {
+      const auto stubs =
+          fixedEndpointStubs(connector->displayRoute(), separation,
+                             fixedSource(connector), fixedTarget(connector));
+      reservedStubs[i].insert(reservedStubs[i].end(), stubs.begin(), stubs.end());
+      for (const Polygon& stub : stubs)
+        fixedStubs.add(stub, orderedGroups[i].net);
     }
   }
 
-  std::vector<Polygon> acceptedRoutes;
+  OrthogonalRouteIndex acceptedRoutes;
   static const size_t maximumSearchRing = 64;
   for (size_t groupIndex = 0; groupIndex < orderedGroups.size(); ++groupIndex) {
-    const ConnRefList& group = orderedGroups[groupIndex];
-    if (group.empty()) {
+    const RoutingGroup& group = orderedGroups[groupIndex];
+    if (group.connectors.empty())
       continue;
-    }
 
-    bool immutableConflict = false;
-    for (std::vector<Polygon>::const_iterator stub = reservedStubs[groupIndex].begin();
-         stub != reservedStubs[groupIndex].end(); ++stub) {
-      if (routeConflictsWithAny(*stub, acceptedRoutes)) {
-        immutableConflict = true;
-        break;
-      }
-    }
+    performContinuationCheck(TransactionPhaseOrthogonalNudgingY, groupIndex,
+                             orderedGroups.size());
+    bool stubConflict = false;
+    for (const Polygon& stub : reservedStubs[groupIndex])
+      stubConflict = stubConflict || acceptedRoutes.conflicts(stub, group.net)
+                     || fixedStubs.conflicts(stub, group.net);
 
     bool selected = false;
-    for (size_t ring = 0; !immutableConflict && !selected
-                          && ring <= maximumSearchRing;
-         ++ring) {
+    // A translated route retains its fixed stubs. Still try the original
+    // route when stubs conflict: its initial segment may be shorter.
+    for (size_t ring = 0;
+         !selected && (!stubConflict || ring == 0) && ring <= maximumSearchRing; ++ring) {
       std::vector<Point> offsets;
       if (ring == 0) {
         offsets.push_back(Point(0, 0));
@@ -975,62 +1128,68 @@ void Router::separateOrthogonalRouteGroups(const ConnRefListVector& groups,
         for (long dx = -static_cast<long>(ring); dx <= static_cast<long>(ring); ++dx) {
           const long dy = static_cast<long>(ring) - std::labs(dx);
           offsets.push_back(Point(dx * separation, dy * separation));
-          if (dy != 0) {
+          if (dy != 0)
             offsets.push_back(Point(dx * separation, -dy * separation));
-          }
         }
       }
 
-      for (std::vector<Point>::const_iterator offset = offsets.begin();
-           offset != offsets.end(); ++offset) {
-        std::vector<Polygon> candidates;
-        for (ConnRefList::const_iterator connector = group.begin();
-             connector != group.end(); ++connector) {
-          const bool fixedSource =
-              !((*connector)->m_src_connend
-                && ((*connector)->m_src_connend->type() == ConnEndJunction));
-          const bool fixedTarget =
-              !((*connector)->m_dst_connend
-                && ((*connector)->m_dst_connend->type() == ConnEndJunction));
-          candidates.push_back(offsetOrthogonalRoute(*connector, *offset, separation,
-                                                     fixedSource, fixedTarget));
-        }
-
-        bool conflict = false;
-        for (std::vector<Polygon>::const_iterator candidate = candidates.begin();
-             (candidate != candidates.end()) && !conflict; ++candidate) {
-          conflict = routeConflictsWithAny(*candidate, acceptedRoutes);
-          for (size_t future = groupIndex + 1;
-               (future < reservedStubs.size()) && !conflict; ++future) {
-            if (routeConflictsWithAny(*candidate, reservedStubs[future])) {
-              conflict = true;
-            }
-          }
-        }
-        if (conflict) {
+      // Keep the terminal escape on the original first/last segment. Longer
+      // escapes let opposite ends choose lanes outside crowded pin corridors.
+      for (const double escapeScale : {1.0, 2.0, 4.0, 0.0}) {
+        if (ring == 0 && escapeScale != 1.0)
           continue;
-        }
+        for (const Point& offset : offsets) {
+          performContinuationCheck(TransactionPhaseOrthogonalNudgingY, groupIndex,
+                                   orderedGroups.size());
+          std::vector<Polygon> candidates;
+          bool                 conflict = false;
+          for (ConnRef* connector : group.connectors) {
+            Polygon candidate = offsetOrthogonalRoute(
+                connector, offset, separation, fixedSource(connector),
+                fixedTarget(connector), escapeScale);
+            if (acceptedRoutes.conflicts(candidate, group.net)
+                || fixedStubs.conflicts(candidate, group.net)) {
+              conflict = true;
+              break;
+            }
+            candidates.push_back(candidate);
+          }
+          if (conflict)
+            continue;
 
-        ConnRefList::const_iterator connector = group.begin();
-        for (size_t i = 0; i < candidates.size(); ++i, ++connector) {
-          (*connector)->set_route(candidates[i]);
-          acceptedRoutes.push_back(candidates[i]);
+          auto connector = group.connectors.begin();
+          for (size_t i = 0; i < candidates.size(); ++i, ++connector) {
+            (*connector)->set_route(candidates[i]);
+            acceptedRoutes.add(candidates[i], group.net);
+          }
+          selected = true;
+          break;
         }
+        if (selected)
+          break;
+      }
+    }
+    if (!selected && !stubConflict && group.connectors.size() == 1) {
+      ConnRef*      connector = group.connectors.front();
+      const Polygon candidate = rerouteSeparatedBranch(
+          connector->displayRoute(), separation, group.net, acceptedRoutes, fixedStubs,
+          [&] {
+            performContinuationCheck(TransactionPhaseOrthogonalNudgingY, groupIndex,
+                                     orderedGroups.size());
+          });
+      if (candidate.size() >= 2 && !acceptedRoutes.conflicts(candidate, group.net)
+          && !fixedStubs.conflicts(candidate, group.net)) {
+        connector->set_route(candidate);
+        acceptedRoutes.add(candidate, group.net);
         selected = true;
-        break;
       }
     }
-
-    // Some fixed endpoint configurations have no conflict-free translation. Keep the
-    // router's original route in that case; callers can reject the remaining conflict,
-    // but this search must always terminate.
-    if (!selected) {
-      for (ConnRefList::const_iterator connector = group.begin(); connector != group.end();
-           ++connector) {
-        acceptedRoutes.push_back((*connector)->displayRoute());
-      }
-    }
+    // A failed separation is not a valid drawing. The caller must discard
+    // this candidate instead of silently committing shorted logical nets.
+    if (!selected)
+      return false;
   }
+  return true;
 }
 
 void Router::addJunction(JunctionRef *junction)
@@ -1377,7 +1536,11 @@ void Router::rerouteAndCallbackConnectors(void)
     }
 
     // Perform centring and nudging for orthogonal routes.
-    improveOrthogonalRoutes(this);
+    if (routingOption(performOrthogonalNudging))
+      improveOrthogonalRoutes(this);
+    else
+      for (ConnRef* connector : connRefs)
+        connector->finaliseOrthogonalDisplayRoute();
 
     // Find a list of all the deleted connectors in hyperedges.
     HyperedgeNewAndDeletedObjectLists changedHyperedgeObjs =

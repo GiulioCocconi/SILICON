@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <functional>
 #include <span>
 #include <vector>
 
@@ -83,11 +84,13 @@ canonicalizeOrthogonalRoute(std::vector<QPointF> points);
 /**
  * @brief Unions several routes of one net into maximal terminal-to-junction paths.
  *
- * Shared and intersecting segments are split into a graph, deduplicated, then joined
- * through degree-two vertices. Returned path endpoints are terminals or junctions.
+ * Shared and intersecting segments are split into a graph and redundant cycles are
+ * removed before joining degree-two vertices. Returned paths have distinct endpoints.
+ * @throws std::invalid_argument If an input route has coincident endpoints.
  */
 [[nodiscard]] std::vector<std::vector<QPointF>>
-mergeOrthogonalRoutes(const std::vector<std::vector<QPointF>>& routes);
+mergeOrthogonalRoutes(const std::vector<std::vector<QPointF>>& routes,
+                      const std::function<void()>&             progress = {});
 
 [[nodiscard]] std::vector<QPointF>
 routeOrthogonalWire(QPointF start, QPointF end, const std::vector<QRectF>& obstacleRects,

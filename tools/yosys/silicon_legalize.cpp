@@ -223,7 +223,9 @@ struct SiliconLegalizePass : Pass {
     // Recombine per-bit write ports emitted by write_verilog when they share
     // an address and clock, preserving independently addressed write ports.
     Pass::call(design, "memory_share -nosat -nowiden");
-    Pass::call(design, "memory_dff");
+    // ROM imports encode clocked reads. RAM imports use asynchronous reads,
+    // so only apply memory_dff to read-only memories.
+    Pass::call(design, "memory_dff t:$mem_v2 r:WR_PORTS=0 %i");
     Pass::call(design, "silicon_memrd_address");
     Pass::call(design, "silicon_memory_lower");
     Pass::call(design, "silicon_logic");

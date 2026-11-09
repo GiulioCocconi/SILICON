@@ -528,13 +528,15 @@ endmodule
     parameter WIDTH = 8,
     parameter SIZE = 2,
     parameter ABITS = 1,
+    parameter RD_PORTS = 1,
     parameter [WIDTH*SIZE-1:0] INIT = {WIDTH*SIZE{1'bx}},
     parameter ID = ""
 ) (
-    input [ABITS-1:0] RD_ADDR, WR_ADDR,
+    input [ABITS*RD_PORTS-1:0] RD_ADDR,
+    input [ABITS-1:0] WR_ADDR,
     input [WIDTH-1:0] WR_DATA, WR_EN,
     input WR_CLK,
-    output [WIDTH-1:0] RD_DATA
+    output [WIDTH*RD_PORTS-1:0] RD_DATA
 );
 endmodule
 

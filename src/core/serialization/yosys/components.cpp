@@ -146,7 +146,8 @@ void RAM::serializeYosys(SerializationContext& context) const
 {
   const auto width = static_cast<std::size_t>(getPropertyValue<int>("dataWidth").value());
   const auto count = memoryDepth();
-  if (inputBuses().size() != 5 || outputBuses().size() != 1)
+  const auto readPorts = readPortCount();
+  if (inputBuses().size() != readPorts + 4 || outputBuses().size() != readPorts)
     throw std::runtime_error("Cannot export malformed RAM buses");
   const auto abits = inputBuses()[busIndex(Inputs::ReadAddress)].size();
   if (abits < std::max<std::size_t>(1, std::bit_width(count - 1))
@@ -157,6 +158,17 @@ void RAM::serializeYosys(SerializationContext& context) const
       || outputBuses()[0].size() != width
       || count > static_cast<std::size_t>(std::numeric_limits<int>::max()) / width)
     throw std::runtime_error("Cannot export invalid RAM geometry");
+
+  Json readAddresses = Json::array(), readData = Json::array();
+  for (std::size_t port = 0; port < readPorts; ++port) {
+    if (inputBuses()[readAddressIndex(port)].size() != abits
+        || outputBuses()[port].size() != width)
+      throw std::runtime_error("Cannot export invalid RAM read port geometry");
+    for (const auto& bit : context.inputBits(*this, readAddressIndex(port), abits))
+      readAddresses.push_back(bit);
+    for (const auto& bit : context.bits(outputBuses()[port]))
+      readData.push_back(bit);
+  }
 
   const auto image = memoryImageSnapshot();
   const auto slug = getPropertyValue<std::string>("binaryContents").value_or("");
@@ -175,22 +187,26 @@ void RAM::serializeYosys(SerializationContext& context) const
       Json{{"ABITS", p(abits)}, {"INIT", init},
            {"MEMID", std::format("\\{}", context.componentIdentifier())},
            {"OFFSET", p(0)}, {"WIDTH", p(width)}, {"SIZE", p(count)},
-           {"RD_PORTS", p(1)}, {"RD_CLK_ENABLE", "0"}, {"RD_CLK_POLARITY", "0"},
-           {"RD_ARST_VALUE", std::string(width, 'x')},
-           {"RD_SRST_VALUE", std::string(width, 'x')},
-           {"RD_INIT_VALUE", std::string(width, 'x')}, {"RD_CE_OVER_SRST", "0"},
-           {"RD_TRANSPARENCY_MASK", "0"}, {"RD_COLLISION_X_MASK", "0"},
-           {"RD_WIDE_CONTINUATION", "0"}, {"WR_PORTS", p(1)},
+           {"RD_PORTS", p(readPorts)}, {"RD_CLK_ENABLE", std::string(readPorts, '0')},
+           {"RD_CLK_POLARITY", std::string(readPorts, '0')},
+           {"RD_ARST_VALUE", std::string(width * readPorts, 'x')},
+           {"RD_SRST_VALUE", std::string(width * readPorts, 'x')},
+           {"RD_INIT_VALUE", std::string(width * readPorts, 'x')},
+           {"RD_CE_OVER_SRST", std::string(readPorts, '0')},
+           {"RD_TRANSPARENCY_MASK", std::string(readPorts, '0')},
+           {"RD_COLLISION_X_MASK", std::string(readPorts, '0')},
+           {"RD_WIDE_CONTINUATION", std::string(readPorts, '0')}, {"WR_PORTS", p(1)},
            {"WR_CLK_ENABLE", "1"}, {"WR_CLK_POLARITY", "1"},
            {"WR_PRIORITY_MASK", "0"}, {"WR_WIDE_CONTINUATION", "0"}},
       directions({{"RD_ADDR", "input"}, {"RD_DATA", "output"}, {"RD_EN", "input"},
                   {"RD_CLK", "input"}, {"RD_ARST", "input"}, {"RD_SRST", "input"},
                   {"WR_ADDR", "input"}, {"WR_DATA", "input"}, {"WR_EN", "input"},
                   {"WR_CLK", "input"}}),
-      Json{{"RD_ADDR", context.inputBits(*this, busIndex(Inputs::ReadAddress), abits)},
-           {"RD_DATA", context.bits(outputBuses()[0])}, {"RD_EN", Json::array({"1"})},
-           {"RD_CLK", Json::array({"x"})}, {"RD_ARST", Json::array({"0"})},
-           {"RD_SRST", Json::array({"0"})},
+      Json{{"RD_ADDR", std::move(readAddresses)}, {"RD_DATA", std::move(readData)},
+           {"RD_EN", Json(std::vector<std::string>(readPorts, "1"))},
+           {"RD_CLK", Json(std::vector<std::string>(readPorts, "x"))},
+           {"RD_ARST", Json(std::vector<std::string>(readPorts, "0"))},
+           {"RD_SRST", Json(std::vector<std::string>(readPorts, "0"))},
            {"WR_ADDR", context.inputBits(*this, busIndex(Inputs::WriteAddress), abits)},
            {"WR_DATA", context.inputBits(*this, busIndex(Inputs::WriteData), width)},
            {"WR_EN", context.inputBits(*this, busIndex(Inputs::WriteEnable), width)},

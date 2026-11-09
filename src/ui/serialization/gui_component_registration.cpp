@@ -120,6 +120,8 @@ void registerAllGUIComponents(GUIComponentFactory& factory)
       [](QGraphicsItem* p) { return std::make_unique<GraphicalRegister>(p); });
   reg(std::string(ROM::Type),
       [](QGraphicsItem* p) { return std::make_unique<GraphicalROM>(p); });
+  reg(std::string(RAM::Type),
+      [](QGraphicsItem* p) { return std::make_unique<GraphicalRAM>(p); });
   reg(std::string(SubcircuitComponent::Type),
       [](QGraphicsItem* p) { return std::make_unique<GraphicalSubcircuitComponent>(p); });
 }
