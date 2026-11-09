@@ -103,9 +103,8 @@ QLineF portSlash(const QLineF& line)
 }
 
 QRectF portNameRect(const QLineF& line, const QString& name, const PortSide side,
-                    const QFont& font)
+                    const QFont& font, const qreal margin)
 {
-  constexpr qreal     margin = DiagramScene::GRID_SIZE / 2.0;
   const QFontMetricsF metrics(font);
   const QString       label  = name.startsWith('!') ? name.mid(1) : name;
   const QPointF       point  = line.p2();
@@ -649,8 +648,8 @@ QRectF Port::boundingRect() const
   const auto includeLabelBounds = [&](const QFont& baseFont) {
     const QFont markerFont = portMarkerFont(baseFont);
     if (printName) {
-      const auto labelRect =
-          portNameBounds(portNameRect(portLine, name, side, markerFont), name);
+      const auto labelRect = portNameBounds(
+          portNameRect(portLine, name, side, markerFont, labelInset), name);
       rect = rect.united(labelTransform(labelRect, true).mapRect(labelRect));
     }
     if (size != 1) {
@@ -701,6 +700,16 @@ void Port::setSize(const unsigned int newSize)
     parentItem()->update();
 }
 
+void Port::setLabelInset(const qreal inset)
+{
+  if (labelInset == inset)
+    return;
+
+  prepareBoundsChange();
+  labelInset = inset;
+  update();
+}
+
 void Port::setInputAssignmentError(const bool failed)
 {
   if (inputAssignmentError == failed)
@@ -738,7 +747,7 @@ void Port::paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
   if (printName) {
     const bool        inverted  = name.startsWith('!');
     const QString     label     = inverted ? name.mid(1) : name;
-    const QRectF      labelRect = portNameRect(portLine, name, side, markerFont);
+    const QRectF labelRect = portNameRect(portLine, name, side, markerFont, labelInset);
     const QTextOption textOption(Qt::AlignCenter);
 
     painter->save();
