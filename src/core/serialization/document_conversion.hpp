@@ -38,7 +38,7 @@ struct VerilogSource {
 };
 
 struct BinarySource {
-  std::string contents;
+  std::vector<std::uint8_t> contents;
 };
 
 struct ConversionChoice {

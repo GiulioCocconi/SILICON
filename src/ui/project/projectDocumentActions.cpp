@@ -77,10 +77,11 @@ void ProjectDocumentController::importProjectDocument()
       tr("Supported Documents (*.json *.v *.sisl *.bin);;All Files (*)"),
       [this](const QString& fileName, const QByteArray& fileContent) {
         try {
+          const auto* first =
+              reinterpret_cast<const std::uint8_t*>(fileContent.constData());
           auto document = SILICON::project::importDocument(
               fileName.toStdString(),
-              std::string(fileContent.constData(),
-                          static_cast<std::size_t>(fileContent.size())));
+              std::vector<std::uint8_t>(first, first + fileContent.size()));
 
           workspace.flushActiveDocument();
           const auto sourcePath = session.activeDocumentPath;
@@ -110,12 +111,19 @@ void ProjectDocumentController::exportSelectedDocument()
     if (!document)
       throw std::runtime_error("The selected document no longer exists");
 
-    const auto& contents = document->getContents();
-    SILICON::ui::fileDialog::saveFileContent(
-        dialogParent, tr("Export Document"),
-        QString::fromStdString(SILICON::project::documentFileName(*document)),
-        tr("All Files (*)"),
-        QByteArray(contents.data(), static_cast<qsizetype>(contents.size())));
+    const auto name =
+        QString::fromStdString(SILICON::project::documentFileName(*document));
+    QByteArray data;
+    if (document->getType() == SILICON::project::DocumentType::RawBinary) {
+      const auto& bytes = document->getContents<std::vector<std::uint8_t>>();
+      data              = QByteArray(reinterpret_cast<const char*>(bytes.data()),
+                                     static_cast<qsizetype>(bytes.size()));
+    } else {
+      const auto& text = document->getContents();
+      data             = QByteArray(text.data(), static_cast<qsizetype>(text.size()));
+    }
+    SILICON::ui::fileDialog::saveFileContent(dialogParent, tr("Export Document"), name,
+                                             tr("All Files (*)"), data);
   } catch (const std::exception& error) {
     SILICON::ui::inputDialog::critical(
         dialogParent, tr("Document Export Error"),
@@ -228,7 +236,7 @@ void ProjectDocumentController::createBinaryFile()
         const auto roundedSize =
             std::bit_ceil(static_cast<unsigned int>(sizeEdit->value()));
         pushCreateDocumentCommand(
-            {path, std::string(static_cast<std::size_t>(roundedSize), '\0')},
+            {path, std::vector<std::uint8_t>(static_cast<std::size_t>(roundedSize))},
             tr("Create Binary File"));
         dialog->accept();
       });

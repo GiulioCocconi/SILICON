@@ -24,6 +24,7 @@
 #include <format>
 #include <memory>
 #include <ranges>
+#include <span>
 #include <stdexcept>
 #include <string_view>
 #include <utility>
@@ -50,7 +51,8 @@ namespace {
   using UniqueZipFile   = std::unique_ptr<zip_file_t, ZipDeleter<zip_fclose>>;
   using UniqueZipSource = std::unique_ptr<zip_source_t, ZipDeleter<zip_source_free>>;
 
-  [[nodiscard]] std::string readEntry(zip_t* archive, const std::string& entryName)
+  [[nodiscard]] std::vector<std::uint8_t> readBytes(zip_t*             archive,
+                                                    const std::string& entryName)
   {
     const zip_int64_t entryIndex =
         zip_name_locate(archive, entryName.c_str(), ZIP_FL_ENC_UTF_8);
@@ -75,21 +77,25 @@ namespace {
       throw std::runtime_error(
           std::format("Cannot read project archive entry {}", entryName));
 
-    std::string contents;
-    contents.resize_and_overwrite(stat.size, [&](char* buf, std::size_t) {
-      const zip_int64_t bytesRead = zip_fread(file.get(), buf, stat.size);
-      if (bytesRead < 0 || static_cast<zip_uint64_t>(bytesRead) != stat.size) {
-        throw std::runtime_error(
-            std::format("Cannot read complete project archive entry {}", entryName));
-      }
-      return static_cast<std::size_t>(bytesRead);
-    });
+    std::vector<std::uint8_t> contents(stat.size);
+    const auto bytesRead = zip_fread(file.get(), contents.data(), stat.size);
+    if (bytesRead < 0 || static_cast<zip_uint64_t>(bytesRead) != stat.size)
+      throw std::runtime_error(
+          std::format("Cannot read complete project archive entry {}", entryName));
 
     return contents;
   }
 
-  void addEntry(zip_t* archive, const std::string& entryName, std::string_view contents,
-                bool storeUncompressed = false)
+  [[nodiscard]] std::string readEntry(zip_t* archive, const std::string& entryName)
+  {
+    const auto bytes = readBytes(archive, entryName);
+    return bytes.empty()
+               ? std::string()
+               : std::string(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+  }
+
+  void addEntry(zip_t* archive, const std::string& entryName,
+                std::span<const std::uint8_t> contents, bool storeUncompressed = false)
   {
     void* buffer = std::malloc(contents.size());
     if (!buffer && !contents.empty())
@@ -115,6 +121,15 @@ namespace {
     if (storeUncompressed
         && zip_set_file_compression(archive, index, ZIP_CM_STORE, 0) != 0)
       throw std::runtime_error(std::format("Cannot store {} uncompressed", entryName));
+  }
+
+  void addEntry(zip_t* archive, const std::string& entryName, std::string_view contents,
+                bool storeUncompressed = false)
+  {
+    addEntry(archive, entryName,
+             std::span<const std::uint8_t>(
+                 reinterpret_cast<const std::uint8_t*>(contents.data()), contents.size()),
+             storeUncompressed);
   }
 
   template <typename F> void enumerateZipEntries(zip_t* archive, F&& callback)
@@ -287,8 +302,12 @@ ProjectFile readProjectFile(const std::filesystem::path& path)
   const auto            documentPaths = documentEntries(archive.get());
   std::vector<Document> documents;
   documents.reserve(documentPaths.size());
-  for (const auto& documentPath : documentPaths)
-    documents.emplace_back(documentPath, readEntry(archive.get(), documentPath));
+  for (const auto& documentPath : documentPaths) {
+    if (documentTypeForPath(documentPath) == DocumentType::RawBinary)
+      documents.emplace_back(documentPath, readBytes(archive.get(), documentPath));
+    else
+      documents.emplace_back(documentPath, readEntry(archive.get(), documentPath));
+  }
 
   validateDocuments(documents);
 
@@ -315,8 +334,13 @@ void writeProjectFile(const std::filesystem::path& path, const ProjectFile& proj
   addEntry(archive.get(), std::string(PROJECT_PATH),
            projectInfoToJson(projectFile.project).dump(2));
 
-  for (const auto& document : projectFile.documents)
-    addEntry(archive.get(), document.getPath(), document.getContents());
+  for (const auto& document : projectFile.documents) {
+    if (document.getType() == DocumentType::RawBinary)
+      addEntry(archive.get(), document.getPath(),
+               document.getContents<std::vector<std::uint8_t>>());
+    else
+      addEntry(archive.get(), document.getPath(), document.getContents());
+  }
 
   if (zip_close(archive.get()) != 0)
     throw std::runtime_error("Cannot finalize Silicon project archive");

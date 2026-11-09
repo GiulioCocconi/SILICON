@@ -31,16 +31,19 @@
 #include <core/simulator.hpp>
 
 using namespace SILICON::core;
+
 using namespace SILICON::simulation;
 
 namespace {
 
-std::shared_ptr<const std::string> binarySnapshot(std::string contents)
+std::shared_ptr<const std::vector<std::uint8_t>>
+binarySnapshot(std::vector<std::uint8_t> contents)
 {
-  return std::make_shared<const std::string>(std::move(contents));
+  return std::make_shared<const std::vector<std::uint8_t>>(std::move(contents));
 }
 
-std::shared_ptr<ROM> configuredRom(std::string contents, const int dataWidth)
+std::shared_ptr<ROM> configuredRom(std::vector<std::uint8_t> contents,
+                                   const int                 dataWidth)
 {
   auto rom = std::make_shared<ROM>();
   rom->setProperty("dataWidth", dataWidth);
@@ -64,7 +67,8 @@ TEST(ROMTest, ValidatesPropertiesAndShapesBusesFromPackedWordCount)
   EXPECT_THROW(rom.setProperty("dataWidth", 65536), std::invalid_argument);
 
   rom.setProperty("dataWidth", 10);
-  rom.setBinaryDocument("program", binarySnapshot(std::string("\x12\x34\x56\x78", 4)));
+  rom.setBinaryDocument(
+      "program", binarySnapshot((std::vector<std::uint8_t>{0x12, 0x34, 0x56, 0x78})));
 
   ASSERT_EQ(rom.inputBuses().size(), 3);
   ASSERT_EQ(rom.outputBuses().size(), 1);
@@ -83,7 +87,8 @@ TEST(ROMTest, RehydrationUsesSavedAddressWidthForPaddedWords)
   rom.setProperty("dataWidth", 10);
   rom.setProperty("binaryContents", std::string("packed"));
   rom.setInputs({Bus(1), Bus(1), Bus(1)});
-  rom.refreshBinaryContents(binarySnapshot(std::string("\xA5\x3C\x0F", 3)));
+  rom.refreshBinaryContents(
+      binarySnapshot((std::vector<std::uint8_t>{0xA5, 0x3C, 0x0F})));
   EXPECT_EQ(rom.inputBuses()[0].size(), 1);
   EXPECT_EQ(rom.resolvedWordCount(), 2);
 }
@@ -93,7 +98,7 @@ TEST(ROMTest, ExplicitOneWordImageUsesValidAddressBus)
   ROM rom;
   rom.setProperty("dataWidth", 8);
   rom.setInputs({Bus(1), Bus(1), Bus(1)});
-  rom.refreshBinaryContents(binarySnapshot(std::string("\xA6", 1)), 1);
+  rom.refreshBinaryContents(binarySnapshot((std::vector<std::uint8_t>{0xA6})), 1);
   EXPECT_EQ(rom.resolvedWordCount(), 1);
   ASSERT_EQ(rom.inputBuses()[0].size(), 1);
   EXPECT_NE(rom.inputBuses()[0][0], nullptr);
@@ -101,7 +106,7 @@ TEST(ROMTest, ExplicitOneWordImageUsesValidAddressBus)
 
 TEST(ROMTest, ReadsPackedLittleEndianWordsAcrossByteBoundaries)
 {
-  auto      rom     = configuredRom(std::string("\xA5\x3C\xF0\xC1", 4), 10);
+  auto      rom = configuredRom((std::vector<std::uint8_t>{0xA5, 0x3C, 0xF0, 0xC1}), 10);
   auto      circuit = std::make_shared<Circuit>(Component_set{rom});
   Simulator simulator(circuit);
 
@@ -120,7 +125,7 @@ TEST(ROMTest, ReadsPackedLittleEndianWordsAcrossByteBoundaries)
 
 TEST(ROMTest, ChipSelectLowHoldsLastValueAndOutputEnableIsIgnored)
 {
-  auto               rom = configuredRom(std::string("\x11\x22\x33\x44", 4), 8);
+  auto rom = configuredRom((std::vector<std::uint8_t>{0x11, 0x22, 0x33, 0x44}), 8);
   auto               circuit = std::make_shared<Circuit>(Component_set{rom});
   Simulator          simulator(circuit);
 
@@ -147,7 +152,7 @@ TEST(ROMTest, ChipSelectLowHoldsLastValueAndOutputEnableIsIgnored)
 
 TEST(ROMTest, OneWordRomIgnoresAddressState)
 {
-  auto               rom     = configuredRom(std::string("\xA6", 1), 8);
+  auto               rom     = configuredRom((std::vector<std::uint8_t>{0xA6}), 8);
   auto               circuit = std::make_shared<Circuit>(Component_set{rom});
   Simulator          simulator(circuit);
 
@@ -167,14 +172,15 @@ TEST(ROMTest, OneWordRomIgnoresAddressState)
 
 TEST(ROMTest, MissingAndExternallyInvalidatedContentIsUnknown)
 {
-  auto               rom = configuredRom(std::string("\x10\x20\x30\x40", 4), 8);
+  auto rom = configuredRom((std::vector<std::uint8_t>{0x10, 0x20, 0x30, 0x40}), 8);
   auto               circuit = std::make_shared<Circuit>(Component_set{rom});
   Simulator          simulator(circuit);
 
   Bus cs = rom->inputBuses()[1];
   ASSERT_EQ(simulator.setBus(cs, valueFor(cs, 1)), Simulator::RunResult::Completed);
 
-  rom->refreshBinaryContents(binarySnapshot(std::string("\x10\x20\x30", 3)));
+  rom->refreshBinaryContents(
+      binarySnapshot((std::vector<std::uint8_t>{0x10, 0x20, 0x30})));
   rom->simulate(simulator);
   EXPECT_EQ(rom->inputBuses()[0].size(), 1);
   expectState(rom->outputBuses()[0], State::UNKNOWN);
@@ -183,7 +189,7 @@ TEST(ROMTest, MissingAndExternallyInvalidatedContentIsUnknown)
   rom->simulate(simulator);
   expectState(rom->outputBuses()[0], State::UNKNOWN);
 
-  rom->refreshBinaryContents(binarySnapshot(std::string("\x10\x20", 2)));
+  rom->refreshBinaryContents(binarySnapshot((std::vector<std::uint8_t>{0x10, 0x20})));
   EXPECT_EQ(rom->inputBuses()[0].size(), 1);
 }
 
@@ -206,12 +212,13 @@ TEST(ROMTest, ControlUnknownsPropagateWhileEnabledContentIsUnavailable)
 
 TEST(ROMTest, BinaryDocumentChangeIsTransactionalAndClearsStaleContent)
 {
-  auto rom = configuredRom(std::string("\x10\x20\x30\x40", 4), 8);
+  auto       rom = configuredRom((std::vector<std::uint8_t>{0x10, 0x20, 0x30, 0x40}), 8);
   const auto originalSnapshot = rom->binaryContentsSnapshot();
   const auto originalInputs   = rom->inputBuses();
 
   EXPECT_THROW(
-      rom->setBinaryDocument("invalid", binarySnapshot(std::string("\x10\x20\x30", 3))),
+      rom->setBinaryDocument(
+          "invalid", binarySnapshot((std::vector<std::uint8_t>{0x10, 0x20, 0x30}))),
       std::invalid_argument);
   EXPECT_EQ(rom->getPropertyValue<std::string>("binaryContents"), "program");
   EXPECT_EQ(rom->binaryContentsSnapshot(), originalSnapshot);
@@ -225,7 +232,7 @@ TEST(ROMTest, BinaryDocumentChangeIsTransactionalAndClearsStaleContent)
 
 TEST(ROMTest, SerializationPreservesWiringAndExplicitHydrationFeedsRuntimeSnapshot)
 {
-  auto    rom = configuredRom(std::string("\x5A\xC3\x7E\x81", 4), 8);
+  auto rom = configuredRom((std::vector<std::uint8_t>{0x5A, 0xC3, 0x7E, 0x81}), 8);
   Circuit            original(Component_set{rom});
 
   ComponentRegistry registry;
@@ -258,7 +265,7 @@ TEST(ROMTest, SerializationPreservesWiringAndExplicitHydrationFeedsRuntimeSnapsh
   EXPECT_EQ(data.getCurrentValue(), valueFor(data, 0xC3));
 
   restoredComponent->refreshBinaryContents(
-      binarySnapshot(std::string("\x00\x00\x00\x00", 4)));
+      binarySnapshot((std::vector<std::uint8_t>{0x00, 0x00, 0x00, 0x00})));
   ASSERT_EQ(session.setBus(address, valueFor(address, 2)), Simulator::RunResult::Completed);
   EXPECT_EQ(data.getCurrentValue(), valueFor(data, 0x7E));
 }

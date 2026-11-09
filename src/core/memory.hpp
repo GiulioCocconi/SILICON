@@ -18,13 +18,41 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 
+#include <vector>
+
+#include <boost/dynamic_bitset.hpp>
 #include <core/component.hpp>
 
 namespace SILICON::core {
+
+/** Packed, least-significant-bit-first words with exact logical geometry. */
+class MemoryImage {
+public:
+  using Bits = boost::dynamic_bitset<std::uint8_t>;
+
+  MemoryImage(Bits bits, std::size_t wordWidth, std::size_t depth);
+
+  /** Decode bytes, trimming byte padding or zero-filling a partial final word. */
+  [[nodiscard]] static MemoryImage fromBytes(std::span<const std::uint8_t> bytes,
+                                             std::size_t wordWidth, std::size_t depth);
+  /** Encode raw bytes, zero-padding the final byte. */
+  [[nodiscard]] std::vector<std::uint8_t> bytes() const;
+
+  [[nodiscard]] const Bits& bits() const noexcept { return data; }
+  [[nodiscard]] std::size_t wordWidth() const noexcept { return width; }
+  [[nodiscard]] std::size_t depth() const noexcept { return words; }
+
+private:
+  Bits        data;
+  std::size_t width;
+  std::size_t words;
+};
 
 /** Asynchronous read-only memory backed by a project binary document. */
 class ROM final : public Component {
@@ -60,7 +88,8 @@ public:
    * A non-empty snapshot whose packed word count is not a power of two is
    * rejected without changing the current document, snapshot, or bus sizing.
    */
-  void setBinaryDocument(std::string slug, std::shared_ptr<const std::string> contents);
+  void setBinaryDocument(std::string                                      slug,
+                         std::shared_ptr<const std::vector<std::uint8_t>> contents);
 
   /**
    * Replaces the cached contents without changing the document slug.
@@ -68,26 +97,39 @@ public:
    * Missing, empty, and externally invalidated contents are accepted and leave
    * the ROM unresolved.
    */
-  void refreshBinaryContents(std::shared_ptr<const std::string> contents);
+  void refreshBinaryContents(std::shared_ptr<const std::vector<std::uint8_t>> contents);
 
   /** Cache a canonical ROM image with an explicit depth, including a single word. */
-  void refreshBinaryContents(std::shared_ptr<const std::string> contents,
-                             std::size_t words);
+  void refreshBinaryContents(std::shared_ptr<const std::vector<std::uint8_t>> contents,
+                             std::size_t                                      words);
 
   /** Returns the immutable binary data currently cached by this ROM. */
-  [[nodiscard]] std::shared_ptr<const std::string>
-  binaryContentsSnapshot() const noexcept;
-  [[nodiscard]] std::size_t resolvedWordCount() const noexcept { return wordCount; }
+  [[nodiscard]] std::shared_ptr<const std::vector<std::uint8_t>>
+                            binaryContentsSnapshot() const noexcept;
+  [[nodiscard]] std::size_t resolvedWordCount() const noexcept;
+
+  /** Install an exact image, such as a Yosys memory initializer. */
+  void setMemoryImage(std::shared_ptr<const MemoryImage> image);
+  [[nodiscard]] std::shared_ptr<const MemoryImage> memoryImageSnapshot() const noexcept
+  {
+    return image;
+  }
+
+  /** Persisted depth; zero means infer geometry for legacy or newly selected documents.
+   */
+  [[nodiscard]] std::size_t memoryDepth() const noexcept;
+  void                      setMemoryDepth(std::size_t depth);
 
 private:
-  std::shared_ptr<const std::string> content;
-  std::size_t                        wordCount              = 0;
-  bool                               initializingProperties = true;
+  std::shared_ptr<const std::vector<std::uint8_t>> content;
+  std::shared_ptr<const MemoryImage>               image;
+  std::size_t                                      imageDepth             = 0;
+  bool                                             settingMemoryImage     = false;
   bool                               settingBinaryDocument  = false;
 
-  void              configure(int dataWidth, std::shared_ptr<const std::string> contents,
-                              bool rejectInvalid, bool preferAddressDepth = false,
-                              std::size_t explicitWords = 0);
+  void configure(int dataWidth, std::shared_ptr<const std::vector<std::uint8_t>> contents,
+                 bool rejectInvalid, bool preferAddressDepth = false,
+                 std::size_t explicitWords = 0);
   void              reshapeBuses(int dataWidth, std::size_t words);
   void              driveState(SILICON::simulation::Simulator& sim, State state);
   [[nodiscard]] int configuredDataWidth() const;
