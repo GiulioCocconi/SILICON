@@ -81,13 +81,12 @@ public:
 
 private:
   std::shared_ptr<const std::string> content;
-  bool                               contentResolved        = false;
   std::size_t                        wordCount              = 0;
   bool                               initializingProperties = true;
   bool                               settingBinaryDocument  = false;
 
   void              configure(int dataWidth, std::shared_ptr<const std::string> contents,
-                              bool rejectInvalid, bool reshape, bool preferAddressDepth = false,
+                              bool rejectInvalid, bool preferAddressDepth = false,
                               std::size_t explicitWords = 0);
   void              reshapeBuses(int dataWidth, std::size_t words);
   void              driveState(SILICON::simulation::Simulator& sim, State state);
