@@ -581,12 +581,21 @@ void Decoder::serializeYosys(SerializationContext& context) const
 
 void WireSplitter::serializeYosys(SerializationContext& context) const
 {
-  // Splitter outputs are aliases for consecutive input bits. Packing the one-bit
-  // outputs in order and passing through $pos expresses that wiring in cell form.
+  // Outputs may be overlapping bus slices. Pack the corresponding source bits
+  // in output-port order so export preserves offsets, widths and repeated bits.
+  const auto        input  = context.bits(requireBus(*this, true, 0));
+  const auto        slices = outputSlices();
+  std::vector<Json> inputs;
   std::vector<Json> outputs;
-  for (const auto& output : outputBuses())
-    outputs.push_back(context.bits(output));
-  emitUnary(context, "split", "$pos", context.bits(requireBus(*this, true, 0)),
+  for (std::size_t port = 0; port < outputBuses().size(); ++port) {
+    const auto [offset, width] = slices.at(port);
+    Json bits                  = Json::array();
+    for (unsigned int bit = 0; bit < width; ++bit)
+      bits.push_back(input.at(offset + bit));
+    inputs.push_back(std::move(bits));
+    outputs.push_back(context.bits(outputBuses()[port]));
+  }
+  emitUnary(context, "split", "$pos", SerializationContext::concatenate(inputs),
             SerializationContext::concatenate(outputs));
 }
 

@@ -19,7 +19,9 @@
 
 #include <core/component.hpp>
 #include <core/wire.hpp>
+#include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace SILICON::extra {
@@ -28,13 +30,14 @@ using namespace SILICON::core;
 class WireSplitter : public Component {
 private:
   void initializeProperties();
+  std::vector<std::pair<unsigned int, unsigned int>> slices;
 
 public:
   static constexpr std::string_view Type = "WireSplitter";
   std::string_view                  typeName() const override { return Type; }
   ComponentMetadata                 metadata() const override
   {
-    return {"Wire Splitter", "Splits a bus into individual output bits.",
+    return {"Wire Splitter", "Splits a bus into bits or bus slices.",
             ComponentCategory::Utils};
   }
 
@@ -43,6 +46,12 @@ public:
 
   int setSize(int newSize);
 
+  /** Comma-separated offset:width pairs; empty selects every individual bit.
+   * Slices may overlap, so byte, half-word and scalar consumers can share a splitter.
+   */
+  std::string setSlices(const std::string& specification);
+  [[nodiscard]] std::vector<std::pair<unsigned int, unsigned int>> outputSlices() const;
+
   void simulate(SILICON::simulation::Simulator& sim) override;
   void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
 };
@@ -50,13 +59,14 @@ public:
 class WireMerger : public Component {
 private:
   void initializeProperties();
+  std::vector<unsigned int> widths;
 
 public:
   static constexpr std::string_view Type = "WireMerger";
   std::string_view                  typeName() const override { return Type; }
   ComponentMetadata                 metadata() const override
   {
-    return {"Wire Merger", "Merges individual input bits into a bus.",
+    return {"Wire Merger", "Concatenates bits or buses, least-significant input first.",
             ComponentCategory::Utils};
   }
 
@@ -64,6 +74,9 @@ public:
   WireMerger(const std::vector<Bus>& inputs, Bus output);
 
   int setSize(int newSize);
+
+  /** Comma-separated input widths summing to size; empty selects individual bits. */
+  std::string setWidths(const std::string& specification);
 
   void simulate(SILICON::simulation::Simulator& sim) override;
   void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
