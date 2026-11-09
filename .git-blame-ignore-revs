@@ -26,13 +26,19 @@
 # fi
 #
 # Commits that can be likely ignored can be found with
-# git log --oneline --regexp-ignore-case --grep="^style"
+# git log --oneline --no-abbrev-commit --grep="^style"
+#
+# The list of hashes can be found with
+# git log --pretty="%H" --grep="^style"
 
-726088d
-d2d4d13
-393cba2
-5a86863
-2c4dcb1
-78a96e6
-3fa7e52
-62a39ac
+76618c8154985f6d667aca1dd8930644b8a93817
+d26a0330d9ceb72fd383e478f63711f0d0a17db6
+f9218df470a0ac08c84d5f5cf671a3770f6cad46
+726088d3c68db4602a6329c0eee3f730c4957ee1
+d2d4d13c847c6c05fd85a86c458dbcea6f3ff1d5
+393cba27f1e0999a9feb6fc5b8a7dc33d0b52191
+5a86863a68db1187219b56a280bcf748267736a0
+2c4dcb199f5872047bd3fd7f6eb4c3a55b55c4ef
+78a96e654ad1d041bebda5b27b273ad76fc2d6fb
+3fa7e5295f8821519f34ba4cb9b34b96aecc036d
+62a39ac4851e443ac2161624eeeec1008ed4ae69
