@@ -43,6 +43,7 @@ public:
                                              std::size_t wordWidth, std::size_t depth);
   /** Encode raw bytes, zero-padding the final byte. */
   [[nodiscard]] std::vector<std::uint8_t> bytes() const;
+  [[nodiscard]] BusValue word(std::size_t address) const;
 
   [[nodiscard]] const Bits& bits() const noexcept { return data; }
   [[nodiscard]] std::size_t wordWidth() const noexcept { return width; }
@@ -54,8 +55,73 @@ private:
   std::size_t words;
 };
 
+/** Common binary-document backing for memory components. */
+class Memory : public Component {
+public:
+  virtual void refreshBinaryContents(
+      std::shared_ptr<const std::vector<std::uint8_t>> contents) = 0;
+
+  [[nodiscard]] std::shared_ptr<const MemoryImage> memoryImageSnapshot() const noexcept
+  {
+    return image;
+  }
+  [[nodiscard]] std::shared_ptr<const std::vector<std::uint8_t>>
+  binaryContentsSnapshot() const noexcept { return content; }
+
+protected:
+  std::shared_ptr<const std::vector<std::uint8_t>> content;
+  std::shared_ptr<const MemoryImage> image;
+};
+
+/** One asynchronous read port and one masked, positive-edge write port. */
+class RAM final : public Memory {
+public:
+  static constexpr std::string_view Type = "RAM";
+
+  enum class Inputs : unsigned int {
+    ReadAddress = 0,
+    WriteAddress,
+    WriteData,
+    WriteEnable,
+    Clock,
+  };
+  enum class Outputs : unsigned int { Data = 0 };
+
+  RAM();
+
+  [[nodiscard]] std::string_view typeName() const override { return Type; }
+  [[nodiscard]] ComponentMetadata metadata() const override
+  {
+    return {"RAM", "Asynchronous read and masked synchronous write memory.",
+            ComponentCategory::Memory};
+  }
+
+  void simulate(SILICON::simulation::Simulator& sim,
+                const SILICON::simulation::Context& context) override;
+  void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
+
+  void setBinaryDocument(std::string slug,
+                         std::shared_ptr<const std::vector<std::uint8_t>> contents);
+  void refreshBinaryContents(
+      std::shared_ptr<const std::vector<std::uint8_t>> contents) override;
+  void setMemoryImage(std::shared_ptr<const MemoryImage> image);
+  [[nodiscard]] std::size_t memoryDepth() const;
+  void setMemoryDepth(std::size_t depth);
+
+private:
+  std::vector<BusValue> words;
+
+  [[nodiscard]] int configuredDataWidth() const;
+  void configure(int width, std::size_t depth,
+                 std::shared_ptr<const std::vector<std::uint8_t>> contents,
+                 bool rejectInvalid);
+  void initializeWords();
+  [[nodiscard]] bool write(const BusValue& address, const BusValue& data,
+                           const BusValue& mask, State clockEnable);
+};
+
 /** Asynchronous read-only memory backed by a project binary document. */
-class ROM final : public Component {
+class ROM final : public Memory {
 public:
   static constexpr std::string_view Type = "ROM";
 
@@ -97,23 +163,17 @@ public:
    * Missing, empty, and externally invalidated contents are accepted and leave
    * the ROM unresolved.
    */
-  void refreshBinaryContents(std::shared_ptr<const std::vector<std::uint8_t>> contents);
+  void refreshBinaryContents(
+      std::shared_ptr<const std::vector<std::uint8_t>> contents) override;
 
   /** Cache a canonical ROM image with an explicit depth, including a single word. */
   void refreshBinaryContents(std::shared_ptr<const std::vector<std::uint8_t>> contents,
                              std::size_t                                      words);
 
-  /** Returns the immutable binary data currently cached by this ROM. */
-  [[nodiscard]] std::shared_ptr<const std::vector<std::uint8_t>>
-                            binaryContentsSnapshot() const noexcept;
   [[nodiscard]] std::size_t resolvedWordCount() const noexcept;
 
   /** Install an exact image, such as a Yosys memory initializer. */
   void setMemoryImage(std::shared_ptr<const MemoryImage> image);
-  [[nodiscard]] std::shared_ptr<const MemoryImage> memoryImageSnapshot() const noexcept
-  {
-    return image;
-  }
 
   /** Persisted depth; zero means infer geometry for legacy or newly selected documents.
    */
@@ -121,8 +181,6 @@ public:
   void                      setMemoryDepth(std::size_t depth);
 
 private:
-  std::shared_ptr<const std::vector<std::uint8_t>> content;
-  std::shared_ptr<const MemoryImage>               image;
   std::size_t                                      imageDepth             = 0;
   bool                                             settingMemoryImage     = false;
   bool                               settingBinaryDocument  = false;

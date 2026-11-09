@@ -142,6 +142,62 @@ void ROM::serializeYosys(SerializationContext& context) const
                        {"Q", context.bits(outputBuses()[0])}});
 }
 
+void RAM::serializeYosys(SerializationContext& context) const
+{
+  const auto width = static_cast<std::size_t>(getPropertyValue<int>("dataWidth").value());
+  const auto count = memoryDepth();
+  if (inputBuses().size() != 5 || outputBuses().size() != 1)
+    throw std::runtime_error("Cannot export malformed RAM buses");
+  const auto abits = inputBuses()[busIndex(Inputs::ReadAddress)].size();
+  if (abits < std::max<std::size_t>(1, std::bit_width(count - 1))
+      || inputBuses()[busIndex(Inputs::WriteAddress)].size() != abits
+      || inputBuses()[busIndex(Inputs::WriteData)].size() != width
+      || inputBuses()[busIndex(Inputs::WriteEnable)].size() != width
+      || inputBuses()[busIndex(Inputs::Clock)].size() != 1
+      || outputBuses()[0].size() != width
+      || count > static_cast<std::size_t>(std::numeric_limits<int>::max()) / width)
+    throw std::runtime_error("Cannot export invalid RAM geometry");
+
+  const auto image = memoryImageSnapshot();
+  const auto slug = getPropertyValue<std::string>("binaryContents").value_or("");
+  if (!image && !slug.empty())
+    throw std::runtime_error("Cannot export RAM with unresolved binary contents");
+  std::string init(count * width, 'x');
+  if (image)
+    for (std::size_t bit = 0; bit < init.size(); ++bit)
+      init[init.size() - bit - 1] = image->bits()[bit] ? '1' : '0';
+  Json attributes = Json::object();
+  if (!slug.empty())
+    attributes[std::string(SILICON::yosys::attributes::BINARY_DOCUMENT)] = slug;
+  const auto p = [](std::uint64_t value) { return SerializationContext::parameter(value); };
+  context.addCell(
+      "memory", "$mem_v2",
+      Json{{"ABITS", p(abits)}, {"INIT", init},
+           {"MEMID", std::format("\\{}", context.componentIdentifier())},
+           {"OFFSET", p(0)}, {"WIDTH", p(width)}, {"SIZE", p(count)},
+           {"RD_PORTS", p(1)}, {"RD_CLK_ENABLE", "0"}, {"RD_CLK_POLARITY", "0"},
+           {"RD_ARST_VALUE", std::string(width, 'x')},
+           {"RD_SRST_VALUE", std::string(width, 'x')},
+           {"RD_INIT_VALUE", std::string(width, 'x')}, {"RD_CE_OVER_SRST", "0"},
+           {"RD_TRANSPARENCY_MASK", "0"}, {"RD_COLLISION_X_MASK", "0"},
+           {"RD_WIDE_CONTINUATION", "0"}, {"WR_PORTS", p(1)},
+           {"WR_CLK_ENABLE", "1"}, {"WR_CLK_POLARITY", "1"},
+           {"WR_PRIORITY_MASK", "0"}, {"WR_WIDE_CONTINUATION", "0"}},
+      directions({{"RD_ADDR", "input"}, {"RD_DATA", "output"}, {"RD_EN", "input"},
+                  {"RD_CLK", "input"}, {"RD_ARST", "input"}, {"RD_SRST", "input"},
+                  {"WR_ADDR", "input"}, {"WR_DATA", "input"}, {"WR_EN", "input"},
+                  {"WR_CLK", "input"}}),
+      Json{{"RD_ADDR", context.inputBits(*this, busIndex(Inputs::ReadAddress), abits)},
+           {"RD_DATA", context.bits(outputBuses()[0])}, {"RD_EN", Json::array({"1"})},
+           {"RD_CLK", Json::array({"x"})}, {"RD_ARST", Json::array({"0"})},
+           {"RD_SRST", Json::array({"0"})},
+           {"WR_ADDR", context.inputBits(*this, busIndex(Inputs::WriteAddress), abits)},
+           {"WR_DATA", context.inputBits(*this, busIndex(Inputs::WriteData), width)},
+           {"WR_EN", context.inputBits(*this, busIndex(Inputs::WriteEnable), width)},
+           {"WR_CLK", context.inputBits(*this, busIndex(Inputs::Clock), 1)}},
+      std::move(attributes));
+}
+
 void ConstantComponent::serializeYosys(SerializationContext& context) const
 {
   if (outputBuses().empty())

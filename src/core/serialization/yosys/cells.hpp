@@ -22,6 +22,7 @@
 namespace SILICON::yosys::cells {
 
 inline constexpr std::string_view ROM        = "SILICON_ROM";
+inline constexpr std::string_view RAM        = "SILICON_RAM";
 inline constexpr std::string_view LOGIC      = "SILICON_LOGIC";
 inline constexpr std::string_view COMPARE    = "SILICON_COMPARE";
 inline constexpr std::string_view SHIFT      = "SILICON_SHIFT";

@@ -59,6 +59,7 @@ void registerAllComponents(ComponentRegistry& registry)
   registerComponent<JKFlipFlop>(registry);
   registerComponent<Register>(registry);
   registerComponent<ROM>(registry);
+  registerComponent<RAM>(registry);
   registerComponent<SubcircuitComponent>(registry);
 
   registerComponent<Extender>(registry);

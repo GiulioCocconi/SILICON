@@ -156,7 +156,7 @@ bool supported(RTLIL::IdString type)
     ID($and), ID($or), ID($xor), ID($not), ID($_NAND_), ID($_NOR_),
     ID($pos), ID($add), ID($sub), ID($neg), ID($mux), ID($bmux), ID($demux),
     ID($adffe),
-    id("SILICON_ROM"), id("SILICON_LOGIC"), id("SILICON_COMPARE"),
+    id("SILICON_ROM"), id("SILICON_RAM"), id("SILICON_LOGIC"), id("SILICON_COMPARE"),
     id("SILICON_SHIFT"), id("SILICON_DFF"), id("SILICON_DFFE"),
     id("SILICON_DLATCH"), id("SILICON_DFFSR"), id("SILICON_DFFSRE"),
     id("SILICON_JKFF"), id("SILICON_HALF_ADDER"), id("SILICON_FULL_ADDER"),
@@ -220,6 +220,9 @@ struct SiliconLegalizePass : Pass {
     Pass::call(design, "pmuxtree");
     Pass::call(design, "delete t:$scopeinfo");
     Pass::call(design, "opt -nosdff");
+    // Recombine per-bit write ports emitted by write_verilog when they share
+    // an address and clock, preserving independently addressed write ports.
+    Pass::call(design, "memory_share -nosat -nowiden");
     Pass::call(design, "memory_dff");
     Pass::call(design, "silicon_memrd_address");
     Pass::call(design, "silicon_memory_lower");

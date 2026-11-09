@@ -10,8 +10,9 @@ raw Yosys cells and may need legalization before import.
 The ordered entry point runs:
 
 1. `silicon_pmux_bmux`, `silicon_eq_decoder`: recognize mux and decoder patterns.
-2. `pmuxtree`, `delete t:$scopeinfo`, `opt -nosdff`, `memory_dff`: Yosys preparation.
-3. `silicon_memrd_address`, `silicon_memory_lower`: legalize read-only memories.
+2. `pmuxtree`, `delete t:$scopeinfo`, `opt -nosdff`, `memory_share -nosat -nowiden`,
+   `memory_dff`: Yosys preparation.
+3. `silicon_memrd_address`, `silicon_memory_lower`: legalize ROMs and writable RAMs.
 4. `silicon_logic`, `silicon_compare`, `silicon_shift`: normalize expression semantics.
 5. Selective `simplemap` (including `$reduce_bool` to OR gates), `extract_fa`,
    SILICON `techmap`, `opt_clean`.
@@ -25,7 +26,8 @@ canonical type once; a second invocation leaves those cells unchanged.
 The importer accepts `$and`, `$or`, `$xor`, `$not`, `$_NAND_`, `$_NOR_`,
 `$pos`, `$add`, `$sub`, `$neg`, `$mux`, `$bmux`, `$demux`, scalar zero-reset
 `$adffe`, declared module instances, and the existing
-`SILICON_*` technology cells listed in `cells.hpp`, including `SILICON_ROM`.
+`SILICON_*` technology cells listed in `cells.hpp`, including `SILICON_ROM` and
+`SILICON_RAM`.
 Native `$mul`, `$div`, `$mod`, `$dff`, `$dffsr`, `$dffsre`, and supported `$dlatch`
 cells are converted to technology cells before this boundary and are rejected by
 both `silicon_validate` and the direct importer if they remain. Native `$add` and
@@ -70,6 +72,14 @@ Additional expression contracts:
   sign fill. `A` is already truncated or extended to `WIDTH`. Signed shift
   amounts are rejected.
 
-`silicon_validate` rejects any cell outside this subset, including writable
+`SILICON_RAM` is emitted only for writable memories. It has one asynchronous read
+port and one positive-edge write port with per-bit write enables. Parameters are
+`WIDTH`, `SIZE`, `ABITS`, `INIT`, and `ID`; ports are `RD_ADDR`, `RD_DATA`, `WR_ADDR`,
+`WR_DATA`, `WR_EN`, and `WR_CLK`. Initialization must be fully binary or entirely
+X. Address buses may be wider than the minimum needed for `SIZE`. Memory
+attributes, including `silicon_mem_slug`, survive lowering. Memories without
+write ports use `SILICON_ROM` instead.
+
+`silicon_validate` rejects any cell outside this subset, including native
 memories and unsupported operators. The memory pass diagnoses unsupported ROM
-configuration before validation.
+and RAM configurations before validation.
