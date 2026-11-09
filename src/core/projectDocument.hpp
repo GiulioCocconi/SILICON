@@ -26,6 +26,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <variant>
 #include <vector>
 
 #include <core/callbackRegistry.hpp>
@@ -104,21 +105,30 @@ struct DocumentChange {
 
 /**
  * A document always has a valid, immutable project-relative path. Its type is
- * derived from that path. Contents are the only persisted representation.
+ * derived from that path. Text documents store strings; raw binary documents
+ * store bytes.
  */
 class Document {
 public:
-  Document(std::string path, std::string contents);
+  using Contents = std::variant<std::string, std::vector<std::uint8_t>>;
+
+  Document(std::string path, Contents contents);
 
   [[nodiscard]] const std::string& getPath() const noexcept;
-  [[nodiscard]] const std::string& getContents() const noexcept;
+  /** Returns typed contents; throws std::bad_variant_access for a mismatched type. */
+  template <typename T = std::string> [[nodiscard]] const T& getContents() const
+  {
+    return std::get<T>(contents);
+  }
+
+  [[nodiscard]] const Contents&    getPayload() const noexcept;
   [[nodiscard]] DocumentType       getType() const noexcept;
 
-  void setContents(std::string contents);
+  void setContents(Contents contents);
 
 private:
   std::string path;
-  std::string contents;
+  Contents    contents;
 };
 
 /**
@@ -129,6 +139,10 @@ private:
  *
  * @throws std::invalid_argument if the name is invalid or the file type is unsupported.
  */
+[[nodiscard]] Document importDocument(std::string_view                 fileName,
+                                      const std::vector<std::uint8_t>& contents);
+
+/** Import textual source. Binary input must use the byte-vector overload. */
 [[nodiscard]] Document importDocument(std::string_view fileName, std::string contents);
 
 /** Returns the external leaf filename used when exporting a project document. */
@@ -158,8 +172,8 @@ private:
   mutable SILICON::core::CallbackRegistry<const DocumentChange&> listeners;
 };
 
-/** Returns an immutable copy of a project raw-binary document, or null if absent. */
-[[nodiscard]] std::shared_ptr<const std::string>
+/** Returns immutable bytes of a raw-binary document, or null if absent. */
+[[nodiscard]] std::shared_ptr<const std::vector<std::uint8_t>>
 binaryContentsSnapshot(const DocumentStore& documents, std::string_view slug);
 
 }  // namespace SILICON::project
