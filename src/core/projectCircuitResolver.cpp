@@ -46,15 +46,17 @@ ProjectCircuitResolver::resolve(const std::string_view slug) const
 
   auto definition =
       SILICON::core::parseCircuitDocument(document->getContents(), registry, this);
-  for (const auto& [_component, vertex] : definition.circuit.getComponentToVertex()) {
-    const auto rom = std::dynamic_pointer_cast<SILICON::core::ROM>(
+  for (const auto& vertex :
+       definition.circuit.getComponentToVertex() | std::views::values) {
+    const auto memory = std::dynamic_pointer_cast<SILICON::core::Memory>(
         definition.circuit.getComponentByVertexId(vertex));
-    if (!rom)
+    if (!memory)
       continue;
 
-    const auto binarySlug = rom->getPropertyValue<std::string>("binaryContents");
-    rom->refreshBinaryContents(
-        binarySlug ? binaryContentsSnapshot(project.documents(), *binarySlug) : nullptr);
+    const auto binarySlug = memory->getPropertyValue<std::string>("binaryContents");
+    const auto contents =
+        binarySlug ? binaryContentsSnapshot(project.documents(), *binarySlug) : nullptr;
+    memory->refreshBinaryContents(contents);
   }
   return definition;
 }
