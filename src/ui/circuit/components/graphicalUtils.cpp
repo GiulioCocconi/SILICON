@@ -36,6 +36,13 @@ void GraphicalWireSplitter::installSizeCallback()
                                                    int newSize = std::get<int>(value);
                                                    return this->setSize(newSize);
                                                  });
+  this->associatedComponent->setPropertyCallback(
+      "slices", [this](const PropertyValue& value) {
+        const auto logical = dynamic_cast<WireSplitter*>(associatedComponent.get());
+        const auto result  = logical->setSlices(std::get<std::string>(value));
+        setSize(logical->getPropertyValue<int>("size").value_or(2));
+        return result;
+      });
 }
 
 void GraphicalWireSplitter::setComponent(const Component_ptr& component)
@@ -47,25 +54,29 @@ void GraphicalWireSplitter::setComponent(const Component_ptr& component)
 
 int GraphicalWireSplitter::setSize(const int newSize)
 {
-  if (newSize <= 1)
+  if (newSize < 1)
     return static_cast<int>(this->size);
-
-  this->size = newSize;
 
   const auto logicalWireSplitter = dynamic_cast<WireSplitter*>(associatedComponent.get());
   logicalWireSplitter->setSize(newSize);
+  this->size = newSize;
 
   QPainterPath path{};
   path.moveTo(0, 0);
 
   std::vector<PortPair> outputPorts;
-  outputPorts.reserve(newSize);
+  const auto            slices = logicalWireSplitter->outputSlices();
+  outputPorts.reserve(slices.size());
 
-  for (int i = 1; i <= newSize; i++) {
-    QPoint portLoc(10, -20 * i + 10);
+  for (std::size_t i = 0; i < slices.size(); ++i) {
+    QPoint portLoc(10, -20 * static_cast<int>(i) - 10);
     path.lineTo(portLoc);
 
-    outputPorts.emplace_back(QString("b[%1]").arg(i - 1), portLoc + QPoint(20, 0));
+    const auto [offset, width] = slices[i];
+    const auto label           = width == 1
+                                     ? QString("b[%1]").arg(offset)
+                                     : QString("b[%1:%2]").arg(offset + width - 1).arg(offset);
+    outputPorts.emplace_back(label, portLoc + QPoint(20, 0));
   }
 
   auto shape = new ThemedPathItem(path, this);
@@ -92,6 +103,13 @@ void GraphicalWireMerger::installSizeCallback()
         const int newSize = std::get<int>(value);
         return this->setSize(newSize);
       });
+  this->associatedComponent->setPropertyCallback(
+      "widths", [this](const PropertyValue& value) {
+        const auto logical = dynamic_cast<WireMerger*>(associatedComponent.get());
+        const auto result  = logical->setWidths(std::get<std::string>(value));
+        setSize(logical->getPropertyValue<int>("size").value_or(2));
+        return result;
+      });
 }
 
 void GraphicalWireMerger::setComponent(const Component_ptr& component)
@@ -103,24 +121,30 @@ void GraphicalWireMerger::setComponent(const Component_ptr& component)
 
 int GraphicalWireMerger::setSize(const int newSize)
 {
-  if (newSize <= 1)
+  if (newSize < 1)
     return this->size;
-  this->size = newSize;
-
   const auto logicalWireMerger = dynamic_cast<WireMerger*>(associatedComponent.get());
   logicalWireMerger->setSize(newSize);
+  this->size = newSize;
 
   QPainterPath path{};
   path.moveTo(0, 0);
 
   std::vector<PortPair> inputPorts;
-  inputPorts.reserve(newSize);
+  const auto&           inputs = logicalWireMerger->inputBuses();
+  inputPorts.reserve(inputs.size());
 
-  for (int i = 1; i <= newSize; i++) {
-    QPoint portLoc(-10, -20 * i + 10);
+  unsigned int offset = 0;
+  for (std::size_t i = 0; i < inputs.size(); ++i) {
+    QPoint portLoc(-10, -20 * static_cast<int>(i) - 10);
     path.lineTo(portLoc);
 
-    inputPorts.emplace_back(QString("b[%1]").arg(i - 1), portLoc + QPoint(-20, 0));
+    const auto width = inputs[i].size();
+    const auto label = width == 1
+                           ? QString("b[%1]").arg(offset)
+                           : QString("b[%1:%2]").arg(offset + width - 1).arg(offset);
+    inputPorts.emplace_back(label, portLoc + QPoint(-20, 0));
+    offset += width;
   }
 
   auto shape = new ThemedPathItem(path, this);

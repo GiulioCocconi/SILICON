@@ -18,6 +18,7 @@
 #include "elaboration.hpp"
 
 #include <format>
+#include <map>
 #include <stdexcept>
 #include <unordered_map>
 #include <utility>
@@ -117,10 +118,15 @@ namespace {
 
   void copyProperties(const Component& source, const Component_ptr& target)
   {
-    for (const auto& [key, value] : source.getProperties()) {
-      if (target->getProperty(key).has_value())
-        target->setProperty(key, value);
-    }
+    // Match native deserialization: apply dimensions before slice/port layouts,
+    // then bus values after their widths have settled. PropertyMap is unordered.
+    const std::map properties(source.getProperties().begin(),
+                              source.getProperties().end());
+    for (const bool busValue : {false, true})
+      for (const auto& [key, value] : properties)
+        if (target->getProperty(key).has_value()
+            && std::holds_alternative<BusValue>(value) == busValue)
+          target->setProperty(key, value);
   }
 
   void appendCircuit(const Circuit& circuit, ElaborationContext& context,

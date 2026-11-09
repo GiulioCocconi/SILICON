@@ -17,7 +17,9 @@
 
 #pragma once
 
+#include <string>
 #include <string_view>
+#include <vector>
 
 #include <core/component.hpp>
 #include <core/wire.hpp>
@@ -26,6 +28,9 @@ namespace SILICON::extra {
 using namespace SILICON::core;
 
 class Multiplexer : public Component {
+private:
+  std::vector<unsigned short> selectionTable;
+
 public:
   static constexpr std::string_view Type = "Multiplexer";
 
@@ -49,6 +54,15 @@ public:
 
   int setSelectionSize(int selectionSize);
   int setBusSize(int busSize);
+
+  /** Optional comma-separated data-port indices, one per binary selector value.
+   * Empty uses the ordinary one-data-port-per-value layout.
+   */
+  std::string setSelectionTable(const std::string& specification);
+  [[nodiscard]] const std::vector<unsigned short>& selectionTableIndices() const
+  {
+    return selectionTable;
+  }
 
   void simulate(SILICON::simulation::Simulator& sim) override;
   void serializeYosys(SILICON::yosys::SerializationContext& context) const override;

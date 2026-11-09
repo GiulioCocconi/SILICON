@@ -158,6 +158,7 @@ bool supported(RTLIL::IdString type)
     ID($adffe),
     id("SILICON_ROM"), id("SILICON_RAM"), id("SILICON_LOGIC"), id("SILICON_COMPARE"),
     id("SILICON_SHIFT"), id("SILICON_DFF"), id("SILICON_DFFE"),
+    id("SILICON_GATE"), id("SILICON_MUX"),
     id("SILICON_DLATCH"), id("SILICON_DFFSR"), id("SILICON_DFFSRE"),
     id("SILICON_JKFF"), id("SILICON_HALF_ADDER"), id("SILICON_FULL_ADDER"),
     id("SILICON_ADDER"), id("SILICON_MULTIPLIER"), id("SILICON_DIVIDER"),
@@ -238,6 +239,8 @@ struct SiliconLegalizePass : Pass {
     // The vector overload preserves a parsed path as one argument, including spaces.
     Pass::call(design, std::vector<std::string>{"techmap", "-map", args[1]});
     Pass::call(design, "opt_clean");
+    Pass::call(design, "silicon_gates");
+    Pass::call(design, "silicon_mux");
     Pass::call(design, "silicon_validate");
   }
 } SiliconLegalizePass;

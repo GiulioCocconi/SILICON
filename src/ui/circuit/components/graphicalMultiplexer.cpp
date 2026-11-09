@@ -81,14 +81,19 @@ private:
   QString label;
 };
 
-QGraphicsItem* busShape(const int busSize, const int selectionSize, const bool demux)
+QGraphicsItem* busShape(const int busSize, const int selectionSize, const bool demux,
+                        const int distinctInputs = 0)
 {
-  const int dataBusCount = 1 << selectionSize;
+  const int     dataBusCount = distinctInputs > 0 ? distinctInputs : 1 << selectionSize;
   const int width = getMuxWidth(dataBusCount);
   constexpr int HEIGHT   = 90;
-  const QString label =
-      demux ? QString("%1 demux 1 to %2").arg(busSize).arg(dataBusCount)
-            : QString("%1 mux %2 to 1").arg(busSize).arg(dataBusCount);
+  QString       label = demux ? QString("%1 demux 1 to %2").arg(busSize).arg(dataBusCount)
+                              : QString("%1 mux %2 to 1").arg(busSize).arg(dataBusCount);
+  if (!demux && dataBusCount != 1 << selectionSize)
+    label = QString("%1-bit mux\n%2 choices / %3 selections")
+                .arg(busSize)
+                .arg(dataBusCount)
+                .arg(1 << selectionSize);
   return new LabeledMuxRectItem(QRectF(0, 0, width, HEIGHT), label);
 }
 
@@ -138,19 +143,48 @@ void GraphicalMultiplexer::setupCallbacks()
   associatedComponent->setPropertyCallback("busSize", [this](const PropertyValue& value) {
     return applyBusSize(std::get<int>(value));
   });
+  associatedComponent->setPropertyCallback(
+      "selectionTable", [this](const PropertyValue& value) {
+        const auto result =
+            getComponentAsMultiplexer()->setSelectionTable(std::get<std::string>(value));
+        updateLayout(
+            associatedComponent->getPropertyValue<int>("selectionSize").value_or(1),
+            associatedComponent->getPropertyValue<int>("busSize").value_or(1));
+        return result;
+      });
 }
 
 void GraphicalMultiplexer::updateLayout(const int selectionSize, const int busSize)
 {
-  const int dataBusCount = 1 << selectionSize;
+  const int dataBusCount = static_cast<int>(associatedComponent->inputBuses().size()) - 1;
 
-  if (busSize > 1 || selectionSize > 1) {
-    setItemShape(busShape(busSize, selectionSize, false));
+  if (busSize > 1 || selectionSize > 1 || dataBusCount != 1 << selectionSize) {
+    setItemShape(busShape(busSize, selectionSize, false, dataBusCount));
     const int width = getMuxWidth(dataBusCount);
 
     auto inputs = northBusPorts(dataBusCount, "d", width);
     inputs.emplace_back("sel", QPoint(-20, 50));
     setPorts(inputs, {PortPair{"out", DiagramScene::snapToGrid(QPoint(width / 2, 110))}});
+    const auto& table = getComponentAsMultiplexer()->selectionTableIndices();
+    if (!table.empty()) {
+      for (int port = 0; port < dataBusCount; ++port) {
+        QString values;
+        for (std::size_t value = 0; value < table.size();) {
+          if (table[value] != port) {
+            ++value;
+            continue;
+          }
+          const auto first = value++;
+          while (value < table.size() && table[value] == port)
+            ++value;
+          if (!values.isEmpty())
+            values += ", ";
+          values += first + 1 == value ? QString::number(first)
+                                       : QString("%1–%2").arg(first).arg(value - 1);
+        }
+        getInputPorts()[port]->setToolTip(QString("Selected when sel is %1").arg(values));
+      }
+    }
     return;
   }
 

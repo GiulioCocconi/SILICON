@@ -152,7 +152,7 @@ TEST(YosysToolTest, MapsVerilogToSiliconTechnologyCells)
       endmodule
     )",
                         "top"),
-            (std::multiset<std::string>{"$pos", "$pos", "SILICON_ADDER"}));
+            (std::multiset<std::string>{"$pos", "SILICON_ADDER"}));
   EXPECT_EQ(mappedTypes(R"(
       module top(
         input [3:0] a, input [3:0] b,

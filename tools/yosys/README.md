@@ -16,7 +16,9 @@ The ordered entry point runs:
 4. `silicon_logic`, `silicon_compare`, `silicon_shift`: normalize expression semantics.
 5. Selective `simplemap` (including `$reduce_bool` to OR gates), `extract_fa`,
    SILICON `techmap`, `opt_clean`.
-6. `silicon_validate`: reject unsupported cells before `write_json`.
+6. `silicon_gates`, `silicon_mux`: recover gates with multiple inputs, combine
+   compatible mux trees, and compact repeated mux choices.
+7. `silicon_validate`: reject unsupported cells before `write_json`.
 
 The expression passes only touch selected cells. Each changes raw cells to a
 canonical type once; a second invocation leaves those cells unchanged.
@@ -71,6 +73,17 @@ Additional expression contracts:
   width; `DIRECTION` 0/1 means left/right; `ARITHMETIC` 0/1 controls right
   sign fill. `A` is already truncated or extended to `WIDTH`. Signed shift
   amounts are rejected.
+- `SILICON_GATE`: `MODE` 0/1 means AND/OR; `INPUTS` counts ports `A0` through
+  `A<INPUTS-1>`. `BITWISE=1` requires every input and `Y` to have `WIDTH` bits.
+  `BITWISE=0` applies whole-operand truth semantics to inputs of any positive
+  width and requires `WIDTH=1` and a one-bit `Y`.
+- `SILICON_MUX`: `WIDTH` is the data width, `S_WIDTH` is the selector width,
+  and `INPUTS` counts distinct data lanes. `A` packs those lanes in
+  least-significant-lane-first order; `S` and `Y` have `S_WIDTH` and `WIDTH`
+  bits. `TABLE` contains one unsigned `S_WIDTH`-bit lane index per binary
+  selector value, packed least-significant-word first. Every index must be
+  below `INPUTS`, and every data lane must appear. Export expands this cell
+  to a standard `$bmux`.
 
 `SILICON_RAM` is emitted only for writable memories. It has independent asynchronous
 read ports and one positive-edge write port with per-bit write enables. Parameters are
@@ -85,3 +98,41 @@ write ports use `SILICON_ROM` instead.
 `silicon_validate` rejects any cell outside this subset, including native
 memories and unsupported operators. The memory pass diagnoses unsupported ROM
 and RAM configurations before validation.
+
+## Graphical bus connections
+
+`silicon_gates` folds compatible AND/OR chains into gates with multiple inputs.
+Only selected gates whose complete output has one consumer are absorbed;
+shared outputs, bit taps, `keep` attributes, and feedback loops prevent
+contraction. The importer decodes the resulting canonical cells, and the editor
+expands gate symbols to fit their inputs.
+
+`silicon_mux` combines mux trees when every branch is a private mux with the same
+child selector and data width. Combined selectors put the root bits first, which
+preserves UNKNOWN/ERROR precedence. Combined selectors are limited to eight bits.
+Priority chains, independent branch selectors and tapped intermediate outputs
+keep their original structure. Both structure passes respect selection and
+`keep` attributes and can be run repeatedly without further changes.
+
+The mux pass also makes repeated lanes share a single data input. The optional
+`selectionTable` property lists data-port indices in binary selector order, for example `0,1,0,2`
+for a two-bit selector with three distinct choices. Empty uses the ordinary
+one-input-per-selection layout. Table indices must cover every selector value
+and use contiguous data-port indices starting at zero. Clear the table before
+changing the selector width. Native save/load preserves the compact layout;
+Yosys export expands it to a standard `$bmux`. Port tooltips list selector values.
+
+Import keeps contiguous source slices as buses. One shared `WireSplitter` per
+source exposes only the requested slices, including overlapping slices; an
+ordinary part-select does not need a `WireMerger`. Concatenations use one merger
+input per contiguous source or literal run. Repeated sign bits and high zero
+padding of a contiguous source slice become `Extender` components.
+
+`WireSplitter` retains its total input `size`. Its optional `slices` property is
+a comma-separated list of `offset:width` pairs in output-port order, for example
+`0:8,8:8,0:16` for two bytes and an overlapping half-word. An empty value retains
+the original individual-bit outputs. `WireMerger` has an optional `widths`
+property listing input widths in least-significant-first order, for example
+`8,8,16` for a 32-bit output. The widths must sum to `size`; an empty value
+retains individual-bit inputs. Both configurations survive native save/load and
+Verilog export. The editor labels bus ports with their bit ranges.
