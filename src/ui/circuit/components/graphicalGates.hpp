@@ -26,10 +26,14 @@ using namespace SILICON::core;
 
 class GraphicalGate : public GraphicalLogicComponent {
   Q_OBJECT
+public:
+  void setComponent(const Component_ptr& component) override;
+
 protected:
   GraphicalGate(const std::shared_ptr<Gate> gate, QGraphicsItem* shape,
                 QGraphicsItem* parent = nullptr, bool scanShape = false);
 
+  void updateGatePorts();
   void updatePortSizes() override;
 
   int type() const override { return SiliconTypes::UNKNOWN; }

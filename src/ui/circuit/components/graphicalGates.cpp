@@ -26,28 +26,45 @@ GraphicalGate::GraphicalGate(const std::shared_ptr<Gate> gate, QGraphicsItem* sh
   : GraphicalLogicComponent(gate, shape, parent, scanShape)
 {
   isEditable = false;
-  updatePortSizes();
+  updateGatePorts();
 }
 
-void GraphicalGate::updatePortSizes()
+void GraphicalGate::setComponent(const Component_ptr& component)
+{
+  GraphicalLogicComponent::setComponent(component);
+  updateGatePorts();
+}
+
+void GraphicalGate::updateGatePorts()
 {
   if (!associatedComponent)
     return;
 
   const auto count = associatedComponent->inputBuses().size();
+  if (count == 0 || associatedComponent->outputBuses().size() != 1)
+    throw std::logic_error("GraphicalGate requires inputs and one output");
+
+  prepareGeometryChange();
+  const int height = 20 * static_cast<int>(count);
+  getItemShape()->setTransform(QTransform::fromScale(1, height / 40.0));
+
   if (inputPorts.size() != count || outputPorts.empty()) {
-    std::vector<PortPair> inputs;
-    inputs.reserve(count);
+    std::vector<PortPair> inputVec;
+    inputVec.reserve(count);
     for (std::size_t i = 0; i < count; ++i) {
-      const int y = 20 + (2 * static_cast<int>(i) - static_cast<int>(count) + 1) * 10;
       const QString name = count == 1 ? QStringLiteral("i")
                            : count == 2 ? (i == 0 ? QStringLiteral("a")
                                                   : QStringLiteral("b"))
-                                        : QString::number(i);
-      inputs.emplace_back(name, QPoint(-20, y));
+                                        : QString("i%1").arg(i);
+      inputVec.emplace_back(name, QPoint(-20, 10 + 20 * static_cast<int>(i)));
     }
-    GraphicalComponent::setPorts(inputs, {PortPair{"o", QPoint(80, 20)}});
+    setPorts(inputVec, {PortPair{"o", QPoint(80, height / 2)}});
   }
+}
+
+void GraphicalGate::updatePortSizes()
+{
+  updateGatePorts();
   GraphicalLogicComponent::updatePortSizes();
 }
 
