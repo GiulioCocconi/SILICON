@@ -1157,6 +1157,48 @@ TEST(WireRoutingTest, MergesFanoutIntoTerminalToJunctionSegments)
   }));
 }
 
+TEST(WireRoutingTest, RejectsClosedInputRoutes)
+{
+  EXPECT_THROW(
+      (void)mergeOrthogonalRoutes({{{0, 0}, {40, 0}, {40, 40}, {0, 40}, {0, 0}}}),
+      std::invalid_argument);
+}
+
+TEST(WireRoutingTest, KeepsComponentTerminalsAsPathEndpoints)
+{
+  const QPointF port(40, 0);
+  const auto    routes = mergeOrthogonalRoutes({{{0, 0}, port}, {port, {80, 0}}});
+  ASSERT_EQ(routes.size(), 2U);
+  for (const auto& route : routes)
+    EXPECT_TRUE(route.front() == port || route.back() == port);
+}
+
+TEST(WireRoutingTest, RemovesRedundantCyclesBeforeExtractingPaths)
+{
+  const auto routes =
+      mergeOrthogonalRoutes({{{0, 0}, {40, 0}, {40, 40}}, {{40, 40}, {0, 40}, {0, 0}}});
+  ASSERT_FALSE(routes.empty());
+  for (const auto& route : routes) {
+    ASSERT_GE(route.size(), 2U);
+    EXPECT_NE(route.front(), route.back());
+    EXPECT_TRUE(isOrthogonalRoute(route));
+    EXPECT_FALSE(orthogonalRouteSelfIntersects(route));
+  }
+  for (const QPointF corner : {QPointF(0, 0), QPointF(40, 40)})
+    EXPECT_TRUE(std::ranges::any_of(routes, [&](const auto& route) {
+      return pointOnOrthogonalRoute(corner, route);
+    }));
+}
+
+TEST(WireRoutingTest, RemovesRetracedSpursWithoutCreatingCrossNetJunctions)
+{
+  const std::vector<QPointF> crossing{{100, -10}, {100, 30}};
+  const auto routes = mergeOrthogonalRoutes({{{0, 0}, {100, 0}, {90, 0}, {90, 20}}});
+  ASSERT_EQ(routes.size(), 1U);
+  EXPECT_EQ(routes.front(), (std::vector<QPointF>{{0, 0}, {90, 0}, {90, 20}}));
+  EXPECT_FALSE(orthogonalRoutesIntersect(routes.front(), crossing));
+}
+
 TEST(LibavoidQtGeomTypesTest, ConvertsPoint)
 {
   const QPointF      qt_point(12.5, -7.25);
@@ -1236,4 +1278,15 @@ TEST(LibavoidCancellation, SeparationRestoresCompleteRoutes)
   EXPECT_FALSE(router.separateOrthogonalRouteGroups({{conn}}, 10));
   EXPECT_TRUE(router.transactionAborted());
   EXPECT_EQ(conn->displayRoute().ps, original.ps);
+}
+
+TEST(WireRouteMerging, CancellationDiscardsPartialGeometry)
+{
+  std::vector<std::vector<QPointF>> routes;
+  for (int i = 0; i < 300; ++i)
+    routes.push_back({QPointF(i, 0), QPointF(i, 100)});
+  unsigned checks = 0;
+  EXPECT_TRUE(mergeOrthogonalRoutes(routes, [&] { return ++checks < 310; }).empty());
+  EXPECT_EQ(checks, 310u);
+  EXPECT_FALSE(mergeOrthogonalRoutes({{{0, 0}, {100, 0}}}, [] { return true; }).empty());
 }

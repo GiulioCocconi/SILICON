@@ -247,7 +247,16 @@ namespace {
                           std::span<GraphicalLogicComponent* const> components,
                           const CircuitAutoplacerOptions&           options = {})
   {
-    const auto  result = CircuitAutoplacer::compute(activeCircuit, components, options);
+    CircuitAutoplacement result;
+    try {
+      result = CircuitAutoplacer::compute(activeCircuit, components, options);
+    } catch (const std::exception& error) {
+      QMessageBox::warning(scene.views().isEmpty() ? nullptr : scene.views().first(),
+                           QObject::tr("Auto place"), QString::fromUtf8(error.what()));
+      return;
+    }
+    if (result.cancelled)
+      return;
     const auto& componentMap = result.components;
     const auto& wires        = result.wires;
 
@@ -1834,6 +1843,8 @@ void DiagramScene::autoPlaceCircuit()
                            0, options.candidateCount, parent);
   progress.setWindowTitle(tr("Auto place"));
   progress.setWindowModality(Qt::WindowModal);
+  progress.setAutoClose(false);
+  progress.setAutoReset(false);
   progress.setMinimumDuration(300);
   progress.setValue(0);
   QApplication::processEvents();
@@ -1842,7 +1853,8 @@ void DiagramScene::autoPlaceCircuit()
     QApplication::processEvents();
     return progress.wasCanceled();
   };
-  options.progress = [&progress](const int completed, const int) {
+  options.progress = [&progress](const int completed, const int total) {
+    progress.setMaximum(total);
     progress.setValue(completed);
     QApplication::processEvents();
   };

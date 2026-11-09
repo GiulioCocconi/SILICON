@@ -66,3 +66,10 @@ set_target_properties(libavoid_tests PROPERTIES
         AUTORCC OFF)
 target_link_libraries(libavoid_tests PRIVATE GTest::gtest_main GTest::gtest avoid Qt6::Core Qt6::Gui)
 gtest_discover_tests(libavoid_tests DISCOVERY_MODE PRE_TEST)
+
+add_executable(autoplacer_tests autoplacer.cpp ${UI_SOURCE_FILES})
+target_link_libraries(autoplacer_tests PRIVATE GTest::gtest_main GTest::gtest
+        silicon_style silicon_core Qt6::Widgets Qt6::SvgWidgets OGDF avoid)
+add_silicon_resources(autoplacer_tests)
+gtest_discover_tests(autoplacer_tests DISCOVERY_MODE PRE_TEST
+        PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
