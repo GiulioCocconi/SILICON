@@ -43,22 +43,24 @@ TEST(UtilsTest, WireMergerCase)
   EXPECT_EQ(bus.getCurrentValue(), valueFor(bus, 3));
 }
 
-TEST(UtilsTest, WireSplitterCase)
+TEST(UtilsTest, WireMergerSimulatesConstructorSuppliedWideOutput)
 {
-  auto a = std::make_shared<Wire>();
-  auto b = std::make_shared<Wire>();
+  const Bus input(4);
+  const Bus output(4);
 
-  auto bus = Bus(2);
+  auto merger = std::make_shared<WireMerger>(
+      std::vector<Bus>{{input[0]}, {input[1]}, {input[2]}, {input[3]}}, output);
 
-  auto      ws   = std::make_shared<WireSplitter>(bus, std::vector<Bus>{{a}, {b}});
-  auto      circ = std::make_shared<Circuit>(Component_set{ws});
-  Simulator sim(circ);
+  EXPECT_EQ(merger->getPropertyValue<int>("size"), 4);
+  ASSERT_EQ(merger->outputBuses()[0], output);
 
-  sim.setBus(bus, valueFor(bus, 2));  // 0b10 sets 'b' to HIGH and 'a' to LOW
+  auto      circuit = std::make_shared<Circuit>(Component_set{merger});
+  Simulator sim(circuit);
+
+  sim.setBus(input, valueFor(input, 13));  // 0b1101
   sim.run(20);
 
-  EXPECT_EQ(a->getCurrentState(), State::LOW);
-  EXPECT_EQ(b->getCurrentState(), State::HIGH);
+  EXPECT_EQ(output.getCurrentValue(), valueFor(output, 13));
 }
 
 TEST(UtilsTest, WireMergerEditorInputsAcceptSingleBitConnections)
@@ -109,6 +111,25 @@ TEST(UtilsTest, WireMergerDisconnectedInputsRemainUnknown)
   }
 }
 
+TEST(UtilsTest, WireSplitterSimulatesConstructorSuppliedWideInput)
+{
+  const Bus              input(4);
+  const std::vector<Bus> outputs{Bus(1), Bus(1), Bus(1), Bus(1)};
+  auto                   splitter = std::make_shared<WireSplitter>(input, outputs);
+
+  EXPECT_EQ(splitter->getPropertyValue<int>("size"), 4);
+  ASSERT_EQ(splitter->inputBuses()[0], input);
+  ASSERT_EQ(splitter->outputBuses(), outputs);
+
+  auto      circuit = std::make_shared<Circuit>(Component_set{splitter});
+  Simulator sim(circuit);
+  sim.setBus(input, valueFor(input, 13));  // 0b1101
+  sim.run(20);
+
+  for (unsigned int bit = 0; bit < outputs.size(); ++bit)
+    EXPECT_EQ(outputs[bit][0]->getCurrentState(), input[bit]->getCurrentState());
+}
+
 TEST(UtilsTest, WireSplitterEditorOutputsCarryIndependentBits)
 {
   for (const int size : {2, 4}) {
@@ -130,4 +151,34 @@ TEST(UtilsTest, WireSplitterEditorOutputsCarryIndependentBits)
                 bit == 1 ? State::HIGH : State::LOW);
     }
   }
+}
+
+TEST(UtilsTest, GroupedPortsValidateConfigurationWithoutLosingConnections)
+{
+  WireSplitter splitter;
+  splitter.setProperty("size", 8);
+  splitter.setProperty("slices", std::string("0:4,4:4,2:4"));
+  splitter.setSize(8);
+  const auto outputs = splitter.outputBuses();
+  EXPECT_THROW(splitter.setProperty("slices", std::string("7:2")), std::invalid_argument);
+  EXPECT_THROW(splitter.setProperty("slices", std::string("0:0")), std::invalid_argument);
+  EXPECT_THROW(splitter.setProperty("slices", std::string("0:4,")),
+               std::invalid_argument);
+  EXPECT_THROW(splitter.setProperty("size", 4), std::invalid_argument);
+  EXPECT_EQ(splitter.outputBuses(), outputs);
+  splitter.setSize(8);
+  EXPECT_EQ(splitter.outputBuses(), outputs);
+
+  WireMerger merger;
+  merger.setProperty("size", 8);
+  merger.setProperty("widths", std::string("4,4"));
+  merger.setSize(8);
+  const auto inputs = merger.inputBuses();
+  EXPECT_THROW(merger.setProperty("widths", std::string("4,3")), std::invalid_argument);
+  EXPECT_THROW(merger.setProperty("widths", std::string("0,8")), std::invalid_argument);
+  EXPECT_THROW(merger.setProperty("widths", std::string("4,4,")), std::invalid_argument);
+  EXPECT_THROW(merger.setProperty("size", 4), std::invalid_argument);
+  EXPECT_EQ(merger.inputBuses(), inputs);
+  merger.setSize(8);
+  EXPECT_EQ(merger.inputBuses(), inputs);
 }
