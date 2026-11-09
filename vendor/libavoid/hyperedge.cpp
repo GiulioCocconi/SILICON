@@ -315,6 +315,8 @@ void HyperedgeRerouter::performRerouting(void)
     const size_t num_hyperedges = count();
     for (size_t i = 0; i < num_hyperedges; ++i)
     {
+        m_router->performContinuationCheck(TransactionPhaseRouteSearch,
+                i, num_hyperedges);
         if (m_terminal_vertices_vector[i].empty())
         {
             // Invalid hyperedge, ignore.

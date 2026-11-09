@@ -1370,6 +1370,14 @@ bool ConnRef::generatePath(void)
         generateCheckpointsPath(path, vertices);
     }
 
+    if (m_router->transactionAborted())
+    {
+        assignConnectionPinVisibility(false);
+        freeRoutes();
+        m_has_valid_route = false;
+        m_needs_reroute_flag = true;
+        return false;
+    }
     COLA_ASSERT(vertices.size() >= 2);
     COLA_ASSERT(vertices[0] == src());
     COLA_ASSERT(vertices[vertices.size() - 1] == dst());
@@ -1498,6 +1506,9 @@ void ConnRef::generateCheckpointsPath(std::vector<Point>& path,
             end->setVisibleDirections(ConnDirAll);
         }
 
+        if (m_router->transactionAborted())
+            return;
+
         // Process the path.
         int pathlen = end->pathLeadsBackTo(start);
         if (pathlen >= 2)
@@ -1596,6 +1607,8 @@ void ConnRef::generateStandardPath(std::vector<Point>& path,
     {
         AStarPath aStar;
         aStar.search(this, src(), dst(), start());
+        if (m_router->transactionAborted())
+            return;
         pathlen = dst()->pathLeadsBackTo(src());
         if (pathlen < 2)
         {
