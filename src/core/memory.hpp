@@ -59,6 +59,8 @@ private:
 /** Common binary-document backing for memory components. */
 class Memory : public Component {
 public:
+  virtual void setBinaryDocument(
+      std::string slug, std::shared_ptr<const std::vector<std::uint8_t>> contents) = 0;
   virtual void refreshBinaryContents(
       std::shared_ptr<const std::vector<std::uint8_t>> contents) = 0;
 
@@ -74,7 +76,7 @@ protected:
   std::shared_ptr<const MemoryImage> image;
 };
 
-/** One asynchronous read port and one masked, positive-edge write port. */
+/** Independent asynchronous read ports and one masked, positive-edge write port. */
 class RAM final : public Memory {
 public:
   static constexpr std::string_view Type = "RAM";
@@ -103,12 +105,18 @@ public:
   void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
 
   void setBinaryDocument(std::string slug,
-                         std::shared_ptr<const std::vector<std::uint8_t>> contents);
+                         std::shared_ptr<const std::vector<std::uint8_t>> contents) override;
   void refreshBinaryContents(
       std::shared_ptr<const std::vector<std::uint8_t>> contents) override;
   void setMemoryImage(std::shared_ptr<const MemoryImage> image);
   [[nodiscard]] std::size_t memoryDepth() const;
   void setMemoryDepth(std::size_t depth);
+  [[nodiscard]] std::size_t readPortCount() const;
+  // Keep the original five input indices stable; extra read addresses follow them.
+  [[nodiscard]] static std::size_t readAddressIndex(std::size_t port)
+  {
+    return port == 0 ? 0 : 4 + port;
+  }
 
 private:
   std::vector<BusValue> words;
@@ -118,7 +126,7 @@ private:
   [[nodiscard]] int configuredDataWidth() const;
   void configure(int width, std::size_t depth,
                  std::shared_ptr<const std::vector<std::uint8_t>> contents,
-                 bool rejectInvalid);
+                 bool rejectInvalid, std::size_t readPorts = 0);
   void initializeWords();
   void write(const BusValue& address, const BusValue& data, const BusValue& mask,
              State clockEnable);
@@ -159,7 +167,7 @@ public:
    * the image depth produce an UNKNOWN data bus.
    */
   void setBinaryDocument(std::string                                      slug,
-                         std::shared_ptr<const std::vector<std::uint8_t>> contents);
+                         std::shared_ptr<const std::vector<std::uint8_t>> contents) override;
 
   /**
    * Replaces the cached contents without changing the document slug.

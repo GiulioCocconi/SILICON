@@ -270,6 +270,75 @@ TEST(YosysRamTest, RejectsUnsupportedSinglePortConfigurations)
     EXPECT_THROW((void)importVerilog(source, "bad"), std::exception) << source;
 }
 
+TEST(YosysRamTest, ImportsDualReadRamAndPreservesMaskedWrites)
+{
+  std::string source =
+      "module regs(input clk, input [1:0] a,b,waddr, input [3:0] d,mask,"
+      "output [3:0] q,r); reg [3:0] mem[0:3];"
+      "genvar i; generate for(i=0;i<4;i=i+1) begin "
+      "always @(posedge clk) if(mask[i]) mem[waddr][i]<=d[i]; end endgenerate "
+      "assign q=mem[a]; assign r=mem[b]; endmodule";
+  for (int round = 0; round < 2; ++round) {
+    auto       circuit = std::make_shared<Circuit>(importVerilog(source, "regs"));
+    const auto ram     = findRam(*circuit);
+    ASSERT_TRUE(ram);
+    EXPECT_EQ(ram->readPortCount(), 2);
+    EXPECT_EQ(componentTypes(*circuit).count("RAM"), 1);
+    EXPECT_EQ(componentTypes(*circuit).count("Register"), 0);
+    const auto ports = memoryCircuitPorts(*circuit);
+    Simulator  simulator(circuit);
+    const auto set = [&](const std::string& name, std::uint64_t value) {
+      ASSERT_EQ(simulator.setBus(ports.at(name), valueFor(ports.at(name), value)),
+                Simulator::RunResult::Completed);
+    };
+    const auto write = [&](unsigned address, unsigned data, unsigned mask) {
+      set("clk", 0);
+      set("waddr", address);
+      set("d", data);
+      set("mask", mask);
+      set("clk", 1);
+    };
+    set("clk", 0);
+    set("mask", 0);
+    set("a", 1);
+    set("b", 2);
+    write(1, 10, 15);
+    write(2, 5, 15);
+    EXPECT_EQ(ports.at("q").getCurrentValue(), valueFor(4, 10));
+    EXPECT_EQ(ports.at("r").getCurrentValue(), valueFor(4, 5));
+    write(1, 3, 3);
+    EXPECT_EQ(ports.at("q").getCurrentValue(), valueFor(4, 11));
+    EXPECT_EQ(ports.at("r").getCurrentValue(), valueFor(4, 5));
+    write(2, 15, 0);
+    EXPECT_EQ(ports.at("r").getCurrentValue(), valueFor(4, 5));
+    set("a", 2);
+    set("b", 1);
+    EXPECT_EQ(ports.at("q").getCurrentValue(), valueFor(4, 5));
+    EXPECT_EQ(ports.at("r").getCurrentValue(), valueFor(4, 11));
+    source = SILICON::verilog::write(*circuit, "regs");
+  }
+}
+
+TEST(YosysRamTest, RejectsMalformedDualReadRamPorts)
+{
+  auto ram = makeRam(false);
+  ram->setProperty("readPorts", 2);
+  const auto original = nlohmann::json::parse(SILICON::yosys::elaborateHierarchy(
+      SILICON::yosys::serialize(circuitWithBoundaryPorts(ram), "component_test")));
+  for (const auto parameter : {"0", "11"}) {
+    auto json                                                 = original;
+    memoryCell(json, "SILICON_RAM")["parameters"]["RD_PORTS"] = parameter;
+    EXPECT_THROW((void)SILICON::yosys::deserialize(json.dump(), "component_test"),
+                 std::runtime_error);
+  }
+  for (const auto port : {"RD_ADDR", "RD_DATA"}) {
+    auto json = original;
+    memoryCell(json, "SILICON_RAM")["connections"][port].erase(0);
+    EXPECT_THROW((void)SILICON::yosys::deserialize(json.dump(), "component_test"),
+                 std::runtime_error);
+  }
+}
+
 TEST(YosysRamTest, ImportsMixedRomAndSinglePortRam)
 {
   auto circuit = importVerilog("module mixed(input c,input [1:0] a,input [7:0] d,input "

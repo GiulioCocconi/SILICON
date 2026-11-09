@@ -515,6 +515,45 @@ TEST(RAMTest, SamplesRegisterOutputsAndReadDataBeforeTheSameEdge)
   EXPECT_EQ(captured.getCurrentValue(), valueFor(8, 0x34));
 }
 
+TEST(RAMTest, IndependentReadPortsPublishWritesAndAddressChangesWhileClockIsHigh)
+{
+  RamFixture f(8, 2, {0x12, 0x34});
+  f.ram->setProperty("readPorts", 2);
+  const auto read0    = f.ram->outputBuses()[0];
+  const auto read1    = f.ram->outputBuses()[1];
+  const auto address1 = f.ram->inputBuses()[RAM::readAddressIndex(1)];
+  const auto clock    = f.input(RAM::Inputs::Clock)[0];
+  const auto high     = std::make_shared<Wire>(State::HIGH);
+  const auto low      = std::make_shared<Wire>(State::LOW);
+  const Bus  captured0(8), captured1(8);
+  auto       reader0 = std::make_shared<Register>(read0, clock, high, low, captured0);
+  auto       reader1 = std::make_shared<Register>(read1, clock, high, low, captured1);
+  f.circuit = std::make_shared<Circuit>(Component_set{f.ram, reader0, reader1}, false);
+  f.sim     = std::make_unique<Simulator>(f.circuit);
+  f.set(RAM::Inputs::ReadAddress, 0);
+  ASSERT_EQ(f.sim->setBus(address1, valueFor(1, 1)), Simulator::RunResult::Completed);
+  f.set(RAM::Inputs::WriteAddress, 1);
+  f.set(RAM::Inputs::WriteData, 0x56);
+  f.set(RAM::Inputs::WriteEnable, 0xFF);
+  f.pulse();
+  EXPECT_EQ(read0.getCurrentValue(), valueFor(8, 0x12));
+  EXPECT_EQ(read1.getCurrentValue(), valueFor(8, 0x56));
+  EXPECT_EQ(captured0.getCurrentValue(), valueFor(8, 0x12));
+  EXPECT_EQ(captured1.getCurrentValue(), valueFor(8, 0x34));
+
+  f.set(RAM::Inputs::ReadAddress, 1);
+  ASSERT_EQ(f.sim->setBus(address1, valueFor(1, 0)), Simulator::RunResult::Completed);
+  EXPECT_EQ(read0.getCurrentValue(), valueFor(8, 0x56));
+  EXPECT_EQ(read1.getCurrentValue(), valueFor(8, 0x12));
+  // Address-only evaluation must not replay the write edge or the reader captures.
+  EXPECT_EQ(captured1.getCurrentValue(), valueFor(8, 0x34));
+  for (const auto state : {State::UNKNOWN, State::ERROR}) {
+    ASSERT_EQ(f.sim->setBus(address1, BusValue{state}), Simulator::RunResult::Completed);
+    expectState(read1, state);
+    EXPECT_EQ(read0.getCurrentValue(), valueFor(8, 0x56));
+  }
+}
+
 TEST(RAMTest, SessionsResetFromImmutableInitializationAndKeepTheirOwnContents)
 {
   auto registry = ComponentRegistry::empty();
