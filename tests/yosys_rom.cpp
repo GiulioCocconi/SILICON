@@ -99,12 +99,13 @@ TEST(YosysRomTest, ExportsSelfContainedInitializedArrayAndReimportsIt)
 {
   auto rom = std::make_shared<ROM>();
   rom->setProperty("dataWidth", 10);
-  const Bus address(1), cs(1), oe(1), data(10);
+  const Bus address(2), cs(1), oe(1), data(10);
   rom->setProperty("binaryContents", std::string("program"));
   rom->setInputs({address, cs, oe});
   rom->setOutputs({data});
   rom->refreshBinaryContents(std::make_shared<const std::vector<std::uint8_t>>(
-      (std::vector<std::uint8_t>{0xA5, 0x3C, 0x0F})));
+                                 (std::vector<std::uint8_t>{0xA5, 0x3C, 0x0F, 0x2E})),
+                             3);
   Circuit circuit(Component_set{
       rom, std::make_shared<DummyInputComponent>(address, "address"),
       std::make_shared<DummyInputComponent>(cs, "cs"),
@@ -120,10 +121,20 @@ TEST(YosysRomTest, ExportsSelfContainedInitializedArrayAndReimportsIt)
     const auto restored = std::dynamic_pointer_cast<ROM>(imported.getComponentByVertexId(vertex));
     if (!restored) continue;
     ++roms;
-    EXPECT_EQ(restored->resolvedWordCount(), 2);
+    EXPECT_EQ(restored->resolvedWordCount(), 3);
     ASSERT_TRUE(restored->binaryContentsSnapshot());
     EXPECT_EQ(*restored->binaryContentsSnapshot(),
-              (std::vector<std::uint8_t>{0xA5, 0x3C, 0x0F}));
+              (std::vector<std::uint8_t>{0xA5, 0x3C, 0x0F, 0x2E}));
+    auto       simulationCircuit = std::make_shared<Circuit>(Component_set{restored});
+    Simulator  simulator(simulationCircuit);
+    const auto select = restored->inputBuses()[1];
+    const auto addr   = restored->inputBuses()[0];
+    ASSERT_EQ(simulator.setBus(select, valueFor(select, 1)),
+              Simulator::RunResult::Completed);
+    ASSERT_EQ(simulator.setBus(addr, valueFor(addr, 2)), Simulator::RunResult::Completed);
+    EXPECT_EQ(restored->outputBuses()[0].getCurrentValue(), valueFor(10, 0x2E0));
+    ASSERT_EQ(simulator.setBus(addr, valueFor(addr, 3)), Simulator::RunResult::Completed);
+    EXPECT_EQ(restored->outputBuses()[0].getCurrentValue(), BusValue(10, State::UNKNOWN));
   }
   EXPECT_EQ(roms, 1);
 }
@@ -131,9 +142,9 @@ TEST(YosysRomTest, ExportsSelfContainedInitializedArrayAndReimportsIt)
 TEST(YosysRomTest, SharesBinaryDocumentAcrossReadPorts)
 {
   const std::string sourceText =
-      "module multi(input a, input b, output [7:0] x, output [7:0] y);\n"
-      "reg [7:0] table [0:1];\n"
-      "initial begin table[0]=8'h12; table[1]=8'h34; end\n"
+      "module multi(input [1:0] a, input [1:0] b, output [7:0] x, output [7:0] y);\n"
+      "reg [7:0] table [0:2];\n"
+      "initial begin table[0]=8'h12; table[1]=8'h34; table[2]=8'h56; end\n"
       "assign x=table[a]; assign y=table[b]; endmodule\n";
   const auto imported = SILICON::yosys::deserialize(
       SILICON::yosys::elaborateHierarchy(SILICON::verilog::read(sourceText)), "multi");
@@ -144,7 +155,8 @@ TEST(YosysRomTest, SharesBinaryDocumentAcrossReadPorts)
     ++roms;
     EXPECT_EQ(rom->getPropertyValue<std::string>("binaryContents"), "multi_table");
     ASSERT_TRUE(rom->binaryContentsSnapshot());
-    EXPECT_EQ(*rom->binaryContentsSnapshot(), (std::vector<std::uint8_t>{0x12, 0x34}));
+    EXPECT_EQ(*rom->binaryContentsSnapshot(),
+              (std::vector<std::uint8_t>{0x12, 0x34, 0x56}));
   }
   EXPECT_EQ(roms, 2);
   const SILICON::project::Document source{"code/multi.v", sourceText};
@@ -399,13 +411,20 @@ TEST(YosysRomTest, ClockedReadEnableHoldsAddressOnFallingEdges)
 TEST(YosysRomTest, RejectsUnsupportedMemoryBehavior)
 {
   const std::array<std::string, 7> sources{
-      "module bad(input a, input d, output q); reg mem [0:1]; initial mem[0]=0; assign q=mem[a]; endmodule",
-      "module bad(input a, output q); reg mem [0:1]; initial begin mem[0]=0; mem[1]=1'bx; end assign q=mem[a]; endmodule",
-      "module bad(input a, input d, output q); reg mem [0:2]; initial begin mem[0]=0; mem[1]=1; mem[2]=0; end assign q=mem[a]; endmodule",
-      "module bad(input a, input d, output q); reg mem [1:2]; initial begin mem[1]=0; mem[2]=1; end assign q=mem[a]; endmodule",
-      "module bad(input a, input d, output q); reg mem [0:1]; initial begin mem[0]=0; mem[1]=1; end always @* mem[a]=d; assign q=mem[a]; endmodule",
-      "module bad(input a, output q); (* silicon_mem_slug = \"bad/name\" *) reg mem [0:1]; initial begin mem[0]=0; mem[1]=1; end assign q=mem[a]; endmodule",
-      "module bad(input a, output q); reg mem [0:0]; initial mem[0]=1; assign q=mem[a]; endmodule"};
+      "module bad(input a, input d, output q); reg mem [0:1]; initial mem[0]=0; assign "
+      "q=mem[a]; endmodule",
+      "module bad(input a, output q); reg mem [0:1]; initial begin mem[0]=0; "
+      "mem[1]=1'bx; end assign q=mem[a]; endmodule",
+      "module bad(input a, input d, output q); reg mem [0:2]; initial begin mem[0]=0; "
+      "mem[1]=1; mem[2]=0; end assign q=mem[a]; endmodule",
+      "module bad(input a, input d, output q); reg mem [1:2]; initial begin mem[1]=0; "
+      "mem[2]=1; end assign q=mem[a]; endmodule",
+      "module bad(input a, input d, output q); reg mem [0:1]; initial begin mem[0]=0; "
+      "mem[1]=1; end always @* mem[a]=d; assign q=mem[a]; endmodule",
+      "module bad(input a, output q); (* silicon_mem_slug = \"bad/name\" *) reg mem "
+      "[0:1]; initial begin mem[0]=0; mem[1]=1; end assign q=mem[a]; endmodule",
+      "module bad(input [1:0] a, output q); reg mem [0:0]; initial mem[0]=1; assign "
+      "q=mem[a]; endmodule"};
   for (const auto& source : sources)
     EXPECT_THROW(static_cast<void>(SILICON::yosys::deserialize(
         SILICON::yosys::elaborateHierarchy(SILICON::verilog::read(source)), "bad")),
