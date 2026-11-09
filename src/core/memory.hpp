@@ -98,6 +98,7 @@ public:
 
   void simulate(SILICON::simulation::Simulator& sim,
                 const SILICON::simulation::Context& context) override;
+  void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
 
   void setBinaryDocument(std::string slug,
                          std::shared_ptr<const std::vector<std::uint8_t>> contents);
