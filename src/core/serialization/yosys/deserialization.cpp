@@ -199,6 +199,12 @@ namespace {
                             context, "connection");
       }
 
+      void requireParameters(const std::initializer_list<std::string_view> names) const
+      {
+        requireExactMembers(parametersJson, std::span(names.begin(), names.size()),
+                            context, "parameter");
+      }
+
       template <std::size_t ParameterCount, std::size_t ConnectionCount>
       void requireSchema(
           const std::array<std::string_view, ParameterCount>&  PARAMETER_NAMES,
@@ -1164,6 +1170,73 @@ namespace {
       addWithZeroDelay(std::move(comparator));
     }
 
+    void importSiliconGate(const Cell& cell)
+    {
+      cell.requireParameters({"MODE", "WIDTH", "INPUTS", "BITWISE"});
+      const auto mode    = parseUnsigned(cell.parameter("MODE"), cell.where());
+      const auto width   = cell.width("WIDTH");
+      const auto count   = cell.width("INPUTS");
+      const auto bitwise = cell.flag("BITWISE");
+      if (mode > 1 || count < 2 || (!bitwise && width != 1))
+        fail(cell.where(), "invalid SILICON_GATE geometry or mode");
+      std::vector<std::string> names{"Y"};
+      std::vector<Bus>         inputs;
+      for (std::size_t i = 0; i < count; ++i) {
+        names.push_back(std::format("A{}", i));
+        inputs.push_back(cell.consumer(
+            names.back(), bitwise ? std::optional<std::size_t>(width) : std::nullopt));
+      }
+      cell.requireKnownConnectionNames(names);
+      Component_ptr gate =
+          mode == 0 ? std::static_pointer_cast<Component>(std::make_shared<AndGate>())
+                    : std::static_pointer_cast<Component>(std::make_shared<OrGate>());
+      gate->setProperty("size", static_cast<int>(width));
+      gate->setProperty("bitwise", bitwise);
+      gate->setProperty("delay", 0);
+      connectAndAdd(std::move(gate), std::move(inputs), {cell.driver("Y", width)});
+    }
+
+    void importSiliconMux(const Cell& cell)
+    {
+      cell.requireSchema(
+          std::to_array<std::string_view>({"WIDTH", "S_WIDTH", "INPUTS", "TABLE"}),
+          std::to_array<std::string_view>({"A", "S", "Y"}));
+      const auto width          = cell.width("WIDTH");
+      const auto selectionWidth = cell.width("S_WIDTH");
+      if (selectionWidth > 15)
+        fail(cell.where(), "SILICON_MUX selector is too wide");
+      const auto lanes = std::size_t{1} << selectionWidth;
+      const auto count = cell.width("INPUTS");
+      const auto bits  = binaryDigits(cell.parameter("TABLE"), cell.where());
+      if (count > lanes || bits.size() != lanes * selectionWidth)
+        fail(cell.where(), "invalid SILICON_MUX selection table geometry");
+      std::string       table;
+      std::vector<bool> seen(count);
+      for (std::size_t lane = 0; lane < lanes; ++lane) {
+        const auto word =
+            bits.substr(bits.size() - (lane + 1) * selectionWidth, selectionWidth);
+        unsigned int index = 0;
+        const auto [end, error] =
+            std::from_chars(word.data(), word.data() + word.size(), index, 2);
+        if (error != std::errc{} || end != word.data() + word.size() || index >= count)
+          fail(cell.where(),
+               "SILICON_MUX selection table index is outside its data inputs");
+        seen[index] = true;
+        if (!table.empty())
+          table += ',';
+        table += std::to_string(index);
+      }
+      if (std::ranges::find(seen, false) != seen.end())
+        fail(cell.where(), "SILICON_MUX contains unused data inputs");
+      auto mux = std::make_shared<Multiplexer>();
+      mux->setProperty("selectionSize", static_cast<int>(selectionWidth));
+      mux->setProperty("busSize", static_cast<int>(width));
+      mux->setProperty("selectionTable", table);
+      auto inputs = cell.consumerLanes("A", width, count);
+      inputs.push_back(cell.consumer("S", selectionWidth));
+      connectAndAdd(std::move(mux), std::move(inputs), {cell.driver("Y", width)});
+    }
+
     void importMux(const Cell& cell)
     {
       cell.requireConnections({"A", "B", "S", "Y"});
@@ -1479,6 +1552,8 @@ namespace {
               {"$xor", &Importer::importBinaryGate<XorGate>},
               {"$not", &Importer::importNot},
               {cells::LOGIC, &Importer::importSiliconLogic},
+              {cells::GATE, &Importer::importSiliconGate},
+              {cells::MUX, &Importer::importSiliconMux},
               {"$_NAND_", &Importer::importFineBinaryGate<NandGate>},
               {"$_NOR_", &Importer::importFineBinaryGate<NorGate>},
               {"$pos", &Importer::importPos},
