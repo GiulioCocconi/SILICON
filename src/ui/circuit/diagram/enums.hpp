@@ -113,7 +113,7 @@ enum SiliconTypes {
   MULTIPLIER,
   DIVIDER,
   TEXT,
-
+  RAM_COMPONENT,
   SILICON_END,
 };
 

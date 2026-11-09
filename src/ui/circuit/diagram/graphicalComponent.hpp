@@ -77,6 +77,9 @@ private:
   /** @brief Whether to write the port name on the component */
   bool printName = false;
 
+  /** @brief Distance from the component edge to the port name */
+  qreal labelInset = DiagramScene::GRID_SIZE / 2.0;
+
   /** @brief Whether the net associated with this port has an error */
   bool inputAssignmentError = false;
 
@@ -120,6 +123,9 @@ public:
 
   /** @brief Sets the port bus size */
   void setSize(unsigned int newSize);
+
+  /** @brief Sets the inset of the port name inside the component body. */
+  void setLabelInset(qreal inset);
 
   /** @brief Marks whether this port failed input assignment during simulation setup */
   void setInputAssignmentError(bool failed);

@@ -1871,8 +1871,8 @@ void DiagramScene::placeComponent(std::string_view typeName, const bool showSear
           dynamic_cast<GraphicalSubcircuitComponent*>(componentToBeDrawn)) {
     subcircuit->setProjectContext(documents, resolver);
   }
-  else if (auto* rom = dynamic_cast<GraphicalROM*>(componentToBeDrawn))
-    rom->setDocumentStore(documents);
+  else if (auto* memory = dynamic_cast<GraphicalMemory*>(componentToBeDrawn))
+    memory->setDocumentStore(documents);
 
   lastPlacedComponentType       = typeName;
   lastPlacedComponentProperties = initialProperties;
