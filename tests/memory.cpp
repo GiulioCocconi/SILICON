@@ -554,6 +554,40 @@ TEST(RAMTest, SessionsResetFromImmutableInitializationAndKeepTheirOwnContents)
   EXPECT_EQ(f.output().getCurrentValue(), valueFor(8, 0x56));
 }
 
+TEST(RAMTest, RepeatedSubcircuitInstancesHaveIndependentContents)
+{
+  if (!ComponentRegistry::instance().hasType(RAM::Type))
+    registerAllComponents(ComponentRegistry::instance());
+  auto ram = std::make_shared<RAM>();
+  ram->setProperty("binaryContents", std::string("initial"));
+  Circuit leaf(Component_set{ram}, false);
+  SILICON::project::ProjectContext project;
+  project.setDocuments({{"circuits/ram.json", leaf.serialize()},
+                        {"bin/initial", std::vector<std::uint8_t>{0x12}}});
+  SILICON::project::ProjectCircuitResolver resolver(project, ComponentRegistry::instance());
+  auto first = std::make_shared<SubcircuitComponent>(&resolver);
+  auto second = std::make_shared<SubcircuitComponent>(&resolver);
+  first->setProperty("slug", std::string("ram"));
+  second->setProperty("slug", std::string("ram"));
+  auto root = std::make_shared<Circuit>(Component_set{first, second}, false);
+  {
+    Session session(root, {}, &resolver);
+    for (const auto& instance : {first, second}) {
+      for (auto port : {0, 1, 4})
+        EXPECT_EQ(session.setBus(instance->inputBuses()[port], valueFor(instance->inputBuses()[port], 0)),
+                  Simulator::RunResult::Completed);
+      EXPECT_EQ(instance->outputBuses()[0].getCurrentValue(), valueFor(8, 0x12));
+    }
+    EXPECT_EQ(session.setBus(first->inputBuses()[2], valueFor(8, 0x34)), Simulator::RunResult::Completed);
+    EXPECT_EQ(session.setBus(first->inputBuses()[3], valueFor(8, 0xFF)), Simulator::RunResult::Completed);
+    EXPECT_EQ(session.setBus(first->inputBuses()[4], valueFor(1, 1)), Simulator::RunResult::Completed);
+    EXPECT_EQ(first->outputBuses()[0].getCurrentValue(), valueFor(8, 0x34));
+    EXPECT_EQ(second->outputBuses()[0].getCurrentValue(), valueFor(8, 0x12));
+  }
+  Session reset(root, {}, &resolver);
+  EXPECT_EQ(first->outputBuses()[0].getCurrentValue(), valueFor(8, 0x12));
+  EXPECT_EQ(second->outputBuses()[0].getCurrentValue(), valueFor(8, 0x12));
+}
 
 namespace {
 
