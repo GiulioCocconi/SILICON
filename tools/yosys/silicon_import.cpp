@@ -359,7 +359,7 @@ struct SiliconMemrdAddressPass : public Pass {
 // JSON contract for SILICON_ROM (one cell per read port): WIDTH, SIZE, ABITS,
 // INIT (LSB-first packed bits), ID (unescaped memory identifier), SYNC and
 // CLK_POLARITY are parameters. ADDR, DATA, SELECT, CLK and EN are ports. ADDR
-// has ABITS bits even for SIZE=1; for that case it must be constant zero.
+// has ABITS bits even for SIZE=1; out-of-range reads produce unknown data.
 // SELECT is an optional output latch enable (otherwise one). CLK/EN are zero
 // and one for asynchronous reads. SYNC means the importer places an enabled
 // address register before the ROM (or a data register for SIZE=1). The
@@ -398,14 +398,14 @@ struct SiliconMemoryLowerPass : public Pass {
             if (value[bit] != RTLIL::State::S0) return false;
           return true;
         };
-        if (width <= 0 || width > std::numeric_limits<unsigned short>::max()
-            || size <= 0 || size > std::numeric_limits<int>::max() / width
-            || (size & (size - 1)) != 0
-            || abits != std::max(1, static_cast<int>(std::bit_width(static_cast<unsigned>(size - 1))))
+        if (width <= 0 || width > std::numeric_limits<unsigned short>::max() || size <= 0
+            || size > std::numeric_limits<int>::max() / width
+            || abits
+                   != std::max(1, static_cast<int>(
+                                      std::bit_width(static_cast<unsigned>(size - 1))))
             || ports <= 0 || ports > std::numeric_limits<int>::max() / width
             || ports > std::numeric_limits<int>::max() / std::max(1, abits)
-            || !isZero(mem->getParam(ID::OFFSET))
-            || !isZero(mem->getParam(ID::WR_PORTS)))
+            || !isZero(mem->getParam(ID::OFFSET)) || !isZero(mem->getParam(ID::WR_PORTS)))
           reject("unsupported geometry or write ports");
         for (auto key : {ID::RD_CE_OVER_SRST, ID::RD_TRANSPARENCY_MASK,
                          ID::RD_COLLISION_X_MASK, ID::RD_WIDE_CONTINUATION,
@@ -452,8 +452,6 @@ struct SiliconMemoryLowerPass : public Pass {
           }
           const auto readAddr = addr.extract(port * abits, abits);
           const auto readData = data.extract(port * width, width);
-          if (size == 1 && readAddr != RTLIL::SigSpec(RTLIL::State::S0, abits))
-            reject("one-word memory address must be constant zero");
 
           RTLIL::SigSpec output = readData;
           RTLIL::SigSpec select(RTLIL::State::S1);

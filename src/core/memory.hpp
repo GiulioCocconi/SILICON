@@ -85,8 +85,8 @@ public:
   /**
    * Sets the document slug and its immutable contents as one operation.
    *
-   * A non-empty snapshot whose packed word count is not a power of two is
-   * rejected without changing the current document, snapshot, or bus sizing.
+   * The address bus is sized to reach every packed word. Addresses beyond
+   * the image depth produce an UNKNOWN data bus.
    */
   void setBinaryDocument(std::string                                      slug,
                          std::shared_ptr<const std::vector<std::uint8_t>> contents);

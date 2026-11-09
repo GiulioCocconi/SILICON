@@ -21,7 +21,6 @@
 #include <ui/project/projectSession.hpp>
 
 #include <algorithm>
-#include <bit>
 #include <cstddef>
 #include <format>
 #include <ranges>
@@ -233,10 +232,9 @@ void ProjectDocumentController::createBinaryFile()
           return;
         }
 
-        const auto roundedSize =
-            std::bit_ceil(static_cast<unsigned int>(sizeEdit->value()));
         pushCreateDocumentCommand(
-            {path, std::vector<std::uint8_t>(static_cast<std::size_t>(roundedSize))},
+            {path,
+             std::vector<std::uint8_t>(static_cast<std::size_t>(sizeEdit->value()))},
             tr("Create Binary File"));
         dialog->accept();
       });

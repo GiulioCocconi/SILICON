@@ -107,8 +107,7 @@ void ROM::serializeYosys(SerializationContext& context) const
   }
   const auto p = [](std::uint64_t value) { return SerializationContext::parameter(value); };
   const auto readData = context.allocateBits(width);
-  Json address = count == 1 ? Json::array({"0"})
-                            : context.inputBits(*this,0, addressWidth);
+  Json       address        = context.inputBits(*this, 0, addressWidth);
   Json attributes = Json::object();
   const auto binaryDocument = getPropertyValue<std::string>("binaryContents");
   if (binaryDocument && !binaryDocument->empty())

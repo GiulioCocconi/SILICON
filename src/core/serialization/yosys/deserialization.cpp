@@ -729,7 +729,7 @@ namespace {
       const auto width = cell.width("WIDTH");
       const auto count = static_cast<std::size_t>(parseUnsigned(cell.parameter("SIZE"), cell.where()));
       const auto abits = cell.width("ABITS");
-      if (!std::has_single_bit(count) || count > std::numeric_limits<int>::max()
+      if (count == 0 || count > std::numeric_limits<int>::max()
           || abits != std::max<std::size_t>(1, std::bit_width(count - 1)))
         fail(cell.where(), "invalid canonical ROM geometry");
       const bool synchronous = cell.flag("SYNC");
@@ -769,8 +769,6 @@ namespace {
       const Bus select = cell.consumer("SELECT", 1);
       const Bus clockBus = cell.consumer("CLK", 1);
       const Bus enableBus = cell.consumer("EN", 1);
-      if (count == 1 && !cell.rawConstant("ADDR", "0", abits))
-        fail(cell.where(), "one-word ROM requires a constant zero address");
       if (!synchronous && (!cell.rawConstant("CLK", "0") || !cell.rawConstant("EN", "1")))
         fail(cell.where(), "asynchronous ROM has invalid clock or enable");
       Wire_ptr clock = clockBus[0];
