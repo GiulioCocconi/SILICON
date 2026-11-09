@@ -54,16 +54,15 @@ ROM::ROM()
 
   setPropertyCallback("dataWidth", [this](const PropertyValue& value) {
     const int width = std::get<int>(requireValidSize("ROM dataWidth", value));
-    configure(width, content, true, !initializingProperties);
+    configure(width, content, true);
     return value;
   });
   setPropertyCallback("binaryContents", [this](const PropertyValue& value) {
     const auto& slug = std::get<std::string>(value);
     if (!settingBinaryDocument && slug != configuredBinaryContents())
-      configure(configuredDataWidth(), nullptr, false, !initializingProperties);
+      configure(configuredDataWidth(), nullptr, false);
     return value;
   });
-  initializingProperties = false;
 }
 
 ROM::ROM(Bus address, Wire_ptr chipSelect, Wire_ptr outputEnable, Bus data) : ROM()
@@ -89,8 +88,8 @@ std::string ROM::configuredBinaryContents() const
 }
 
 void ROM::configure(const int dataWidth, std::shared_ptr<const std::string> nextContent,
-                    const bool rejectInvalid, const bool reshape,
-                    const bool preferAddressDepth, const std::size_t explicitWords)
+                    const bool rejectInvalid, const bool preferAddressDepth,
+                    const std::size_t explicitWords)
 {
   const int width = std::get<int>(requireValidSize("ROM dataWidth", PropertyValue{dataWidth}));
 
@@ -121,10 +120,8 @@ void ROM::configure(const int dataWidth, std::shared_ptr<const std::string> next
   }
 
   content         = std::move(nextContent);
-  contentResolved = nextResolved;
   wordCount       = nextResolved ? nextWords : 0;
-  if (reshape)
-    reshapeBuses(width, wordCount);
+  reshapeBuses(width, wordCount);
 }
 
 void ROM::reshapeBuses(const int dataWidth, const std::size_t words)
@@ -164,18 +161,18 @@ void ROM::setBinaryDocument(std::string slug, std::shared_ptr<const std::string>
     throw;
   }
   settingBinaryDocument = false;
-  configure(width, std::move(contents), true, true);
+  configure(width, std::move(contents), true);
 }
 
 void ROM::refreshBinaryContents(std::shared_ptr<const std::string> contents)
 {
-  configure(configuredDataWidth(), std::move(contents), false, true, true);
+  configure(configuredDataWidth(), std::move(contents), false, true);
 }
 
 void ROM::refreshBinaryContents(std::shared_ptr<const std::string> contents,
                                 const std::size_t words)
 {
-  configure(configuredDataWidth(), std::move(contents), true, true, false, words);
+  configure(configuredDataWidth(), std::move(contents), true, false, words);
 }
 
 std::shared_ptr<const std::string> ROM::binaryContentsSnapshot() const noexcept
@@ -201,7 +198,7 @@ void ROM::simulate(SILICON::simulation::Simulator& sim)
     driveState(sim, chipSelect);
     return;
   }
-  if (!contentResolved || wordCount == 0) {
+  if (wordCount == 0) {
     driveState(sim, State::UNKNOWN);
     return;
   }
