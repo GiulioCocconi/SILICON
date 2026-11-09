@@ -27,15 +27,30 @@
 namespace SILICON::core {
 namespace {
 
-  [[nodiscard]] std::size_t packedWordCount(const std::size_t bytes,
+  std::size_t bitCount(const std::size_t width, const std::size_t depth)
+  {
+    if (width == 0 || depth == 0
+        || depth > std::numeric_limits<std::size_t>::max() / width)
+      throw std::invalid_argument("Memory image geometry is invalid");
+    return width * depth;
+  }
+
+  [[nodiscard]] std::size_t packedWordCount(const std::size_t bits,
                                             const std::size_t width)
   {
-    if (bytes == 0)
-      return 0;
-    if (bytes > std::numeric_limits<std::size_t>::max() / 8)
-      throw std::invalid_argument("ROM binaryContents is too large");
-    const std::size_t bits = bytes * 8;
     return bits / width + static_cast<std::size_t>(bits % width != 0);
+  }
+
+  // Binary documents contain whole bytes; ROM geometry excludes byte padding.
+  [[nodiscard]] bool matchesPackedImage(const std::size_t bytes, const std::size_t words,
+                                        const std::size_t width)
+  {
+    if (words > std::numeric_limits<std::size_t>::max() / width)
+      return false;
+    const auto required = words * width;
+    return bytes == required / 8 + (required % 8 != 0)
+           || (bytes <= std::numeric_limits<std::size_t>::max() / 8
+               && packedWordCount(bytes * 8, width) == words);
   }
 
   [[nodiscard]] unsigned short addressWidthFor(const std::size_t words)
@@ -47,6 +62,31 @@ namespace {
 
 }  // namespace
 
+MemoryImage::MemoryImage(Bits bits, const std::size_t wordWidth, const std::size_t depth)
+  : data(std::move(bits)), width(wordWidth), words(depth)
+{
+  if (data.size() != bitCount(width, words))
+    throw std::invalid_argument("Memory image bits do not match its geometry");
+}
+
+MemoryImage MemoryImage::fromBytes(const std::span<const std::uint8_t> bytes,
+                                   const std::size_t width, const std::size_t depth)
+{
+  const auto count = bitCount(width, depth);
+  if (bytes.size() > count / 8 + (count % 8 != 0))
+    throw std::invalid_argument("Memory image contains too many bytes");
+  Bits bits(bytes.begin(), bytes.end());
+  bits.resize(count);
+  return MemoryImage(std::move(bits), width, depth);
+}
+
+std::vector<std::uint8_t> MemoryImage::bytes() const
+{
+  std::vector<std::uint8_t> result(data.num_blocks());
+  boost::to_block_range(data, result.begin());
+  return result;
+}
+
 ROM::ROM()
 {
   defineProperty("dataWidth", 8);
@@ -54,7 +94,9 @@ ROM::ROM()
 
   setPropertyCallback("dataWidth", [this](const PropertyValue& value) {
     const int width = std::get<int>(requireValidSize("ROM dataWidth", value));
-    configure(width, content, true);
+    if (!settingMemoryImage)
+      configure(width, content, true, false,
+                width == configuredDataWidth() ? imageDepth : 0);
     return value;
   });
   setPropertyCallback("binaryContents", [this](const PropertyValue& value) {
@@ -87,7 +129,8 @@ std::string ROM::configuredBinaryContents() const
   return getPropertyValue<std::string>("binaryContents").value_or(std::string());
 }
 
-void ROM::configure(const int dataWidth, std::shared_ptr<const std::string> nextContent,
+void ROM::configure(const int                                        dataWidth,
+                    std::shared_ptr<const std::vector<std::uint8_t>> nextContent,
                     const bool rejectInvalid, const bool preferAddressDepth,
                     const std::size_t explicitWords)
 {
@@ -96,20 +139,26 @@ void ROM::configure(const int dataWidth, std::shared_ptr<const std::string> next
   bool        nextResolved = false;
   std::size_t nextWords    = 0;
   if (nextContent) {
-    nextWords = packedWordCount(nextContent->size(), static_cast<std::size_t>(width));
+    if (nextContent->size() > std::numeric_limits<std::size_t>::max() / 8)
+      throw std::invalid_argument("ROM binary document is too large");
+    nextWords = packedWordCount(nextContent->size() * 8, static_cast<std::size_t>(width));
     if (explicitWords != 0) {
       if (!std::has_single_bit(explicitWords)
-          || explicitWords > std::numeric_limits<std::size_t>::max() / static_cast<std::size_t>(width)
-          || nextContent->size() != (explicitWords * static_cast<std::size_t>(width) + 7) / 8)
-        throw std::invalid_argument("ROM image does not match its explicit word count");
-      nextWords = explicitWords;
+          || !matchesPackedImage(nextContent->size(), explicitWords,
+                                 static_cast<std::size_t>(width))) {
+        if (rejectInvalid)
+          throw std::invalid_argument("ROM image does not match its explicit word count");
+        nextWords = 0;
+      } else {
+        nextWords = explicitWords;
+      }
     } else if (preferAddressDepth && !nextContent->empty() && !inputs.empty()) {
       const auto& address = inputs[busIndex(Inputs::Address)];
       const auto addressBits = address.size();
       if (addressBits < std::numeric_limits<std::size_t>::digits) {
         const auto candidate = std::size_t{1} << addressBits;
-        if (candidate <= std::numeric_limits<std::size_t>::max() / static_cast<std::size_t>(width)
-            && nextContent->size() == (candidate * static_cast<std::size_t>(width) + 7) / 8)
+        if (matchesPackedImage(nextContent->size(), candidate,
+                               static_cast<std::size_t>(width)))
           nextWords = candidate;
       }
     }
@@ -119,9 +168,14 @@ void ROM::configure(const int dataWidth, std::shared_ptr<const std::string> next
           "ROM binaryContents must contain a power-of-two number of packed words");
   }
 
-  content         = std::move(nextContent);
-  wordCount       = nextResolved ? nextWords : 0;
-  reshapeBuses(width, wordCount);
+  auto nextImage = nextResolved
+                       ? std::make_shared<const MemoryImage>(MemoryImage::fromBytes(
+                             *nextContent, static_cast<std::size_t>(width), nextWords))
+                       : nullptr;
+  content        = std::move(nextContent);
+  image          = std::move(nextImage);
+  imageDepth     = explicitWords;
+  reshapeBuses(width, resolvedWordCount());
 }
 
 void ROM::reshapeBuses(const int dataWidth, const std::size_t words)
@@ -139,15 +193,18 @@ void ROM::reshapeBuses(const int dataWidth, const std::size_t words)
   setOutputs(newOutputs);
 }
 
-void ROM::setBinaryDocument(std::string slug, std::shared_ptr<const std::string> contents)
+void ROM::setBinaryDocument(std::string                                      slug,
+                            std::shared_ptr<const std::vector<std::uint8_t>> contents)
 {
   const int width = configuredDataWidth();
 
   // Validate the proposed snapshot before changing either the property or the
   // current contents, so an invalid user selection is transactional.
   if (contents) {
-    const std::size_t words =
-        packedWordCount(contents->size(), static_cast<std::size_t>(width));
+    if (contents->size() > std::numeric_limits<std::size_t>::max() / 8)
+      throw std::invalid_argument("ROM binary document is too large");
+    const auto words =
+        packedWordCount(contents->size() * 8, static_cast<std::size_t>(width));
     if (words != 0 && !std::has_single_bit(words))
       throw std::invalid_argument(
           "ROM binaryContents must contain a power-of-two number of packed words");
@@ -164,20 +221,68 @@ void ROM::setBinaryDocument(std::string slug, std::shared_ptr<const std::string>
   configure(width, std::move(contents), true);
 }
 
-void ROM::refreshBinaryContents(std::shared_ptr<const std::string> contents)
+void ROM::refreshBinaryContents(std::shared_ptr<const std::vector<std::uint8_t>> contents)
 {
-  configure(configuredDataWidth(), std::move(contents), false, true);
+  // Preserve saved geometry on hydration, but keep document replacement/resizing
+  // consistent with a newly selected binary file.
+  const auto depth =
+      content && contents && content->size() != contents->size() ? 0 : imageDepth;
+  configure(configuredDataWidth(), std::move(contents), false, true, depth);
 }
 
-void ROM::refreshBinaryContents(std::shared_ptr<const std::string> contents,
-                                const std::size_t words)
+void ROM::refreshBinaryContents(std::shared_ptr<const std::vector<std::uint8_t>> contents,
+                                const std::size_t                                words)
 {
   configure(configuredDataWidth(), std::move(contents), true, false, words);
 }
 
-std::shared_ptr<const std::string> ROM::binaryContentsSnapshot() const noexcept
+std::shared_ptr<const std::vector<std::uint8_t>>
+ROM::binaryContentsSnapshot() const noexcept
 {
   return content;
+}
+
+std::size_t ROM::resolvedWordCount() const noexcept
+{
+  return image ? image->depth() : 0;
+}
+
+std::size_t ROM::memoryDepth() const noexcept
+{
+  return image ? image->depth() : imageDepth;
+}
+
+void ROM::setMemoryImage(std::shared_ptr<const MemoryImage> nextImage)
+{
+  if (!nextImage || !std::has_single_bit(nextImage->depth())
+      || nextImage->wordWidth() > std::numeric_limits<unsigned short>::max())
+    throw std::invalid_argument("Invalid ROM image");
+  auto bytes = std::make_shared<const std::vector<std::uint8_t>>(nextImage->bytes());
+  settingMemoryImage = true;
+  try {
+    setProperty("dataWidth", static_cast<int>(nextImage->wordWidth()));
+  } catch (...) {
+    settingMemoryImage = false;
+    throw;
+  }
+  settingMemoryImage = false;
+  imageDepth         = nextImage->depth();
+  image              = std::move(nextImage);
+  content            = std::move(bytes);
+  reshapeBuses(configuredDataWidth(), image->depth());
+}
+
+void ROM::setMemoryDepth(const std::size_t depth)
+{
+  if (depth != 0
+      && (!std::has_single_bit(depth)
+          || depth > std::numeric_limits<std::size_t>::max()
+                         / static_cast<std::size_t>(configuredDataWidth())))
+    throw std::invalid_argument("Invalid ROM depth");
+  if (content)
+    configure(configuredDataWidth(), content, true, false, depth);
+  else
+    imageDepth = depth;
 }
 
 void ROM::driveState(SILICON::simulation::Simulator& sim, const State state)
@@ -198,13 +303,13 @@ void ROM::simulate(SILICON::simulation::Simulator& sim)
     driveState(sim, chipSelect);
     return;
   }
-  if (wordCount == 0) {
+  if (!image) {
     driveState(sim, State::UNKNOWN);
     return;
   }
 
   std::size_t address = 0;
-  if (wordCount > 1) {
+  if (image->depth() > 1) {
     const auto addressSize = inputBuses().size() > busIndex(Inputs::Address)
                                  ? inputBuses()[busIndex(Inputs::Address)].size()
                                  : 0;
@@ -228,11 +333,9 @@ void ROM::simulate(SILICON::simulation::Simulator& sim)
   const std::size_t firstBit = address * dataWidth;
   for (std::size_t bit = 0; bit < dataWidth; ++bit) {
     const std::size_t sourceBit = firstBit + bit;
-    const std::size_t byteIndex = sourceBit / 8;
-    if (!content || byteIndex >= content->size())
+    if (sourceBit >= image->bits().size())
       break;
-    const auto byte = static_cast<unsigned char>((*content)[byteIndex]);
-    value[bit]      = (byte & (1U << (sourceBit % 8))) != 0 ? State::HIGH : State::LOW;
+    value[bit] = image->bits()[sourceBit] ? State::HIGH : State::LOW;
   }
   sim.updateBus(outputBuses()[busIndex(Outputs::Data)], value, 0, weak_from_this());
 }

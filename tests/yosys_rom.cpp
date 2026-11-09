@@ -64,7 +64,7 @@ TEST(YosysRomTest, ImportsInitializedArrayAndCreatesBinaryDocument)
   });
   ASSERT_NE(binary, result.documents.end());
   EXPECT_EQ(std::get<SILICON::conversion::BinarySource>(binary->payload).contents,
-            std::string("\x12\x34\x56\x78", 4));
+            (std::vector<std::uint8_t>{0x12, 0x34, 0x56, 0x78}));
   const auto circuit = std::ranges::find_if(result.documents, [](const auto& document) {
     return std::holds_alternative<Circuit>(document.payload);
   });
@@ -103,7 +103,8 @@ TEST(YosysRomTest, ExportsSelfContainedInitializedArrayAndReimportsIt)
   rom->setProperty("binaryContents", std::string("program"));
   rom->setInputs({address, cs, oe});
   rom->setOutputs({data});
-  rom->refreshBinaryContents(std::make_shared<const std::string>(std::string("\xA5\x3C\x0F", 3)));
+  rom->refreshBinaryContents(std::make_shared<const std::vector<std::uint8_t>>(
+      (std::vector<std::uint8_t>{0xA5, 0x3C, 0x0F})));
   Circuit circuit(Component_set{
       rom, std::make_shared<DummyInputComponent>(address, "address"),
       std::make_shared<DummyInputComponent>(cs, "cs"),
@@ -121,7 +122,8 @@ TEST(YosysRomTest, ExportsSelfContainedInitializedArrayAndReimportsIt)
     ++roms;
     EXPECT_EQ(restored->resolvedWordCount(), 2);
     ASSERT_TRUE(restored->binaryContentsSnapshot());
-    EXPECT_EQ(*restored->binaryContentsSnapshot(), std::string("\xA5\x3C\x0F", 3));
+    EXPECT_EQ(*restored->binaryContentsSnapshot(),
+              (std::vector<std::uint8_t>{0xA5, 0x3C, 0x0F}));
   }
   EXPECT_EQ(roms, 1);
 }
@@ -142,7 +144,7 @@ TEST(YosysRomTest, SharesBinaryDocumentAcrossReadPorts)
     ++roms;
     EXPECT_EQ(rom->getPropertyValue<std::string>("binaryContents"), "multi_table");
     ASSERT_TRUE(rom->binaryContentsSnapshot());
-    EXPECT_EQ(*rom->binaryContentsSnapshot(), std::string("\x12\x34", 2));
+    EXPECT_EQ(*rom->binaryContentsSnapshot(), (std::vector<std::uint8_t>{0x12, 0x34}));
   }
   EXPECT_EQ(roms, 2);
   const SILICON::project::Document source{"code/multi.v", sourceText};
@@ -185,7 +187,7 @@ TEST(YosysRomTest, VerilogAttributeSetsBinaryDocumentName)
   ASSERT_NE(binary, converted.documents.end());
   EXPECT_EQ(binary->path, "bin/firmware");
   EXPECT_EQ(std::get<SILICON::conversion::BinarySource>(binary->payload).contents,
-            std::string("\x12\x34", 2));
+            (std::vector<std::uint8_t>{0x12, 0x34}));
   const auto circuit = std::ranges::find_if(converted.documents, [](const auto& document) {
     return std::holds_alternative<Circuit>(document.payload);
   });
@@ -207,7 +209,8 @@ TEST(YosysRomTest, CircuitConversionHydratesBinaryDocument)
   rom->setProperty("binaryContents", std::string("program"));
   rom->setInputs({address, cs, Bus(1)});
   rom->setOutputs({data});
-  rom->refreshBinaryContents(std::make_shared<const std::string>(std::string("\xA5\x3C\x0F", 3)));
+  rom->refreshBinaryContents(std::make_shared<const std::vector<std::uint8_t>>(
+      (std::vector<std::uint8_t>{0xA5, 0x3C, 0x0F})));
   Circuit circuit(Component_set{
       rom, std::make_shared<DummyInputComponent>(address, "address"),
       std::make_shared<DummyInputComponent>(cs, "cs"),
@@ -216,7 +219,7 @@ TEST(YosysRomTest, CircuitConversionHydratesBinaryDocument)
       "circuits/romtop.json",
       nlohmann::json{{"circuit", nlohmann::json::parse(circuit.serialize())}}.dump()};
   const std::vector<SILICON::project::Document> documents{
-      source, {"bin/program", std::string("\xA5\x3C\x0F", 3)}};
+      source, {"bin/program", (std::vector<std::uint8_t>{0xA5, 0x3C, 0x0F})}};
   SILICON::project::ProjectContext project;
   project.setDocuments(documents);
   auto registry = ComponentRegistry::empty();
@@ -408,4 +411,5 @@ TEST(YosysRomTest, RejectsUnsupportedMemoryBehavior)
         SILICON::yosys::elaborateHierarchy(SILICON::verilog::read(source)), "bad")),
         std::exception) << source;
 }
+
 #endif

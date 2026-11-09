@@ -199,12 +199,15 @@ std::string documentPathForSlug(const DocumentType type, const std::string_view 
   return std::format("{}{}{}", info.root, slug, info.suffix);
 }
 
-Document::Document(std::string path, std::string contents)
+Document::Document(std::string path, Contents contents)
   : path(std::move(path)), contents(std::move(contents))
 {
   const auto type = documentTypeForPath(this->path);
   if (!type)
     throw std::invalid_argument("Document path is invalid");
+  if ((*type == DocumentType::RawBinary)
+      != std::holds_alternative<std::vector<std::uint8_t>>(this->contents))
+    throw std::invalid_argument("Document contents do not match its type");
 }
 
 const std::string& Document::getPath() const noexcept
@@ -212,7 +215,7 @@ const std::string& Document::getPath() const noexcept
   return path;
 }
 
-const std::string& Document::getContents() const noexcept
+const Document::Contents& Document::getPayload() const noexcept
 {
   return contents;
 }
@@ -222,35 +225,65 @@ DocumentType Document::getType() const noexcept
   return *documentTypeForPath(path);
 }
 
-void Document::setContents(std::string contents)
+void Document::setContents(Contents contents)
 {
+  if ((getType() == DocumentType::RawBinary)
+      != std::holds_alternative<std::vector<std::uint8_t>>(contents))
+    throw std::invalid_argument("Document contents do not match its type");
   this->contents = std::move(contents);
+}
+
+namespace {
+  Document importDocumentContents(const std::string_view           sourcePath,
+                                  const std::string_view           contents,
+                                  const std::vector<std::uint8_t>* bytes)
+  {
+    const auto fileName = leafFileName(sourcePath);
+    if (fileName.empty() || fileName == "." || fileName == "..")
+      throw std::invalid_argument("Document file name is invalid");
+
+    const auto type = documentTypeForFile(fileName, contents);
+    if (!type)
+      throw std::invalid_argument(std::format("Unsupported document file: {}", fileName));
+
+    std::string slug;
+    if (*type == DocumentType::Sisl) {
+      const auto name = declaredArchitectureName(contents);
+      if (!name)
+        throw std::invalid_argument("SISL file must begin with a valid arch declaration");
+      slug = *name;
+    } else {
+      slug =
+          *type == DocumentType::RawBinary ? std::string(fileName) : fileStem(fileName);
+    }
+    if (!isValidDocumentSlug(slug))
+      throw std::invalid_argument("Document file name is invalid");
+
+    const auto path = documentPathForSlug(*type, slug);
+    if (*type == DocumentType::RawBinary) {
+      if (!bytes)
+        throw std::invalid_argument("Binary imports require a byte buffer");
+      return Document(path, *bytes);
+    }
+    return Document(path, std::string(contents));
+  }
+
+}  // namespace
+
+Document importDocument(const std::string_view           sourcePath,
+                        const std::vector<std::uint8_t>& contents)
+{
+  return importDocumentContents(
+      sourcePath,
+      std::string_view(contents.empty() ? ""
+                                        : reinterpret_cast<const char*>(contents.data()),
+                       contents.size()),
+      &contents);
 }
 
 Document importDocument(const std::string_view sourcePath, std::string contents)
 {
-  const auto fileName = leafFileName(sourcePath);
-  if (fileName.empty() || fileName == "." || fileName == "..")
-    throw std::invalid_argument("Document file name is invalid");
-
-  const auto type = documentTypeForFile(fileName, contents);
-  if (!type)
-    throw std::invalid_argument(std::format("Unsupported document file: {}", fileName));
-
-  std::string slug;
-  if (*type == DocumentType::Sisl) {
-    const auto name = declaredArchitectureName(contents);
-    if (!name)
-      throw std::invalid_argument("SISL file must begin with a valid arch declaration");
-    slug = *name;
-  } else {
-    slug = *type == DocumentType::RawBinary ? std::string(fileName)
-                                            : fileStem(fileName);
-  }
-  if (!isValidDocumentSlug(slug))
-    throw std::invalid_argument("Document file name is invalid");
-
-  return Document(documentPathForSlug(*type, slug), std::move(contents));
+  return importDocumentContents(sourcePath, contents, nullptr);
 }
 
 std::string documentFileName(const Document& document)
@@ -306,8 +339,8 @@ void DocumentStore::commitDocuments(std::vector<Document> documents,
   listeners.notify(change);
 }
 
-std::shared_ptr<const std::string> binaryContentsSnapshot(const DocumentStore& documents,
-                                                          const std::string_view slug)
+std::shared_ptr<const std::vector<std::uint8_t>>
+binaryContentsSnapshot(const DocumentStore& documents, const std::string_view slug)
 {
   if (!isValidDocumentSlug(slug))
     return nullptr;
@@ -317,7 +350,8 @@ std::shared_ptr<const std::string> binaryContentsSnapshot(const DocumentStore& d
   if (!document)
     return nullptr;
 
-  return std::make_shared<const std::string>(document->getContents());
+  return std::make_shared<const std::vector<std::uint8_t>>(
+      document->getContents<std::vector<std::uint8_t>>());
 }
 
 }  // namespace SILICON::project
