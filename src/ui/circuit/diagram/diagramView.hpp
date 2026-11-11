@@ -41,9 +41,11 @@ public slots:
   void modeChanged(InteractionMode mode);
 
 private:
-  static constexpr int MIN_ZOOM_LEVEL = 60;
-  static constexpr int MAX_ZOOM_LEVEL = 200;
-  int                  zoomLevel      = 100;
+  static constexpr int MIN_ZOOM_LEVEL     = 60;
+  static constexpr int MAX_ZOOM_LEVEL     = 200;
+  int                  zoomLevel          = 100;
+  qreal                wheelZoomRemainder = 0;
+
   bool                 zoom(bool dir);
   bool                 zoom(int level);
   void                 updateZoom();
