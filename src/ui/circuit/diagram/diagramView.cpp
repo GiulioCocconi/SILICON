@@ -19,7 +19,6 @@
 
 #include <stdexcept>
 
-
 namespace SILICON::ui {
 using namespace SILICON::core;
 
@@ -47,49 +46,63 @@ void DiagramView::setScene(DiagramScene* scene)
 
 void DiagramView::wheelEvent(QWheelEvent* event)
 {
-  const bool zoomDirection = event->angleDelta().y() > 0;
-
-  // Keep the route stable while a wire is actively being drawn. Wire creation mode
-  // itself can still zoom before the first endpoint and between completed wires.
   const auto* dg = qobject_cast<DiagramScene*>(scene());
-  if (dg && dg->getInteractionMode() == InteractionMode::WIRE_CREATION_MODE
+
+  if (!dg) {
+    QGraphicsView::wheelEvent(event);
+    return;
+  }
+
+  if (dg->getInteractionMode() == InteractionMode::WIRE_CREATION_MODE
       && dg->isWireCreationInProgress()) {
     event->ignore();
     return;
   }
 
-  // If the zoom level changes the scene should be centered to the pointer position
-  if (zoom(zoomDirection))
-    centerOn(mapToScene(event->position().toPoint()));
+  const bool isPixelDelta = !event->pixelDelta().isNull();
+  const int  delta = isPixelDelta ? event->pixelDelta().y() : event->angleDelta().y();
+
+  constexpr qreal ZOOM_STEP  = 20.0;
+  constexpr qreal ANGLE_STEP = 120.0;
+  constexpr qreal PIXEL_STEP = 100.0;
+
+  wheelZoomRemainder += delta * ZOOM_STEP / (isPixelDelta ? PIXEL_STEP : ANGLE_STEP);
+
+  const int increment = static_cast<int>(wheelZoomRemainder);
+  wheelZoomRemainder -= increment;
+
+  const auto cursor = event->position().toPoint();
+  const auto before = mapToScene(cursor);
+
+  if (increment != 0 && zoom(zoomLevel + increment)) {
+    const auto after = mapToScene(cursor);
+    centerOn(mapToScene(viewport()->rect().center()) + before - after);
+  }
+
   event->accept();
 }
 
-bool DiagramView::zoom(bool dir)
+bool DiagramView::zoom(const bool dir)
 {
-  const int sign = dir ? 1 : -1;
-  return zoom(zoomLevel + sign * 20);
+  return zoom(zoomLevel + (dir ? 20 : -20));
 }
 
 bool DiagramView::zoom(int level)
 {
   level = std::clamp(level, MIN_ZOOM_LEVEL, MAX_ZOOM_LEVEL);
 
-  if (level != this->zoomLevel) {
-    this->zoomLevel = level;
-    updateZoom();
-    return true;
-  }
+  if (level == zoomLevel)
+    return false;
 
-  return false;
+  zoomLevel = level;
+  updateZoom();
+  return true;
 }
 
 void DiagramView::updateZoom()
 {
-  resetTransform();
-
-  const float FACTOR = static_cast<float>(zoomLevel) / 100;
-
-  scale(FACTOR, FACTOR);
+  const qreal factor = static_cast<qreal>(zoomLevel) / 100.0;
+  setTransform(QTransform::fromScale(factor, factor));
 }
 
 void DiagramView::centerCircuit()
