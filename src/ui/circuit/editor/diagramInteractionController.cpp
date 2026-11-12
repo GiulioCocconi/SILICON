@@ -136,7 +136,7 @@ void DiagramInteractionController::autoPlace()
 
 void DiagramInteractionController::centerView()
 {
-  circuit.view()->centerCircuit();
+  circuit.view()->zoomToRect(circuit.scene()->itemsBoundingRect());
 }
 
 void DiagramInteractionController::editActiveSubcircuitShape()
