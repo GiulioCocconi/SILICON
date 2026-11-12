@@ -36,6 +36,10 @@ protected:
   void wheelEvent(QWheelEvent* event) override;
 
 public slots:
+  /** @brief Increases the circuit zoom by one step. */
+  void zoomIn();
+  /** @brief Decreases the circuit zoom by one step. */
+  void zoomOut();
   /** @brief Pans the viewport so the circuit's bounds are centered. */
   void centerCircuit();
   void modeChanged(InteractionMode mode);
@@ -46,7 +50,6 @@ private:
   int                  zoomLevel          = 100;
   qreal                wheelZoomRemainder = 0;
 
-  bool                 zoom(bool dir);
   bool                 zoom(int level);
   void                 updateZoom();
 };

@@ -82,9 +82,14 @@ void DiagramView::wheelEvent(QWheelEvent* event)
   event->accept();
 }
 
-bool DiagramView::zoom(const bool dir)
+void DiagramView::zoomIn()
 {
-  return zoom(zoomLevel + (dir ? 20 : -20));
+  zoom(zoomLevel + 20);
+}
+
+void DiagramView::zoomOut()
+{
+  zoom(zoomLevel - 20);
 }
 
 bool DiagramView::zoom(int level)
