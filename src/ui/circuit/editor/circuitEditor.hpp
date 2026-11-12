@@ -44,6 +44,7 @@ public:
   void               cut() override;
   void               paste() override;
   void               deleteSelection() override;
+  void               zoom(bool in) override;
 
   /**
    * @brief Reports which editing commands the diagram currently accepts.

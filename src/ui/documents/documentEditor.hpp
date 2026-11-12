@@ -62,6 +62,8 @@ public:
   virtual void               cut() {}
   virtual void               paste() {}
   virtual void               deleteSelection() {}
+  /** @brief Zooms the document in (true) or out (false) by one step. */
+  virtual void               zoom(bool in) = 0;
 
   /**
    * @brief Reports which generic editing commands the editor currently accepts.

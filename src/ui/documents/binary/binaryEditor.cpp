@@ -26,6 +26,7 @@
 #include <QAbstractScrollArea>
 #include <QApplication>
 #include <QGridLayout>
+#include <QFontInfo>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
@@ -436,6 +437,15 @@ BinaryEditor::BinaryEditor(QWidget* parent)
 }
 
 BinaryEditor::~BinaryEditor() = default;
+
+void BinaryEditor::zoomBy(int steps)
+{
+  auto font = hexView->font();
+  const qreal size = QFontInfo(font).pointSizeF();
+  font.setPointSizeF(std::clamp((size > 0.0 ? size : 10.0) + steps, 6.0, 48.0));
+  hexView->setFont(font);
+  hexView->dataChanged();
+}
 
 void BinaryEditor::setData(QByteArray data)
 {

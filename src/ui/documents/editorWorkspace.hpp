@@ -73,6 +73,7 @@ public:
   void               cutActiveDocument();
   void               pasteActiveDocument();
   void               deleteInActiveDocument();
+  void               zoomActiveDocument(bool in);
   [[nodiscard]] std::shared_ptr<PreparedDocument>
        prepareDocument(const SILICON::project::Document& document);
   void activateDocument(const PreparedDocument& prepared);

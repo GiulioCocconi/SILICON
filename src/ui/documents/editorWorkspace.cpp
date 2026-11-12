@@ -233,4 +233,9 @@ void EditorWorkspace::loadDocument(const SILICON::project::Document& document)
 {
   activateDocument(*prepareDocument(document));
 }
+void EditorWorkspace::zoomActiveDocument(bool in)
+{
+  if (activeDocumentEditor)
+    activeDocumentEditor->zoom(in);
+}
 }  // namespace SILICON::ui

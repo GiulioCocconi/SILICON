@@ -541,15 +541,21 @@ void CodeEditor::wheelEvent(QWheelEvent* event)
     return;
   }
 
+  const int       steps           = std::max(1, std::abs(delta) / 120);
+  zoomBy(delta > 0 ? steps : -steps);
+  event->accept();
+}
+
+void CodeEditor::zoomBy(int steps)
+{
   constexpr qreal MINIMUM_FONT_SIZE = 6.0;
   constexpr qreal MAXIMUM_FONT_SIZE = 48.0;
-  const int       steps           = std::max(1, std::abs(delta) / 120);
 
   if (zoomFontPointSize <= 0.0)
     zoomFontPointSize = QFontInfo(font()).pointSizeF();
   if (zoomFontPointSize <= 0.0)
     zoomFontPointSize = 10.0;
-  zoomFontPointSize = std::clamp(zoomFontPointSize + (delta > 0 ? steps : -steps),
+  zoomFontPointSize = std::clamp(zoomFontPointSize + steps,
                                  MINIMUM_FONT_SIZE, MAXIMUM_FONT_SIZE);
 
   QFont editorFont = font();
@@ -559,7 +565,6 @@ void CodeEditor::wheelEvent(QWheelEvent* event)
   updateIndentationSettings();
   updateLineNumberAreaWidth();
   lineNumberArea->update();
-  event->accept();
 }
 
 QFont CodeEditor::lineNumberFont() const

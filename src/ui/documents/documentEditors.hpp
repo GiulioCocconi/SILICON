@@ -25,6 +25,7 @@ public:
                      EditorNotifications notifications);
   ~CodeDocumentEditor() override;
   [[nodiscard]] CodeEditor* editor() const noexcept { return codeEditor.get(); }
+  void zoom(bool in) override;
   [[nodiscard]] QWidget*    widget() const noexcept override;
   [[nodiscard]] std::shared_ptr<PreparedEditorDocument>
                                 prepare(const SILICON::project::Document&) override;
@@ -56,6 +57,7 @@ public:
                        EditorNotifications notifications);
   ~BinaryDocumentEditor() override;
   [[nodiscard]] BinaryEditor* editor() const noexcept { return binaryEditor.get(); }
+  void zoom(bool in) override;
   [[nodiscard]] QWidget*      widget() const noexcept override;
   [[nodiscard]] std::shared_ptr<PreparedEditorDocument>
                      prepare(const SILICON::project::Document&) override;
@@ -81,6 +83,7 @@ public:
   ArchitectureDocumentEditor(ProjectSession& session, QWidget* parent,
                              EditorNotifications notifications);
   ~ArchitectureDocumentEditor() override;
+  void zoom(bool in) override;
   [[nodiscard]] ArchitectureWorkspace* workspace() const noexcept
   {
     return architectureWorkspace.get();
