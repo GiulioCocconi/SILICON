@@ -37,6 +37,7 @@
 #include <QObject>
 #include <QPointF>
 #include <QResizeEvent>
+#include <QStatusBar>
 #include <QToolBar>
 #include <QUndoStack>
 #include <QWidget>
@@ -180,6 +181,22 @@ SiliconWindow::SiliconWindow()
   actionSet->createMenus();
   actionSet->createToolBar();
   windowLifetime->toolBar = actionSet->toolBar;
+
+  const auto zoomToolBar = new QToolBar(this);
+  zoomToolBar->setFloatable(false);
+  zoomToolBar->setMovable(false);
+  zoomToolBar->setToolButtonStyle(Qt::ToolButtonIconOnly);
+  const auto zoomOutAct = zoomToolBar->addAction(Icon("minus"), tr("Zoom Out"));
+  const auto zoomInAct  = zoomToolBar->addAction(Icon("plus"), tr("Zoom In"));
+  connect(zoomOutAct, &QAction::triggered, circuitEditor->view(), &DiagramView::zoomOut);
+  connect(zoomInAct, &QAction::triggered, circuitEditor->view(), &DiagramView::zoomIn);
+  statusBar()->addPermanentWidget(zoomToolBar);
+  const auto updateZoomControls = [this, zoomToolBar] {
+    zoomToolBar->setEnabled(workspace->activeEditor() == circuitEditor);
+  };
+  callbacks.connect(workspace.get(), &EditorWorkspace::activeEditorChanged,
+                    updateZoomControls);
+  updateZoomControls();
 
   logSideView = new LogSideView(logDock);
   connect(circuitEditor->scene(), &DiagramScene::logsClearRequested, logSideView,
