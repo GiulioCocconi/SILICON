@@ -6,7 +6,8 @@ Cloudsmith is the only fully hosted, cloud-native, universal package management 
 enables your organization to create, store and share packages in any format, to any place, with total
 confidence._
 
-_Currently sponsored by UniGe_
+_Currently supported by the [Bachelor's Degree programme in Electronic Engineering and Informaton tecnology @ The University of Genoa](https://corsi.unige.it/en/corsi/11911)_
+
 
 ## TODOs
 
