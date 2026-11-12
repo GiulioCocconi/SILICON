@@ -40,6 +40,12 @@ public slots:
   void zoomIn();
   /** @brief Decreases the circuit zoom by one step. */
   void zoomOut();
+  /**
+   * @brief Centers a scene rectangle and fits it within the existing zoom limits.
+   * @param rect Rectangle in scene coordinates; QRect converts to QRectF implicitly.
+   * Empty rectangles are ignored. The aspect ratio is preserved.
+   */
+  void zoomToRect(const QRectF& rect);
   /** @brief Pans the viewport so the circuit's bounds are centered. */
   void centerCircuit();
   void modeChanged(InteractionMode mode);

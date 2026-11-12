@@ -92,6 +92,20 @@ void DiagramView::zoomOut()
   zoom(zoomLevel - 20);
 }
 
+void DiagramView::zoomToRect(const QRectF& rect)
+{
+  const auto bounds = rect.normalized();
+  const auto available = viewport()->rect().adjusted(2, 2, -2, -2);
+  if (bounds.isEmpty() || available.isEmpty())
+    return;
+
+  const qreal factor = std::min(available.width() / bounds.width(),
+                                available.height() / bounds.height());
+  zoom(static_cast<int>(std::clamp(factor * 100.0,
+                                   qreal(MIN_ZOOM_LEVEL), qreal(MAX_ZOOM_LEVEL))));
+  centerOn(bounds.center());
+}
+
 bool DiagramView::zoom(int level)
 {
   level = std::clamp(level, MIN_ZOOM_LEVEL, MAX_ZOOM_LEVEL);
