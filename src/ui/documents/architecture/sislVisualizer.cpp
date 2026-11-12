@@ -60,19 +60,23 @@ class ZoomView final : public QGraphicsView {
 public:
   using QGraphicsView::QGraphicsView;
 
-protected:
-  void wheelEvent(QWheelEvent* event) override {
+  void zoom(bool in) {
     constexpr qreal ZOOM_IN = 1.15;
     constexpr qreal ZOOM_OUT = 1.0 / ZOOM_IN;
     constexpr qreal MIN_SCALE = 0.2;
     constexpr qreal MAX_SCALE = 4.0;
 
-    const qreal factor = event->angleDelta().y() > 0 ? ZOOM_IN : ZOOM_OUT;
+    const qreal factor = in ? ZOOM_IN : ZOOM_OUT;
     const qreal nextScale = transform().m11() * factor;
 
     if (nextScale >= MIN_SCALE && nextScale <= MAX_SCALE) {
       scale(factor, factor);
     }
+  }
+
+protected:
+  void wheelEvent(QWheelEvent* event) override {
+    zoom(event->angleDelta().y() > 0);
     event->accept();
   }
 };
@@ -165,6 +169,11 @@ const sisl::FixedFieldDescription* findFixedField(const std::string& name, const
 }
 
 } // namespace
+
+void SislVisualizer::zoom(bool in)
+{
+  static_cast<ZoomView*>(view)->zoom(in);
+}
 
 // --- Class Implementation ---
 

@@ -281,6 +281,14 @@ void CircuitEditor::deleteSelection()
         diagramScene.get(), payload, SceneSelectionCommand::Operation::Remove, true));
 }
 
+void CircuitEditor::zoom(bool in)
+{
+  if (in)
+    diagramView->zoomIn();
+  else
+    diagramView->zoomOut();
+}
+
 EditorEditState CircuitEditor::editState() const
 {
   const auto interactionMode = diagramScene->getInteractionMode();

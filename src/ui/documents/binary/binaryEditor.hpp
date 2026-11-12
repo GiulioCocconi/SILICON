@@ -59,6 +59,8 @@ public:
   void                      setModified(bool modified);
 
   void refreshInspectors();
+  /** @brief Adjusts the hexadecimal view's text size by the given number of points. */
+  void zoomBy(int steps);
 
 private:
   friend class BinaryHexView;

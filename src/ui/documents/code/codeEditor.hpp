@@ -50,6 +50,8 @@ public:
 
   void setFileType(SILICON::project::DocumentType type);
   void clearFileType();
+  /** @brief Adjusts text and line-number size by the given number of points. */
+  void zoomBy(int steps);
 
   [[nodiscard]] const std::optional<SILICON::project::DocumentType>& fileType() const;
   [[nodiscard]] QString completionPrefix() const;

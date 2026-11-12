@@ -188,15 +188,11 @@ SiliconWindow::SiliconWindow()
   zoomToolBar->setToolButtonStyle(Qt::ToolButtonIconOnly);
   const auto zoomOutAct = zoomToolBar->addAction(Icon("minus"), tr("Zoom Out"));
   const auto zoomInAct  = zoomToolBar->addAction(Icon("plus"), tr("Zoom In"));
-  connect(zoomOutAct, &QAction::triggered, circuitEditor->view(), &DiagramView::zoomOut);
-  connect(zoomInAct, &QAction::triggered, circuitEditor->view(), &DiagramView::zoomIn);
+  callbacks.connect(zoomOutAct, &QAction::triggered,
+                    [this] { workspace->zoomActiveDocument(false); });
+  callbacks.connect(zoomInAct, &QAction::triggered,
+                    [this] { workspace->zoomActiveDocument(true); });
   statusBar()->addPermanentWidget(zoomToolBar);
-  const auto updateZoomControls = [this, zoomToolBar] {
-    zoomToolBar->setEnabled(workspace->activeEditor() == circuitEditor);
-  };
-  callbacks.connect(workspace.get(), &EditorWorkspace::activeEditorChanged,
-                    updateZoomControls);
-  updateZoomControls();
 
   logSideView = new LogSideView(logDock);
   connect(circuitEditor->scene(), &DiagramScene::logsClearRequested, logSideView,

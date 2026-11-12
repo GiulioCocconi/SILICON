@@ -16,11 +16,31 @@
 #include <QUndoStack>
 
 #include <ui/documents/architecture/architectureWorkspace.hpp>
+#include <ui/documents/architecture/sislVisualizer.hpp>
 #include <ui/documents/binary/binaryEditor.hpp>
 #include <ui/documents/code/codeEditor.hpp>
 #include <ui/project/projectSession.hpp>
 
 namespace SILICON::ui {
+void CodeDocumentEditor::zoom(bool in)
+{
+  codeEditor->zoomBy(in ? 1 : -1);
+}
+
+void BinaryDocumentEditor::zoom(bool in)
+{
+  binaryEditor->zoomBy(in ? 1 : -1);
+}
+
+void ArchitectureDocumentEditor::zoom(bool in)
+{
+  auto* current = architectureWorkspace->currentWidget();
+  if (auto* code = dynamic_cast<CodeEditor*>(current))
+    code->zoomBy(in ? 1 : -1);
+  else if (auto* visualizer = dynamic_cast<SislVisualizer*>(current))
+    visualizer->zoom(in);
+}
+
 namespace {
   struct PreparedText final : PreparedEditorDocument {
     SILICON::project::DocumentType type;

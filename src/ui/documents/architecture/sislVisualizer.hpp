@@ -32,6 +32,7 @@ class SislVisualizer : public QWidget {
 public:
   explicit SislVisualizer(QWidget* parent = nullptr);
   void setDescription(sisl::IsaDescription description);
+  void zoom(bool in);
 
 private:
   void changeEvent(QEvent* event) override;
