@@ -245,6 +245,7 @@ void GraphicalWireSegment::addPoints()
 
 void GraphicalWireSegment::updatePath()
 {
+  const auto previousBounds = boundingRect();
   prepareGeometryChange();
   points = canonicalizeOrthogonalRoute(std::move(points));
   path.clear();
@@ -260,6 +261,10 @@ void GraphicalWireSegment::updatePath()
     for (auto showPoint : this->showPoints)
       showPath.lineTo(showPoint);
   }
+  if (boundingRect() == previousBounds)
+    return;
+  if (auto* diagram = qobject_cast<DiagramScene*>(scene()))
+    diagram->expandSceneBounds(sceneBoundingRect());
 }
 
 // --- Painting --------------------------------------------------------------------------

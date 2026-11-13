@@ -134,6 +134,9 @@ public:
    */
   explicit DiagramScene(QObject* parent = nullptr);
 
+  /** @brief Grows the workspace in quantized steps to include scene coordinates. */
+  void expandSceneBounds(const QRectF& bounds);
+
   void setDocumentStore(const SILICON::project::DocumentStore* documents) noexcept;
   [[nodiscard]] const SILICON::project::DocumentStore* documentStore() const noexcept;
   void setCircuitResolver(const CircuitResolver* resolver) noexcept;
@@ -534,6 +537,9 @@ private:
    * @brief Draws the background grid.
    */
   void drawBackground(QPainter* painter, const QRectF& rect) override;
+
+  void  initializeSceneBounds(qreal expansionStep);
+  qreal sceneExpansionStep = 0;
 
   /**
    * @brief Internal method to set mode with force option.

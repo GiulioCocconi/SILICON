@@ -18,6 +18,7 @@
 #include "diagramScene.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <map>
 #include <ranges>
 #include <set>
@@ -100,11 +101,14 @@ namespace {
 
 DiagramScene::DiagramScene(QObject* parent) : QGraphicsScene(parent)
 {
+  initializeSceneBounds(60 * GRID_SIZE);
+
   connect(&ThemeEngine::instance(), &ThemeEngine::themeChanged, this, [this] {
     // QGraphicsItem and background caches do not follow widget palette propagation.
     invalidate(sceneRect(), QGraphicsScene::AllLayers);
     update();
   });
+
   simulationController = std::make_unique<DiagramSceneSimulationController>(*this);
   serializer           = std::make_unique<DiagramSceneSerializer>(*this);
 
@@ -125,12 +129,14 @@ DiagramScene::DiagramScene(QObject* parent) : QGraphicsScene(parent)
       update();
       return;
     }
+
     // Outside simulation, any user wire edit invalidates the cached logical circuit.
     // Autoplacement restores a fresh authoritative circuit after replacing all routes.
     if (getInteractionMode() != InteractionMode::SIMULATION_MODE)
       circuit.reset();
     requestConnectionsRefresh();
   });
+
   wireManager.setPortAnchors([this] {
     std::vector<WireManager::PortAnchor> anchors;
     for (auto* item : items()) {
@@ -958,6 +964,28 @@ void DiagramScene::drawBackground(QPainter* painter, const QRectF& rect)
     }
   }
   painter->drawPoints(points.data(), points.size());
+}
+
+void DiagramScene::initializeSceneBounds(const qreal expansionStep)
+{
+  setSceneRect(-expansionStep, -expansionStep, 2 * expansionStep, 2 * expansionStep);
+  sceneExpansionStep = expansionStep;
+}
+
+void DiagramScene::expandSceneBounds(const QRectF& bounds)
+{
+  const auto current = sceneRect();
+  if (current.contains(bounds))
+    return;
+
+  const auto   combined = current.united(bounds);
+  const QRectF expanded(
+      QPointF(std::floor(combined.left() / sceneExpansionStep) * sceneExpansionStep,
+              std::floor(combined.top() / sceneExpansionStep) * sceneExpansionStep),
+      QPointF(std::ceil(combined.right() / sceneExpansionStep) * sceneExpansionStep,
+              std::ceil(combined.bottom() / sceneExpansionStep) * sceneExpansionStep));
+  if (expanded != current)
+    setSceneRect(expanded);
 }
 
 void DiagramScene::setInteractionMode(InteractionMode mode)

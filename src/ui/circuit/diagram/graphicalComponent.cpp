@@ -170,6 +170,28 @@ GraphicalComponent::GraphicalComponent(ItemCategory category, QGraphicsItem* sha
   this->scanShape = scanShape;
 }
 
+void GraphicalComponent::prepareSceneBoundsChange()
+{
+  prepareGeometryChange();
+  if (!scene() || boundsUpdatePending)
+    return;
+
+  // Property callbacks can run before the new value is stored. Check once after
+  // the complete shape/port update, and ignore changes that leave bounds intact.
+  boundsUpdatePending       = true;
+  const auto previousBounds = boundingRect();
+  QMetaObject::invokeMethod(
+      this,
+      [this, previousBounds] {
+        boundsUpdatePending = false;
+        if (boundingRect() == previousBounds)
+          return;
+        if (auto* diagram = qobject_cast<DiagramScene*>(scene()))
+          diagram->expandSceneBounds(sceneBoundingRect());
+      },
+      Qt::QueuedConnection);
+}
+
 void GraphicalComponent::setItemShape(QGraphicsItem* shape)
 {
   if (!shape)
@@ -178,7 +200,7 @@ void GraphicalComponent::setItemShape(QGraphicsItem* shape)
   if (itemShape == shape)
     return;
 
-  prepareGeometryChange();
+  prepareSceneBoundsChange();
   if (this->itemShape)
     delete std::exchange(this->itemShape, nullptr);
 
@@ -418,7 +440,7 @@ void Port::prepareBoundsChange()
 {
   // The parent paints its selection outline around the accumulated child bounds.
   if (auto* component = dynamic_cast<GraphicalComponent*>(parentItem()))
-    component->prepareGeometryChange();
+    component->prepareSceneBoundsChange();
   prepareGeometryChange();
 }
 
@@ -466,7 +488,9 @@ QRectF Port::boundingRect() const
 
 void Port::setLine(QGraphicsLineItem* line)
 {
-  prepareBoundsChange();
+  if (auto* component = dynamic_cast<GraphicalComponent*>(parentItem()))
+    component->prepareGeometryChange();
+  prepareGeometryChange();
   if (line->parentItem() != parentItem()) {
     if (auto* component = dynamic_cast<GraphicalComponent*>(line->parentItem()))
       component->prepareGeometryChange();
