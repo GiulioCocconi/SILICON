@@ -259,6 +259,26 @@ public:
                  const Component_weakPtr& source);
 
   /**
+   * @brief Defers a sampled internal-state change until the active pass finishes.
+   *
+   * Components such as RAM sample their write inputs during evaluation and capture
+   * those values in the callback. Deferring the mutation lets other components
+   * observe the old state throughout that pass, regardless of evaluation order.
+   * The first sample per component in a pass wins, including repeated visits while
+   * a strongly connected component (SCC) settles.
+   *
+   * The callback changes internal state only; it must not drive wires. After the
+   * whole batch commits, changed owners and their downstream consumers are
+   * reevaluated at the same simulation time to publish the resulting outputs.
+   * Cancellation before the boundary discards the pending batch.
+   *
+   * @param source Component in this simulator that owns the state
+   * @param commit Callback with captured inputs; returns true if state changed
+   * @throws std::invalid_argument If source is expired or outside this simulator
+   */
+  void stageSequentialUpdate(const Component_weakPtr& source, std::function<bool()> commit);
+
+  /**
    * @brief Gets the current simulation time.
    * @return Current time in simulation units
    */
@@ -337,6 +357,10 @@ private:
   /** @brief Cached downstream execution-step membership for each input wire ID */
   std::unordered_map<uint64_t, ExecutionStepSet> forwardExecutionStepsByWire;
 
+  /** @brief Locates an owner for reevaluation when internal state changes without
+   * an output-wire transition, such as a RAM write before its read output updates. */
+  std::unordered_map<const Component*, std::size_t> componentExecutionSteps;
+
   /** @brief Priority queue of timed events sorted by time */
   std::priority_queue<TimedEvent, std::vector<TimedEvent>, std::greater<>> eventQueue;
 
@@ -346,6 +370,16 @@ private:
 
   /** @brief Zero-delay sequential writes waiting for the active pass to finish */
   StagedTransitions stagedSequentialTransitions;
+
+  /** @brief Internal-state mutation sampled during the active evaluation pass. */
+  struct StagedStateUpdate {
+    // Keep the component alive until its callback is committed or discarded.
+    Component_ptr owner;
+    std::function<bool()> commit;
+  };
+
+  /** @brief One pending sample per owner, retained across repeated SCC visits. */
+  std::unordered_map<const Component*, StagedStateUpdate> stagedStateUpdates;
 
   /** @brief Active SCC's reusable staging buffer; null outside a cyclic step. */
   CyclicStaging* activeCyclicStaging = nullptr;

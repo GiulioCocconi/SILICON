@@ -16,6 +16,7 @@
  */
 
 #include "subcircuitFixtures.hpp"
+
 #include "tests.hpp"
 
 #include <chrono>
@@ -48,6 +49,7 @@
 #include <nlohmann/json.hpp>
 
 using namespace SILICON::core;
+
 using namespace SILICON::project;
 using namespace SILICON::simulation;
 using namespace SILICON::waveform;
@@ -952,7 +954,7 @@ TEST_F(SubcircuitTest, ResolvesCircuitReadDirectlyFromProjectArchive)
 TEST_F(SubcircuitTest, HydratesRomSnapshotsInNestedResolvedDefinitions)
 {
   project.upsertDocument({documentPathForSlug(DocumentType::RawBinary, "program"),
-                          std::string("\x10\x20\x30\x40", 4)});
+                          (std::vector<std::uint8_t>{0x10, 0x20, 0x30, 0x40})});
   project.upsertDocument(subcircuitDocument("rom_leaf", romSubcircuitDocument()));
   project.upsertDocument(subcircuitDocument("rom_parent", nestedRomSubcircuitDocument()));
 
@@ -967,14 +969,15 @@ TEST_F(SubcircuitTest, HydratesRomSnapshotsInNestedResolvedDefinitions)
   const auto rom = std::dynamic_pointer_cast<ROM>(runtime->getComponentByVertexId(0));
   ASSERT_NE(rom, nullptr);
   ASSERT_NE(rom->binaryContentsSnapshot(), nullptr);
-  EXPECT_EQ(*rom->binaryContentsSnapshot(), std::string("\x10\x20\x30\x40", 4));
+  EXPECT_EQ(*rom->binaryContentsSnapshot(),
+            (std::vector<std::uint8_t>{0x10, 0x20, 0x30, 0x40}));
   EXPECT_EQ(rom->inputBuses()[0].size(), 2);
 }
 
 TEST_F(SubcircuitTest, SimulatesRomInsideSingleSubcircuit)
 {
   project.upsertDocument({documentPathForSlug(DocumentType::RawBinary, "program"),
-                          std::string("\x10\x20\x30\x40", 4)});
+                          (std::vector<std::uint8_t>{0x10, 0x20, 0x30, 0x40})});
   project.upsertDocument(subcircuitDocument("rom_sim_leaf", romSimulationLeafDocument()));
 
   auto component = std::make_shared<SubcircuitComponent>(&resolver);
@@ -1005,7 +1008,7 @@ TEST_F(SubcircuitTest, SimulatesRomInsideSingleSubcircuit)
 TEST_F(SubcircuitTest, SimulatesRomInsideNestedSubcircuits)
 {
   project.upsertDocument({documentPathForSlug(DocumentType::RawBinary, "program"),
-                          std::string("\x10\x20\x30\x40", 4)});
+                          (std::vector<std::uint8_t>{0x10, 0x20, 0x30, 0x40})});
   project.upsertDocument(subcircuitDocument("rom_sim_leaf", romSimulationLeafDocument()));
   project.upsertDocument(
       subcircuitDocument("rom_sim_parent", romSimulationParentDocument()));
@@ -1038,7 +1041,7 @@ TEST_F(SubcircuitTest, SimulatesRomInsideNestedSubcircuits)
 TEST_F(SubcircuitTest, ElaboratedRomRuntimeStaysStableAfterSourceRefresh)
 {
   project.upsertDocument({documentPathForSlug(DocumentType::RawBinary, "program"),
-                          std::string("\x10\x20\x30\x40", 4)});
+                          (std::vector<std::uint8_t>{0x10, 0x20, 0x30, 0x40})});
   project.upsertDocument(subcircuitDocument("rom_sim_leaf", romSimulationLeafDocument()));
 
   auto component = std::make_shared<SubcircuitComponent>(&resolver);
@@ -1065,7 +1068,7 @@ TEST_F(SubcircuitTest, ElaboratedRomRuntimeStaysStableAfterSourceRefresh)
   // Replacing the project binary document and re-resolving the definition must not
   // disturb the already elaborated runtime clone.
   project.upsertDocument({documentPathForSlug(DocumentType::RawBinary, "program"),
-                          std::string("\xDE\xAD\xBE\xEF", 4)});
+                          (std::vector<std::uint8_t>{0xDE, 0xAD, 0xBE, 0xEF})});
   static_cast<void>(resolver.resolve("rom_sim_leaf"));
 
   ASSERT_EQ(simulator.setBus(address, valueFor(address, 1)),

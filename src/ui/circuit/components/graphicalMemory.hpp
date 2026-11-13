@@ -18,7 +18,9 @@
 #pragma once
 
 #include <core/memory.hpp>
+#include <cstdint>
 #include <ui/circuit/components/graphicalLogicComponent.hpp>
+#include <vector>
 
 namespace SILICON::project {
 class DocumentStore;
@@ -26,13 +28,10 @@ class DocumentStore;
 
 namespace SILICON::ui {
 
-class GraphicalROM final : public GraphicalLogicComponent {
+class GraphicalMemory : public GraphicalLogicComponent {
   Q_OBJECT
 public:
-  explicit GraphicalROM(QGraphicsItem* parent = nullptr);
-  ~GraphicalROM() override;
-
-  int type() const override { return SiliconTypes::ROM_COMPONENT; }
+  ~GraphicalMemory() override;
 
   void setComponent(const SILICON::core::Component_ptr& component) override;
   void applyProperty(std::string_view                    key,
@@ -40,6 +39,8 @@ public:
   void setDocumentStore(const SILICON::project::DocumentStore* documents);
 
 protected:
+  GraphicalMemory(const std::shared_ptr<SILICON::core::Memory>& memory,
+                  QGraphicsItem* shape, QGraphicsItem* parent);
   void mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event) override;
 
 private:
@@ -49,9 +50,29 @@ private:
   void subscribeToDocuments();
   void unsubscribeFromDocuments();
   void refreshBinaryContents();
-  [[nodiscard]] std::shared_ptr<const std::string>
+  [[nodiscard]] std::shared_ptr<const std::vector<std::uint8_t>>
                             resolveBinaryContents(std::string_view slug) const;
   [[nodiscard]] std::string currentSlug() const;
+};
+
+class GraphicalROM final : public GraphicalMemory {
+  Q_OBJECT
+public:
+  explicit GraphicalROM(QGraphicsItem* parent = nullptr);
+  int type() const override { return SiliconTypes::ROM_COMPONENT; }
+};
+
+class GraphicalRAM final : public GraphicalMemory {
+  Q_OBJECT
+public:
+  explicit GraphicalRAM(QGraphicsItem* parent = nullptr);
+  int type() const override { return SiliconTypes::RAM_COMPONENT; }
+  void setComponent(const SILICON::core::Component_ptr& component) override;
+  void applyProperty(std::string_view key,
+                     const SILICON::core::PropertyValue& value) override;
+
+private:
+  void rebuildPorts();
 };
 
 }  // namespace SILICON::ui

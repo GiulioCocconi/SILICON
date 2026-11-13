@@ -21,6 +21,29 @@
 
 #ifdef SILICON_TEST_YOSYS_EXECUTABLE
 
+TEST(YosysToolTest, NormalizesActiveLowScalarEnable)
+{
+  auto circuit = std::make_shared<Circuit>(importVerilog(
+      "module enabled(input d, en, clk, output reg q);"
+      "always @(posedge clk) if(!en) q<=d; endmodule", "enabled"));
+  const auto d = findNamedComponent<DummyInputComponent>(*circuit, "d");
+  const auto en = findNamedComponent<DummyInputComponent>(*circuit, "en");
+  const auto clk = findNamedComponent<DummyInputComponent>(*circuit, "clk");
+  const auto q = findNamedComponent<DummyOutputComponent>(*circuit, "q");
+  ASSERT_TRUE(d && en && clk && q);
+  Simulator simulator(circuit);
+  const auto set = [&](const Component_ptr& port, std::uint64_t value) {
+    EXPECT_EQ(simulator.setBus(port->outputBuses()[0], valueFor(1, value)),
+              Simulator::RunResult::Completed);
+  };
+  set(clk, 0); set(d, 1); set(en, 0); set(clk, 1);
+  EXPECT_EQ(q->inputBuses()[0].getCurrentValue(), valueFor(1, 1));
+  set(clk, 0); set(d, 0); set(en, 1); set(clk, 1);
+  EXPECT_EQ(q->inputBuses()[0].getCurrentValue(), valueFor(1, 1));
+  set(clk, 0); set(en, 0); set(clk, 1);
+  EXPECT_EQ(q->inputBuses()[0].getCurrentValue(), valueFor(1, 0));
+}
+
 TEST(YosysToolTest, MapsVerilogToSiliconTechnologyCells)
 {
   const auto mappedTypes = [](const std::string_view SOURCE, const std::string_view top) {
@@ -129,7 +152,7 @@ TEST(YosysToolTest, MapsVerilogToSiliconTechnologyCells)
       endmodule
     )",
                         "top"),
-            (std::multiset<std::string>{"$pos", "$pos", "SILICON_ADDER"}));
+            (std::multiset<std::string>{"$pos", "SILICON_ADDER"}));
   EXPECT_EQ(mappedTypes(R"(
       module top(
         input [3:0] a, input [3:0] b,

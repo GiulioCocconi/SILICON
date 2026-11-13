@@ -335,12 +335,14 @@ if (NOT EMSCRIPTEN)
                         "${SILICON_YOSYS_PLUGIN_OUTPUT}"
                         "${CMAKE_SOURCE_DIR}/tools/yosys/silicon_import.cpp"
                         "${CMAKE_SOURCE_DIR}/tools/yosys/silicon_legalize.cpp"
+                        "${CMAKE_SOURCE_DIR}/tools/yosys/silicon_structure.cpp"
                         "${CMAKE_SOURCE_DIR}/tools/yosys/silicon_bmux_case.cpp"
                         "-I${CMAKE_CURRENT_BINARY_DIR}/yosys"
                 DEPENDS
                         "${SILICON_YOSYS_PMGEN_OUTPUT}"
                         "${CMAKE_SOURCE_DIR}/tools/yosys/silicon_import.cpp"
                         "${CMAKE_SOURCE_DIR}/tools/yosys/silicon_legalize.cpp"
+                        "${CMAKE_SOURCE_DIR}/tools/yosys/silicon_structure.cpp"
                         "${CMAKE_SOURCE_DIR}/tools/yosys/silicon_bmux_case.cpp"
                 VERBATIM)
         add_custom_target(silicon_yosys_plugin ALL

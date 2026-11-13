@@ -104,19 +104,20 @@ namespace {
     auto circuit = SILICON::core::deserializeCircuitDocument(source.getContents(),
                                                              registry, &resolver);
     for (const auto& [component, vertex] : circuit.getComponentToVertex()) {
-      const auto rom = std::dynamic_pointer_cast<SILICON::core::ROM>(
+      const auto memory = std::dynamic_pointer_cast<SILICON::core::Memory>(
           circuit.getComponentByVertexId(vertex));
-      if (!rom)
+      if (!memory)
         continue;
-      const auto slug = rom->getPropertyValue<std::string>("binaryContents");
-      std::shared_ptr<const std::string> snapshot;
+      const auto slug = memory->getPropertyValue<std::string>("binaryContents");
+      std::shared_ptr<const std::vector<std::uint8_t>> snapshot;
       if (slug) {
         const auto path = SILICON::project::documentPathForSlug(DocumentType::RawBinary, *slug);
         for (const auto& document : projectDocuments)
           if (document.getPath() == path)
-            snapshot = std::make_shared<const std::string>(document.getContents());
+            snapshot = std::make_shared<const std::vector<std::uint8_t>>(
+                document.getContents<std::vector<std::uint8_t>>());
       }
-      rom->refreshBinaryContents(std::move(snapshot));
+      memory->refreshBinaryContents(std::move(snapshot));
     }
 
     const auto path = SILICON::project::documentPathForSlug(DocumentType::Verilog, *slug);
@@ -193,20 +194,22 @@ namespace {
                 }
                 auto circuit = SILICON::yosys::deserialize(design.json, module);
                 for (const auto& [component, vertex] : circuit.getComponentToVertex()) {
-                  const auto rom = std::dynamic_pointer_cast<SILICON::core::ROM>(
+                  const auto memory = std::dynamic_pointer_cast<SILICON::core::Memory>(
                       circuit.getComponentByVertexId(vertex));
-                  if (!rom)
+                  if (!memory)
                     continue;
-                  const auto slug = rom->getPropertyValue<std::string>("binaryContents");
-                  const auto contents = rom->binaryContentsSnapshot();
+                  const auto slug = memory->getPropertyValue<std::string>("binaryContents");
+                  const auto contents = memory->binaryContentsSnapshot();
+                  if (!contents && (!slug || slug->empty()))
+                    continue;
                   if (!slug || !contents)
-                    throw std::runtime_error("Imported ROM has no binary contents");
+                    throw std::runtime_error("Imported memory has no binary contents");
                   const auto path = SILICON::project::documentPathForSlug(DocumentType::RawBinary, *slug);
                   const auto existing = std::ranges::find_if(generated, [&](const SemanticDocument& item) { return item.path == path; });
                   if (existing == generated.end())
                     generated.push_back({.path = path, .payload = BinarySource{*contents}});
                   else if (std::get<BinarySource>(existing->payload).contents != *contents)
-                    throw std::runtime_error("Conflicting ROM binary document names");
+                    throw std::runtime_error("Conflicting memory binary document names");
                 }
                 generated.push_back({
                     .path = SILICON::project::documentPathForSlug(DocumentType::Circuit,

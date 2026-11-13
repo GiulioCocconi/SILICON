@@ -17,6 +17,184 @@
 
 #include "yosys_test_helpers.hpp"
 
+namespace {
+nlohmann::json gateTreeDesign(const bool conjunction)
+{
+  using Json = nlohmann::json;
+  using SILICON::yosys::SerializationContext;
+  Json ports = Json::object();
+  for (int i = 0; i < 4; ++i)
+    ports[std::string(1, 'a' + i)] = {{"direction", "input"},
+                                      {"bits", Json::array({2 + 2 * i, 3 + 2 * i})}};
+  ports["y"] = {{"direction", "output"}, {"bits", Json::array({14, 15})}};
+  const Json parameters{{"A_SIGNED", SerializationContext::parameter(0, 1)},
+                        {"B_SIGNED", SerializationContext::parameter(0, 1)},
+                        {"A_WIDTH", SerializationContext::parameter(2)},
+                        {"B_WIDTH", SerializationContext::parameter(2)},
+                        {"Y_WIDTH", SerializationContext::parameter(2)}};
+  const auto cell = [&](const Json& a, const Json& b, const Json& y) {
+    return Json{{"type", conjunction ? "$and" : "$or"},
+                {"parameters", parameters},
+                {"connections", {{"A", a}, {"B", b}, {"Y", y}}}};
+  };
+  const Json cells{{"left", cell({2, 3}, {4, 5}, {10, 11})},
+                   {"right", cell({6, 7}, {8, 9}, {12, 13})},
+                   {"root", cell({10, 11}, {12, 13}, {14, 15})}};
+  return Json{{"modules", {{"top", {{"ports", ports}, {"cells", cells}}}}}};
+}
+Circuit importGateStructure(const nlohmann::json& design)
+{
+  return SILICON::yosys::deserialize(
+      legalizeExpressions(design.dump(), "silicon_logic\nsilicon_gates"));
+}
+}  // namespace
+
+TEST(YosysTest, CollapsesGateTreesWithFourStateAndBusSemantics)
+{
+#ifndef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
+  GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
+#endif
+  for (const bool logical : {false, true})
+    for (const bool conjunction : {false, true}) {
+      SCOPED_TRACE(conjunction);
+      SCOPED_TRACE(logical);
+      auto design = gateTreeDesign(conjunction);
+      if (logical) {
+        auto& module                 = onlyModule(design);
+        module["ports"]["y"]["bits"] = nlohmann::json::array({14});
+        for (auto& cell : module["cells"]) {
+          cell["type"] = conjunction ? "$logic_and" : "$logic_or";
+          cell["parameters"]["Y_WIDTH"] =
+              SILICON::yosys::SerializationContext::parameter(1);
+          cell["connections"]["Y"].erase(1);
+        }
+        auto& root = module["cells"]["root"];
+        for (const auto port : {"A", "B"}) {
+          root["parameters"][std::string(port) + "_WIDTH"] =
+              SILICON::yosys::SerializationContext::parameter(1);
+          root["connections"][port].erase(1);
+        }
+      }
+      auto       circuit = std::make_shared<Circuit>(importGateStructure(design));
+      const auto type    = conjunction ? "AndGate" : "OrGate";
+      EXPECT_EQ(componentTypes(*circuit).count(type), 1);
+      for (const auto& component : componentsIn(*circuit)) {
+        if (component->typeName() == type) {
+          ASSERT_EQ(component->inputBuses().size(), 4);
+        }
+      }
+
+      ComponentRegistry registry;
+      registerAllComponents(registry);
+      circuit =
+          std::make_shared<Circuit>(Circuit::deserialize(circuit->serialize(), registry));
+#ifdef SILICON_TEST_YOSYS_EXECUTABLE
+      circuit = std::make_shared<Circuit>(importVerilog(
+          SILICON::yosys::writeVerilog(SILICON::yosys::serialize(*circuit, "top")),
+          "top"));
+      EXPECT_EQ(componentTypes(*circuit).count(type), 1);
+#endif
+
+      std::array<std::shared_ptr<DummyBusInputComponent>, 4> inputs;
+      for (std::size_t i = 0; i < inputs.size(); ++i) {
+        inputs[i] =
+            findNamedComponent<DummyBusInputComponent>(*circuit, std::string(1, 'a' + i));
+        ASSERT_TRUE(inputs[i]);
+      }
+      const auto output = findNamedComponent<BoundaryIoComponent>(*circuit, "y");
+      ASSERT_TRUE(output);
+      Simulator            simulator(circuit);
+      constexpr std::array states{State::LOW, State::HIGH, State::UNKNOWN, State::ERROR};
+      for (unsigned int pattern = 0; pattern < 256; ++pattern) {
+        BusValue expected(logical ? 1 : 2, conjunction ? State::HIGH : State::LOW);
+        for (std::size_t i = 0; i < inputs.size(); ++i) {
+          const auto     index = (pattern >> (2 * i)) & 3;
+          const BusValue value{states[index], states[(index + 1) & 3]};
+          simulator.setBus(inputs[i]->outputBuses()[0], value);
+          if (logical) {
+            State truth = State::LOW;
+            for (const auto state : value)
+              truth = truth || state;
+            expected[0] = conjunction ? expected[0] && truth : expected[0] || truth;
+          } else
+            for (std::size_t bit = 0; bit < value.size(); ++bit)
+              expected[bit] =
+                  conjunction ? expected[bit] && value[bit] : expected[bit] || value[bit];
+        }
+        ASSERT_EQ(simulator.runUntilIdle(), Simulator::RunResult::Completed);
+        EXPECT_EQ(output->inputBuses()[0].getCurrentValue(), expected);
+      }
+    }
+}
+
+TEST(YosysTest, KeepsSharedGateOutputsAndBitTaps)
+{
+#ifndef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
+  GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
+#endif
+  using SILICON::yosys::Json;
+  for (const bool conjunction : {false, true})
+    for (const auto& tap : {Json::array({10, 11}), Json::array({10})}) {
+      auto design                        = gateTreeDesign(conjunction);
+      onlyModule(design)["ports"]["tap"] = {{"direction", "output"}, {"bits", tap}};
+      const auto circuit                 = importGateStructure(design);
+      EXPECT_EQ(componentTypes(circuit).count(conjunction ? "AndGate" : "OrGate"), 2);
+    }
+
+  auto mixed                                 = gateTreeDesign(true);
+  onlyModule(mixed)["cells"]["root"]["type"] = "$or";
+  const auto circuit                         = importGateStructure(mixed);
+  EXPECT_EQ(componentTypes(circuit).count("AndGate"), 2);
+  EXPECT_EQ(componentTypes(circuit).count("OrGate"), 1);
+}
+
+TEST(YosysTest, LeavesGateFeedbackLoopsIntact)
+{
+#ifndef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
+  GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
+#endif
+  auto design = gateTreeDesign(true);
+  onlyModule(design)["cells"]["left"]["connections"]["A"] =
+      SILICON::yosys::Json::array({14, 15});
+  const auto circuit = importGateStructure(design);
+  // Reject the whole proposed contraction when it reaches the root again.
+  EXPECT_EQ(componentTypes(circuit).count("AndGate"), 3);
+}
+
+TEST(YosysTest, GatePassRespectsSelectionKeepAndRepeatedRuns)
+{
+#ifndef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
+  GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
+#endif
+  using Json        = nlohmann::json;
+  const auto source = gateTreeDesign(true);
+  const auto first  = Json::parse(legalizeExpressions(source.dump(), "silicon_gates"));
+  ASSERT_EQ(onlyModule(first).at("cells").size(), 1);
+  EXPECT_EQ(onlyCell(first).at("type"), "SILICON_GATE");
+  EXPECT_EQ(Json::parse(legalizeExpressions(first.dump(), "silicon_gates")).at("modules"),
+            first.at("modules"));
+  const auto selected = Json::parse(
+      legalizeExpressions(source.dump(), "select top/root\nsilicon_gates\nselect *"));
+  EXPECT_EQ(onlyModule(selected).at("cells").size(), 3);
+
+  auto kept                                               = source;
+  onlyModule(kept)["cells"]["left"]["attributes"]["keep"] = "1";
+  EXPECT_EQ(componentTypes(importGateStructure(kept)).count("AndGate"), 2);
+  kept                                       = source;
+  onlyModule(kept)["netnames"]["left_alias"] = {
+      {"hide_name", 0}, {"bits", Json::array({10, 11})}, {"attributes", {{"keep", "1"}}}};
+  EXPECT_EQ(componentTypes(importGateStructure(kept)).count("AndGate"), 2);
+
+  for (const auto& parameter : {"MODE", "INPUTS", "BITWISE", "WIDTH"}) {
+    auto malformed = first;
+    onlyModule(malformed)["cells"]["root"]["parameters"].erase(parameter);
+    EXPECT_THROW((void)SILICON::yosys::deserialize(malformed.dump()), std::runtime_error);
+  }
+  auto malformed                                              = first;
+  onlyModule(malformed)["cells"]["root"]["connections"]["A0"] = Json::array({2});
+  EXPECT_THROW((void)SILICON::yosys::deserialize(malformed.dump()), std::runtime_error);
+}
+
 TEST(YosysTest, ExportsNamedPortsAndNativeGate)
 {
   auto          a = std::make_shared<Wire>();
@@ -560,9 +738,9 @@ TEST(YosysTest, NormalizesReorderedPartSelectThroughOneSplitterAndMerger)
   const auto splitter = findComponent<WireSplitter>(*circuit);
   const auto merger   = findComponent<WireMerger>(*circuit);
   ASSERT_TRUE(input && output && splitter && merger);
-  ASSERT_EQ(splitter->outputBuses().size(), 4);
+  ASSERT_EQ(splitter->outputBuses().size(), 2);
   ASSERT_EQ(merger->inputBuses().size(), 2);
-  EXPECT_EQ(merger->inputBuses()[0], splitter->outputBuses()[3]);
+  EXPECT_EQ(merger->inputBuses()[0], splitter->outputBuses()[1]);
   EXPECT_EQ(merger->inputBuses()[1], splitter->outputBuses()[0]);
   EXPECT_EQ(output->inputBuses()[0], merger->outputBuses()[0]);
 
@@ -571,6 +749,153 @@ TEST(YosysTest, NormalizesReorderedPartSelectThroughOneSplitterAndMerger)
   ASSERT_EQ(simulator.runUntilIdle(), Simulator::RunResult::Completed);
   EXPECT_EQ(output->inputBuses()[0].getCurrentValue(),
             valueFor(output->inputBuses()[0], 1));
+}
+
+TEST(YosysTest, SharesBusSlicesWithoutReconstructingThemFromIndividualBits)
+{
+  using SILICON::yosys::Json;
+  Json ports = Json::object();
+  ports["a"] = {{"direction", "input"}, {"bits", Json::array({2, 3, 4, 5, 6, 7, 8, 9})}};
+  ports["whole"]    = {{"direction", "output"}, {"bits", ports["a"]["bits"]}};
+  ports["low"]      = {{"direction", "output"}, {"bits", Json::array({2, 3, 4, 5})}};
+  ports["low_copy"] = ports["low"];
+  ports["high"]     = {{"direction", "output"}, {"bits", Json::array({6, 7, 8, 9})}};
+  ports["overlap"]  = {{"direction", "output"}, {"bits", Json::array({4, 5, 6, 7})}};
+  ports["tap"]      = {{"direction", "output"}, {"bits", Json::array({5})}};
+  const Json design{
+      {"modules", {{"top", {{"ports", ports}, {"cells", Json::object()}}}}}};
+
+  auto circuit = std::make_shared<Circuit>(SILICON::yosys::deserialize(design.dump()));
+  EXPECT_EQ(componentTypes(*circuit).count("WireSplitter"), 1);
+  EXPECT_EQ(componentTypes(*circuit).count("WireMerger"), 0);
+  const auto splitter = findComponent<WireSplitter>(*circuit);
+  ASSERT_TRUE(splitter);
+  EXPECT_EQ(splitter->outputSlices(), (std::vector<std::pair<unsigned int, unsigned int>>{
+                                          {0, 4}, {2, 4}, {3, 1}, {4, 4}}));
+  const auto low  = findNamedComponent<DummyBusOutputComponent>(*circuit, "low");
+  const auto copy = findNamedComponent<DummyBusOutputComponent>(*circuit, "low_copy");
+  ASSERT_TRUE(low && copy);
+  EXPECT_EQ(low->inputBuses()[0], copy->inputBuses()[0]);
+
+  // Native save/load must retain the bus port shapes and their shared wires.
+  ComponentRegistry registry;
+  registerAllComponents(registry);
+  circuit =
+      std::make_shared<Circuit>(Circuit::deserialize(circuit->serialize(), registry));
+
+#ifdef SILICON_TEST_YOSYS_EXECUTABLE
+  // Yosys export must preserve overlapping slices as well as native save/load.
+  circuit = std::make_shared<Circuit>(importVerilog(
+      SILICON::yosys::writeVerilog(SILICON::yosys::serialize(*circuit, "top")), "top"));
+  EXPECT_EQ(componentTypes(*circuit).count("WireMerger"), 0);
+#endif
+  const auto input = findNamedComponent<DummyBusInputComponent>(*circuit, "a");
+  ASSERT_TRUE(input);
+  Simulator simulator(circuit);
+  for (unsigned int value = 0; value < 256; ++value) {
+    simulator.setBus(input->outputBuses()[0], valueFor(input->outputBuses()[0], value));
+    ASSERT_EQ(simulator.runUntilIdle(), Simulator::RunResult::Completed);
+    for (const auto& [name, expected] :
+         std::map<std::string, unsigned int>{{"low", value & 15},
+                                             {"low_copy", value & 15},
+                                             {"high", value >> 4},
+                                             {"overlap", (value >> 2) & 15},
+                                             {"whole", value}}) {
+      const auto output = findNamedComponent<DummyBusOutputComponent>(*circuit, name);
+      ASSERT_TRUE(output);
+      EXPECT_EQ(output->inputBuses()[0].getCurrentValue(),
+                valueFor(output->inputBuses()[0], expected));
+    }
+    const auto bit = findNamedComponent<DummyOutputComponent>(*circuit, "tap");
+    ASSERT_TRUE(bit);
+    EXPECT_EQ(bit->inputBuses()[0].getCurrentValue(),
+              valueFor(bit->inputBuses()[0], (value >> 3) & 1));
+  }
+}
+
+TEST(YosysTest, ConcatenatesBusRunsAndPacksLiteralRuns)
+{
+  using SILICON::yosys::Json;
+  const Json ports{
+      {"a", {{"direction", "input"}, {"bits", Json::array({2, 3, 4, 5, 6, 7, 8, 9})}}},
+      {"b", {{"direction", "input"}, {"bits", Json::array({10, 11, 12, 13})}}},
+      {"q",
+       {{"direction", "output"},
+        {"bits", Json::array({6, 7, 8, 9, "0", "x", "1", "0", 10, 11, 12, 13})}}}};
+  const Json design{
+      {"modules", {{"top", {{"ports", ports}, {"cells", Json::object()}}}}}};
+  auto circuit = std::make_shared<Circuit>(SILICON::yosys::deserialize(design.dump()));
+  EXPECT_EQ(componentTypes(*circuit).count("WireSplitter"), 1);
+  EXPECT_EQ(componentTypes(*circuit).count("WireMerger"), 1);
+  const auto merger = findComponent<WireMerger>(*circuit);
+  ASSERT_TRUE(merger);
+  ASSERT_EQ(merger->inputBuses().size(), 3);
+  for (const auto& input : merger->inputBuses())
+    EXPECT_EQ(input.size(), 4);
+  ComponentRegistry registry;
+  registerAllComponents(registry);
+  circuit =
+      std::make_shared<Circuit>(Circuit::deserialize(circuit->serialize(), registry));
+  const auto a = findNamedComponent<DummyBusInputComponent>(*circuit, "a");
+  const auto b = findNamedComponent<DummyBusInputComponent>(*circuit, "b");
+  const auto q = findNamedComponent<DummyBusOutputComponent>(*circuit, "q");
+  ASSERT_TRUE(a && b && q);
+  a->setBusValue(valueFor(a->outputBuses()[0], 0xa5));
+  b->setBusValue(valueFor(b->outputBuses()[0], 3));
+  Simulator simulator(circuit);
+  ASSERT_EQ(simulator.runUntilIdle(), Simulator::RunResult::Completed);
+  EXPECT_EQ(q->inputBuses()[0].getCurrentValue(), busValueFromBits("001101X01010"));
+
+#ifdef SILICON_TEST_YOSYS_EXECUTABLE
+  auto       restored  = std::make_shared<Circuit>(importVerilog(
+      SILICON::yosys::writeVerilog(SILICON::yosys::serialize(*circuit, "top")), "top"));
+  const auto restoredA = findNamedComponent<DummyBusInputComponent>(*restored, "a");
+  const auto restoredB = findNamedComponent<DummyBusInputComponent>(*restored, "b");
+  const auto restoredQ = findNamedComponent<DummyBusOutputComponent>(*restored, "q");
+  ASSERT_TRUE(restoredA && restoredB && restoredQ);
+  restoredA->setBusValue(valueFor(restoredA->outputBuses()[0], 0xa5));
+  restoredB->setBusValue(valueFor(restoredB->outputBuses()[0], 3));
+  Simulator restoredSimulator(restored);
+  ASSERT_EQ(restoredSimulator.runUntilIdle(), Simulator::RunResult::Completed);
+  EXPECT_EQ(restoredQ->inputBuses()[0].getCurrentValue(),
+            busValueFromBits("001101X01010"));
+#endif
+}
+
+TEST(YosysTest, RecognizesSharedSignAndZeroExtensionOfBusSlices)
+{
+  using SILICON::yosys::Json;
+  const Json ports{
+      {"a", {{"direction", "input"}, {"bits", Json::array({2, 3, 4, 5})}}},
+      {"signed_q", {{"direction", "output"}, {"bits", Json::array({3, 4, 5, 5, 5, 5})}}},
+      {"signed_copy",
+       {{"direction", "output"}, {"bits", Json::array({3, 4, 5, 5, 5, 5})}}},
+      {"unsigned_q",
+       {{"direction", "output"}, {"bits", Json::array({3, 4, 5, "0", "0", "0"})}}}};
+  const Json design{
+      {"modules", {{"top", {{"ports", ports}, {"cells", Json::object()}}}}}};
+  auto circuit = std::make_shared<Circuit>(SILICON::yosys::deserialize(design.dump()));
+  EXPECT_EQ(componentTypes(*circuit).count("WireSplitter"), 1);
+  EXPECT_EQ(componentTypes(*circuit).count("WireMerger"), 0);
+  EXPECT_EQ(componentTypes(*circuit).count("Extender"), 2);
+  const auto input   = findNamedComponent<DummyBusInputComponent>(*circuit, "a");
+  const auto signedQ = findNamedComponent<DummyBusOutputComponent>(*circuit, "signed_q");
+  const auto copy = findNamedComponent<DummyBusOutputComponent>(*circuit, "signed_copy");
+  const auto unsignedQ =
+      findNamedComponent<DummyBusOutputComponent>(*circuit, "unsigned_q");
+  ASSERT_TRUE(input && signedQ && copy && unsignedQ);
+  EXPECT_EQ(signedQ->inputBuses()[0], copy->inputBuses()[0]);
+  Simulator simulator(circuit);
+  for (const auto& bits : {"1010", "0011", "X010", "E010"}) {
+    simulator.setBus(input->outputBuses()[0], busValueFromBits(bits));
+    ASSERT_EQ(simulator.runUntilIdle(), Simulator::RunResult::Completed);
+    const auto value = input->outputBuses()[0].getCurrentValue();
+    EXPECT_EQ(
+        unsignedQ->inputBuses()[0].getCurrentValue(),
+        (BusValue{value[1], value[2], value[3], State::LOW, State::LOW, State::LOW}));
+    EXPECT_EQ(signedQ->inputBuses()[0].getCurrentValue(),
+              (BusValue{value[1], value[2], value[3], value[3], value[3], value[3]}));
+  }
 }
 
 TEST(YosysTest, ImportsGeneralCombinationalNetlistWithConstants)

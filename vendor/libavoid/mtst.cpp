@@ -329,8 +329,11 @@ void MinimumTerminalSpanningTree::constructSequential(void)
 
     // Shortest path terminal forest construction
     //
+    size_t exploredVertices = 0;
     while ( ! vHeap.empty() )
     {
+        if ((exploredVertices++ % 256) == 0)
+            router->performContinuationCheck(TransactionPhaseRouteSearch, 0, 1);
         // Take the lowest vertex from heap.
         VertInf *u = vHeap.front();
 
@@ -682,8 +685,11 @@ bool MinimumTerminalSpanningTree::constructInterleaved(void)
 
     // Shortest Path Terminal Forest construction
     //
+    size_t exploredVertices = 0;
     while ( ! vHeap.empty() )
     {
+        if ((exploredVertices++ % 256) == 0)
+            router->performContinuationCheck(TransactionPhaseRouteSearch, 0, 1);
         // Take the lowest vertex from heap.
         VertInf *u = vHeap.front();
 

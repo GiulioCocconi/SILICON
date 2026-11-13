@@ -81,8 +81,8 @@ namespace {
       subcircuit->setDocumentStore(scene.documentStore());
       subcircuit->setCircuitResolver(scene.circuitResolver());
     }
-    if (auto* rom = dynamic_cast<GraphicalROM*>(component))
-      rom->setDocumentStore(scene.documentStore());
+    if (auto* memory = dynamic_cast<GraphicalMemory*>(component))
+      memory->setDocumentStore(scene.documentStore());
   }
 
   void attachCoreComponent(GraphicalComponent* component, const nlohmann::json& compJson,

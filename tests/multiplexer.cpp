@@ -607,3 +607,30 @@ TEST(DecoderTest, UnknownAndErrorSelectionPropagateToAllOutputs)
     expectBusStates(output, std::vector<State>(4, state));
   }
 }
+
+TEST(MultiplexerTest, CompactSelectionTablesValidateAndPreservePortWidths)
+{
+  auto mux = std::make_shared<Multiplexer>(Bus(2), Bus(1), std::make_shared<Wire>());
+  mux->setProperty("selectionSize", 3);
+  const auto selector = mux->inputBuses().back();
+  const auto output   = mux->outputBuses()[0];
+  mux->setProperty("selectionTable", std::string("0,1,0,2,1,0,2,3"));
+  ASSERT_EQ(mux->inputBuses().size(), 5);
+  EXPECT_EQ(mux->inputBuses().back(), selector);
+  EXPECT_EQ(mux->outputBuses()[0], output);
+  const auto inputs = mux->inputBuses();
+  for (const auto& invalid :
+       {"0,1", "0,1,0,2,1,0,2,8", "0,2,0,2,2,0,2,2", "0,1,0,2,1,0,2,3,"})
+    EXPECT_THROW(mux->setProperty("selectionTable", std::string(invalid)),
+                 std::invalid_argument);
+  EXPECT_THROW(mux->setProperty("selectionSize", 2), std::invalid_argument);
+  EXPECT_EQ(mux->inputBuses(), inputs);
+  mux->setProperty("busSize", 4);
+  ASSERT_EQ(mux->inputBuses().size(), 5);
+  for (std::size_t i = 0; i < 4; ++i)
+    EXPECT_EQ(mux->inputBuses()[i].size(), 4);
+  EXPECT_EQ(mux->inputBuses().back(), selector);
+  mux->setProperty("selectionTable", std::string{});
+  EXPECT_EQ(mux->inputBuses().size(), 9);
+  EXPECT_EQ(mux->inputBuses().back(), selector);
+}

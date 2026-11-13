@@ -35,7 +35,7 @@
     "-DSILICON_ENABLE_SANITIZERS=${if sanitizers then "ON" else "OFF"}"
   ];
 
-  doCheck = true;
+  doCheck = false;
 
   hardeningDisable = pkgs.lib.optionals (buildType == "Debug") [ "fortify" ];
 

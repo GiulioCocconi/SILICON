@@ -47,7 +47,7 @@ namespace {
     std::string                    contents;
   };
   struct PreparedBinary final : PreparedEditorDocument {
-    std::string contents;
+    QByteArray contents;
   };
   struct PreparedArchitecture final : PreparedEditorDocument {
     std::shared_ptr<ArchitectureLoadPlan> plan;
@@ -196,7 +196,9 @@ std::shared_ptr<PreparedEditorDocument>
 BinaryDocumentEditor::prepare(const SILICON::project::Document& document)
 {
   auto result      = std::make_shared<PreparedBinary>();
-  result->contents = document.getContents();
+  const auto& bytes       = document.getContents<std::vector<std::uint8_t>>();
+  result->contents        = QByteArray(reinterpret_cast<const char*>(bytes.data()),
+                                       static_cast<qsizetype>(bytes.size()));
   return result;
 }
 void BinaryDocumentEditor::apply(const PreparedEditorDocument& prepared)
@@ -204,15 +206,17 @@ void BinaryDocumentEditor::apply(const PreparedEditorDocument& prepared)
   const auto* binary = dynamic_cast<const PreparedBinary*>(&prepared);
   if (!binary)
     throw std::logic_error("Invalid prepared binary document");
-  binaryEditor->setData(QByteArray(binary->contents.data(),
-                                   static_cast<qsizetype>(binary->contents.size())));
+  binaryEditor->setData(binary->contents);
   binaryEditor->setFocus();
 }
 void BinaryDocumentEditor::flush(const std::string& path)
 {
+  if (!binaryEditor->isModified())
+    return;
   const auto& data = binaryEditor->data();
+  const auto* first = reinterpret_cast<const std::uint8_t*>(data.constData());
   session.projectContext.upsertDocument(
-      {path, std::string(data.constData(), static_cast<std::size_t>(data.size()))});
+      {path, std::vector<std::uint8_t>(first, first + data.size())});
   binaryEditor->setModified(false);
 }
 bool BinaryDocumentEditor::isDirty() const

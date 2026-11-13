@@ -131,3 +131,33 @@ TEST(UtilsTest, WireSplitterEditorOutputsCarryIndependentBits)
     }
   }
 }
+
+TEST(UtilsTest, GroupedPortsValidateConfigurationWithoutLosingConnections)
+{
+  WireSplitter splitter;
+  splitter.setProperty("size", 8);
+  splitter.setProperty("slices", std::string("0:4,4:4,2:4"));
+  splitter.setSize(8);
+  const auto outputs = splitter.outputBuses();
+  EXPECT_THROW(splitter.setProperty("slices", std::string("7:2")), std::invalid_argument);
+  EXPECT_THROW(splitter.setProperty("slices", std::string("0:0")), std::invalid_argument);
+  EXPECT_THROW(splitter.setProperty("slices", std::string("0:4,")),
+               std::invalid_argument);
+  EXPECT_THROW(splitter.setProperty("size", 4), std::invalid_argument);
+  EXPECT_EQ(splitter.outputBuses(), outputs);
+  splitter.setSize(8);
+  EXPECT_EQ(splitter.outputBuses(), outputs);
+
+  WireMerger merger;
+  merger.setProperty("size", 8);
+  merger.setProperty("widths", std::string("4,4"));
+  merger.setSize(8);
+  const auto inputs = merger.inputBuses();
+  EXPECT_THROW(merger.setProperty("widths", std::string("4,3")), std::invalid_argument);
+  EXPECT_THROW(merger.setProperty("widths", std::string("0,8")), std::invalid_argument);
+  EXPECT_THROW(merger.setProperty("widths", std::string("4,4,")), std::invalid_argument);
+  EXPECT_THROW(merger.setProperty("size", 4), std::invalid_argument);
+  EXPECT_EQ(merger.inputBuses(), inputs);
+  merger.setSize(8);
+  EXPECT_EQ(merger.inputBuses(), inputs);
+}

@@ -30,8 +30,8 @@ add_executable(circuit_tests circuit.cpp)
 add_executable(factory_tests factory.cpp)
 add_executable(subcircuit_tests subcircuit.cpp)
 add_executable(logger_tests logger.cpp)
-add_executable(yosys_tests yosys_rom.cpp yosys_cells.cpp yosys_legalization.cpp yosys_netlist.cpp
-        yosys_verilog.cpp yosys_tool.cpp yosys_technology.cpp)
+add_executable(yosys_tests yosys_rom.cpp yosys_ram.cpp yosys_cells.cpp yosys_legalization.cpp yosys_netlist.cpp
+        yosys_verilog.cpp yosys_tool.cpp yosys_technology.cpp yosys_mux.cpp)
 add_executable(libavoid_tests libavoid.cpp boundaryIoPlacement.cpp
         ${CMAKE_SOURCE_DIR}/src/ui/circuit/diagram/boundaryIoPlacement.cpp
         ${CMAKE_SOURCE_DIR}/src/ui/circuit/diagram/wireRouting.cpp)

@@ -18,6 +18,7 @@
 #include "elaboration.hpp"
 
 #include <format>
+#include <map>
 #include <stdexcept>
 #include <unordered_map>
 #include <utility>
@@ -117,10 +118,15 @@ namespace {
 
   void copyProperties(const Component& source, const Component_ptr& target)
   {
-    for (const auto& [key, value] : source.getProperties()) {
-      if (target->getProperty(key).has_value())
-        target->setProperty(key, value);
-    }
+    // Match native deserialization: apply dimensions before slice/port layouts,
+    // then bus values after their widths have settled. PropertyMap is unordered.
+    const std::map properties(source.getProperties().begin(),
+                              source.getProperties().end());
+    for (const bool busValue : {false, true})
+      for (const auto& [key, value] : properties)
+        if (target->getProperty(key).has_value()
+            && std::holds_alternative<BusValue>(value) == busValue)
+          target->setProperty(key, value);
   }
 
   void appendCircuit(const Circuit& circuit, ElaborationContext& context,
@@ -139,7 +145,13 @@ namespace {
 
     if (const auto sourceRom = std::dynamic_pointer_cast<ROM>(component)) {
       auto clonedRom = std::dynamic_pointer_cast<ROM>(cloned);
+      clonedRom->setMemoryDepth(sourceRom->memoryDepth());
       clonedRom->refreshBinaryContents(sourceRom->binaryContentsSnapshot());
+    }
+    if (const auto sourceRam = std::dynamic_pointer_cast<RAM>(component)) {
+      auto clonedRam = std::dynamic_pointer_cast<RAM>(cloned);
+      if (const auto image = sourceRam->memoryImageSnapshot())
+        clonedRam->setMemoryImage(image);
     }
 
     auto inputs = remapBuses(component->getInputs(), wireMap);

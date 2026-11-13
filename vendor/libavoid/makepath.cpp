@@ -60,6 +60,7 @@ class ANode
         ANode *prevNode; // VertInf for the previous ANode.
         int timeStamp;   // Time-stamp used to determine exploration order of
                          // seemingly equal paths during orthogonal routing.
+        size_t heapIndex = 0;
 
         ANode(VertInf *vinf, int time)
             : inf(vinf),
@@ -116,6 +117,11 @@ class AStarPathPrivate
             ANode *nodes = m_available_nodes[m_available_array_index];
             ANode *newNode = &(nodes[m_available_node_index++]);
             *newNode = node;
+            if (node.inf->aStarPendingNodes.empty() &&
+                    node.inf->aStarDoneNodes.empty())
+            {
+                m_touched_vertices.push_back(node.inf);
+            }
             if (addToPending)
             {
                 node.inf->aStarPendingNodes.push_back(newNode);
@@ -135,6 +141,7 @@ class AStarPathPrivate
         size_t m_available_array_size;
         size_t m_available_array_index;
         size_t m_available_node_index;
+        std::vector<VertInf *> m_touched_vertices;
 
         // For determining estimated cost target.
         std::vector<VertInf *> m_cost_targets;
@@ -176,6 +183,86 @@ bool operator()(const ANode *a, const ANode *b)
     }
     return false;
 }
+};
+
+// A* frequently lowers the cost of a queued state. Rebuilding the whole heap
+// for each such change becomes quadratic on dense orthogonal visibility graphs.
+// Keep each state's position so an update only repairs its ancestor chain.
+class ANodeHeap
+{
+public:
+    ANodeHeap() { nodes.reserve(1000); }
+    bool empty() const { return nodes.empty(); }
+    size_t size() const { return nodes.size(); }
+    ANode *front() const { return nodes.front(); }
+
+    void push(ANode *node)
+    {
+        node->heapIndex = nodes.size();
+        nodes.push_back(node);
+        siftUp(node->heapIndex);
+    }
+
+    void pop()
+    {
+        if (nodes.size() == 1)
+        {
+            nodes.pop_back();
+            return;
+        }
+        nodes.front() = nodes.back();
+        nodes.front()->heapIndex = 0;
+        nodes.pop_back();
+        siftDown(0);
+    }
+
+    void update(ANode *node, const ANode& replacement)
+    {
+        const size_t index = node->heapIndex;
+        *node = replacement;
+        node->heapIndex = index;
+        if (index > 0 && compare(nodes[(index - 1) / 2], node))
+            siftUp(index);
+        else
+            siftDown(index);
+    }
+
+private:
+    void swapNodes(size_t first, size_t second)
+    {
+        std::swap(nodes[first], nodes[second]);
+        nodes[first]->heapIndex = first;
+        nodes[second]->heapIndex = second;
+    }
+
+    void siftUp(size_t index)
+    {
+        while (index > 0)
+        {
+            const size_t parent = (index - 1) / 2;
+            if (!compare(nodes[parent], nodes[index]))
+                break;
+            swapNodes(parent, index);
+            index = parent;
+        }
+    }
+
+    void siftDown(size_t index)
+    {
+        while (2 * index + 1 < nodes.size())
+        {
+            size_t child = 2 * index + 1;
+            if (child + 1 < nodes.size() && compare(nodes[child], nodes[child + 1]))
+                ++child;
+            if (!compare(nodes[index], nodes[child]))
+                break;
+            swapNodes(index, child);
+            index = child;
+        }
+    }
+
+    std::vector<ANode *> nodes;
+    ANodeCmp compare;
 };
 
 
@@ -966,8 +1053,6 @@ void AStarPathPrivate::determineEndPointLocation(double dist, VertInf *start,
 //
 void AStarPathPrivate::search(ConnRef *lineRef, VertInf *src, VertInf *tar, VertInf *start)
 {
-    ANodeCmp pendingCmp;
-
     bool isOrthogonal = (lineRef->routingType() == ConnType_Orthogonal);
 
     if (start == nullptr)
@@ -1071,8 +1156,7 @@ void AStarPathPrivate::search(ConnRef *lineRef, VertInf *src, VertInf *tar, Vert
     endPoints.push_back(tar->point);
 
     // Heap of PENDING nodes.
-    std::vector<ANode *> PENDING;
-    PENDING.reserve(1000);
+    ANodeHeap PENDING;
 
     size_t exploredCount = 0;
     ANode node, ati;
@@ -1081,6 +1165,7 @@ void AStarPathPrivate::search(ConnRef *lineRef, VertInf *src, VertInf *tar, Vert
     int timestamp = 1;
 
     Router *router = lineRef->router();
+    const double heuristicWeight = router->routingOption(useWeightedAStar) ? 1.25 : 1.0;
     if (router->RubberBandRouting && (start != src))
     {
         COLA_ASSERT(router->IgnoreRegions == true);
@@ -1107,7 +1192,7 @@ void AStarPathPrivate::search(ConnRef *lineRef, VertInf *src, VertInf *tar, Vert
                 node.g = 0;
                 node.h = estimatedCost(lineRef, nullptr, node.inf->point);
 
-                node.f = node.g + node.h;
+                node.f = node.g + heuristicWeight * node.h;
             }
             else
             {
@@ -1121,7 +1206,7 @@ void AStarPathPrivate::search(ConnRef *lineRef, VertInf *src, VertInf *tar, Vert
                         node.inf->point);
 
                 // The A* formula
-                node.f = node.g + node.h;
+                node.f = node.g + heuristicWeight * node.h;
 
                 // Point parent to last bestNode
                 node.prevNode = bestNode;
@@ -1137,7 +1222,7 @@ void AStarPathPrivate::search(ConnRef *lineRef, VertInf *src, VertInf *tar, Vert
             else
             {
                 ANode * newNode = newANode(node);
-                PENDING.push_back(newNode);
+                PENDING.push(newNode);
             }
 
             rIndx++;
@@ -1165,24 +1250,24 @@ void AStarPathPrivate::search(ConnRef *lineRef, VertInf *src, VertInf *tar, Vert
         node = ANode(src, timestamp++);
         node.g = 0;
         node.h = estimatedCost(lineRef, nullptr, node.inf->point);
-        node.f = node.g + node.h;
+        node.f = node.g + heuristicWeight * node.h;
         // Set a nullptr parent, so cost function knows this is the first segment.
         node.prevNode = bestNode;
 
         // Populate the PENDING container with the first location
         ANode *newNode = newANode(node);
-        PENDING.push_back(newNode);
+        PENDING.push(newNode);
     }
 
     tar->pathNext = nullptr;
 
-    // Create a heap from PENDING for sorting
-    using std::make_heap; using std::push_heap; using std::pop_heap;
-    make_heap( PENDING.begin(), PENDING.end(), pendingCmp);
-
     // Continue until the queue is empty.
     while (!PENDING.empty())
     {
+        // A single dense-graph search can outlast the interval between
+        // connectors. Let the host process progress events during it too.
+        if ((exploredCount % 256) == 0)
+            router->performContinuationCheck(TransactionPhaseRouteSearch, 0, 1);
         TIMER_VAR_ADD(router, 0, 1);
         // Set the Node with lowest f value to BESTNODE.
         // Since the ANode operator< is reversed, the head of the
@@ -1219,13 +1304,7 @@ void AStarPathPrivate::search(ConnRef *lineRef, VertInf *src, VertInf *tar, Vert
             }
         }
 
-        // Pop off the heap.  Actually this moves the
-        // far left value to the far right.  The node
-        // is not actually removed since the pop is to
-        // the heap and not the container.
-        pop_heap(PENDING.begin(), PENDING.end(), pendingCmp);
-        // Remove node from right (the value we pop_heap'd)
-        PENDING.pop_back();
+        PENDING.pop();
 
         // Add the bestNode into the Done set.
         bestNodeInf->aStarDoneNodes.push_back(bestNode);
@@ -1455,7 +1534,7 @@ void AStarPathPrivate::search(ConnRef *lineRef, VertInf *src, VertInf *tar, Vert
             }
 
             // The A* formula
-            node.f = node.g + node.h;
+            node.f = node.g + heuristicWeight * node.h;
 
 #ifdef ASTAR_DEBUG
             db_printf("-- Adding: %g %g  ", node.inf->point.x,
@@ -1484,8 +1563,7 @@ void AStarPathPrivate::search(ConnRef *lineRef, VertInf *src, VertInf *tar, Vert
                     if (node.g < ati.g)
                     {
                         // Replace the existing node in PENDING
-                        **currInd = node;
-                        make_heap( PENDING.begin(), PENDING.end(), pendingCmp);
+                        PENDING.update(*currInd, node);
                     }
                     bNodeFound = true;
                     break;
@@ -1521,9 +1599,7 @@ void AStarPathPrivate::search(ConnRef *lineRef, VertInf *src, VertInf *tar, Vert
             {
                 // Push NewNode onto PENDING
                 ANode *newNode = newANode(node);
-                PENDING.push_back(newNode);
-                // Push NewNode onto heap
-                push_heap( PENDING.begin(), PENDING.end(), pendingCmp);
+                PENDING.push(newNode);
 
 #if 0
                 using std::cout; using std::endl;
@@ -1541,13 +1617,14 @@ void AStarPathPrivate::search(ConnRef *lineRef, VertInf *src, VertInf *tar, Vert
     }
 
     // Cleanup lists used to store Done and Pending sets for each vertex.
-    VertInf *endVert = router->vertices.end();
-    for (VertInf *k = router->vertices.connsBegin(); k != endVert;
-            k = k->lstNext)
+    // Only vertices reached by this search hold A* state. Scanning the entire
+    // visibility graph for every connector dominates large circuit imports.
+    for (VertInf *k : m_touched_vertices)
     {
         k->aStarDoneNodes.clear();
         k->aStarPendingNodes.clear();
     }
+    m_touched_vertices.clear();
 }
 
 

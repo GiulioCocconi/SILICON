@@ -112,6 +112,7 @@ enum SiliconTypes {
   SHIFTER,
   MULTIPLIER,
   DIVIDER,
+  RAM_COMPONENT,
 
   SILICON_END,
 };

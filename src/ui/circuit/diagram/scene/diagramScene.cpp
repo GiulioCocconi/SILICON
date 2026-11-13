@@ -1440,61 +1440,70 @@ void DiagramScene::simulateEditedWaveform(const qulonglong    duration,
   simulationController->simulateEditedWaveform(duration, std::move(inputSnapshots));
 }
 
-NetConnection DiagramScene::inspectConnection(const std::vector<GraphicalWire*>& wires) const
-{
-  NetConnection result;
-  std::vector<QPointF> endpoints;
-  for (const auto* wire : wires)
-    for (const auto* segment : wire->getSegments()) {
-      const auto points = segment->getScenePoints();
-      if (points.size() >= 2) {
-        endpoints.push_back(points.front());
-        endpoints.push_back(points.back());
+namespace {
+  NetConnection
+  inspectConnectionForComponents(const std::vector<GraphicalWire*>&        wires,
+                                 std::span<GraphicalLogicComponent* const> components)
+  {
+    NetConnection        result;
+    std::vector<QPointF> endpoints;
+    for (const auto* wire : wires)
+      for (const auto* segment : wire->getSegments()) {
+        const auto points = segment->getScenePoints();
+        if (points.size() >= 2) {
+          endpoints.push_back(points.front());
+          endpoints.push_back(points.back());
+        }
       }
-    }
-  std::optional<size_t> width;
-  auto collect = [&](const GraphicalLogicComponent* component,
-                     const std::vector<Port*>& ports, const std::vector<Bus>& buses,
-                     const bool isOutput) {
-    for (size_t index = 0; index < std::min(buses.size(), ports.size()); ++index) {
-      Port* port = ports[index];
-      const QPointF position = component->mapToScene(port->getPosition());
+    std::optional<size_t> width;
+    auto                  collect = [&](const GraphicalLogicComponent* component,
+                       const std::vector<Port*>& ports, const std::vector<Bus>& buses,
+                       const bool isOutput) {
+      for (size_t index = 0; index < std::min(buses.size(), ports.size()); ++index) {
+        Port*         port = ports[index];
+        const QPointF position = component->mapToScene(port->getPosition());
 
-      const bool connected = std::ranges::contains(endpoints, position);
-      const bool portAlreadyAdded = std::ranges::contains(result.affectedPorts, port);
-      if (!connected || portAlreadyAdded)
-        continue;
+        const bool connected = std::ranges::contains(endpoints, position);
+        const bool portAlreadyAdded = std::ranges::contains(result.affectedPorts, port);
+        if (!connected || portAlreadyAdded)
+          continue;
 
-      result.affectedPorts.push_back(port);
-      // Input buses retain the width of their previous binding. Validate them
-      // through assignInputPortBus() when binding the output-sized net.
-      if (!isOutput)
-        continue;
-      const auto portWidth = buses[index].size();
-      if (!width)
-        width = portWidth;
-      else if (*width != portWidth && result.isValid()) {
-        // Width mismatch
-        result.error = QString("Port %1 requires %2 bits; this net requires %3 bits")
-                            .arg(port->getName()).arg(portWidth).arg(*width);
+        result.affectedPorts.push_back(port);
+        // Input buses retain the width of their previous binding. Validate them
+        // through assignInputPortBus() when binding the output-sized net.
+        if (!isOutput)
+          continue;
+        const auto portWidth = buses[index].size();
+        if (!width)
+          width = portWidth;
+        else if (*width != portWidth && result.isValid()) {
+          // Width mismatch
+          result.error = QString("Port %1 requires %2 bits; this net requires %3 bits")
+                             .arg(port->getName())
+                             .arg(portWidth)
+                             .arg(*width);
+        }
       }
-    }
-  };
+    };
 
-  for (auto* item : items()) {
-    const auto* component = category_cast<GraphicalLogicComponent>(
-        item, ItemCategory::LogicComponent);
-    if (!component || !component->getComponent())
-      continue;
-    collect(component, component->getOutputPorts(),
-            component->getComponent()->getOutputs(), true);
-    collect(component, component->getInputPorts(),
-            component->getComponent()->getInputs(), false);
+    for (const auto* component : components) {
+      collect(component, component->getOutputPorts(),
+              component->getComponent()->outputBuses(), true);
+      collect(component, component->getInputPorts(),
+              component->getComponent()->inputBuses(), false);
+    }
+
+    result.width = width.value_or(1U);
+
+    return result;
   }
 
-  result.width = width.value_or(1U);
+}  // namespace
 
-  return result;
+NetConnection
+DiagramScene::inspectConnection(const std::vector<GraphicalWire*>& wires) const
+{
+  return inspectConnectionForComponents(wires, logicComponentsInScene(*this));
 }
 
 const ConnectionReport& DiagramScene::currentConnectionReport()
@@ -1528,26 +1537,23 @@ void DiagramScene::refreshConnections()
 
   connectionReportDirty = false;
   connectionReport.nets.clear();
+  const auto components = logicComponentsInScene(*this);
 
   // clang-format off
   connectionReport.nets = wireManager.wires()
-    | std::views::transform([this](const std::shared_ptr<GraphicalWire>& w) {
-      return inspectConnection({w.get()});
+    | std::views::transform([&components](const std::shared_ptr<GraphicalWire>& w) {
+      return inspectConnectionForComponents({w.get()}, components);
     })
     | std::ranges::to<std::vector>();
   //clang-format on
 
-  auto clearBindings = [this] {
-    for (auto* item : items()) {
-      auto* component = category_cast<GraphicalLogicComponent>(
-          item, ItemCategory::LogicComponent);
-      if (component && component->getComponent())
-        component->getComponent()->clearWires();
-    }
+  auto clearBindings = [&components] {
+    for (auto* component : components)
+      component->getComponent()->clearWires();
   };
 
   // Iterates over valid nets and associates their buses with connected ports
-  auto bind = [this] {
+  auto bind = [this, &components] {
     for (auto [index, wire] : wireManager.wires() | SILICON::views::enumerate) {
       auto& net = connectionReport.nets[index];
 
@@ -1557,11 +1563,7 @@ void DiagramScene::refreshConnections()
       if (wire->getBusSize() != net.width)
         wire->setBusSize(net.width);
 
-      for (auto* item : items()) {
-        auto* component = category_cast<GraphicalLogicComponent>(
-            item, ItemCategory::LogicComponent);
-        if (!component || !component->getComponent())
-          continue;
+      for (auto* component : components) {
 
         for (const auto& [portIndex, port] :
              component->getOutputPorts() | SILICON::views::enumerate)
@@ -1593,11 +1595,7 @@ void DiagramScene::refreshConnections()
     const auto& net = connectionReport.nets[index];
     wire->setConnectionError(net.error);
   }
-  for (auto* item : items()) {
-    auto* component = category_cast<GraphicalLogicComponent>(item,
-                                                              ItemCategory::LogicComponent);
-    if (!component)
-      continue;
+  for (auto* component : components) {
     for (Port* port : component->getPorts()) {
       port->setInputAssignmentError(false);
       port->setToolTip(port->getName());
@@ -1651,6 +1649,8 @@ void DiagramScene::autoPlaceCircuit()
                            0, options.candidateCount, parent);
   progress.setWindowTitle(tr("Auto place"));
   progress.setWindowModality(Qt::WindowModal);
+  progress.setAutoClose(false);
+  progress.setAutoReset(false);
   progress.setMinimumDuration(300);
   progress.setValue(0);
   QApplication::processEvents();
@@ -1659,7 +1659,8 @@ void DiagramScene::autoPlaceCircuit()
     QApplication::processEvents();
     return progress.wasCanceled();
   };
-  options.progress = [&progress](const int completed, const int) {
+  options.progress = [&progress](const int completed, const int total) {
+    progress.setMaximum(total);
     progress.setValue(completed);
     QApplication::processEvents();
   };
@@ -1679,8 +1680,8 @@ void DiagramScene::placeComponent(std::string_view typeName, const bool showSear
     subcircuit->setDocumentStore(documents);
     subcircuit->setCircuitResolver(resolver);
   }
-  else if (auto* rom = dynamic_cast<GraphicalROM*>(componentToBeDrawn))
-    rom->setDocumentStore(documents);
+  else if (auto* memory = dynamic_cast<GraphicalMemory*>(componentToBeDrawn))
+    memory->setDocumentStore(documents);
 
   lastPlacedComponentType       = typeName;
   lastPlacedComponentProperties = initialProperties;

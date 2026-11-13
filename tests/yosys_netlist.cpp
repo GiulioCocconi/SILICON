@@ -227,7 +227,9 @@ TEST(YosysTest, ImportsComparisonCellsWithYosysWidthAndSignednessSemantics)
     EXPECT_EQ(comparator->getPropertyValue<int>("size"), 5);
     EXPECT_EQ(comparator->getPropertyValue<std::string>("mode"), comparison.mode);
     EXPECT_EQ(comparator->getPropertyValue<bool>("signed"), false);
-    EXPECT_FALSE(findComponent<Extender>(*circuit));
+    // Restore the narrow operand's zero padding as a bus extender.
+    EXPECT_TRUE(findComponent<Extender>(*circuit));
+    EXPECT_EQ(componentTypes(*circuit).count("WireMerger"), 0);
   }
 
   // 3'b110 is -2 for a signed comparison, but 6 for an unsigned one.

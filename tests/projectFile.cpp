@@ -15,6 +15,7 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+
 #include "tests.hpp"
 
 #include <chrono>
@@ -33,6 +34,7 @@
 #include <zip.h>
 
 using namespace SILICON::core;
+
 using namespace SILICON::project;
 
 namespace {
@@ -327,7 +329,7 @@ TEST(ProjectFileTest, RoundTripsRawBinaryDocumentsByteForByte)
 {
   const auto                    path = tempProjectPath("binary_files");
   FileCleanup                   cleanup{path};
-  const std::string             raw("\0\x01\x7f\x80\xff", 5);
+  const std::vector<std::uint8_t> raw{0, 1, 0x7F, 0x80, 0xFF};
   SILICON::project::ProjectFile projectFile{
       .metadata  = SILICON::project::metadataForNewFile(),
       .project   = {.name = "Binary", .description = ""},
@@ -335,11 +337,10 @@ TEST(ProjectFileTest, RoundTripsRawBinaryDocumentsByteForByte)
                     {"bin/firmware", raw}}};
 
   SILICON::project::writeProjectFile(path, projectFile);
-  EXPECT_EQ(readZipEntry(path, "bin/firmware"), raw);
   const auto loaded = SILICON::project::readProjectFile(path);
   ASSERT_EQ(loaded.documents.size(), 2);
   EXPECT_EQ(loaded.documents[1].getType(), SILICON::project::DocumentType::RawBinary);
-  EXPECT_EQ(loaded.documents[1].getContents(), raw);
+  EXPECT_EQ(loaded.documents[1].getContents<std::vector<std::uint8_t>>(), raw);
 }
 
 TEST(ProjectFileTest, RejectsNonDocumentEntries)

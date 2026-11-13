@@ -24,9 +24,11 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <map>
 #include <numeric>
 #include <optional>
@@ -57,6 +59,35 @@ namespace {
   using ComponentMap   = std::unordered_map<const Component*, GraphicalLogicComponent*>;
   using OrientationMap = IoOrientationMap;
   constexpr double COMPONENT_CLEARANCE = 2.0 * DiagramScene::GRID_SIZE;
+
+  // A single candidate already routes every connection. Bound the number of
+  // complete reroutes, including local refinements, as the design grows.
+  constexpr std::size_t ROUTING_WORK_BUDGET = 8192;
+
+  class ProgressRouter : public Avoid::Router {
+  public:
+    explicit ProgressRouter(const CircuitAutoplacerOptions& options)
+      : Avoid::Router(Avoid::OrthogonalRouting), options(options)
+    {
+    }
+
+    bool shouldContinueTransactionWithProgress(unsigned int, unsigned int, unsigned int,
+                                               double) override
+    {
+      const auto now = std::chrono::steady_clock::now();
+      if (now - lastCheck >= std::chrono::milliseconds(50)) {
+        lastCheck = now;
+        if (options.isCancelled && options.isCancelled())
+          cancelled = true;
+      }
+      return !cancelled;
+    }
+
+  private:
+    const CircuitAutoplacerOptions&       options;
+    std::chrono::steady_clock::time_point lastCheck{};
+    bool                                  cancelled = false;
+  };
 
   QRectF movedComponentObstacle(GraphicalLogicComponent* component,
                                 const QPointF& newPosition, const int padding,
@@ -799,6 +830,7 @@ namespace {
     };
     std::vector<RegisteredNet> registered;
     registered.reserve(grouped.size());
+    const bool useTerminalTrees = connections.size() > 1024;
 
     for (auto& netConnections : grouped) {
       using Terminal = std::pair<GraphicalLogicComponent*, const Port*>;
@@ -829,10 +861,12 @@ namespace {
             movedPortPosition(component, port, placements.at(component), &orientations);
         const PortSide     side       = effectivePortSide(component, port, orientations);
         const unsigned int pinClassId = nextPinClassId++;
-        new Avoid::ShapeConnectionPin(obstacle->second.shape, pinClassId,
-                                      position.x() - obstacle->second.bounds.left(),
-                                      position.y() - obstacle->second.bounds.top(), false,
-                                      0.0, portConnDir(side));
+        auto*              pin        = new Avoid::ShapeConnectionPin(
+            obstacle->second.shape, pinClassId,
+            position.x() - obstacle->second.bounds.left(),
+            position.y() - obstacle->second.bounds.top(), false, 0.0, portConnDir(side));
+        if (useTerminalTrees)
+          pin->setExclusive(false);
         terminals.emplace_back(obstacle->second.shape, pinClassId);
         net.terminals.push_back(DiagramScene::snapToGrid(position));
       }
@@ -847,6 +881,43 @@ namespace {
             new Avoid::ConnRef(&router, terminals.front(), terminals.back());
         connector->setRoutingType(Avoid::ConnType_Orthogonal);
         registration.connectors.push_back(connector);
+        registered.push_back(std::move(registration));
+        continue;
+      }
+
+      if (useTerminalTrees) {
+        // A global Steiner-tree search explores the entire visibility graph for
+        // each fanout net. For large designs, route a Manhattan minimum spanning
+        // tree of the terminals instead. Shared pins keep every branch attached
+        // to the same electrical net while each obstacle search stays local.
+        const std::vector<Avoid::ConnEnd> ends(terminals.begin(), terminals.end());
+        std::vector<bool>                 reached(ends.size());
+        std::vector<qreal> distances(ends.size(), std::numeric_limits<qreal>::infinity());
+        std::vector<std::size_t> parents(ends.size());
+        distances.front() = 0;
+        for (std::size_t count = 0; count < ends.size(); ++count) {
+          std::size_t next = ends.size();
+          for (std::size_t terminal = 0; terminal < ends.size(); ++terminal)
+            if (!reached[terminal]
+                && (next == ends.size() || distances[terminal] < distances[next]))
+              next = terminal;
+          reached[next] = true;
+          if (count > 0) {
+            auto* connector =
+                new Avoid::ConnRef(&router, ends[parents[next]], ends[next]);
+            connector->setRoutingType(Avoid::ConnType_Orthogonal);
+            registration.connectors.push_back(connector);
+          }
+          for (std::size_t terminal = 0; terminal < ends.size(); ++terminal) {
+            const auto delta =
+                registration.net.terminals[next] - registration.net.terminals[terminal];
+            const qreal distance = std::abs(delta.x()) + std::abs(delta.y());
+            if (!reached[terminal] && distance < distances[terminal]) {
+              distances[terminal] = distance;
+              parents[terminal]   = next;
+            }
+          }
+        }
         registered.push_back(std::move(registration));
         continue;
       }
@@ -870,9 +941,22 @@ namespace {
 
     Avoid::ConnRefListVector routeGroups;
     routeGroups.reserve(registered.size());
-    for (const RegisteredNet& registration : registered)
+    for (const RegisteredNet& registration : registered) {
+      // Lane conflicts must be checked in the same coordinates that will be
+      // committed. Snapping afterwards can collapse distinct fractional lanes.
+      for (auto* connector : registration.connectors) {
+        const auto points = extractOrthogonalRoute(*connector, DiagramScene::GRID_SIZE);
+        if (points.size() < 2)
+          continue;
+        Avoid::PolyLine snapped;
+        for (const QPointF point : points)
+          snapped.ps.emplace_back(point.x(), point.y());
+        connector->set_route(snapped);
+      }
       routeGroups.push_back(registration.connectors);
-    router.separateOrthogonalRouteGroups(routeGroups, DiagramScene::GRID_SIZE);
+    }
+    if (!router.separateOrthogonalRouteGroups(routeGroups, DiagramScene::GRID_SIZE))
+      return std::nullopt;
 
     for (RegisteredNet& registration : registered) {
       registration.net.routes.reserve(registration.connectors.size());
@@ -891,14 +975,60 @@ namespace {
     return result;
   }
 
-  std::vector<RoutedWire> buildWires(std::vector<PendingNet> pendingNets)
+  std::vector<RoutedWire> buildWires(std::vector<PendingNet>         pendingNets,
+                                     const CircuitAutoplacerOptions& options)
   {
     std::vector<RoutedWire> wires;
+    const auto              progress = [&options] {
+      if (options.isCancelled)
+        (void)options.isCancelled();
+    };
     for (PendingNet& net : pendingNets) {
-      for (auto& points : mergeOrthogonalRoutes(net.routes))
+      progress();
+      for (auto& points : mergeOrthogonalRoutes(net.routes, progress))
         wires.push_back(RoutedWire{.bus = net.bus, .points = std::move(points)});
     }
     return wires;
+  }
+
+  bool wireEndpointsPreserveNets(std::span<const RoutedWire> wires)
+  {
+    struct Span {
+      qreal      low, high;
+      const Bus* bus;
+    };
+    std::map<qreal, std::vector<Span>> horizontal, vertical;
+    for (const auto& wire : wires) {
+      if (wire.points.size() < 2 || wire.points.front() == wire.points.back())
+        return false;
+      for (std::size_t i = 1; i < wire.points.size(); ++i) {
+        const auto& a = wire.points[i - 1];
+        const auto& b = wire.points[i];
+        if (a.y() == b.y())
+          horizontal[a.y()].push_back(
+              {std::min(a.x(), b.x()), std::max(a.x(), b.x()), &wire.bus});
+        else if (a.x() == b.x())
+          vertical[a.x()].push_back(
+              {std::min(a.y(), b.y()), std::max(a.y(), b.y()), &wire.bus});
+        else
+          return false;
+      }
+    }
+    auto touchesOtherNet = [](const auto& lines, qreal coordinate, qreal position,
+                              const Bus& bus) {
+      const auto line = lines.find(coordinate);
+      return line != lines.end()
+             && std::ranges::any_of(line->second, [&](const Span& span) {
+                  return span.low <= position && position <= span.high
+                         && *span.bus != bus;
+                });
+    };
+    for (const auto& wire : wires)
+      for (const auto point : {wire.points.front(), wire.points.back()})
+        if (touchesOtherNet(horizontal, point.y(), point.x(), wire.bus)
+            || touchesOtherNet(vertical, point.x(), point.y(), wire.bus))
+          return false;
+    return true;
   }
 
   std::optional<CircuitAutoplacement>
@@ -915,8 +1045,15 @@ namespace {
     if (!componentsHaveClearance(result.components, result.ioPortOrientations))
       return std::nullopt;
 
-    Avoid::Router router(Avoid::OrthogonalRouting);
+    ProgressRouter router(options);
     configureOrthogonalRouter(router, DiagramScene::GRID_SIZE);
+    if (connections.size() > 1024) {
+      // Separate the complete net groups below. Global crossing-penalty
+      // rerouting compares every branch pair and is prohibitive at this size.
+      router.setRoutingParameter(Avoid::fixedSharedPathPenalty, 0.0);
+      router.setRoutingOption(Avoid::useWeightedAStar, true);
+      router.setRoutingOption(Avoid::performOrthogonalNudging, false);
+    }
     const auto obstacles = registerObstacles(
         router, result.components, options.obstaclePadding, result.ioPortOrientations);
     // Commit the obstacle visibility graph before adding the complete batch of nets.
@@ -925,7 +1062,11 @@ namespace {
                                     result.ioPortOrientations, obstacles, routingOrder);
     if (!pendingNets)
       return std::nullopt;
-    result.wires = buildWires(std::move(*pendingNets));
+    result.wires = buildWires(std::move(*pendingNets), options);
+    // Merging changes segment endpoints. Validate the geometry the editor will
+    // actually commit, where an endpoint touching another route joins its net.
+    if (!wireEndpointsPreserveNets(result.wires))
+      return std::nullopt;
     return result;
   }
 
@@ -1177,9 +1318,11 @@ namespace {
     return positions;
   }
 
-  CircuitAutoplacement refinePlacementWithRouting(
-      std::span<const RoutableConnection> connections, CircuitAutoplacement best,
-      const CircuitAutoplacerOptions& options, std::size_t routingOrder)
+  CircuitAutoplacement
+  refinePlacementWithRouting(std::span<const RoutableConnection> connections,
+                             CircuitAutoplacement                best,
+                             const CircuitAutoplacerOptions&     options,
+                             std::size_t routingOrder, std::size_t remainingAttempts)
   {
     constexpr int  MAX_PASSES = 2;
     PlacementScore bestScore = scorePlacement(connections, best);
@@ -1211,6 +1354,9 @@ namespace {
         const QPointF current = best.components.at(component);
         for (const QPointF proposalPosition :
              refinementPositions(current, target->second)) {
+          if (remainingAttempts == 0)
+            return best;
+          --remainingAttempts;
           auto proposalPlacements       = best.components;
           proposalPlacements[component] = proposalPosition;
           auto proposal                 = routePreparedCandidate(
@@ -1247,9 +1393,15 @@ CircuitAutoplacer::compute(const Circuit&                            circuit,
                            std::span<GraphicalLogicComponent* const> components,
                            const CircuitAutoplacerOptions&           options)
 {
-  const int  candidateCount      = std::max(1, options.candidateCount);
   const auto componentToGraphics = buildComponentMap(components);
   const auto resolvedConnections = resolveConnections(circuit, componentToGraphics);
+  const auto attemptBudget       = std::max<std::size_t>(
+      1, ROUTING_WORK_BUDGET / std::max<std::size_t>(1, resolvedConnections.size()));
+  const int candidateCount = static_cast<int>(
+      std::min<std::size_t>(std::max(1, options.candidateCount), attemptBudget));
+  std::size_t remainingAttempts = attemptBudget;
+  if (options.progress)
+    options.progress(0, candidateCount);
   const auto layoutDirections =
       preferredLayoutDirections(resolvedConnections, options.graphLayout.direction);
 
@@ -1284,6 +1436,7 @@ CircuitAutoplacer::compute(const Circuit&                            circuit,
 
     auto candidate = routeCandidate(resolvedConnections, std::move(placements), options,
                                     static_cast<std::size_t>(candidateIndex));
+    --remainingAttempts;
     if (!candidate) {
       if (options.progress)
         options.progress(candidateIndex + 1, candidateCount);
@@ -1305,7 +1458,8 @@ CircuitAutoplacer::compute(const Circuit&                            circuit,
   // fallback bounded because a structurally unrepresentable topology cannot be fixed
   // by adding space.
   constexpr int MAX_FALLBACK_ROUTING_ATTEMPTS = 64;
-  for (int routingAttempt = 0; !bestScore && routingAttempt < MAX_FALLBACK_ROUTING_ATTEMPTS;
+  for (int routingAttempt = 0; !bestScore && remainingAttempts > 0
+                               && routingAttempt < MAX_FALLBACK_ROUTING_ATTEMPTS;
        ++routingAttempt) {
     if (options.isCancelled && options.isCancelled())
       break;
@@ -1329,6 +1483,7 @@ CircuitAutoplacer::compute(const Circuit&                            circuit,
     auto candidate =
         routeCandidate(resolvedConnections, std::move(placements), options,
                        static_cast<std::size_t>(candidateCount + routingAttempt));
+    --remainingAttempts;
     if (candidate) {
       best      = std::move(*candidate);
       bestScore = scorePlacement(resolvedConnections, best);
@@ -1338,14 +1493,22 @@ CircuitAutoplacer::compute(const Circuit&                            circuit,
       options.progress(candidateCount, candidateCount);
   }
 
-  if (!bestScore && !(options.isCancelled && options.isCancelled())) {
+  if (!bestScore && options.isCancelled && options.isCancelled())
+    throw std::runtime_error("Circuit autoplacement was cancelled before a complete "
+                             "route was available");
+  if (!bestScore) {
     throw std::runtime_error("Circuit autoplacement could not produce a complete route");
   }
 
-  if (bestScore && !(options.isCancelled && options.isCancelled())) {
+  if (bestScore && remainingAttempts > 0
+      && !(options.isCancelled && options.isCancelled())) {
     best = refinePlacementWithRouting(resolvedConnections, std::move(best), options,
-                                      static_cast<std::size_t>(candidateCount));
+                                      static_cast<std::size_t>(candidateCount),
+                                      remainingAttempts);
   }
+
+  if (bestScore && options.progress)
+    options.progress(candidateCount, candidateCount);
 
   return best;
 }

@@ -175,6 +175,7 @@ namespace {
       Cell(Importer& importer, const Json& cell, std::string context)
         : context(std::move(context)),
           importer(importer),
+          rawJson(cell),
           parametersJson(requireObjectMember(cell, "parameters", this->context)),
           connectionsJson(requireObjectMember(cell, "connections", this->context))
       {
@@ -193,10 +194,24 @@ namespace {
       [[nodiscard]] const std::string& cellType() const { return type; }
       [[nodiscard]] const std::string& where() const { return context; }
 
+      [[nodiscard]] Json attributes() const
+      {
+        auto result = rawJson.value("attributes", Json::object());
+        if (!result.is_object())
+          fail(context, "cell attributes must be an object");
+        return result;
+      }
+
       void requireConnections(const std::initializer_list<std::string_view> names) const
       {
         requireExactMembers(connectionsJson, std::span(names.begin(), names.size()),
                             context, "connection");
+      }
+
+      void requireParameters(const std::initializer_list<std::string_view> names) const
+      {
+        requireExactMembers(parametersJson, std::span(names.begin(), names.size()),
+                            context, "parameter");
       }
 
       template <std::size_t ParameterCount, std::size_t ConnectionCount>
@@ -211,6 +226,11 @@ namespace {
       [[nodiscard]] const Json& parameter(const std::string_view name) const
       {
         return requireObjectMember(parametersJson, name, context);
+      }
+
+      [[nodiscard]] bool hasParameter(const std::string_view name) const
+      {
+        return parametersJson.contains(name);
       }
 
       void requireKnownConnectionNames(const std::span<const std::string> names) const
@@ -254,6 +274,21 @@ namespace {
                                                    const std::size_t      laneWidth,
                                                    const std::size_t      laneCount) const
       {
+        return lanes(port, laneWidth, laneCount, ConnectionRole::Consumer);
+      }
+
+      [[nodiscard]] std::vector<Bus> driverLanes(const std::string_view port,
+                                                const std::size_t laneWidth,
+                                                const std::size_t laneCount) const
+      {
+        return lanes(port, laneWidth, laneCount, ConnectionRole::Driver);
+      }
+
+      [[nodiscard]] std::vector<Bus> lanes(const std::string_view port,
+                                          const std::size_t laneWidth,
+                                          const std::size_t laneCount,
+                                          const ConnectionRole role) const
+      {
         // Yosys flattens word lanes into one LSB-first JSON array. Decode each lane
         // separately so readBus() can recognize an all-literal word as a constant bus.
         const auto& bits          = requireObjectMember(connectionsJson, port, context);
@@ -269,7 +304,7 @@ namespace {
           for (std::size_t bit = 0; bit < laneWidth; ++bit)
             laneBits.push_back(bits[lane * laneWidth + bit]);
           lanes.push_back(importer.readBus(
-              laneBits, ConnectionRole::Consumer,
+              laneBits, role,
               std::format("{}.{} lane {}", context, port, lane), laneWidth));
         }
         return lanes;
@@ -327,6 +362,7 @@ namespace {
     private:
       std::string context;
       Importer&   importer;
+      const Json& rawJson;
       const Json& parametersJson;
       const Json& connectionsJson;
       std::string type;
@@ -372,9 +408,9 @@ namespace {
     void normalizeBusConnections()
     {
       // Yosys represents every net as individual signal bits. Silicon instead uses
-      // explicit components whenever a multi-bit connection crosses a scalar, sliced,
-      // concatenated, or reordered boundary. Snapshot the imported topology before
-      // adding those components so the generated helpers do not get normalized again.
+      // explicit components at scalar, sliced, concatenated or reordered boundaries.
+      // Snapshot the imported topology before adding those components so the generated
+      // helpers do not get normalized again.
       std::vector<ProducerBus>                                   producers;
       std::map<Wire_ptr, std::size_t, std::owner_less<Wire_ptr>> producerByWire;
       std::map<BusKey, std::vector<ConsumerBus>>                 consumers;
@@ -398,96 +434,161 @@ namespace {
         }
       }
 
-      std::map<Wire_ptr, std::vector<const BusKey*>, std::owner_less<Wire_ptr>>
-          consumerKeysByWire;
-      for (const auto& [key, _] : consumers) {
-        for (const auto& wire : key)
-          if (wire)
-            consumerKeysByWire[wire].push_back(&key);
-      }
-
-      std::map<Wire_ptr, Wire_ptr, std::owner_less<Wire_ptr>> splitLaneByWire;
-      std::vector<Component_ptr>                              helpers;
-      for (const auto& producer : producers) {
-        if (producer.key.size() <= 1 || !fullyConnected(producer.key))
-          continue;
-
-        const bool needsSplitter =
-            std::ranges::any_of(producer.key, [&](const auto& wire) {
-              const auto consumersForWire = consumerKeysByWire.find(wire);
-              return consumersForWire != consumerKeysByWire.end()
-                     && std::ranges::any_of(consumersForWire->second,
-                                            [&](const BusKey* consumerKey) {
-                                              return *consumerKey != producer.key;
-                                            });
-            });
-        if (!needsSplitter)
-          continue;
-
-        std::vector<Bus> outputs;
-        outputs.reserve(producer.key.size());
-        for (const auto& wire : producer.key) {
-          auto lane = std::make_shared<Wire>();
-          splitLaneByWire.try_emplace(wire, lane);
-          outputs.emplace_back(Bus{std::move(lane)});
+      // Keep contiguous runs together. Each producer has one shared splitter with
+      // just the requested slices (which may overlap), rather than one output per
+      // bit followed by a merger at every part-select.
+      using Range = std::pair<unsigned int, unsigned int>;  // offset, width
+      std::vector<std::map<Range, Bus>> producerSlices(producers.size());
+      std::map<Wire_ptr, unsigned int, std::owner_less<Wire_ptr>> bitByWire;
+      std::map<Wire_ptr, State, std::owner_less<Wire_ptr>>        constantStates;
+      for (std::size_t i = 0; i < producers.size(); ++i)
+        for (unsigned int bit = 0; bit < producers[i].key.size(); ++bit)
+          bitByWire.try_emplace(producers[i].key[bit], bit);
+      for (const auto& component : components) {
+        if (const auto constant =
+                std::dynamic_pointer_cast<ConstantComponent>(component)) {
+          const auto  value  = constant->getPropertyValue<BusValue>("value").value();
+          const auto& output = constant->outputBuses().at(0);
+          for (unsigned int bit = 0; bit < output.size(); ++bit)
+            constantStates.try_emplace(output[bit], value[bit]);
         }
-
-        auto splitter = std::make_shared<WireSplitter>();
-        splitter->setProperty("size", static_cast<int>(producer.key.size()));
-        splitter->setInputs({Bus(producer.key)});
-        splitter->setOutputs(outputs);
-        helpers.push_back(std::move(splitter));
       }
 
+      std::vector<Component_ptr> helpers;
+      const auto                 sourceSlice = [&](const std::size_t  producerIndex,
+                                   const unsigned int offset, const unsigned int width) {
+        const auto& source = producers[producerIndex].key;
+        if (offset == 0 && width == source.size())
+          return Bus(source);
+        auto [slice, inserted] =
+            producerSlices[producerIndex].try_emplace(Range{offset, width});
+        if (inserted)
+          slice->second = Bus(static_cast<unsigned short>(width));
+        return slice->second;
+      };
       for (const auto& [key, occurrences] : consumers) {
         if (!fullyConnected(key))
           continue;
 
-        bool                       exactProducer = !key.empty();
-        std::optional<std::size_t> producerIndex;
-        for (const auto& wire : key) {
-          const auto producer = producerByWire.find(wire);
-          if (producer == producerByWire.end()) {
-            exactProducer = false;
-            break;
-          }
-          if (!producerIndex)
-            producerIndex = producer->second;
-          if (*producerIndex != producer->second) {
-            exactProducer = false;
-            break;
-          }
+        // Restore extensions that Yosys represents as concatenated zeroes or
+        // repeated sign bits. Only consume a contiguous source slice, avoiding
+        // an extra extender on general concatenations that still need a merger.
+        std::size_t prefix = key.size();
+        while (prefix > 0 && constantStates.contains(key[prefix - 1])
+               && constantStates.at(key[prefix - 1]) == State::LOW)
+          --prefix;
+        bool signExtend = false;
+        if (prefix == key.size()) {
+          while (prefix > 1 && key[prefix - 1] == key[prefix - 2])
+            --prefix;
+          signExtend = true;
         }
-        exactProducer =
-            exactProducer && producerIndex && producers[*producerIndex].key == key;
-
         Bus replacement;
-        if (exactProducer) {
-          replacement = Bus(key);
-        } else {
-          std::vector<Bus> mergerInputs;
-          mergerInputs.reserve(key.size());
-          for (const auto& wire : key) {
-            const auto splitLane = splitLaneByWire.find(wire);
-            mergerInputs.emplace_back(
-                Bus{splitLane == splitLaneByWire.end() ? wire : splitLane->second});
-          }
-
-          if (key.size() == 1) {
-            replacement = mergerInputs.front();
-          } else {
-            replacement = Bus(static_cast<unsigned short>(key.size()));
-            auto merger = std::make_shared<WireMerger>();
-            merger->setProperty("size", static_cast<int>(key.size()));
-            merger->setInputs(mergerInputs);
-            merger->setOutputs({replacement});
-            helpers.push_back(std::move(merger));
+        if (prefix > 0 && prefix < key.size()) {
+          const auto producer = producerByWire.find(key.front());
+          if (producer != producerByWire.end() && !constantStates.contains(key.front())) {
+            const auto  offset = bitByWire.at(key.front());
+            const auto& source = producers[producer->second].key;
+            if (offset + prefix <= source.size()
+                && std::equal(key.begin(), key.begin() + prefix,
+                              source.begin() + offset)) {
+              replacement = Bus(static_cast<unsigned short>(key.size()));
+              helpers.push_back(std::make_shared<Extender>(
+                  sourceSlice(producer->second, offset,
+                              static_cast<unsigned int>(prefix)),
+                  replacement,
+                  std::string(signExtend ? Extender::SIGNED_MODE
+                                         : Extender::UNSIGNED_MODE)));
+            }
           }
         }
 
+        if (replacement.size() != 0) {
+          for (const auto& occurrence : occurrences)
+            occurrence.component->setInput(
+                static_cast<unsigned int>(occurrence.inputIndex), replacement);
+          continue;
+        }
+
+        std::vector<Bus> parts;
+        for (std::size_t start = 0; start < key.size();) {
+          // Mixed literal/signal connections should also keep literal runs on a
+          // bus, rather than fanning a scalar zero out to every merger input.
+          if (constantStates.contains(key[start])) {
+            Json literals = Json::array();
+            auto end      = start;
+            while (end < key.size() && constantStates.contains(key[end])) {
+              const auto state = constantStates.at(key[end]);
+              literals.push_back(state == State::LOW    ? "0"
+                                 : state == State::HIGH ? "1"
+                                                        : "x");
+              ++end;
+            }
+            if (end - start == 1)
+              parts.emplace_back(Bus{key[start]});
+            else
+              parts.push_back(constantBus(literals, moduleContext()));
+            start = end;
+            continue;
+          }
+
+          const auto producer = producerByWire.find(key[start]);
+          if (producer == producerByWire.end()) {
+            parts.emplace_back(Bus{key[start++]});
+            continue;
+          }
+          const auto  producerIndex = producer->second;
+          const auto& source        = producers[producerIndex].key;
+          const auto  offset        = bitByWire.at(key[start]);
+          std::size_t width         = 1;
+          while (start + width < key.size() && offset + width < source.size()
+                 && key[start + width] == source[offset + width])
+            ++width;
+
+          parts.push_back(
+              sourceSlice(producerIndex, offset, static_cast<unsigned int>(width)));
+          start += width;
+        }
+
+        if (parts.size() == 1) {
+          replacement = parts.front();
+        } else {
+          replacement = Bus(static_cast<unsigned short>(key.size()));
+          auto merger = std::make_shared<WireMerger>();
+          merger->setProperty("size", static_cast<int>(key.size()));
+          std::string widths;
+          for (const auto& part : parts) {
+            if (!widths.empty())
+              widths += ',';
+            widths += std::to_string(part.size());
+          }
+          merger->setProperty("widths", widths);
+          merger->setInputs(parts);
+          merger->setOutputs({replacement});
+          helpers.push_back(std::move(merger));
+        }
         for (const auto& occurrence : occurrences)
           occurrence.component->setInput(static_cast<unsigned int>(occurrence.inputIndex),
                                          replacement);
+      }
+
+      for (std::size_t i = 0; i < producers.size(); ++i) {
+        if (producerSlices[i].empty())
+          continue;
+        std::string      specification;
+        std::vector<Bus> outputs;
+        for (const auto& [range, bus] : producerSlices[i]) {
+          if (!specification.empty())
+            specification += ',';
+          specification += std::format("{}:{}", range.first, range.second);
+          outputs.push_back(bus);
+        }
+        auto splitter = std::make_shared<WireSplitter>();
+        splitter->setProperty("size", static_cast<int>(producers[i].key.size()));
+        splitter->setProperty("slices", specification);
+        splitter->setInputs({Bus(producers[i].key)});
+        splitter->setOutputs(outputs);
+        helpers.push_back(std::move(splitter));
       }
 
       components.insert(components.end(), helpers.begin(), helpers.end());
@@ -713,64 +814,115 @@ namespace {
         fail(std::format("{}.cells", moduleContext()), "expected an object");
 
       for (const auto& [name, cell] : cells.items())
-        if (cell.is_object() && cell.value("type", std::string()) == "SILICON_ROM")
-          importRom(name, cell);
-      for (const auto& [name, cell] : cells.items())
-        if (cell.value("type", std::string()) != "SILICON_ROM")
-          importCell(name, cell);
+        importCell(name, cell);
     }
 
-    void importRom(const std::string_view name, const Json& raw)
+    [[nodiscard]] std::string memoryAssetName(const Cell& cell) const
     {
-      Cell cell(*this, raw, std::format("{}.cells.{}", moduleContext(), name));
-      cell.requireSchema(
-          std::array<std::string_view, 7>{"WIDTH", "SIZE", "ABITS", "INIT", "ID", "SYNC", "CLK_POLARITY"},
-          std::array<std::string_view, 5>{"ADDR", "DATA", "SELECT", "CLK", "EN"});
-      const auto width = cell.width("WIDTH");
-      const auto count = static_cast<std::size_t>(parseUnsigned(cell.parameter("SIZE"), cell.where()));
-      const auto abits = cell.width("ABITS");
-      if (!std::has_single_bit(count) || count > std::numeric_limits<int>::max()
-          || abits != std::max<std::size_t>(1, std::bit_width(count - 1)))
-        fail(cell.where(), "invalid canonical ROM geometry");
-      const bool synchronous = cell.flag("SYNC");
-      const bool positiveClock = cell.flag("CLK_POLARITY");
-      const auto init = binaryDigits(cell.parameter("INIT"), cell.where());
-      if (init.size() != count * width)
-        fail(cell.where(), "invalid canonical ROM initialization");
-      std::string bytes((init.size() + 7) / 8, '\0');
-      for (std::size_t bit = 0; bit < init.size(); ++bit)
-        if (init[init.size() - bit - 1] == '1')
-          bytes[bit / 8] = static_cast<char>(static_cast<unsigned char>(bytes[bit / 8]) | (1u << (bit % 8)));
-
       const auto& id = cell.parameter("ID");
       if (!id.is_string())
-        fail(cell.where(), "canonical ROM identifier must be a string");
-      std::string memoryName = id.get<std::string>();
+        fail(cell.where(), "memory identifier must be a string");
+      auto memoryName = id.get<std::string>();
       if (!memoryName.empty() && memoryName.front() == '\\')
         memoryName.erase(0, 1);
       for (auto& character : memoryName)
-        if (character == '/' || character == '\\' || static_cast<unsigned char>(character) < 32
+        if (character == '/' || character == '\\'
+            || static_cast<unsigned char>(character) < 32
             || static_cast<unsigned char>(character) == 127)
           character = '_';
-      std::string assetName = std::format("{}_{}", moduleName, memoryName);
-      const auto attributes = raw.value("attributes", Json::object());
-      if (!attributes.is_object())
-        fail(cell.where(), "ROM attributes must be an object");
-      if (const auto attribute = attributes.find(std::string(attributes::BINARY_DOCUMENT));
-          attribute != attributes.end()) {
-        if (!attribute->is_string())
-          fail(cell.where(), "binary document attribute must be a string");
-        assetName = attribute->get<std::string>();
-        if (!SILICON::project::isValidDocumentSlug(assetName))
-          fail(cell.where(), "binary document attribute is not a valid document name");
+      const auto metadata = cell.attributes();
+      if (const auto attribute = metadata.find(std::string(attributes::BINARY_DOCUMENT));
+          attribute != metadata.end()) {
+        if (!attribute->is_string()
+            || !SILICON::project::isValidDocumentSlug(attribute->get<std::string>()))
+          fail(cell.where(), "invalid memory binary document name");
+        return attribute->get<std::string>();
       }
+      return std::format("{}_{}", moduleName, memoryName);
+    }
 
-      Bus address = cell.consumer("ADDR", abits);
-      const Bus select = cell.consumer("SELECT", 1);
-      const Bus clockBus = cell.consumer("CLK", 1);
+    void importRam(const Cell& cell)
+    {
+      const auto connections = std::to_array<std::string_view>(
+          {"RD_ADDR", "RD_DATA", "WR_ADDR", "WR_DATA", "WR_EN", "WR_CLK"});
+      const auto readPorts = cell.hasParameter("RD_PORTS") ? cell.width("RD_PORTS") : 1;
+      if (cell.hasParameter("RD_PORTS"))
+        cell.requireSchema(std::to_array<std::string_view>(
+            {"ID", "WIDTH", "SIZE", "ABITS", "INIT", "RD_PORTS"}), connections);
+      else
+        cell.requireSchema(std::to_array<std::string_view>(
+            {"ID", "WIDTH", "SIZE", "ABITS", "INIT"}), connections);
+      const auto width = cell.width("WIDTH");
+      const auto count = parseUnsigned(cell.parameter("SIZE"), cell.where());
+      const auto abits = cell.width("ABITS");
+      if (count == 0
+          || count > static_cast<std::size_t>(std::numeric_limits<int>::max()) / width
+          || abits < std::max<std::size_t>(1, std::bit_width(count - 1)))
+        fail(cell.where(), "unsupported RAM geometry");
+
+      const auto& initializer = cell.parameter("INIT");
+      if (!initializer.is_string())
+        fail(cell.where(), "RAM INIT must be a bit string");
+      const auto& init = initializer.get_ref<const std::string&>();
+      if (init.size() != count * width)
+        fail(cell.where(), "RAM INIT does not match its geometry");
+      const bool uninitialized =
+          std::ranges::all_of(init, [](char bit) { return bit == 'x'; });
+      if (!uninitialized && !std::ranges::all_of(init, [](char bit) {
+            return bit == '0' || bit == '1';
+          }))
+        fail(cell.where(), "RAM INIT must be fully binary or entirely X");
+      const auto assetName = memoryAssetName(cell);
+
+      auto ram = std::make_shared<RAM>();
+      ram->setProperty("readPorts", static_cast<int>(readPorts));
+      ram->setProperty("dataWidth", static_cast<int>(width));
+      ram->setMemoryDepth(count);
+      if (!uninitialized) {
+        MemoryImage::Bits bits(init.size());
+        for (std::size_t bit = 0; bit < init.size(); ++bit)
+          bits[bit] = init[init.size() - bit - 1] == '1';
+        ram->setProperty("binaryContents", assetName);
+        ram->setMemoryImage(
+            std::make_shared<const MemoryImage>(std::move(bits), width, count));
+      }
+      const auto addresses = cell.consumerLanes("RD_ADDR", abits, readPorts);
+      std::vector<Bus> inputs{addresses[0], cell.consumer("WR_ADDR", abits),
+                              cell.consumer("WR_DATA", width),
+                              cell.consumer("WR_EN", width), cell.consumer("WR_CLK", 1)};
+      inputs.insert(inputs.end(), addresses.begin() + 1, addresses.end());
+      connectAndAdd(ram, std::move(inputs), cell.driverLanes("RD_DATA", width, readPorts));
+    }
+
+    void importRom(const Cell& cell)
+    {
+      cell.requireSchema(
+          std::array<std::string_view, 7>{"WIDTH", "SIZE", "ABITS", "INIT", "ID", "SYNC",
+                                          "CLK_POLARITY"},
+          std::array<std::string_view, 5>{"ADDR", "DATA", "SELECT", "CLK", "EN"});
+      const auto width = cell.width("WIDTH");
+      const auto count =
+          static_cast<std::size_t>(parseUnsigned(cell.parameter("SIZE"), cell.where()));
+      const auto abits = cell.width("ABITS");
+      if (count == 0 || count > std::numeric_limits<int>::max()
+          || abits != std::max<std::size_t>(1, std::bit_width(count - 1)))
+        fail(cell.where(), "invalid canonical ROM geometry");
+      const bool synchronous   = cell.flag("SYNC");
+      const bool positiveClock = cell.flag("CLK_POLARITY");
+      const auto init          = binaryDigits(cell.parameter("INIT"), cell.where());
+      if (init.size() != count * width)
+        fail(cell.where(), "invalid canonical ROM initialization");
+      MemoryImage::Bits bits(init.size());
+      for (std::size_t bit = 0; bit < init.size(); ++bit)
+        if (init[init.size() - bit - 1] == '1')
+          bits.set(bit);
+
+      const auto assetName = memoryAssetName(cell);
+
+      Bus       address   = cell.consumer("ADDR", abits);
+      const Bus select    = cell.consumer("SELECT", 1);
+      const Bus clockBus  = cell.consumer("CLK", 1);
       const Bus enableBus = cell.consumer("EN", 1);
-      if (count == 1 && !cell.rawConstant("ADDR", "0", abits))
-        fail(cell.where(), "one-word ROM requires a constant zero address");
       if (!synchronous && (!cell.rawConstant("CLK", "0") || !cell.rawConstant("EN", "1")))
         fail(cell.where(), "asynchronous ROM has invalid clock or enable");
       Wire_ptr clock = clockBus[0];
@@ -793,14 +945,17 @@ namespace {
       rom->setProperty("dataWidth", static_cast<int>(width));
       rom->setProperty("binaryContents", assetName);
       const Bus romOutput = synchronous && count == 1
-          ? Bus(static_cast<unsigned short>(width))
-          : cell.driver("DATA", width);
-      connectAndAdd(rom, {address, select,
-                         readBus(Json::array({"1"}), ConnectionRole::Consumer, cell.where(), 1)},
-                    {romOutput});
-      rom->refreshBinaryContents(std::make_shared<const std::string>(bytes), count);
+                                ? Bus(static_cast<unsigned short>(width))
+                                : cell.driver("DATA", width);
+      connectAndAdd(
+          rom,
+          {address, select,
+           readBus(Json::array({"1"}), ConnectionRole::Consumer, cell.where(), 1)},
+          {romOutput});
+      rom->setMemoryImage(
+          std::make_shared<const MemoryImage>(std::move(bits), width, count));
       if (synchronous && count == 1) {
-        const Bus registeredData = cell.driver("DATA", width);
+        const Bus             registeredData = cell.driver("DATA", width);
         std::vector<Wire_ptr> data(romOutput.begin(), romOutput.end());
         std::vector<Wire_ptr> outputs(registeredData.begin(), registeredData.end());
         while (data.size() < 2) {
@@ -1099,6 +1254,73 @@ namespace {
       addWithZeroDelay(std::move(comparator));
     }
 
+    void importSiliconGate(const Cell& cell)
+    {
+      cell.requireParameters({"MODE", "WIDTH", "INPUTS", "BITWISE"});
+      const auto mode    = parseUnsigned(cell.parameter("MODE"), cell.where());
+      const auto width   = cell.width("WIDTH");
+      const auto count   = cell.width("INPUTS");
+      const auto bitwise = cell.flag("BITWISE");
+      if (mode > 1 || count < 2 || (!bitwise && width != 1))
+        fail(cell.where(), "invalid SILICON_GATE geometry or mode");
+      std::vector<std::string> names{"Y"};
+      std::vector<Bus>         inputs;
+      for (std::size_t i = 0; i < count; ++i) {
+        names.push_back(std::format("A{}", i));
+        inputs.push_back(cell.consumer(
+            names.back(), bitwise ? std::optional<std::size_t>(width) : std::nullopt));
+      }
+      cell.requireKnownConnectionNames(names);
+      Component_ptr gate =
+          mode == 0 ? std::static_pointer_cast<Component>(std::make_shared<AndGate>())
+                    : std::static_pointer_cast<Component>(std::make_shared<OrGate>());
+      gate->setProperty("size", static_cast<int>(width));
+      gate->setProperty("bitwise", bitwise);
+      gate->setProperty("delay", 0);
+      connectAndAdd(std::move(gate), std::move(inputs), {cell.driver("Y", width)});
+    }
+
+    void importSiliconMux(const Cell& cell)
+    {
+      cell.requireSchema(
+          std::to_array<std::string_view>({"WIDTH", "S_WIDTH", "INPUTS", "TABLE"}),
+          std::to_array<std::string_view>({"A", "S", "Y"}));
+      const auto width          = cell.width("WIDTH");
+      const auto selectionWidth = cell.width("S_WIDTH");
+      if (selectionWidth > 15)
+        fail(cell.where(), "SILICON_MUX selector is too wide");
+      const auto lanes = std::size_t{1} << selectionWidth;
+      const auto count = cell.width("INPUTS");
+      const auto bits  = binaryDigits(cell.parameter("TABLE"), cell.where());
+      if (count > lanes || bits.size() != lanes * selectionWidth)
+        fail(cell.where(), "invalid SILICON_MUX selection table geometry");
+      std::string       table;
+      std::vector<bool> seen(count);
+      for (std::size_t lane = 0; lane < lanes; ++lane) {
+        const auto word =
+            bits.substr(bits.size() - (lane + 1) * selectionWidth, selectionWidth);
+        unsigned int index = 0;
+        const auto [end, error] =
+            std::from_chars(word.data(), word.data() + word.size(), index, 2);
+        if (error != std::errc{} || end != word.data() + word.size() || index >= count)
+          fail(cell.where(),
+               "SILICON_MUX selection table index is outside its data inputs");
+        seen[index] = true;
+        if (!table.empty())
+          table += ',';
+        table += std::to_string(index);
+      }
+      if (std::ranges::find(seen, false) != seen.end())
+        fail(cell.where(), "SILICON_MUX contains unused data inputs");
+      auto mux = std::make_shared<Multiplexer>();
+      mux->setProperty("selectionSize", static_cast<int>(selectionWidth));
+      mux->setProperty("busSize", static_cast<int>(width));
+      mux->setProperty("selectionTable", table);
+      auto inputs = cell.consumerLanes("A", width, count);
+      inputs.push_back(cell.consumer("S", selectionWidth));
+      connectAndAdd(std::move(mux), std::move(inputs), {cell.driver("Y", width)});
+    }
+
     void importMux(const Cell& cell)
     {
       cell.requireConnections({"A", "B", "S", "Y"});
@@ -1394,6 +1616,8 @@ namespace {
       using CellHandler = void (Importer::*)(const Cell&);
       static constexpr auto HANDLERS =
           std::to_array<std::pair<std::string_view, CellHandler>>({
+              {cells::ROM, &Importer::importRom},
+              {cells::RAM, &Importer::importRam},
               {cells::DFF, &Importer::importSiliconDff<false, false>},
               {cells::DFFE, &Importer::importSiliconDff<true, false>},
               {cells::DLATCH, &Importer::importSiliconDlatch},
@@ -1414,6 +1638,8 @@ namespace {
               {"$xor", &Importer::importBinaryGate<XorGate>},
               {"$not", &Importer::importNot},
               {cells::LOGIC, &Importer::importSiliconLogic},
+              {cells::GATE, &Importer::importSiliconGate},
+              {cells::MUX, &Importer::importSiliconMux},
               {"$_NAND_", &Importer::importFineBinaryGate<NandGate>},
               {"$_NOR_", &Importer::importFineBinaryGate<NorGate>},
               {"$pos", &Importer::importPos},

@@ -90,15 +90,12 @@ void Component::serializeYosys(SerializationContext&) const
 
 void ROM::serializeYosys(SerializationContext& context) const
 {
-  const auto snapshot = binaryContentsSnapshot();
-  const auto width = static_cast<std::size_t>(getPropertyValue<int>("dataWidth").value_or(8));
-  if (!snapshot || snapshot->empty() || width == 0)
+  const auto image = memoryImageSnapshot();
+  if (!image)
     throw std::runtime_error("Cannot export ROM without resolved binary contents");
-  const auto count = resolvedWordCount();
-  const auto derivedCount = (snapshot->size() * 8 + width - 1) / width;
-  if (!std::has_single_bit(count)
-      || (snapshot->size() != (count * width + 7) / 8 && derivedCount != count))
-    throw std::runtime_error("Cannot export ROM with invalid packed word count");
+  const auto  width        = image->wordWidth();
+  const auto  count        = image->depth();
+  const auto& bits         = image->bits();
   const auto addressWidth = std::max<std::size_t>(1, std::bit_width(count - 1));
   if (inputBuses().size() != 3 || outputBuses().size() != 1
       || inputBuses()[0].size() != addressWidth || outputBuses()[0].size() != width)
@@ -106,14 +103,11 @@ void ROM::serializeYosys(SerializationContext& context) const
 
   std::string init(count * width, '0');
   for (std::size_t bit = 0; bit < init.size(); ++bit) {
-    const auto byte = bit / 8 < snapshot->size()
-                          ? static_cast<unsigned char>((*snapshot)[bit / 8]) : 0;
-    init[init.size() - bit - 1] = (byte & (1u << (bit % 8))) ? '1' : '0';
+    init[init.size() - bit - 1] = bits[bit] ? '1' : '0';
   }
   const auto p = [](std::uint64_t value) { return SerializationContext::parameter(value); };
   const auto readData = context.allocateBits(width);
-  Json address = count == 1 ? Json::array({"0"})
-                            : context.inputBits(*this,0, addressWidth);
+  Json       address        = context.inputBits(*this, 0, addressWidth);
   Json attributes = Json::object();
   const auto binaryDocument = getPropertyValue<std::string>("binaryContents");
   if (binaryDocument && !binaryDocument->empty())
@@ -146,6 +140,78 @@ void ROM::serializeYosys(SerializationContext& context) const
                   Json{{"D", "input"}, {"EN", "input"}, {"Q", "output"}},
                   Json{{"D", readData}, {"EN", context.inputBits(*this, 1, 1)},
                        {"Q", context.bits(outputBuses()[0])}});
+}
+
+void RAM::serializeYosys(SerializationContext& context) const
+{
+  const auto width = static_cast<std::size_t>(getPropertyValue<int>("dataWidth").value());
+  const auto count = memoryDepth();
+  const auto readPorts = readPortCount();
+  if (inputBuses().size() != readPorts + 4 || outputBuses().size() != readPorts)
+    throw std::runtime_error("Cannot export malformed RAM buses");
+  const auto abits = inputBuses()[busIndex(Inputs::ReadAddress)].size();
+  if (abits < std::max<std::size_t>(1, std::bit_width(count - 1))
+      || inputBuses()[busIndex(Inputs::WriteAddress)].size() != abits
+      || inputBuses()[busIndex(Inputs::WriteData)].size() != width
+      || inputBuses()[busIndex(Inputs::WriteEnable)].size() != width
+      || inputBuses()[busIndex(Inputs::Clock)].size() != 1
+      || outputBuses()[0].size() != width
+      || count > static_cast<std::size_t>(std::numeric_limits<int>::max()) / width)
+    throw std::runtime_error("Cannot export invalid RAM geometry");
+
+  Json readAddresses = Json::array(), readData = Json::array();
+  for (std::size_t port = 0; port < readPorts; ++port) {
+    if (inputBuses()[readAddressIndex(port)].size() != abits
+        || outputBuses()[port].size() != width)
+      throw std::runtime_error("Cannot export invalid RAM read port geometry");
+    for (const auto& bit : context.inputBits(*this, readAddressIndex(port), abits))
+      readAddresses.push_back(bit);
+    for (const auto& bit : context.bits(outputBuses()[port]))
+      readData.push_back(bit);
+  }
+
+  const auto image = memoryImageSnapshot();
+  const auto slug = getPropertyValue<std::string>("binaryContents").value_or("");
+  if (!image && !slug.empty())
+    throw std::runtime_error("Cannot export RAM with unresolved binary contents");
+  std::string init(count * width, 'x');
+  if (image)
+    for (std::size_t bit = 0; bit < init.size(); ++bit)
+      init[init.size() - bit - 1] = image->bits()[bit] ? '1' : '0';
+  Json attributes = Json::object();
+  if (!slug.empty())
+    attributes[std::string(SILICON::yosys::attributes::BINARY_DOCUMENT)] = slug;
+  const auto p = [](std::uint64_t value) { return SerializationContext::parameter(value); };
+  context.addCell(
+      "memory", "$mem_v2",
+      Json{{"ABITS", p(abits)}, {"INIT", init},
+           {"MEMID", std::format("\\{}", context.componentIdentifier())},
+           {"OFFSET", p(0)}, {"WIDTH", p(width)}, {"SIZE", p(count)},
+           {"RD_PORTS", p(readPorts)}, {"RD_CLK_ENABLE", std::string(readPorts, '0')},
+           {"RD_CLK_POLARITY", std::string(readPorts, '0')},
+           {"RD_ARST_VALUE", std::string(width * readPorts, 'x')},
+           {"RD_SRST_VALUE", std::string(width * readPorts, 'x')},
+           {"RD_INIT_VALUE", std::string(width * readPorts, 'x')},
+           {"RD_CE_OVER_SRST", std::string(readPorts, '0')},
+           {"RD_TRANSPARENCY_MASK", std::string(readPorts, '0')},
+           {"RD_COLLISION_X_MASK", std::string(readPorts, '0')},
+           {"RD_WIDE_CONTINUATION", std::string(readPorts, '0')}, {"WR_PORTS", p(1)},
+           {"WR_CLK_ENABLE", "1"}, {"WR_CLK_POLARITY", "1"},
+           {"WR_PRIORITY_MASK", "0"}, {"WR_WIDE_CONTINUATION", "0"}},
+      directions({{"RD_ADDR", "input"}, {"RD_DATA", "output"}, {"RD_EN", "input"},
+                  {"RD_CLK", "input"}, {"RD_ARST", "input"}, {"RD_SRST", "input"},
+                  {"WR_ADDR", "input"}, {"WR_DATA", "input"}, {"WR_EN", "input"},
+                  {"WR_CLK", "input"}}),
+      Json{{"RD_ADDR", std::move(readAddresses)}, {"RD_DATA", std::move(readData)},
+           {"RD_EN", Json(std::vector<std::string>(readPorts, "1"))},
+           {"RD_CLK", Json(std::vector<std::string>(readPorts, "x"))},
+           {"RD_ARST", Json(std::vector<std::string>(readPorts, "0"))},
+           {"RD_SRST", Json(std::vector<std::string>(readPorts, "0"))},
+           {"WR_ADDR", context.inputBits(*this, busIndex(Inputs::WriteAddress), abits)},
+           {"WR_DATA", context.inputBits(*this, busIndex(Inputs::WriteData), width)},
+           {"WR_EN", context.inputBits(*this, busIndex(Inputs::WriteEnable), width)},
+           {"WR_CLK", context.inputBits(*this, busIndex(Inputs::Clock), 1)}},
+      std::move(attributes));
 }
 
 void ConstantComponent::serializeYosys(SerializationContext& context) const
@@ -487,13 +553,18 @@ void Multiplexer::serializeYosys(SerializationContext& context) const
     throw std::runtime_error("Cannot export malformed multiplexer properties");
   }
   const std::size_t laneCount      = std::size_t{1} << selectionWidth;
-  const std::size_t selectionIndex = laneCount;
+  const auto&       table          = selectionTableIndices();
+  const std::size_t dataCount =
+      table.empty() ? laneCount
+                    : static_cast<std::size_t>(*std::ranges::max_element(table)) + 1;
+  const std::size_t selectionIndex = dataCount;
 
-  requireBusCounts(*this, laneCount + 1, 1);
+  requireBusCounts(*this, dataCount + 1, 1);
   std::vector<Json> lanes;
   lanes.reserve(laneCount);
   for (std::size_t lane = 0; lane < laneCount; ++lane)
-    lanes.push_back(context.bits(requireBusWidth(*this, true, lane, busWidth)));
+    lanes.push_back(context.bits(
+        requireBusWidth(*this, true, table.empty() ? lane : table.at(lane), busWidth)));
   const auto& selection = requireBusWidth(*this, true, selectionIndex, selectionWidth);
   const auto& output    = requireBusWidth(*this, false, 0, busWidth);
 
@@ -541,12 +612,21 @@ void Decoder::serializeYosys(SerializationContext& context) const
 
 void WireSplitter::serializeYosys(SerializationContext& context) const
 {
-  // Splitter outputs are aliases for consecutive input bits. Packing the one-bit
-  // outputs in order and passing through $pos expresses that wiring in cell form.
+  // Outputs may be overlapping bus slices. Pack the corresponding source bits
+  // in output-port order so export preserves offsets, widths and repeated bits.
+  const auto        input  = context.bits(requireBus(*this, true, 0));
+  const auto        slices = outputSlices();
+  std::vector<Json> inputs;
   std::vector<Json> outputs;
-  for (const auto& output : outputBuses())
-    outputs.push_back(context.bits(output));
-  emitUnary(context, "split", "$pos", context.bits(requireBus(*this, true, 0)),
+  for (std::size_t port = 0; port < outputBuses().size(); ++port) {
+    const auto [offset, width] = slices.at(port);
+    Json bits                  = Json::array();
+    for (unsigned int bit = 0; bit < width; ++bit)
+      bits.push_back(input.at(offset + bit));
+    inputs.push_back(std::move(bits));
+    outputs.push_back(context.bits(outputBuses()[port]));
+  }
+  emitUnary(context, "split", "$pos", SerializationContext::concatenate(inputs),
             SerializationContext::concatenate(outputs));
 }
 
