@@ -151,6 +151,9 @@ class GraphicalComponent : public GraphicalItem {
   Q_OBJECT
   friend class Port;
 public:
+  /** @brief Prepares a geometry edit and checks its final bounds on the event loop. */
+  void prepareSceneBoundsChange();
+
   /**
    * @brief Gets the collision rectangle extended for wire connections.
    * @return Collision rectangle including ports
@@ -205,6 +208,8 @@ protected:
    * @param port The port to connect
    */
   void setPortLine(Port* port);
+
+  bool boundsUpdatePending = false;
 
   /** @brief Whether to scan shape alpha for port placement */
   bool scanShape = false;

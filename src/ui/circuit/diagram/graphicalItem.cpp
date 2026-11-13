@@ -156,6 +156,11 @@ QVariant GraphicalItem::itemChange(GraphicsItemChange change, const QVariant& va
     modeChanged(ds->getInteractionMode());
   }
 
+  if (change == ItemPositionHasChanged || change == ItemRotationHasChanged
+      || change == ItemTransformHasChanged || change == ItemScaleHasChanged
+      || change == ItemTransformOriginPointHasChanged)
+    ds->expandSceneBounds(sceneBoundingRect());
+
   if (change == ItemPositionChange) {
     // ==== Collision detection ====
     const auto proposedPos = DiagramScene::snapToGrid(value.toPointF());

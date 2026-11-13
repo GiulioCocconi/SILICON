@@ -179,7 +179,7 @@ public:
   void resetSimulationState() override;
 
   /** @brief Notifies the Qt framework that the bounding rect has changed. */
-  void triggerGeometryChange() { prepareGeometryChange(); }
+  void triggerGeometryChange() { prepareSceneBoundsChange(); }
 
   void paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
              QWidget* widget) override;
@@ -241,7 +241,7 @@ public:
   void handleSimulationClick() override;
   void applyStartValue() override;
   void resetSimulationState() override;
-  void triggerGeometryChange() { prepareGeometryChange(); }
+  void triggerGeometryChange() { prepareSceneBoundsChange(); }
 
   void paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
              QWidget* widget) override;
