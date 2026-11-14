@@ -154,6 +154,7 @@ QVariant GraphicalItem::itemChange(GraphicsItemChange change, const QVariant& va
     }
 
     modeChanged(ds->getInteractionMode());
+    ds->expandSceneBounds(sceneBoundingRect());
   }
 
   if (change == ItemPositionHasChanged || change == ItemRotationHasChanged

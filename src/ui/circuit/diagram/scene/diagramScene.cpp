@@ -59,6 +59,8 @@ using namespace SILICON::core;
 
 namespace {
 
+  constexpr qreal INITIAL_SCENE_HALF_EXTENT = 60.0 * DiagramScene::GRID_SIZE;
+
   template <typename Visitor>
   void forEachPortAnchor(const GraphicalComponent& component, Visitor&& visit)
   {
@@ -101,7 +103,7 @@ namespace {
 
 DiagramScene::DiagramScene(QObject* parent) : QGraphicsScene(parent)
 {
-  initializeSceneBounds(60 * GRID_SIZE);
+  initializeSceneBounds(INITIAL_SCENE_HALF_EXTENT);
 
   connect(&ThemeEngine::instance(), &ThemeEngine::themeChanged, this, [this] {
     // QGraphicsItem and background caches do not follow widget palette propagation.
@@ -1908,6 +1910,7 @@ void DiagramScene::clear(const bool clearUndoStack, const bool clearLogs)
     emit logsClearRequested();
 
   QGraphicsScene::clear();
+  initializeSceneBounds(INITIAL_SCENE_HALF_EXTENT);
   simulationController->clearWaveformTrace();
   connectionReport.nets.clear();
   connectionReportDirty = true;
