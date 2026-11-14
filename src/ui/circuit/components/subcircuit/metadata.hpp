@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -36,7 +37,11 @@ namespace SILICON::ui {
 using namespace SILICON::core;
 
 /** @brief Default subcircuit rectangle size in persisted grid units. */
-inline constexpr int GRAPHICAL_SUBCIRCUIT_DEFAULT_SIZE = 8;
+inline constexpr int GRAPHICAL_SUBCIRCUIT_DEFAULT_SIZE = 2;
+
+/** @brief Default square dimensions for the boundary port counts, in pixels. */
+[[nodiscard]] QSize defaultGraphicalSubcircuitSize(std::size_t inputCount,
+                                                   std::size_t outputCount);
 
 /**
  * @brief Visual metadata for one subcircuit boundary port.
@@ -64,6 +69,8 @@ struct GraphicalSubcircuitMetadata {
   /** @brief Rectangle dimensions in pixels. */
   QSize widthHeight{GRAPHICAL_SUBCIRCUIT_DEFAULT_SIZE * DiagramScene::GRID_SIZE,
                     GRAPHICAL_SUBCIRCUIT_DEFAULT_SIZE * DiagramScene::GRID_SIZE};
+  /** @brief Derive dimensions from port counts until the user edits the size. */
+  bool autoSize = true;
   /** @brief Input boundary ports in display order. */
   std::vector<GraphicalSubcircuitPortMetadata> inputs;
   /** @brief Output boundary ports in display order. */
@@ -98,7 +105,10 @@ graphicalSubcircuitCoreCircuitJson(std::string_view sceneJson);
  * @brief Reconciles saved graphical metadata with the current circuit document.
  *
  * Boundary ports are re-derived from the circuit contents while matching existing
- * positions by name or index when possible.
+ * positions by name or index when possible. Automatic dimensions use twice the
+ * larger boundary port count in grid units, with a minimum of two grid units.
+ * Generated port groups are centered on each side with two grid units between centers.
+ * Explicit heights grow when needed to fit generated groups; moved ports stay in place.
  *
  * @param sceneJson Serialized subcircuit scene JSON.
  * @param fallbackMetadata Existing metadata to preserve user-edited positions.

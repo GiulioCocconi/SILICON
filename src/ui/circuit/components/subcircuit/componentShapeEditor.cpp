@@ -518,6 +518,7 @@ namespace SILICON::ui {
     };
 
     auto applySize = [draft, preview, updatePortTables](int widthGrid, int heightGrid) {
+      draft->autoSize    = false;
       draft->widthHeight = QSize(gridToPixels(widthGrid), gridToPixels(heightGrid));
       sanitizePortPositions(*draft);
       updatePortTables();
