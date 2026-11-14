@@ -247,6 +247,9 @@ namespace SILICON::ui {
   {
     GraphicalSubcircuitMetadata metadata;
     if (associatedComponent) {
+      metadata.widthHeight =
+          defaultGraphicalSubcircuitSize(associatedComponent->getInputs().size(),
+                                         associatedComponent->getOutputs().size());
       metadata.inputs =
           synchronizePortsWithBuses({}, associatedComponent->getInputs(), metadata, true);
       metadata.outputs = synchronizePortsWithBuses({}, associatedComponent->getOutputs(),

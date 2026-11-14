@@ -48,12 +48,7 @@ std::string emptyGraphicalDocumentJson(const SILICON::project::DocumentType type
 
   if (type == SILICON::project::DocumentType::Circuit) {
     scene["graphicalComponent"] =
-        nlohmann::ordered_json{{"shape",
-                                {{"type", "rectangle"},
-                                 {"width", GRAPHICAL_SUBCIRCUIT_DEFAULT_SIZE},
-                                 {"height", GRAPHICAL_SUBCIRCUIT_DEFAULT_SIZE}}},
-                               {"inputs", nlohmann::ordered_json::array()},
-                               {"outputs", nlohmann::ordered_json::array()}};
+        graphicalSubcircuitMetadataToJson(GraphicalSubcircuitMetadata{});
   }
 
   return scene.dump(2);
