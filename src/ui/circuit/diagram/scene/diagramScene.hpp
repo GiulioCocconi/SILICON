@@ -538,6 +538,11 @@ private:
    */
   void drawBackground(QPainter* painter, const QRectF& rect) override;
 
+  /**
+   * @brief Draws helper items on the scene foreground
+   */
+  void drawForeground(QPainter* painter, const QRectF& rect) override;
+
   void  initializeSceneBounds(qreal expansionStep);
   qreal sceneExpansionStep = 0;
 
