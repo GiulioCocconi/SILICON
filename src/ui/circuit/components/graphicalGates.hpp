@@ -30,6 +30,8 @@ protected:
   GraphicalGate(const std::shared_ptr<Gate> gate, QGraphicsItem* shape,
                 QGraphicsItem* parent = nullptr, bool scanShape = false);
 
+  void updatePortSizes() override;
+
   int type() const override { return SiliconTypes::UNKNOWN; }
 };
 

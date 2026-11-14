@@ -780,3 +780,28 @@ TEST(YosysTest, RejectsCellsThatRequireTechnologyMapping)
 #endif
   }
 }
+
+TEST(YosysTest, ExportsBusReductionGates)
+{
+  const std::vector<std::pair<std::shared_ptr<Gate>, std::multiset<std::string>>> cases{
+      {std::make_shared<AndGate>(), {"$reduce_and"}},
+      {std::make_shared<OrGate>(), {"$reduce_or"}},
+      {std::make_shared<NandGate>(), {"$reduce_and", "$not"}},
+      {std::make_shared<NorGate>(), {"$reduce_or", "$not"}},
+      {std::make_shared<XorGate>(), {"$reduce_xor"}},
+  };
+  for (const auto& [gate, expected] : cases) {
+    gate->setInputs({Bus(1), Bus(1)});
+    gate->setOutputs({Bus(1)});
+    gate->setProperty("size", 4);
+    const auto  json   = exportComponent(gate);
+    const auto& module = onlyModule(json);
+    EXPECT_EQ(cellTypes(module), expected);
+    for (const auto& cell : module.at("cells")) {
+      if (cell.at("type") != "$not") {
+        EXPECT_EQ(cell.at("connections").at("A").size(), 4);
+        EXPECT_EQ(cell.at("connections").at("Y").size(), 1);
+      }
+    }
+  }
+}

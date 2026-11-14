@@ -82,6 +82,25 @@ namespace yosys_component_detail {
 
 using namespace yosys_component_detail;
 
+namespace {
+  bool emitReductionGate(SerializationContext& context, const Gate& gate,
+                         const std::string_view operation, const bool invert = false)
+  {
+    if (gate.getPropertyValue<bool>("bitwise").value_or(false)
+        || gate.getPropertyValue<int>("size").value_or(1) <= 1)
+      return false;
+
+    requireBusCounts(gate, 1, 1);
+    const auto& input   = requireBus(gate, true, 0);
+    const auto& output  = requireScalarBus(gate, false, 0);
+    const auto  reduced = invert ? context.allocateBits(1) : context.bits(output);
+    emitUnary(context, "reduce", operation, context.bits(input), reduced);
+    if (invert)
+      emitUnary(context, "invert", "$not", reduced, context.bits(output));
+    return true;
+  }
+}  // namespace
+
 void Component::serializeYosys(SerializationContext&) const
 {
   throw std::runtime_error(std::format(
@@ -184,6 +203,9 @@ void BoundaryIoComponent::serializeYosys(SerializationContext& context) const
 
 void AndGate::serializeYosys(SerializationContext& context) const
 {
+  if (emitReductionGate(context, *this, "$reduce_and"))
+    return;
+
   const bool logical =
       !getPropertyValue<bool>("bitwise").value_or(false) && outputBuses().size() == 1
       && outputBuses()[0].size() == 1
@@ -200,6 +222,9 @@ void AndGate::serializeYosys(SerializationContext& context) const
 
 void OrGate::serializeYosys(SerializationContext& context) const
 {
+  if (emitReductionGate(context, *this, "$reduce_or"))
+    return;
+
   const bool logical =
       !getPropertyValue<bool>("bitwise").value_or(false) && outputBuses().size() == 1
       && outputBuses()[0].size() == 1
@@ -229,6 +254,9 @@ void NotGate::serializeYosys(SerializationContext& context) const
 
 void NandGate::serializeYosys(SerializationContext& context) const
 {
+  if (emitReductionGate(context, *this, "$reduce_and", true))
+    return;
+
   // First reduce every input with binary $and cells, then invert the reduced vector;
   // Yosys has no native arbitrary-input NAND cell.
   emitGateFold(context, *this, "$and", true);
@@ -236,6 +264,9 @@ void NandGate::serializeYosys(SerializationContext& context) const
 
 void NorGate::serializeYosys(SerializationContext& context) const
 {
+  if (emitReductionGate(context, *this, "$reduce_or", true))
+    return;
+
   // First reduce every input with binary $or cells, then invert the reduced vector;
   // this preserves Silicon's arbitrary-input NOR behavior.
   emitGateFold(context, *this, "$or", true);
@@ -243,6 +274,9 @@ void NorGate::serializeYosys(SerializationContext& context) const
 
 void XorGate::serializeYosys(SerializationContext& context) const
 {
+  if (emitReductionGate(context, *this, "$reduce_xor"))
+    return;
+
   // Fold all inputs through binary $xor cells. For more than two inputs this
   // implements the same odd-parity result as Silicon's XOR gate.
   emitGateFold(context, *this, "$xor", false);

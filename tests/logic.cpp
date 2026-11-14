@@ -1851,33 +1851,71 @@ TEST(LogicTest, GateBitwiseDefaultsAndValidation)
 
 TEST(LogicTest, GateBitwiseReshapesIO)
 {
-  auto a = std::make_shared<Wire>();
-  auto b = std::make_shared<Wire>();
-  auto o = std::make_shared<Wire>();
-
-  auto gate = std::make_shared<OrGate>(std::vector<Wire_ptr>{a, b}, o);
+  auto gate = std::make_shared<OrGate>(
+      std::vector<Wire_ptr>{std::make_shared<Wire>(), std::make_shared<Wire>()},
+      std::make_shared<Wire>());
 
   gate->setProperty("size", 4);
-  EXPECT_EQ(gate->getPropertyValue<int>("size"), 4);
-  EXPECT_EQ(gate->getInputs()[0].size(), 1);
-  EXPECT_EQ(gate->getInputs()[1].size(), 1);
-  EXPECT_EQ(gate->getOutputs()[0].size(), 1);
+  ASSERT_EQ(gate->inputBuses().size(), 1);
+  EXPECT_EQ(gate->inputBuses()[0].size(), 4);
+  EXPECT_EQ(gate->outputBuses()[0].size(), 1);
 
   gate->setProperty("bitwise", true);
-  EXPECT_EQ(gate->getInputs()[0].size(), 4);
-  EXPECT_EQ(gate->getInputs()[1].size(), 4);
-  EXPECT_EQ(gate->getOutputs()[0].size(), 4);
+  ASSERT_EQ(gate->inputBuses().size(), 2);
+  EXPECT_EQ(gate->inputBuses()[0].size(), 4);
+  EXPECT_EQ(gate->inputBuses()[1].size(), 4);
+  EXPECT_EQ(gate->outputBuses()[0].size(), 4);
 
   gate->setProperty("size", 2);
-  EXPECT_EQ(gate->getInputs()[0].size(), 2);
-  EXPECT_EQ(gate->getInputs()[1].size(), 2);
-  EXPECT_EQ(gate->getOutputs()[0].size(), 2);
+  EXPECT_EQ(gate->inputBuses()[0].size(), 2);
+  EXPECT_EQ(gate->inputBuses()[1].size(), 2);
+  EXPECT_EQ(gate->outputBuses()[0].size(), 2);
 
   gate->setProperty("bitwise", false);
-  EXPECT_EQ(gate->getPropertyValue<int>("size"), 2);
-  EXPECT_EQ(gate->getInputs()[0].size(), 1);
-  EXPECT_EQ(gate->getInputs()[1].size(), 1);
-  EXPECT_EQ(gate->getOutputs()[0].size(), 1);
+  ASSERT_EQ(gate->inputBuses().size(), 1);
+  EXPECT_EQ(gate->inputBuses()[0].size(), 2);
+  EXPECT_EQ(gate->outputBuses()[0].size(), 1);
+
+  gate->setProperty("size", 1);
+  ASSERT_EQ(gate->inputBuses().size(), 2);
+  EXPECT_EQ(gate->inputBuses()[0].size(), 1);
+  EXPECT_EQ(gate->inputBuses()[1].size(), 1);
+  EXPECT_EQ(gate->outputBuses()[0].size(), 1);
+}
+
+TEST(LogicTest, ReductionGatesMatchSeparateScalarInputs)
+{
+  const std::vector<std::function<std::shared_ptr<Gate>()>> factories{
+      [] { return std::make_shared<AndGate>(); },
+      [] { return std::make_shared<OrGate>(); },
+      [] { return std::make_shared<NandGate>(); },
+      [] { return std::make_shared<NorGate>(); },
+      [] { return std::make_shared<XorGate>(); },
+  };
+  // Exhaust all four-state combinations, including unknown and error bits.
+  const State states[]{State::LOW, State::HIGH, State::UNKNOWN, State::ERROR};
+  for (const auto& makeGate : factories) {
+    for (unsigned pattern = 0; pattern < 64; ++pattern) {
+      auto reduction = makeGate();
+      reduction->setInputs({Bus(1), Bus(1)});
+      reduction->setOutputs({Bus(1)});
+      reduction->setProperty("size", 3);
+      auto scalar = makeGate();
+      scalar->setInputs({Bus(1), Bus(1), Bus(1)});
+      scalar->setOutputs({Bus(1)});
+      for (unsigned bit = 0; bit < 3; ++bit) {
+        const auto state = states[(pattern >> (2 * bit)) & 3];
+        reduction->inputBuses()[0][bit]->forceSetCurrentState(state);
+        scalar->inputBuses()[bit][0]->forceSetCurrentState(state);
+      }
+      auto circuit = std::make_shared<Circuit>(Component_set{reduction, scalar}, false);
+      Simulator sim(circuit);
+      ASSERT_EQ(sim.runUntilIdle(), Simulator::RunResult::Completed);
+      EXPECT_EQ(reduction->outputBuses()[0][0]->getCurrentState(),
+                scalar->outputBuses()[0][0]->getCurrentState())
+          << reduction->typeName() << " pattern " << pattern;
+    }
+  }
 }
 
 TEST(LogicTest, AndBitwiseSimulation)

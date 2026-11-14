@@ -17,8 +17,6 @@
 
 #include "graphicalGates.hpp"
 
-#include <stdexcept>
-
 
 namespace SILICON::ui {
 using namespace SILICON::core;
@@ -27,22 +25,30 @@ GraphicalGate::GraphicalGate(const std::shared_ptr<Gate> gate, QGraphicsItem* sh
                              QGraphicsItem* parent, bool scanShape)
   : GraphicalLogicComponent(gate, shape, parent, scanShape)
 {
-  // TODO: ADD SUPPORT FOR OVER 2 INPUTS GATES
-  if (associatedComponent->getInputs().size() != 2)
-    throw std::logic_error("GraphicalGate: expected exactly 2 inputs");
-
   isEditable = false;
+  updatePortSizes();
+}
 
-  std::vector<PortPair> inputVec;
-  inputVec.reserve(2);
+void GraphicalGate::updatePortSizes()
+{
+  if (!associatedComponent)
+    return;
 
-  inputVec.emplace_back("a", QPoint(-20, 10));
-
-  inputVec.emplace_back("b", QPoint(-20, 30));
-
-  constexpr auto OUTPUT_POINT = QPoint(80, 20);
-
-  setPorts(inputVec, {PortPair{"o", OUTPUT_POINT}});
+  const auto count = associatedComponent->inputBuses().size();
+  if (inputPorts.size() != count || outputPorts.empty()) {
+    std::vector<PortPair> inputs;
+    inputs.reserve(count);
+    for (std::size_t i = 0; i < count; ++i) {
+      const int y = 20 + (2 * static_cast<int>(i) - static_cast<int>(count) + 1) * 10;
+      const QString name = count == 1 ? QStringLiteral("i")
+                           : count == 2 ? (i == 0 ? QStringLiteral("a")
+                                                  : QStringLiteral("b"))
+                                        : QString::number(i);
+      inputs.emplace_back(name, QPoint(-20, y));
+    }
+    GraphicalComponent::setPorts(inputs, {PortPair{"o", QPoint(80, 20)}});
+  }
+  GraphicalLogicComponent::updatePortSizes();
 }
 
 GraphicalNot::GraphicalNot(QGraphicsItem* parent)

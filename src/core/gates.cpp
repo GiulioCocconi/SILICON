@@ -17,6 +17,7 @@
 
 #include "gates.hpp"
 
+#include <algorithm>
 #include <functional>
 #include <stdexcept>
 
@@ -59,8 +60,14 @@ namespace {
 
     if (!gateBitwiseEnabled(gate)) {
       State result = initialState;
-      for (const auto& input : inputs)
-        result = reducer(result, busTruthValue(input));
+      for (const auto& input : inputs) {
+        if (gateWidth(gate) > 1) {
+          for (const auto& wire : input)
+            result = reducer(result, Wire::safeGetCurrentState(wire));
+        } else {
+          result = reducer(result, busTruthValue(input));
+        }
+      }
 
       sim.updateWire(outputs[0][0], finalizer(result), delay, gate.weak_from_this());
       return;
@@ -96,6 +103,7 @@ Gate::Gate(const std::vector<Wire_ptr>& inputs, Wire_ptr output,
   if (inputs.empty())
     throw std::invalid_argument("Gate requires at least one input");
 
+  scalarInputCount = inputs.size();
   for (const auto& input : inputs)
     this->inputs.push_back({input});
   this->outputs = {{output}};
@@ -118,7 +126,7 @@ void Gate::initializeProperties(const bool enableBitwiseProperties)
     const bool bitwise = std::get<bool>(value);
     if (!inputs.empty() && !outputs.empty()) {
       const int size = getPropertyValue<int>("size").value_or(1);
-      setSize(bitwise ? size : 1);
+      configureIO(size, bitwise);
     }
     return value;
   });
@@ -126,13 +134,33 @@ void Gate::initializeProperties(const bool enableBitwiseProperties)
   setPropertyCallback("size", [this](const PropertyValue& value) {
     const int size = std::get<int>(requireValidSize("Gate size", value));
 
-    if (getPropertyValue<bool>("bitwise").value_or(false) && !inputs.empty()
-        && !outputs.empty()) {
-      setSize(size);
-    }
+    if (!inputs.empty() && !outputs.empty())
+      configureIO(size, getPropertyValue<bool>("bitwise").value_or(false));
 
     return value;
   });
+}
+
+void Gate::configureIO(const int size, const bool bitwise)
+{
+  auto newInputs = getInputs();
+  if (newInputs.size() > 1)
+    scalarInputCount = newInputs.size();
+
+  const bool reduction = !bitwise && size > 1;
+  const auto inputCount = reduction ? 1 : scalarInputCount;
+  newInputs.resize(std::min(newInputs.size(), inputCount));
+  while (newInputs.size() < inputCount)
+    newInputs.emplace_back(1);
+  for (auto& input : newInputs)
+    input.setSize(static_cast<unsigned short>(size));
+
+  auto newOutputs = getOutputs();
+  for (auto& output : newOutputs)
+    output.setSize(static_cast<unsigned short>(bitwise ? size : 1));
+
+  setInputs(newInputs);
+  setOutputs(newOutputs);
 }
 
 int Gate::setSize(const int width)
@@ -259,19 +287,8 @@ XorGate::XorGate(const std::array<Wire_ptr, 2>& inputs, Wire_ptr output)
 
 void XorGate::simulate(SILICON::simulation::Simulator& sim)
 {
-  const auto delay = gateDelay(*this);
-  if (!gateBitwiseEnabled(*this)) {
-    State s = Wire::safeGetCurrentState(this->inputs[0][0])
-              ^ Wire::safeGetCurrentState(this->inputs[1][0]);
-    sim.updateWire(this->outputs[0][0], s, delay, weak_from_this());
-    return;
-  }
-
-  for (int bit = 0; bit < gateWidth(*this); ++bit) {
-    State s = Wire::safeGetCurrentState(this->inputs[0][bit])
-              ^ Wire::safeGetCurrentState(this->inputs[1][bit]);
-    sim.updateWire(this->outputs[0][bit], s, delay, weak_from_this());
-  }
+  simulateBitwiseGate(*this, sim, State::LOW,
+                      [](const State lhs, const State rhs) { return lhs ^ rhs; });
 }
 
 }  // namespace SILICON::core

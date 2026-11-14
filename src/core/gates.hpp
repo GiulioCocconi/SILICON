@@ -32,12 +32,14 @@ namespace SILICON::core {
  * expose `bitwise`: when enabled, every input and the single output are resized to
  * `size` bits and the gate logic is applied independently on each bit. `NotGate`
  * is inherently bitwise whenever its size is greater than one. In non-bitwise
- * mode, a bus-valued input is interpreted using logical truth-value semantics
- * before the gate operation is applied.
+ * mode with size greater than one, a single input bus is reduced to a scalar
+ * output, as if each bit were a separate one-bit input.
  */
 class Gate : public Component {
 private:
   void initializeProperties(bool enableBitwiseProperties);
+  void        configureIO(int size, bool bitwise);
+  std::size_t scalarInputCount = 2;
 
 public:
   /**
