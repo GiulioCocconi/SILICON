@@ -966,6 +966,30 @@ void DiagramScene::drawBackground(QPainter* painter, const QRectF& rect)
   painter->drawPoints(points.data(), points.size());
 }
 
+void DiagramScene::drawForeground(QPainter* painter, const QRectF& rect)
+{
+  const bool drawWireCreationGuides =
+      currentInteractionMode == InteractionMode::WIRE_CREATION_MODE
+      && wireSegmentToBeDrawn != nullptr && wireSegmentToBeDrawn->hasShowPoints();
+
+  if (drawWireCreationGuides) {
+    const QPoint cursorPos =
+        wireSegmentToBeDrawn->mapToScene(wireSegmentToBeDrawn->lastShowPoint()).toPoint();
+    const QRect guideRect = rect.toAlignedRect();
+
+    QPen pen(ThemeEngine::getColor(theme::ColorToken::Grey));
+    pen.setCosmetic(true);
+    painter->setPen(pen);
+
+    painter->drawLine(
+        QLine(cursorPos.x(), guideRect.top(), cursorPos.x(), guideRect.bottom()));
+    painter->drawLine(
+        QLine(guideRect.left(), cursorPos.y(), guideRect.right(), cursorPos.y()));
+  }
+
+  QGraphicsScene::drawForeground(painter, rect);
+}
+
 void DiagramScene::initializeSceneBounds(const qreal expansionStep)
 {
   setSceneRect(-expansionStep, -expansionStep, 2 * expansionStep, 2 * expansionStep);
@@ -1061,6 +1085,7 @@ void DiagramScene::setInteractionMode(const InteractionMode newMode, const bool 
 
   currentInteractionMode = newMode;
   emit modeChanged(newMode);
+  update();
 }
 
 void DiagramScene::finalizeWireCreation()
@@ -1156,11 +1181,12 @@ void DiagramScene::updateWirePreview(const QPointF scenePoint)
       && !orthogonalRouteCrossesObstacleInterior(route, tipKeepouts);
   if (!wirePreviewRouteValid)
     route.clear();
-  if (!route.empty())
+  if (route.size() > 1)
     route.erase(route.begin());
   for (QPointF& point : route)
     point = QPointF(snapToGrid(point.x()), snapToGrid(point.y()));
   wireSegmentToBeDrawn->setShowPoints(route);
+  update();
 }
 
 void DiagramScene::exitComponentPlacingMode()
@@ -1281,6 +1307,7 @@ void DiagramScene::mousePressEvent(QGraphicsSceneMouseEvent* mouseEvent)
         // Let's start drawing the wire!
         wireSegmentToBeDrawn = new GraphicalWireSegment(cursorPos);
         addItem(wireSegmentToBeDrawn);
+        updateWirePreview(cursorPos);
       } else {
         updateWirePreview(cursorPos);
         if (!wirePreviewRouteValid) {
@@ -1290,6 +1317,7 @@ void DiagramScene::mousePressEvent(QGraphicsSceneMouseEvent* mouseEvent)
           break;
         }
         wireSegmentToBeDrawn->addPoints();
+        updateWirePreview(cursorPos);
 
         const QPointF endpoint =
             wireSegmentToBeDrawn->mapToScene(wireSegmentToBeDrawn->lastPoint());
@@ -1403,6 +1431,7 @@ void DiagramScene::clearWireShadow()
   wireSegmentToBeDrawn->setInitialPosition();
   wireSegmentToBeDrawn->setShowPoints({});
   wireSegmentToBeDrawn = nullptr;
+  update();
 }
 
 void DiagramScene::setComponentShadow()

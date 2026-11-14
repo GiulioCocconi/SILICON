@@ -288,6 +288,9 @@ public:
     return showPoints[showPoints.size() - 1];
   }
 
+  /** @brief Whether any temporary preview points are being shown */
+  [[nodiscard]] bool hasShowPoints() const { return !showPoints.empty(); }
+
   /** @brief Checks if segment has only one point */
   [[nodiscard]] bool empty() const { return points.size() == 1; }
 
