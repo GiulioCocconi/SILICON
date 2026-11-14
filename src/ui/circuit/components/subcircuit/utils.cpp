@@ -17,18 +17,11 @@
 
 #include "utils.hpp"
 
-#include <cmath>
-#include <utility>
-
 #include <QPainter>
 
-#include <ui/circuit/diagram/scene/diagramScene.hpp>
 #include <ui/shell/theme.hpp>
-#include <ui/circuit/components/subcircuit/metadata.hpp>
 
 namespace SILICON::ui {
-using namespace SILICON::core;
-
 SubcircuitRectShape::SubcircuitRectShape(const QSize& size, QGraphicsItem* parent)
   : QGraphicsRectItem(0, 0, size.width(), size.height(), parent)
 {
@@ -41,26 +34,5 @@ void SubcircuitRectShape::paint(QPainter* painter, const QStyleOptionGraphicsIte
   setBrush(ThemeEngine::getColor(theme::ColorToken::Internal));
   QGraphicsRectItem::paint(painter, option, widget);
 }
-
-int gridToPixels(const int value)
-{ return value * DiagramScene::GRID_SIZE; }
-
-int pixelsToGrid(const int value)
-{ return value / DiagramScene::GRID_SIZE; }
-
-QPoint gridToPixels(const QPoint& point)
-{ return {gridToPixels(point.x()), gridToPixels(point.y())}; }
-
-QPoint pixelsToGrid(const QPoint& point)
-{ return {pixelsToGrid(point.x()), pixelsToGrid(point.y())}; }
-
-QSize pixelsToGrid(const QSize& size)
-{ return {pixelsToGrid(size.width()), pixelsToGrid(size.height())}; }
-
-int pixelsToNearestGrid(const qreal value)
-{ return static_cast<int>(std::lround(value / DiagramScene::GRID_SIZE)); }
-
-QPoint pixelsToNearestGrid(const QPointF& point)
-{ return {pixelsToNearestGrid(point.x()), pixelsToNearestGrid(point.y())}; }
 
 }  // namespace SILICON::ui

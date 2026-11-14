@@ -100,6 +100,11 @@ using EdgeDescriptor = boost::graph_traits<CircuitGraph>::edge_descriptor;
 struct CircuitPort {
   std::string name;
   Bus         bus;
+  /** Source boundary vertex in the original circuit snapshot, not the stripped
+   * implementation returned by parseCircuitDocument(). Empty for topology fallbacks.
+   * This provenance is not serialized.
+   */
+  std::optional<VertexDescriptor> boundaryVertex = std::nullopt;
 };
 
 /**

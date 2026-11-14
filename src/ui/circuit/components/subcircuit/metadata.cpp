@@ -19,12 +19,11 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdint>
 #include <format>
+#include <numeric>
 #include <optional>
 #include <string_view>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
 
 #include <nlohmann/json.hpp>
@@ -32,37 +31,12 @@
 #include <core/circuit.hpp>
 #include <core/circuitDocument.hpp>
 #include <core/serialization/component_registry.hpp>
-#include <ui/circuit/diagram/enums.hpp>
-#include <ui/serialization/gui_component_factory.hpp>
-#include <utils/transparent_string.hpp>
+#include <ui/circuit/components/subcircuit/geometry.hpp>
 
 namespace SILICON::ui {
 using namespace SILICON::core;
 
 namespace {
-
-constexpr ItemCategory INPUT_CATEGORY  = ItemCategory::IO | ItemCategory::Input;
-constexpr ItemCategory OUTPUT_CATEGORY = ItemCategory::IO | ItemCategory::Output;
-
-[[nodiscard]] int gridToPixels(const int value)
-{
-  return value * DiagramScene::GRID_SIZE;
-}
-
-[[nodiscard]] int pixelsToGrid(const int value)
-{
-  return value / DiagramScene::GRID_SIZE;
-}
-
-[[nodiscard]] QPoint gridToPixels(const QPoint& point)
-{
-  return {gridToPixels(point.x()), gridToPixels(point.y())};
-}
-
-[[nodiscard]] QPoint pixelsToGrid(const QPoint& point)
-{
-  return {pixelsToGrid(point.x()), pixelsToGrid(point.y())};
-}
 
 [[nodiscard]] GraphicalSubcircuitPortMetadata parsePort(const nlohmann::json& json)
 {
@@ -82,269 +56,62 @@ constexpr ItemCategory OUTPUT_CATEGORY = ItemCategory::IO | ItemCategory::Output
           {"busSize", port.busSize}};
 }
 
-using WireId     = std::optional<std::uint64_t>;
-using BusWireIds = std::vector<WireId>;
-
 struct PortDefinition {
   std::string  name;
-  unsigned int busSize = 1;
-  QPoint       visualPosition;
-  BusWireIds   wireIds;
+  unsigned int busSize;
 };
 
-enum class BoundaryRole { None, Input, Output };
-
-[[nodiscard]] BoundaryRole boundaryRoleForType(const std::string_view type)
-{
-  static std::unordered_map<std::string, BoundaryRole, TransparentStringHash,
-                            TransparentStringEqual>
-      boundaryRoleByType;
-
-  if (const auto it = boundaryRoleByType.find(type); it != boundaryRoleByType.end())
-    return it->second;
-
-  auto role = BoundaryRole::None;
-  if (GUIComponentFactory::instance().hasType(type)) {
-    auto component = GUIComponentFactory::instance().create(type);
-    if (hasCategory(component.get(), INPUT_CATEGORY))
-      role = BoundaryRole::Input;
-    else if (hasCategory(component.get(), OUTPUT_CATEGORY))
-      role = BoundaryRole::Output;
-  }
-
-  return boundaryRoleByType.emplace(type, role).first->second;
-}
-
-[[nodiscard]] bool isBoundaryType(const std::string_view type, const bool inputPort)
-{
-  const auto role = boundaryRoleForType(type);
-  return inputPort ? role == BoundaryRole::Input : role == BoundaryRole::Output;
-}
-
-[[nodiscard]] nlohmann::json metadataToJson(const GraphicalSubcircuitMetadata& metadata)
-{
-  nlohmann::json inputs = nlohmann::json::array();
-  for (const auto& port : metadata.inputs)
-    inputs.push_back(portToJson(port));
-
-  nlohmann::json outputs = nlohmann::json::array();
-  for (const auto& port : metadata.outputs)
-    outputs.push_back(portToJson(port));
-
-  return {{"shape",
-           {{"type", "rectangle"},
-            {"autoSize", metadata.autoSize},
-            {"width", pixelsToGrid(metadata.widthHeight.width())},
-            {"height", pixelsToGrid(metadata.widthHeight.height())}}},
-          {"inputs", std::move(inputs)},
-          {"outputs", std::move(outputs)}};
-}
-
-[[nodiscard]] BusWireIds busWireIdsFromJson(const nlohmann::json& bus)
-{
-  BusWireIds wireIds;
-  if (!bus.is_array())
-    return wireIds;
-
-  wireIds.reserve(bus.size());
-  for (const auto& wire : bus) {
-    if (wire.is_null())
-      wireIds.push_back(std::nullopt);
-    else if (wire.is_number_integer())
-      wireIds.push_back(wire.get<std::uint64_t>());
-  }
-
-  return wireIds;
-}
-
-[[nodiscard]] BusWireIds exposedBoundaryBusWireIds(const nlohmann::json& coreComponent,
-                                                   const bool            inputPort)
-{
-  const auto buses = coreComponent.find(inputPort ? "outputs" : "inputs");
-  if (buses == coreComponent.end() || !buses->is_array() || buses->empty()
-      || !buses->front().is_array()) {
-    return {};
-  }
-  return busWireIdsFromJson(buses->front());
-}
-
-[[nodiscard]] BusWireIds busWireIds(const Bus& bus)
-{
-  BusWireIds wireIds;
-  wireIds.reserve(bus.size());
-  for (const auto& wire : bus) {
-    if (wire)
-      wireIds.push_back(wire->getId());
-    else
-      wireIds.push_back(std::nullopt);
-  }
-  return wireIds;
-}
-
-[[nodiscard]] std::vector<BusWireIds>
-interfaceBusWireIdsFromDocument(const nlohmann::json& document, const bool inputPort)
-{
-  try {
-    const auto definition =
-        parseCircuitDocument(document.dump(), ComponentRegistry::instance());
-    const auto& selectedPorts = inputPort ? definition.inputs : definition.outputs;
-
-    std::vector<BusWireIds> ids;
-    ids.reserve(selectedPorts.size());
-    for (const auto& port : selectedPorts)
-      ids.push_back(busWireIds(port.bus));
-    return ids;
-  } catch (const std::exception&) {
-    return {};
-  }
-}
-
+// Visual positions affect display-name suffixes only. Semantic order and widths
+// always come from the core interface, including ports that share the same wires.
 [[nodiscard]] std::vector<PortDefinition>
-orderDefinitionsByInterfaceIds(const nlohmann::json&       document,
-                               std::vector<PortDefinition> definitions,
-                               const bool                  inputPort)
+portDefinitions(const std::vector<CircuitPort>& ports, const nlohmann::json& document,
+                bool inputPort)
 {
-  const auto interfaceBusIds = interfaceBusWireIdsFromDocument(document, inputPort);
-  if (interfaceBusIds.size() != definitions.size())
-    return definitions;
-
-  if (std::ranges::any_of(interfaceBusIds,
-                          [](const BusWireIds& busIds) { return busIds.empty(); })
-      || std::ranges::any_of(definitions, [](const PortDefinition& definition) {
-           return definition.wireIds.empty();
-         })) {
-    return definitions;
-  }
-
-  std::vector<std::size_t> orderedIndexes;
-  orderedIndexes.reserve(definitions.size());
-  std::vector<bool> used(definitions.size(), false);
-
-  for (const auto& busIds : interfaceBusIds) {
-    std::optional<std::size_t> match;
-    for (std::size_t index = 0; index < definitions.size(); ++index) {
-      if (!used[index] && definitions[index].wireIds == busIds) {
-        match = index;
-        break;
-      }
-    }
-
-    if (!match)
-      return definitions;
-
-    used[*match] = true;
-    orderedIndexes.push_back(*match);
-  }
-
-  std::vector<PortDefinition> ordered;
-  ordered.reserve(definitions.size());
-  for (const auto index : orderedIndexes)
-    ordered.push_back(std::move(definitions[index]));
-
-  return ordered;
-}
-
-[[nodiscard]] std::vector<PortDefinition>
-portDefinitionsFromDocument(const nlohmann::json& document, bool inputPort)
-{
-  std::vector<PortDefinition> definitions;
-
-  const auto circuitIt = document.find("circuit");
-  if (circuitIt == document.end() || !circuitIt->is_object())
-    return definitions;
-
-  const auto coreComponentsIt = circuitIt->find("components");
-  if (coreComponentsIt == circuitIt->end() || !coreComponentsIt->is_array())
-    return definitions;
-
-  std::unordered_map<int, const nlohmann::json*> coreComponentsById;
-  for (const auto& component : *coreComponentsIt) {
-    if (!component.contains("id") || !component["id"].is_number_integer())
-      continue;
-    coreComponentsById.emplace(component["id"].get<int>(), &component);
-  }
-
-  const auto visualIt = document.find("visual");
-  if (visualIt != document.end() && visualIt->is_object()) {
-    const auto componentsIt = visualIt->find("components");
-    if (componentsIt != visualIt->end() && componentsIt->is_array()) {
-      for (const auto& component : *componentsIt) {
-        const auto typeIt = component.find("type");
-        const std::string_view type =
-            typeIt == component.end() ? std::string_view{}
-                                      : typeIt->get_ref<const std::string&>();
-        if (!isBoundaryType(type, inputPort))
-          continue;
-        if (!component.contains("vertexId")
-            || !component["vertexId"].is_number_integer()) {
-          continue;
+  std::unordered_map<VertexDescriptor, QPoint> positions;
+  if (const auto visual = document.find("visual");
+      visual != document.end() && visual->is_object()) {
+    if (const auto components = visual->find("components");
+        components != visual->end() && components->is_array()) {
+      for (const auto& component : *components) {
+        const auto vertex   = component.find("vertexId");
+        const auto position = component.find("position");
+        if (vertex != component.end() && vertex->is_number_integer()
+            && position != component.end() && position->is_object()) {
+          positions.emplace(vertex->get<VertexDescriptor>(),
+                            QPoint(static_cast<int>(position->value("x", 0.0)),
+                                   static_cast<int>(position->value("y", 0.0))));
         }
-
-        const auto coreIt = coreComponentsById.find(component["vertexId"].get<int>());
-        if (coreIt == coreComponentsById.end())
-          continue;
-
-        const auto& coreComponent = *coreIt->second;
-        QPoint      position;
-        if (const auto positionIt = component.find("position");
-            positionIt != component.end() && positionIt->is_object()) {
-          position = QPoint(static_cast<int>(positionIt->value("x", 0.0)),
-                            static_cast<int>(positionIt->value("y", 0.0)));
-        }
-
-        std::string name = inputPort ? "input" : "output";
-        if (const auto propertiesIt = coreComponent.find("properties");
-            propertiesIt != coreComponent.end() && propertiesIt->is_object()) {
-          name = propertiesIt->value("name", name);
-        }
-
-        auto wireIds = exposedBoundaryBusWireIds(coreComponent, inputPort);
-        definitions.push_back({.name    = std::move(name),
-                               .busSize = static_cast<unsigned int>(
-                                   std::max<std::size_t>(1, wireIds.size())),
-                               .visualPosition = position,
-                               .wireIds        = std::move(wireIds)});
       }
     }
   }
 
-  if (definitions.empty()) {
-    try {
-      const auto circuit =
-          Circuit::deserialize(circuitIt->dump(), ComponentRegistry::instance());
-      const auto& ports = inputPort ? circuit.getInputPorts() : circuit.getOutputPorts();
-      for (const auto& port : ports) {
-        definitions.push_back({.name    = port.name,
-                               .busSize = static_cast<unsigned int>(
-                                   std::max<std::size_t>(1, port.bus.size())),
-                               .visualPosition = {},
-                               .wireIds        = busWireIds(port.bus)});
-      }
-    } catch (const std::exception&) {
-      return {};
-    }
-  }
+  std::vector<std::size_t> visualOrder(ports.size());
+  std::iota(visualOrder.begin(), visualOrder.end(), 0);
+  auto position = [&](std::size_t index) {
+    const auto vertex = ports[index].boundaryVertex;
+    const auto it     = vertex ? positions.find(*vertex) : positions.end();
+    return it == positions.end() ? QPoint{} : it->second;
+  };
+  std::ranges::stable_sort(visualOrder, [&](std::size_t lhs, std::size_t rhs) {
+    const auto a = position(lhs);
+    const auto b = position(rhs);
+    return a.y() != b.y() ? a.y() < b.y() : a.x() < b.x();
+  });
 
-  // Use visual order as the stable identity order for duplicate names and as fallback.
-  std::ranges::sort(definitions,
-                    [](const PortDefinition& lhs, const PortDefinition& rhs) {
-                      if (lhs.visualPosition.y() != rhs.visualPosition.y())
-                        return lhs.visualPosition.y() < rhs.visualPosition.y();
-                      return lhs.visualPosition.x() < rhs.visualPosition.x();
-                    });
-
-  // Boundary component names may collide; visible subcircuit ports still need unique
-  // names.
+  std::vector<PortDefinition>          definitions(ports.size());
   std::unordered_map<std::string, int> seenNames;
-  for (auto& definition : definitions) {
-    if (definition.name.empty())
-      definition.name = inputPort ? "input" : "output";
-    const int seen = seenNames[definition.name]++;
+  for (const auto index : visualOrder) {
+    const auto& port = ports[index];
+    auto        name =
+        port.name.empty() ? std::string(inputPort ? "input" : "output") : port.name;
+    const int seen = seenNames[name]++;
     if (seen != 0)
-      definition.name = std::format("{}{}", definition.name, seen + 1);
+      name = std::format("{}{}", name, seen + 1);
+    definitions[index] = {
+        .name    = std::move(name),
+        .busSize = static_cast<unsigned int>(std::max<std::size_t>(1, port.bus.size()))};
   }
-
-  return orderDefinitionsByInterfaceIds(document, std::move(definitions), inputPort);
+  return definitions;
 }
 
 [[nodiscard]] int distributedPortY(int height, std::size_t index, std::size_t count)
@@ -360,7 +127,8 @@ defaultExternalPortPosition(const GraphicalSubcircuitMetadata& metadata, bool in
 {
   const int width  = metadata.widthHeight.width();
   const int height = metadata.widthHeight.height();
-  const int x      = inputPort ? gridToPixels(-2) : width + gridToPixels(2);
+  const int x      = inputPort ? gridToPixels(-EXTERNAL_PORT_MARGIN_GRID)
+                               : width + gridToPixels(EXTERNAL_PORT_MARGIN_GRID);
   // Center the group with one empty grid row between neighboring ports.
   const int y = height / 2
                 + gridToPixels(2 * static_cast<int>(index) - static_cast<int>(count) + 1);
@@ -442,17 +210,16 @@ QSize defaultGraphicalSubcircuitSize(std::size_t inputCount, std::size_t outputC
 }
 
 std::optional<GraphicalSubcircuitMetadata>
-parseGraphicalSubcircuitMetadata(std::string_view sceneJson)
+parseGraphicalSubcircuitMetadata(const nlohmann::json& document)
 {
   try {
-    const auto document = nlohmann::json::parse(sceneJson);
     if (!document.contains("graphicalComponent")
         || !document["graphicalComponent"].is_object()) {
       return std::nullopt;
     }
 
     const auto& graphical = document["graphicalComponent"];
-    const auto& shape     = graphical["shape"];
+    const auto& shape     = graphical.at("shape");
     if (!shape.is_object() || shape.value("type", std::string()) != "rectangle")
       return std::nullopt;
 
@@ -460,9 +227,11 @@ parseGraphicalSubcircuitMetadata(std::string_view sceneJson)
     // Existing documents with explicit dimensions retain their saved shape.
     metadata.autoSize =
         shape.value("autoSize", !shape.contains("width") && !shape.contains("height"));
-    metadata.widthHeight = QSize(
-        gridToPixels(std::max(1, shape.value("width", GRAPHICAL_SUBCIRCUIT_DEFAULT_SIZE))),
-        gridToPixels(std::max(1, shape.value("height", GRAPHICAL_SUBCIRCUIT_DEFAULT_SIZE))));
+    metadata.widthHeight =
+        QSize(gridToPixels(
+                  std::max(1, shape.value("width", GRAPHICAL_SUBCIRCUIT_DEFAULT_SIZE))),
+              gridToPixels(
+                  std::max(1, shape.value("height", GRAPHICAL_SUBCIRCUIT_DEFAULT_SIZE))));
 
     if (const auto inputs = graphical.find("inputs");
         inputs != graphical.end() && inputs->is_array()) {
@@ -487,17 +256,21 @@ parseGraphicalSubcircuitMetadata(std::string_view sceneJson)
 
 bool subcircuitHasGraphicalMetadata(std::string_view sceneJson)
 {
-  return parseGraphicalSubcircuitMetadata(sceneJson).has_value();
+  return parseGraphicalSubcircuitMetadata(
+             nlohmann::json::parse(sceneJson, nullptr, false))
+      .has_value();
 }
 
 GraphicalSubcircuitMetadata synchronizeGraphicalSubcircuitMetadata(
-    std::string_view sceneJson, const GraphicalSubcircuitMetadata& fallbackMetadata)
+    const nlohmann::json& document, const GraphicalSubcircuitMetadata& fallbackMetadata,
+    const CircuitResolver* resolver)
 {
   try {
-    const auto document = nlohmann::json::parse(sceneJson);
     auto       metadata = fallbackMetadata;
-    const auto inputs   = portDefinitionsFromDocument(document, true);
-    const auto outputs  = portDefinitionsFromDocument(document, false);
+    const auto circuit  = deserializeCircuitDocument(
+        document.dump(), ComponentRegistry::instance(), resolver);
+    const auto inputs  = portDefinitions(circuit.getInputPorts(), document, true);
+    const auto outputs = portDefinitions(circuit.getOutputPorts(), document, false);
     if (metadata.autoSize) {
       metadata.widthHeight =
           defaultGraphicalSubcircuitSize(inputs.size(), outputs.size());
@@ -519,7 +292,7 @@ GraphicalSubcircuitMetadata synchronizeGraphicalSubcircuitMetadata(
     metadata.inputs  = synchronizePorts(inputs, fallbackMetadata, metadata, true);
     metadata.outputs = synchronizePorts(outputs, fallbackMetadata, metadata, false);
     return metadata;
-  } catch (const nlohmann::json::exception&) {
+  } catch (const std::exception&) {
     return fallbackMetadata;
   }
 }
@@ -551,7 +324,21 @@ std::vector<GraphicalSubcircuitPortMetadata> synchronizePortsWithBuses(
 nlohmann::ordered_json
 graphicalSubcircuitMetadataToJson(const GraphicalSubcircuitMetadata& metadata)
 {
-  return metadataToJson(metadata);
+  nlohmann::json inputs = nlohmann::json::array();
+  for (const auto& port : metadata.inputs)
+    inputs.push_back(portToJson(port));
+
+  nlohmann::json outputs = nlohmann::json::array();
+  for (const auto& port : metadata.outputs)
+    outputs.push_back(portToJson(port));
+
+  return nlohmann::json{{"shape",
+                         {{"type", "rectangle"},
+                          {"autoSize", metadata.autoSize},
+                          {"width", pixelsToGrid(metadata.widthHeight.width())},
+                          {"height", pixelsToGrid(metadata.widthHeight.height())}}},
+                        {"inputs", std::move(inputs)},
+                        {"outputs", std::move(outputs)}};
 }
 
 }  // namespace SILICON::ui

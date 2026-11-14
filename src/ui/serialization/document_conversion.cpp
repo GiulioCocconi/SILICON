@@ -59,7 +59,7 @@ namespace {
     auto sceneJson                  = scene.serialize();
     auto completed                  = nlohmann::ordered_json::parse(sceneJson);
     completed["graphicalComponent"] = graphicalSubcircuitMetadataToJson(
-        synchronizeGraphicalSubcircuitMetadata(sceneJson, GraphicalSubcircuitMetadata{}));
+        synchronizeGraphicalSubcircuitMetadata(completed, GraphicalSubcircuitMetadata{}));
     return {std::move(document.path), completed.dump(2)};
   }
 

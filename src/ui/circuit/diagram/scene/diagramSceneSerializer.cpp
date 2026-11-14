@@ -77,10 +77,8 @@ namespace {
 
   void attachProjectContext(GraphicalComponent* component, DiagramScene& scene)
   {
-    if (auto* subcircuit = dynamic_cast<GraphicalSubcircuitComponent*>(component)) {
-      subcircuit->setDocumentStore(scene.documentStore());
-      subcircuit->setCircuitResolver(scene.circuitResolver());
-    }
+    if (auto* subcircuit = dynamic_cast<GraphicalSubcircuitComponent*>(component))
+      subcircuit->setProjectContext(scene.documentStore(), scene.circuitResolver());
     if (auto* rom = dynamic_cast<GraphicalROM*>(component))
       rom->setDocumentStore(scene.documentStore());
   }

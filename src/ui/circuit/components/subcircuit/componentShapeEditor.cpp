@@ -36,6 +36,7 @@
 #include <QHeaderView>
 #include <QLabel>
 #include <QResizeEvent>
+#include <QScopedValueRollback>
 #include <QSignalBlocker>
 #include <QSpinBox>
 #include <QTableWidget>
@@ -43,23 +44,24 @@
 #include <QUndoStack>
 #include <QVBoxLayout>
 
+#include <core/projectCircuitResolver.hpp>
 #include <core/projectContext.hpp>
 #include <core/projectDocument.hpp>
+#include <core/serialization/component_registry.hpp>
 #include <core/subcircuit.hpp>
-#include <ui/shell/inputDialogUtils.hpp>
-#include <ui/circuit/diagram/portGeometry.hpp>
-#include <ui/shell/theme.hpp>
-#include <ui/circuit/diagram/undoCommands.hpp>
 #include <ui/circuit/components/graphicalLogicComponent.hpp>
+#include <ui/circuit/components/subcircuit/geometry.hpp>
 #include <ui/circuit/components/subcircuit/metadata.hpp>
 #include <ui/circuit/components/subcircuit/utils.hpp>
+#include <ui/circuit/diagram/portGeometry.hpp>
+#include <ui/circuit/diagram/undoCommands.hpp>
+#include <ui/shell/inputDialogUtils.hpp>
+#include <ui/shell/theme.hpp>
 
 namespace SILICON::ui {
   using namespace SILICON::core;
 
   namespace {
-
-    constexpr int EXTERNAL_PORT_MARGIN_GRID = 2;
 
     [[nodiscard]] std::vector<Bus>
     previewBuses(const std::vector<GraphicalSubcircuitPortMetadata>& ports)
@@ -69,29 +71,6 @@ namespace SILICON::ui {
       for (const auto& port : ports)
         buses.emplace_back(static_cast<unsigned short>(std::max(1U, port.busSize)));
       return buses;
-    }
-
-    [[nodiscard]] QPoint sanitizePortPosition(QPoint pos, QRect shapeRect)
-    {
-      pos                           = DiagramScene::snapToGrid(pos);
-      const int extension           = gridToPixels(EXTERNAL_PORT_MARGIN_GRID);
-      const auto [side, projection] = nearestPortSide(pos, shapeRect);
-
-      // Offset from the projected edge rather than from the requested point. This
-      // guarantees a straight, two-grid-unit port line even for interior positions
-      // and points dragged beyond a corner.
-      switch (side) {
-        case PortSide::LEFT: return projection + QPoint(-extension, 0);
-        case PortSide::RIGHT: return projection + QPoint(extension, 0);
-        case PortSide::UP: return projection + QPoint(0, -extension);
-        case PortSide::DOWN: return projection + QPoint(0, extension);
-      }
-      std::unreachable();
-    }
-
-    [[nodiscard]] QRect shapeRect(const QSize& size)
-    {
-      return {QPoint(0, 0), size};
     }
 
     void sanitizePortPositions(GraphicalSubcircuitMetadata& metadata)
@@ -273,10 +252,8 @@ namespace SILICON::ui {
         if (index >= visuals.size())
           return;
 
-        suppressCallbacks = true;
-        visuals[index].item->setPos(sanitizePortPosition(position, shapeRect(shapeSize)));
-        updateComponentPorts();
-        suppressCallbacks = false;
+        const QScopedValueRollback guard(suppressCallbacks, true);
+        visuals[index]->setPos(sanitizePortPosition(position, shapeRect(shapeSize)));
       }
 
     protected:
@@ -304,10 +281,6 @@ namespace SILICON::ui {
       }
 
     private:
-      struct PortVisual {
-        PreviewPortItem* item = nullptr;
-      };
-
       void rebuild(const GraphicalSubcircuitMetadata& metadata)
       {
         scene->clear();
@@ -349,8 +322,7 @@ namespace SILICON::ui {
           item->setToolTip(QString::fromStdString(port.name));
           item->setPos(sanitizePortPosition(port.position, shapeRect(shapeSize)));
           item->setConstrainPosition([this](const QPointF& position) {
-            return sanitizePortPosition(DiagramScene::snapToGrid(position),
-                                        shapeRect(shapeSize));
+            return sanitizePortPosition(position, shapeRect(shapeSize));
           });
           item->setPositionChanged([this, inputPort, index](const QPointF& position) {
             auto& visuals = inputPort ? inputVisuals : outputVisuals;
@@ -362,19 +334,16 @@ namespace SILICON::ui {
           });
           scene->addItem(item);
 
-          visuals.push_back({.item = item});
+          visuals.push_back(item);
         }
       }
 
-      std::vector<PortPair> previewPortPairs(const std::vector<PortVisual>& visuals,
+      std::vector<PortPair> previewPortPairs(const std::vector<PreviewPortItem*>& visuals,
                                              bool inputPort) const
       {
         std::vector<PortPair> pairs;
         pairs.reserve(visuals.size());
-        for (std::size_t index = 0; index < visuals.size(); ++index) {
-          const auto* item = visuals[index].item;
-          if (!item)
-            continue;
+        for (const auto* item : visuals) {
           pairs.emplace_back(item->toolTip().isEmpty()
                                  ? QString(inputPort ? "input" : "output")
                                  : item->toolTip(),
@@ -402,8 +371,8 @@ namespace SILICON::ui {
       QGraphicsScene*                                scene     = nullptr;
       GraphicalLogicComponent*                       component = nullptr;
       QSize                                          shapeSize;
-      std::vector<PortVisual>                        inputVisuals;
-      std::vector<PortVisual>                        outputVisuals;
+      std::vector<PreviewPortItem*>                  inputVisuals;
+      std::vector<PreviewPortItem*>                  outputVisuals;
       bool                                           suppressCallbacks = false;
       std::function<void(bool, std::size_t, QPoint)> portMovedCallback;
     };
@@ -472,10 +441,13 @@ namespace SILICON::ui {
     if (!document)
       return;
 
-    auto metadata = parseGraphicalSubcircuitMetadata(document->getContents());
+    const auto json     = nlohmann::json::parse(document->getContents(), nullptr, false);
+    auto       metadata = parseGraphicalSubcircuitMetadata(json);
     if (!metadata)
       return;
-    metadata = synchronizeGraphicalSubcircuitMetadata(document->getContents(), *metadata);
+    const SILICON::project::ProjectCircuitResolver resolver(
+        project, ComponentRegistry::instance());
+    metadata   = synchronizeGraphicalSubcircuitMetadata(json, *metadata, &resolver);
     auto draft = std::make_shared<GraphicalSubcircuitMetadata>(*metadata);
     sanitizePortPositions(*draft);
 

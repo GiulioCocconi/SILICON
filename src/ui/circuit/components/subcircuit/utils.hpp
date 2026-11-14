@@ -17,14 +17,10 @@
 
 #pragma once
 
-#include <string>
-
 #include <QGraphicsRectItem>
-#include <QPoint>
-#include <QPointF>
 #include <QSize>
 
-#include <core/projectDocument.hpp>
+#include <ui/circuit/diagram/grid.hpp>
 
 namespace SILICON::ui {
 class SubcircuitRectShape : public QGraphicsRectItem {
@@ -33,13 +29,5 @@ public:
   void paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
              QWidget* widget) override;
 };
-
-[[nodiscard]] int gridToPixels(int value);
-[[nodiscard]] int pixelsToGrid(int value);
-[[nodiscard]] QPoint gridToPixels(const QPoint& point);
-[[nodiscard]] QPoint pixelsToGrid(const QPoint& point);
-[[nodiscard]] QSize pixelsToGrid(const QSize& size);
-[[nodiscard]] int pixelsToNearestGrid(qreal value);
-[[nodiscard]] QPoint pixelsToNearestGrid(const QPointF& point);
 
 }  // namespace SILICON::ui
