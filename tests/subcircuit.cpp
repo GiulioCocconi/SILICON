@@ -1152,6 +1152,9 @@ TEST_F(SubcircuitTest, CircuitUsesPortRoleDeclaredInterface)
   EXPECT_EQ(inputs[0].name, "a");
   EXPECT_EQ(inputs[1].name, "b");
   EXPECT_EQ(outputs[0].name, "q");
+  EXPECT_EQ(inputs[0].boundaryVertex, 0);
+  EXPECT_EQ(inputs[1].boundaryVertex, 1);
+  EXPECT_EQ(outputs[0].boundaryVertex, 3);
 }
 
 TEST_F(SubcircuitTest, CircuitUsesDeterministicTopologyFallbackPortNames)

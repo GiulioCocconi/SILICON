@@ -105,8 +105,16 @@ TEST(CircuitTest, BoundaryComponentsDefineNamedInterface)
   ASSERT_EQ(outputs.size(), 1);
   EXPECT_EQ(inputs[0].name, "data");
   EXPECT_EQ(inputs[0].bus, Bus({a}));
+  ASSERT_TRUE(inputs[0].boundaryVertex);
+  EXPECT_EQ(
+      circuit.getComponentByVertexId(*inputs[0].boundaryVertex)->metadata().portRole,
+      PortRole::Input);
   EXPECT_EQ(outputs[0].name, "result");
   EXPECT_EQ(outputs[0].bus, Bus({o}));
+  ASSERT_TRUE(outputs[0].boundaryVertex);
+  EXPECT_EQ(
+      circuit.getComponentByVertexId(*outputs[0].boundaryVertex)->metadata().portRole,
+      PortRole::Output);
   EXPECT_EQ(circuit.getInputs(), std::vector<Bus>({Bus{a}}));
   EXPECT_EQ(circuit.getOutputs(), std::vector<Bus>({Bus{o}}));
 }
@@ -126,6 +134,7 @@ TEST(CircuitTest, BoundaryFallbackIsIndependentPerDirection)
   EXPECT_EQ(inputs[0].name, "data");
   EXPECT_EQ(outputs[0].name, "output_0");
   EXPECT_EQ(outputs[0].bus, Bus({o}));
+  EXPECT_FALSE(outputs[0].boundaryVertex);
 }
 
 TEST(CircuitTest, TwoGatesInternalWire)

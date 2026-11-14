@@ -18,7 +18,6 @@
 #pragma once
 
 #include <cstddef>
-#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -30,8 +29,11 @@
 #include <QSize>
 
 #include <core/wire.hpp>
-#include <ui/circuit/diagram/scene/diagramScene.hpp>
+#include <ui/circuit/diagram/grid.hpp>
 
+namespace SILICON::core {
+class CircuitResolver;
+}
 
 namespace SILICON::ui {
 using namespace SILICON::core;
@@ -50,7 +52,7 @@ inline constexpr int GRAPHICAL_SUBCIRCUIT_DEFAULT_SIZE = 2;
  * rectangle. The JSON representation stores the same values in grid units.
  */
 struct GraphicalSubcircuitPortMetadata {
-  /** @brief Port label and core boundary name. */
+  /** @brief Display label derived from the core boundary name. */
   std::string  name;
   /** @brief Port connection point in pixels, relative to the rectangle top-left. */
   QPoint       position;
@@ -67,23 +69,23 @@ struct GraphicalSubcircuitPortMetadata {
  */
 struct GraphicalSubcircuitMetadata {
   /** @brief Rectangle dimensions in pixels. */
-  QSize widthHeight{GRAPHICAL_SUBCIRCUIT_DEFAULT_SIZE * DiagramScene::GRID_SIZE,
-                    GRAPHICAL_SUBCIRCUIT_DEFAULT_SIZE * DiagramScene::GRID_SIZE};
+  QSize widthHeight{GRAPHICAL_SUBCIRCUIT_DEFAULT_SIZE * GRID_SIZE,
+                    GRAPHICAL_SUBCIRCUIT_DEFAULT_SIZE* GRID_SIZE};
   /** @brief Derive dimensions from port counts until the user edits the size. */
   bool autoSize = true;
-  /** @brief Input boundary ports in display order. */
+  /** @brief Input boundary ports in core interface order. */
   std::vector<GraphicalSubcircuitPortMetadata> inputs;
-  /** @brief Output boundary ports in display order. */
+  /** @brief Output boundary ports in core interface order. */
   std::vector<GraphicalSubcircuitPortMetadata> outputs;
 };
 
 /**
- * @brief Parses graphical subcircuit metadata from a serialized scene document.
- * @param sceneJson Serialized subcircuit scene JSON.
+ * @brief Parses graphical subcircuit metadata from a scene document.
+ * @param document Parsed subcircuit scene JSON.
  * @return Parsed metadata, or std::nullopt when metadata is missing or invalid.
  */
 [[nodiscard]] std::optional<GraphicalSubcircuitMetadata>
-parseGraphicalSubcircuitMetadata(std::string_view sceneJson);
+parseGraphicalSubcircuitMetadata(const nlohmann::json& document);
 
 /**
  * @brief Checks whether a scene document contains valid graphical metadata.
@@ -91,15 +93,6 @@ parseGraphicalSubcircuitMetadata(std::string_view sceneJson);
  * @return True when parseGraphicalSubcircuitMetadata() can parse the document.
  */
 [[nodiscard]] bool subcircuitHasGraphicalMetadata(std::string_view sceneJson);
-
-/**
- * @brief Builds the core circuit JSON for a reusable graphical circuit document.
- *
- * Graphical boundary I/O components are editor-only; this strips their associated
- * core vertices by using the visual component categories and vertex IDs.
- */
-[[nodiscard]] std::optional<std::string>
-graphicalSubcircuitCoreCircuitJson(std::string_view sceneJson);
 
 /**
  * @brief Reconciles saved graphical metadata with the current circuit document.
@@ -110,12 +103,14 @@ graphicalSubcircuitCoreCircuitJson(std::string_view sceneJson);
  * Generated port groups are centered on each side with two grid units between centers.
  * Explicit heights grow when needed to fit generated groups; moved ports stay in place.
  *
- * @param sceneJson Serialized subcircuit scene JSON.
+ * @param document Parsed subcircuit scene JSON.
  * @param fallbackMetadata Existing metadata to preserve user-edited positions.
+ * @param resolver Optional resolver for dependent subcircuits.
  * @return Metadata whose ports match the current boundary components.
  */
 [[nodiscard]] GraphicalSubcircuitMetadata synchronizeGraphicalSubcircuitMetadata(
-    std::string_view sceneJson, const GraphicalSubcircuitMetadata& fallbackMetadata);
+    const nlohmann::json& document, const GraphicalSubcircuitMetadata& fallbackMetadata,
+    const CircuitResolver* resolver = nullptr);
 
 /**
  * @brief Reconciles metadata when a loaded subcircuit component has a different bus

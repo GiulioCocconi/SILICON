@@ -1735,8 +1735,7 @@ void DiagramScene::placeComponent(std::string_view typeName, const bool showSear
   componentToBeDrawn = GUIComponentFactory::instance().create(typeName).release();
   if (auto* subcircuit =
           dynamic_cast<GraphicalSubcircuitComponent*>(componentToBeDrawn)) {
-    subcircuit->setDocumentStore(documents);
-    subcircuit->setCircuitResolver(resolver);
+    subcircuit->setProjectContext(documents, resolver);
   }
   else if (auto* rom = dynamic_cast<GraphicalROM*>(componentToBeDrawn))
     rom->setDocumentStore(documents);

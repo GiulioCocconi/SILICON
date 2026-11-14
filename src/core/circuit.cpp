@@ -78,7 +78,8 @@ namespace {
         ports.push_back(
             {.name = component->getPropertyValue<std::string>("name").value_or(
                  interfacePortName(role, ports.size())),
-             .bus = bus});
+             .bus            = bus,
+             .boundaryVertex = vertex});
       }
     }
     return ports;

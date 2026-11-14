@@ -48,8 +48,9 @@
 #include <core/component.hpp>
 #include <core/siliconWaveform.hpp>
 
-#include <ui/circuit/diagram/wireManager.hpp>
+#include <ui/circuit/diagram/grid.hpp>
 #include <ui/circuit/diagram/scene/diagramSceneEdit.hpp>
+#include <ui/circuit/diagram/wireManager.hpp>
 #include <ui/circuit/editor/componentSearchBox.hpp>
 
 namespace SILICON::project {
@@ -235,7 +236,7 @@ public:
   static int snapToGrid(qreal value);
 
   /** @brief Grid cell size in scene units */
-  static constexpr int GRID_SIZE = 10;
+  static constexpr int GRID_SIZE = SILICON::ui::GRID_SIZE;
 
   [[nodiscard]] QUndoStack*              getUndoStack() const { return undoStack; }
   [[nodiscard]] WireManager&             getWireManager() { return wireManager; }

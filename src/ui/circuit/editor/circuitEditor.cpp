@@ -124,10 +124,13 @@ void CircuitEditor::flush(const std::string& path)
   if (const auto* existing = session.projectContext.documents().find(path)) {
     try {
       auto       json     = nlohmann::json::parse(serialized);
-      const auto fallback = parseGraphicalSubcircuitMetadata(existing->getContents())
-                                .value_or(GraphicalSubcircuitMetadata{});
-      json["graphicalComponent"] = graphicalSubcircuitMetadataToJson(
-          synchronizeGraphicalSubcircuitMetadata(serialized, fallback));
+      const auto fallback =
+          parseGraphicalSubcircuitMetadata(
+              nlohmann::json::parse(existing->getContents(), nullptr, false))
+              .value_or(GraphicalSubcircuitMetadata{});
+      json["graphicalComponent"] =
+          graphicalSubcircuitMetadataToJson(synchronizeGraphicalSubcircuitMetadata(
+              json, fallback, &session.circuitResolver));
       serialized = json.dump(2);
     } catch (const nlohmann::json::exception&) {
     }

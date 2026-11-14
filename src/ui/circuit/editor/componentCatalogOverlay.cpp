@@ -65,9 +65,7 @@ namespace SILICON::ui {
     {
       auto component = GUIComponentFactory::instance().create(rowData.guiType);
       if (auto* subcircuit = dynamic_cast<GraphicalSubcircuitComponent*>(component.get()))
-        subcircuit->setDocumentStore(&documents);
-      if (auto* subcircuit = dynamic_cast<GraphicalSubcircuitComponent*>(component.get()))
-        subcircuit->setCircuitResolver(resolver);
+        subcircuit->setProjectContext(&documents, resolver);
       if (!rowData.initialProperties.empty()) {
         if (auto* logicComponent =
                 dynamic_cast<GraphicalLogicComponent*>(component.get())) {

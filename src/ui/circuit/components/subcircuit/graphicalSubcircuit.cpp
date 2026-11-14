@@ -23,6 +23,8 @@
 #include <memory>
 #include <utility>
 
+#include <QScopedValueRollback>
+
 #include <ui/circuit/components/subcircuit/utils.hpp>
 
 namespace SILICON::ui {
@@ -30,18 +32,13 @@ namespace SILICON::ui {
 
   namespace {
 
-    [[nodiscard]] PortPair portPair(const GraphicalSubcircuitPortMetadata& metadata)
-    {
-      return {QString::fromStdString(metadata.name), metadata.position};
-    }
-
     [[nodiscard]] std::vector<PortPair>
     portPairs(const std::vector<GraphicalSubcircuitPortMetadata>& ports)
     {
       std::vector<PortPair> result;
       result.reserve(ports.size());
       for (const auto& port : ports)
-        result.push_back(portPair(port));
+        result.emplace_back(QString::fromStdString(port.name), port.position);
       return result;
     }
 
@@ -52,12 +49,9 @@ namespace SILICON::ui {
       const CircuitResolver* resolver)
     : GraphicalLogicComponent(
           std::make_shared<SubcircuitComponent>(resolver),
-          new SubcircuitRectShape(
-              QSize(GRAPHICAL_SUBCIRCUIT_DEFAULT_SIZE * DiagramScene::GRID_SIZE,
-                    GRAPHICAL_SUBCIRCUIT_DEFAULT_SIZE * DiagramScene::GRID_SIZE)),
-          parent, false),
-      documents(documents),
-      resolver(resolver)
+          new SubcircuitRectShape(GraphicalSubcircuitMetadata{}.widthHeight), parent,
+          false),
+      documents(documents)
   {
     printPortNames = true;
 
@@ -79,9 +73,12 @@ namespace SILICON::ui {
                          SILICON::project::DocumentType::Circuit, slug);
           if (change.kind == SILICON::project::DocumentChangeKind::Reset
               || affectsConfiguredDocument) {
-            if (const auto subcircuit =
-                    std::dynamic_pointer_cast<SubcircuitComponent>(associatedComponent))
-              subcircuit->reloadFromResolver();
+            {
+              const QScopedValueRollback guard(refreshSuppressed, true);
+              if (const auto subcircuit =
+                      std::dynamic_pointer_cast<SubcircuitComponent>(associatedComponent))
+                subcircuit->reloadFromResolver();
+            }
             refreshFromMetadata();
           }
         });
@@ -110,37 +107,38 @@ namespace SILICON::ui {
 
   void GraphicalSubcircuitComponent::setComponent(const Component_ptr& component)
   {
-    GraphicalLogicComponent::setComponent(component);
-    if (const auto subcircuit = std::dynamic_pointer_cast<SubcircuitComponent>(component))
-      setCircuitResolver(subcircuit->circuitResolver());
+    {
+      const QScopedValueRollback guard(refreshSuppressed, true);
+      GraphicalLogicComponent::setComponent(component);
+    }
     refreshFromMetadata();
   }
 
-  void GraphicalSubcircuitComponent::setDocumentStore(
-      const SILICON::project::DocumentStore* newDocuments)
+  void GraphicalSubcircuitComponent::setProjectContext(
+      const SILICON::project::DocumentStore* newDocuments,
+      const CircuitResolver*                 newResolver)
   {
-    if (documents == newDocuments)
-      return;
-    unsubscribeFromDocuments();
-    documents = newDocuments;
-    subscribeToDocuments();
-    refreshFromMetadata();
-  }
-
-  void
-  GraphicalSubcircuitComponent::setCircuitResolver(const CircuitResolver* newResolver)
-  {
-    resolver = newResolver;
-    if (const auto subcircuit =
-            std::dynamic_pointer_cast<SubcircuitComponent>(associatedComponent))
-      subcircuit->setCircuitResolver(resolver);
+    {
+      const QScopedValueRollback guard(refreshSuppressed, true);
+      if (documents != newDocuments) {
+        unsubscribeFromDocuments();
+        documents = newDocuments;
+        subscribeToDocuments();
+      }
+      if (const auto subcircuit =
+              std::dynamic_pointer_cast<SubcircuitComponent>(associatedComponent))
+        subcircuit->setCircuitResolver(newResolver);
+    }
     refreshFromMetadata();
   }
 
   void GraphicalSubcircuitComponent::applyProperty(std::string_view     key,
                                                    const PropertyValue& value)
   {
-    GraphicalLogicComponent::applyProperty(key, value);
+    {
+      const QScopedValueRollback guard(refreshSuppressed, true);
+      GraphicalLogicComponent::applyProperty(key, value);
+    }
     if (key == "slug")
       refreshFromMetadata();
   }
@@ -153,14 +151,14 @@ namespace SILICON::ui {
         std::string());
   }
 
-  void GraphicalSubcircuitComponent::mouseDoubleClickEvent(
-      QGraphicsSceneMouseEvent* event)
+  void
+  GraphicalSubcircuitComponent::mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event)
   {
     const auto slug = currentSlug();
     if (SILICON::project::isValidDocumentSlug(slug)
-        && openDocumentOnDoubleClick(event, SILICON::project::documentPathForSlug(
-                                               SILICON::project::DocumentType::Circuit,
-                                               slug)))
+        && openDocumentOnDoubleClick(event,
+                                     SILICON::project::documentPathForSlug(
+                                         SILICON::project::DocumentType::Circuit, slug)))
       return;
 
     GraphicalLogicComponent::mouseDoubleClickEvent(event);
@@ -169,19 +167,24 @@ namespace SILICON::ui {
   void
   GraphicalSubcircuitComponent::applyMetadata(const GraphicalSubcircuitMetadata& metadata)
   {
+    const QScopedValueRollback guard(refreshSuppressed, true);
     prepareGeometryChange();
     setItemShape(new SubcircuitRectShape(metadata.widthHeight));
-    setPorts(portPairs(metadata.inputs), portPairs(metadata.outputs));
+    if (metadata.inputs.empty() && metadata.outputs.empty())
+      clearPorts();
+    else
+      setPorts(portPairs(metadata.inputs), portPairs(metadata.outputs));
+    GraphicalLogicComponent::updatePortSizes();
     update();
   }
 
   void GraphicalSubcircuitComponent::updatePortSizes()
   {
-    if (!associatedComponent)
+    if (refreshSuppressed || !associatedComponent)
       return;
 
-    const auto componentInputs  = associatedComponent->getInputs();
-    const auto componentOutputs = associatedComponent->getOutputs();
+    const auto& componentInputs  = associatedComponent->inputBuses();
+    const auto& componentOutputs = associatedComponent->outputBuses();
 
     if (inputPorts.size() != componentInputs.size()
         || outputPorts.size() != componentOutputs.size()) {
@@ -194,23 +197,12 @@ namespace SILICON::ui {
 
   void GraphicalSubcircuitComponent::refreshFromMetadata()
   {
-    auto applyEmptyMetadata = [this] {
-      prepareGeometryChange();
-      setItemShape(new SubcircuitRectShape(
-          QSize(GRAPHICAL_SUBCIRCUIT_DEFAULT_SIZE * DiagramScene::GRID_SIZE,
-                GRAPHICAL_SUBCIRCUIT_DEFAULT_SIZE * DiagramScene::GRID_SIZE)));
-      clearPorts();
-      update();
-    };
-
-    const auto slug = currentSlug();
-    if (slug.empty()) {
-      applyEmptyMetadata();
+    if (refreshSuppressed)
       return;
-    }
-
-    if (!documents) {
-      applyEmptyMetadata();
+    const QScopedValueRollback guard(refreshSuppressed, true);
+    const auto                 slug = currentSlug();
+    if (slug.empty() || !documents) {
+      applyMetadata({});
       return;
     }
 
@@ -221,13 +213,17 @@ namespace SILICON::ui {
       return;
     }
 
+    const auto json = nlohmann::json::parse(document->getContents(), nullptr, false);
+    const auto subcircuit =
+        std::dynamic_pointer_cast<SubcircuitComponent>(associatedComponent);
     auto metadata = synchronizeGraphicalSubcircuitMetadata(
-        document->getContents(), parseGraphicalSubcircuitMetadata(document->getContents())
-                                     .value_or(GraphicalSubcircuitMetadata{}));
+        json,
+        parseGraphicalSubcircuitMetadata(json).value_or(GraphicalSubcircuitMetadata{}),
+        subcircuit ? subcircuit->circuitResolver() : nullptr);
 
     if (associatedComponent) {
-      const auto componentInputs  = associatedComponent->getInputs();
-      const auto componentOutputs = associatedComponent->getOutputs();
+      const auto& componentInputs  = associatedComponent->inputBuses();
+      const auto& componentOutputs = associatedComponent->outputBuses();
 
       if (metadata.inputs.size() != componentInputs.size())
         metadata.inputs =
@@ -237,10 +233,7 @@ namespace SILICON::ui {
                                                      metadata, false);
     }
 
-    try {
-      applyMetadata(metadata);
-    } catch (const std::exception&) {
-    }
+    applyMetadata(metadata);
   }
 
   void GraphicalSubcircuitComponent::useAttachedInterfaceMetadata()
@@ -248,11 +241,11 @@ namespace SILICON::ui {
     GraphicalSubcircuitMetadata metadata;
     if (associatedComponent) {
       metadata.widthHeight =
-          defaultGraphicalSubcircuitSize(associatedComponent->getInputs().size(),
-                                         associatedComponent->getOutputs().size());
-      metadata.inputs =
-          synchronizePortsWithBuses({}, associatedComponent->getInputs(), metadata, true);
-      metadata.outputs = synchronizePortsWithBuses({}, associatedComponent->getOutputs(),
+          defaultGraphicalSubcircuitSize(associatedComponent->inputBuses().size(),
+                                         associatedComponent->outputBuses().size());
+      metadata.inputs  = synchronizePortsWithBuses({}, associatedComponent->inputBuses(),
+                                                   metadata, true);
+      metadata.outputs = synchronizePortsWithBuses({}, associatedComponent->outputBuses(),
                                                    metadata, false);
 
       if (const auto imported =

@@ -71,8 +71,9 @@ namespace SILICON::ui {
 
     /** @brief Reloads shape and ports from the active registry document. */
     void refreshFromMetadata();
-    void setDocumentStore(const SILICON::project::DocumentStore* documents);
-    void setCircuitResolver(const CircuitResolver* resolver);
+    /** @brief Attaches project metadata and resolver in one refresh. */
+    void setProjectContext(const SILICON::project::DocumentStore* documents,
+                           const CircuitResolver*                 resolver);
 
     /** @brief Uses default metadata derived only from the attached imported buses. */
     void useAttachedInterfaceMetadata();
@@ -85,7 +86,7 @@ namespace SILICON::ui {
   private:
     std::uint64_t                          registryListenerId = 0;
     const SILICON::project::DocumentStore* documents          = nullptr;
-    const CircuitResolver*                 resolver           = nullptr;
+    bool                                   refreshSuppressed  = false;
 
     void subscribeToDocuments();
     void unsubscribeFromDocuments();
