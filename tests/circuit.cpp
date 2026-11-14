@@ -1209,6 +1209,30 @@ TEST(CircuitTest, DeserializeRestoresBitwiseGatePropertiesAndBusWidths)
   EXPECT_EQ(component->getOutputs()[0].size(), 4);
 }
 
+TEST(CircuitTest, DeserializeRestoresReductionGateAndModeChanges)
+{
+  ComponentRegistry registry;
+  registerAllComponents(registry);
+  auto gate = std::make_shared<AndGate>(
+      std::vector<Wire_ptr>{std::make_shared<Wire>(), std::make_shared<Wire>()},
+      std::make_shared<Wire>());
+  gate->setProperty("size", 4);
+
+  Circuit original(gate, false);
+  auto restored = Circuit::deserialize(original.serialize(), registry);
+  const auto components = componentsIn(restored);
+  ASSERT_EQ(components.size(), 1);
+  const auto component = components.front();
+  ASSERT_EQ(component->inputBuses().size(), 1);
+  EXPECT_EQ(component->inputBuses()[0].size(), 4);
+  EXPECT_EQ(component->outputBuses()[0].size(), 1);
+  component->setProperty("bitwise", true);
+  ASSERT_EQ(component->inputBuses().size(), 2);
+  EXPECT_EQ(component->inputBuses()[0].size(), 4);
+  EXPECT_EQ(component->inputBuses()[1].size(), 4);
+  EXPECT_EQ(component->outputBuses()[0].size(), 4);
+}
+
 TEST(CircuitTest, DeserializeRestoresAdderNBitsSizeAndBusWidths)
 {
   ComponentRegistry registry;
