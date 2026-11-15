@@ -32,7 +32,8 @@ Native `$mul`, `$div`, `$mod`, `$dff`, `$dffsr`, `$dffsre`, and supported `$dlat
 cells are converted to technology cells before this boundary and are rejected by
 both `silicon_validate` and the direct importer if they remain. Native `$add` and
 `$sub` still reach the importer when their geometry is not covered by technology
-mapping; their width handling remains necessary. Vector `$adffe` cells map to
+mapping; both sign extend only when both operands are signed and truncate the
+result to the output width. Vector `$adffe` cells map to
 `SILICON_PIPO`; only scalar zero-reset `$adffe` cells reach the native handler.
 
 `$neg` cells map directly to the two's-complement `Complementer` component,
@@ -82,6 +83,9 @@ Additional expression contracts:
   selector value, packed least-significant-word first. Every index must be
   below `INPUTS`, and every data lane must appear. Export expands this cell
   to a standard `$bmux`.
+- Dynamic bit and part selections (`$shiftx`) lower to word-wide mux stages.
+  Signed negative offsets shift left; out-of-range selected bits remain unknown.
+  Oversized offsets are checked without building a mux for every possible index.
 
 `silicon_validate` rejects any cell outside this subset, including writable
 memories and unsupported operators. The memory pass diagnoses unsupported ROM

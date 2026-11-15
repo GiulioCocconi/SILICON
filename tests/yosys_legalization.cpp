@@ -140,6 +140,62 @@ TEST(YosysLegalizationTest, FinalValidationRejectsUnsupportedCell)
       std::runtime_error);
 }
 
+TEST(YosysLegalizationTest, DynamicSelectionsPreserveSignedOffsetsAndUnknownPadding)
+{
+  const auto passes = std::format("silicon_legalize \"{}/silicon_techmap.v\"",
+                                  SILICON_TEST_YOSYS_RESOURCE_DIR);
+  for (int aWidth : {1, 3, 5}) {
+    for (int yWidth : {1, 2, 7}) {
+      for (int bWidth : {1, 5, 32}) {
+        for (bool sign : {false, true}) {
+          SCOPED_TRACE(std::format("aWidth={} yWidth={} bWidth={} signed={}", aWidth,
+                                   yWidth, bWidth, sign));
+          auto design = subtractionDesign(aWidth, bWidth, yWidth, false, sign);
+          onlyModule(design)["cells"].begin().value()["type"] = "$shiftx";
+          const auto legalized = legalizeExpressions(design.dump(), passes);
+          const auto circuit =
+              std::make_shared<Circuit>(SILICON::yosys::deserialize(legalized));
+          const auto inputA = findNamedComponent<Component>(*circuit, "a");
+          const auto inputB = findNamedComponent<Component>(*circuit, "b");
+          const auto output = findNamedComponent<Component>(*circuit, "y");
+          ASSERT_TRUE(inputA);
+          ASSERT_TRUE(inputB);
+          ASSERT_TRUE(output);
+          Simulator simulator(circuit);
+          for (unsigned a : {0u, 1u, 5u, 31u}) {
+            for (unsigned rawB : {0u, 1u, 2u, 3u, 4u, 7u, 15u, 16u, 17u, 30u, 31u,
+                                  0x80000000u, 0xffffffffu}) {
+              const auto         b = rawB & ((std::uint64_t{1} << bWidth) - 1);
+              const std::int64_t offset =
+                  sign && (b & (std::uint64_t{1} << (bWidth - 1)))
+                      ? static_cast<std::int64_t>(b) - (std::int64_t{1} << bWidth)
+                      : static_cast<std::int64_t>(b);
+              BusValue expected(yWidth, State::UNKNOWN);
+              for (int bit = 0; bit < yWidth; ++bit) {
+                const auto index = offset + bit;
+                if (index >= 0 && index < aWidth)
+                  expected[bit] = (a & (1u << index)) ? State::HIGH : State::LOW;
+              }
+              SCOPED_TRACE(std::format("a={} offset={}", a, offset));
+              ASSERT_EQ(
+                  simulator.setBus(inputA->outputBuses()[0], valueFor(aWidth, a), inputA),
+                  Simulator::RunResult::Completed);
+              ASSERT_EQ(
+                  simulator.setBus(inputB->outputBuses()[0], valueFor(bWidth, b), inputB),
+                  Simulator::RunResult::Completed);
+              ASSERT_EQ(simulator.runUntilIdle(), Simulator::RunResult::Completed);
+              EXPECT_EQ(output->inputBuses()[0].getCurrentValue(), expected);
+            }
+          }
+          EXPECT_EQ(
+              Json::parse(legalizeExpressions(legalized, "silicon_shift")).at("modules"),
+              Json::parse(legalized).at("modules"));
+        }
+      }
+    }
+  }
+}
+
 TEST(YosysLegalizationTest, ZeroMinusOperandLowersToNegWithSubtractionSignedness)
 {
   for (bool aSigned : {false, true}) {
@@ -493,3 +549,54 @@ TEST(YosysLegalizationEndToEndTest, PreservesScalarAsyncEnableStorage)
               positiveClock ? "PET" : "NET");
   }
 }
+
+#ifdef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
+TEST(YosysLegalizationTest, ShiftxKeepSurvivesOptCleanOnOnlyFinalMux)
+{
+  using Json = nlohmann::json;
+  for (bool signedOffset : {false, true})
+    for (int dataWidth : {1, 5})
+      for (int outputWidth : {1, 8})
+        for (bool keep : {false, true}) {
+          Json source =
+              expression("$shiftx", dataWidth, 3, outputWidth, false, signedOffset);
+          auto& module       = onlyModule(source);
+          auto& cell         = module["cells"]["op"];
+          cell["attributes"] = {{"keep", keep ? "1" : "0"},
+                                {"source_marker", "original"}};
+          for (const auto name : {"A", "B"})
+            module["ports"][name] = {{"direction", "input"},
+                                     {"bits", cell["connections"][name]}};
+          module["netnames"]["unused_result"] = {{"hide_name", 0},
+                                                 {"bits", cell["connections"]["Y"]}};
+          const auto lowered =
+              Json::parse(legalizeExpressions(source.dump(), "silicon_shift"));
+          unsigned protectedCells = 0;
+          for (const auto& replacement : onlyModule(lowered).at("cells")) {
+            const auto attributes = replacement.value("attributes", Json::object());
+            EXPECT_FALSE(attributes.contains("source_marker"));
+            if (attributes.contains("keep")) {
+              ++protectedCells;
+              EXPECT_EQ(replacement.at("type"), "$mux");
+              EXPECT_EQ(replacement.at("connections").at("Y").at(0),
+                        onlyModule(lowered)
+                            .at("netnames")
+                            .at("unused_result")
+                            .at("bits")
+                            .at(0));
+            }
+          }
+          EXPECT_EQ(protectedCells, keep ? 1u : 0u);
+          const auto cleaned =
+              Json::parse(legalizeExpressions(source.dump(), "silicon_shift\nopt_clean"));
+          EXPECT_EQ(onlyModule(cleaned).at("cells").empty(), !keep);
+          if (keep) {
+            unsigned remainingKeep = 0;
+            for (const auto& replacement : onlyModule(cleaned).at("cells"))
+              remainingKeep +=
+                  replacement.value("attributes", Json::object()).contains("keep");
+            EXPECT_EQ(remainingKeep, 1u);
+          }
+        }
+}
+#endif
