@@ -259,6 +259,10 @@ void PropertyPanel::refresh()
       // Keep ownership if redo() throws before QUndoStack accepts the command.
       undoStack->push(command.get());
       static_cast<void>(command.release());
+      if (key == "portOrientation") {
+        for (const auto* node : selectedNodes)
+          diagramScene->rememberIoPlacementOrientation(*node->getComponent());
+      }
     } catch (const std::exception& e) {
       SILICON::ui::inputDialog::warning(propertyDock, tr("Invalid Property"), e.what());
       QTimer::singleShot(0, callbacks.context(), [this] { refresh(); });

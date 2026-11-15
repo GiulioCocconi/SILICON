@@ -232,6 +232,9 @@ public:
    */
   static QPoint snapToGrid(QPointF point);
 
+  /** @brief Remembers a user IO orientation edit for subsequent placements. */
+  void rememberIoPlacementOrientation(const Component& component);
+
   /** @brief Snaps one scene coordinate to the grid. */
   static int snapToGrid(qreal value);
 
@@ -598,6 +601,10 @@ private:
 
   /** @brief Component being placed (shadow) */
   GraphicalComponent* componentToBeDrawn = nullptr;
+
+  /** @brief Last user-edited orientations, kept only for this editor session. */
+  std::string lastInputOrientation  = "RIGHT";
+  std::string lastOutputOrientation = "LEFT";
 
   /** @brief Suppresses the quick search popup for catalog-driven placement. */
   bool suppressNextComponentSearch = false;

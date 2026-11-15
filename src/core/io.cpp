@@ -129,7 +129,8 @@ BoundaryIoComponent::BoundaryIoComponent(std::vector<Bus> inputs,
   : Component(std::move(inputs), std::move(outputs))
 {
   defineProperty("name", std::move(name));
-  defineStringListProperty(std::string(PORT_ORIENTATION_PROPERTY), "DOWN",
+  defineStringListProperty(std::string(PORT_ORIENTATION_PROPERTY),
+                           this->outputs.empty() ? "LEFT" : "RIGHT",
                            orientationOptions());
 }
 
