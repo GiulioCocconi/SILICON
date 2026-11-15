@@ -24,10 +24,11 @@
 #include <core/component.hpp>
 #include <nlohmann/json.hpp>
 
-#include <ui/circuit/diagram/scene/diagramScene.hpp>
+#include <ui/circuit/diagram/componentResize.hpp>
 #include <ui/circuit/diagram/enums.hpp>
 #include <ui/circuit/diagram/graphicalItem.hpp>
 #include <ui/circuit/diagram/portGeometry.hpp>
+#include <ui/circuit/diagram/scene/diagramScene.hpp>
 
 #include <QPoint>
 #include <QRect>
@@ -163,6 +164,20 @@ public:
   /** @brief Annotations remain selectable but do not obstruct placement or routing. */
   [[nodiscard]] virtual bool participatesInCollisions() const { return true; }
 
+  /** Opt in to shared handles and translate a requested local size into properties. */
+  [[nodiscard]] virtual std::span<const ResizeHandle> resizeHandles() const { return {}; }
+  [[nodiscard]] virtual QRectF                        resizeBounds() const
+  {
+    return boundingRectWithoutMargins();
+  }
+  [[nodiscard]] virtual PropertyMap resizedProperties(QSizeF size, ResizeHandle handle,
+                                                      const PropertyMap& initial);
+  [[nodiscard]] std::optional<ResizeHandle> resizeHandleAt(QPointF localPos) const;
+  [[nodiscard]] bool                        resizeHandlesVisible() const;
+  [[nodiscard]] ComponentResizeState        resizeState() const;
+  void applyResizeState(const ComponentResizeState& state);
+  void modeChanged(InteractionMode mode) override;
+
   /** @brief Prepares a geometry edit and checks its final bounds on the event loop. */
   void prepareSceneBoundsChange();
 
@@ -204,6 +219,8 @@ protected:
    * @brief Handles double-clicks not consumed by a component-specific action.
    */
   void mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event) override;
+  void hoverMoveEvent(QGraphicsSceneHoverEvent* event) override;
+  void hoverLeaveEvent(QGraphicsSceneHoverEvent* event) override;
 
   /** @brief Queues document navigation for a left double-click in normal mode. */
   bool openDocumentOnDoubleClick(QGraphicsSceneMouseEvent* event,

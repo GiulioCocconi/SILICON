@@ -93,6 +93,9 @@ PropertyPanel::PropertyPanel(QDockWidget* dock, DiagramScene* scene, ProjectTree
     currentFileName(fileName),
     rebuildProjectTree(std::move(rebuildTree))
 {
+  callbacks.connect(diagramScene, &DiagramScene::componentResized, [this] {
+    QTimer::singleShot(0, callbacks.context(), [this] { refresh(); });
+  });
 }
 
 void PropertyPanel::refresh()

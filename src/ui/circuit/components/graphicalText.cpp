@@ -7,9 +7,11 @@
 #include "graphicalText.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <memory>
 #include <stdexcept>
+#include <tuple>
 
 #include <QFontMetricsF>
 #include <QGraphicsTextItem>
@@ -17,6 +19,8 @@
 #include <QTextCharFormat>
 #include <QTextCursor>
 #include <QTextDocument>
+#include <QTextLayout>
+#include <QTextOption>
 
 #include <ui/shell/theme.hpp>
 #include <utils/ranges_wrapper.hpp>
@@ -80,29 +84,120 @@ namespace {
 
   class TextShape : public QGraphicsTextItem {
   public:
-    TextShape(const QString& text, const QFont& font, int wrapLength)
+    TextShape(const QString& text, const QFont& font, int wrapWidth)
     {
       setAcceptedMouseButtons(Qt::NoButton);
+      setAcceptHoverEvents(false);
       setTextInteractionFlags(Qt::NoTextInteraction);
       document()->setDocumentMargin(0);
+      auto option = document()->defaultTextOption();
+      option.setWrapMode(QTextOption::WordWrap);
+      document()->setDefaultTextOption(option);
       setFont(font);
       QTextCursor cursor(document());
       insertFormattedText(cursor, text);
-      if (wrapLength > 0) {
-        // Wrap the rendered text so markup does not count toward the line length.
-        // QTextCursor moves by complete characters, keeping Unicode sequences intact.
-        cursor.beginEditBlock();
-        for (auto block = document()->begin(); block.isValid(); block = block.next()) {
-          if (block.length() - 1 <= wrapLength)
-            continue;
-          cursor.setPosition(block.position());
-          cursor.movePosition(QTextCursor::NextCharacter, QTextCursor::MoveAnchor,
-                              wrapLength);
-          if (cursor.block() == block && !cursor.atBlockEnd())
-            cursor.insertBlock();
-        }
-        cursor.endEditBlock();
+      // Measure the formatted text once; probes never alter the live item's geometry.
+      measurement.reset(document()->clone());
+      measurement->setTextWidth(1);
+      (void)measurement->size();
+      for (auto block = measurement->begin(); block.isValid(); block = block.next()) {
+        auto* layout = block.layout();
+        for (int line = 0; line < layout->lineCount(); ++line)
+          minimumWidth = std::max(minimumWidth, layout->lineAt(line).naturalTextWidth());
       }
+      measurement->setTextWidth(-1);
+      (void)measurement->size();
+      for (auto block = measurement->begin(); block.isValid(); block = block.next()) {
+        naturalWidth = std::max(naturalWidth, block.layout()->maximumWidth());
+      }
+      setWrapWidth(wrapWidth);
+    }
+
+    int clampWidth(qreal width) const
+    {
+      return static_cast<int>(std::clamp(std::ceil(std::max(width, minimumWidth)), 1.0,
+                                         double(std::numeric_limits<int>::max())));
+    }
+
+    void setWrapWidth(int width) { setTextWidth(width > 0 ? clampWidth(width) : -1); }
+
+    int automaticWidth() const { return clampWidth(naturalWidth); }
+
+    int widthForHeight(qreal height, int startingWidth)
+    {
+      const int minimum  = clampWidth(minimumWidth);
+      const int maximum  = std::max(automaticWidth(), startingWidth);
+      const int start    = startingWidth > 0 ? clampWidth(startingWidth) : maximum;
+      auto      heightAt = [this](int width) {
+        measurement->setTextWidth(width);
+        return measurement->size().height();
+      };
+      int low  = minimum;
+      int high = maximum;
+      while (low < high) {
+        const int middle = low + (high - low) / 2;
+        if (heightAt(middle) > height)
+          low = middle + 1;
+        else
+          high = middle;
+      }
+      int best = start;
+      // A whole interval of widths can produce the same height. Choose its point
+      // nearest the starting width rather than jumping to the narrowest box.
+      auto nearestWidth = [&](int width) {
+        const qreal lineHeight = heightAt(width);
+        int         first      = minimum;
+        int         last       = maximum;
+        while (first < last) {
+          const int middle = first + (last - first) / 2;
+          if (heightAt(middle) > lineHeight)
+            first = middle + 1;
+          else
+            last = middle;
+        }
+        const int lower = first;
+        last            = maximum;
+        while (first < last) {
+          const int middle = first + (last - first) / 2 + 1;
+          if (heightAt(middle) >= lineHeight)
+            first = middle;
+          else
+            last = middle - 1;
+        }
+        return std::clamp(start, lower, first);
+      };
+      auto score = [&](int width) {
+        return std::tuple{std::abs(heightAt(width) - height), std::abs(width - start),
+                          -width};
+      };
+      auto bestScore = score(best);
+      for (int candidateWidth : {low, std::max(minimum, low - 1)}) {
+        const int  width     = nearestWidth(candidateWidth);
+        const auto candidate = score(width);
+        if (candidate < bestScore) {
+          best      = width;
+          bestScore = candidate;
+        }
+      }
+      return best;
+    }
+
+    int legacyWrapWidth(int length) const
+    {
+      if (length == 0)
+        return 0;
+      std::unique_ptr<QTextDocument> legacy(document()->clone());
+      legacy->setTextWidth(-1);
+      QTextCursor cursor(legacy.get());
+      for (auto block = legacy->begin(); block.isValid(); block = block.next()) {
+        if (block.length() - 1 <= length)
+          continue;
+        cursor.setPosition(block.position());
+        cursor.movePosition(QTextCursor::NextCharacter, QTextCursor::MoveAnchor, length);
+        if (cursor.block() == block && !cursor.atBlockEnd())
+          cursor.insertBlock();
+      }
+      return clampWidth(legacy->idealWidth());
     }
 
     QRectF boundingRect() const override
@@ -120,6 +215,11 @@ namespace {
         setDefaultTextColor(ink);
       QGraphicsTextItem::paint(painter, option, widget);
     }
+
+  private:
+    std::unique_ptr<QTextDocument> measurement;
+    qreal                          minimumWidth = GRID_SIZE;
+    qreal                          naturalWidth = GRID_SIZE;
   };
 
 }  // namespace
@@ -144,22 +244,49 @@ void GraphicalText::setProperties(PropertyMap next)
   const auto* text       = std::get_if<std::string>(&next.at("text"));
   const auto* size       = std::get_if<int>(&next.at("size"));
   const auto* font       = std::get_if<std::string>(&next.at("font"));
-  const auto* wrapLength = std::get_if<int>(&next.at("wrapLength"));
-  if (!text || !size || !font || !wrapLength)
+  const auto* wrapWidth  = std::get_if<int>(&next.at("wrapWidth"));
+  if (!text || !size || !font || !wrapWidth)
     throw std::invalid_argument(
-        "Text properties require text, integer size, font, and integer wrapLength");
+        "Text properties require text, integer size, font, and integer wrapWidth");
   if (*size <= 0)
     throw std::invalid_argument("Text size must be a positive number of points");
-  if (*wrapLength < 0)
-    throw std::invalid_argument("Text wrapLength must be non-negative");
+  if (*wrapWidth < 0)
+    throw std::invalid_argument("Text wrapWidth must be non-negative");
   if (!std::ranges::contains(FontOptions, *font))
     throw std::invalid_argument("Text font must be Quicksand, Chango, or NovaMono");
 
-  auto shape = std::make_unique<TextShape>(QString::fromStdString(*text),
-                                           QFont(QString::fromStdString(*font), *size),
-                                           *wrapLength);
-  setItemShape(shape.release());
+  if (auto* existing = dynamic_cast<TextShape*>(getItemShape());
+      existing && next.at("text") == properties.at("text")
+      && next.at("size") == properties.at("size")
+      && next.at("font") == properties.at("font")) {
+    prepareSceneBoundsChange();
+    existing->setWrapWidth(*wrapWidth);
+    update();
+  } else {
+    auto shape = std::make_unique<TextShape>(QString::fromStdString(*text),
+                                             QFont(QString::fromStdString(*font), *size),
+                                             *wrapWidth);
+    setItemShape(shape.release());
+  }
   properties = std::move(next);
+}
+
+PropertyMap GraphicalText::resizedProperties(QSizeF size, ResizeHandle handle,
+                                             const PropertyMap& initial)
+{
+  auto      next          = initial;
+  auto*     shape         = static_cast<TextShape*>(getItemShape());
+  const int startingWidth = std::get<int>(initial.at("wrapWidth"));
+  const int width         = resizesLeft(handle) || resizesRight(handle)
+                                ? shape->clampWidth(size.width())
+                                : shape->widthForHeight(size.height(), startingWidth);
+  // Keep automatic width when the reflow has not actually changed the box.
+  const int initialWidth =
+      startingWidth > 0 ? shape->clampWidth(startingWidth) : shape->automaticWidth();
+  if (width == initialWidth)
+    return next;
+  next.at("wrapWidth") = width;
+  return next;
 }
 
 void GraphicalText::applyProperty(std::string_view key, const PropertyValue& value)
@@ -180,7 +307,7 @@ nlohmann::ordered_json GraphicalText::serialize() const
   json["properties"] = {{"text", std::get<std::string>(properties.at("text"))},
                         {"size", std::get<int>(properties.at("size"))},
                         {"font", std::get<std::string>(properties.at("font"))},
-                        {"wrapLength", std::get<int>(properties.at("wrapLength"))}};
+                        {"wrapWidth", std::get<int>(properties.at("wrapWidth"))}};
   return json;
 }
 
@@ -194,7 +321,7 @@ void GraphicalText::loadSerializedState(const nlohmann::json& json)
   auto next = properties;
   if (values.contains("text"))
     next.at("text") = values.at("text").get<std::string>();
-  for (const auto& [key, minimum] : {std::pair{"size", 1}, std::pair{"wrapLength", 0}}) {
+  for (const auto& [key, minimum] : {std::pair{"size", 1}, std::pair{"wrapWidth", 0}}) {
     if (!values.contains(key))
       continue;
     const auto& value = values.at(key);
@@ -206,6 +333,17 @@ void GraphicalText::loadSerializedState(const nlohmann::json& json)
   }
   if (values.contains("font"))
     next.at("font") = values.at("font").get<std::string>();
+  if (!values.contains("wrapWidth") && values.contains("wrapLength")) {
+    const auto& length = values.at("wrapLength");
+    if (!length.is_number_integer() || length < 0
+        || length > std::numeric_limits<int>::max())
+      throw std::invalid_argument("Text wrapLength must be a non-negative integer");
+    // Validate all properties before constructing the temporary migration layout.
+    GraphicalText legacy;
+    legacy.setProperties(next);
+    next.at("wrapWidth") = static_cast<TextShape*>(legacy.getItemShape())
+                               ->legacyWrapWidth(length.get<int>());
+  }
   setProperties(std::move(next));
 }
 
