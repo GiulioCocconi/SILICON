@@ -17,6 +17,80 @@
 
 #include "yosys_test_helpers.hpp"
 
+#include <bit>
+#include <cmath>
+
+TEST(YosysTest, ImportsAndSimulatesOriginalFp32Multiplier)
+{
+#ifdef SILICON_TEST_YOSYS_PLUGIN_AVAILABLE
+  const auto path =
+      std::filesystem::path(__FILE__).parent_path() / "fixtures/fp32_multiplier.v";
+  std::ifstream file(path);
+  ASSERT_TRUE(file.good());
+  const std::string source((std::istreambuf_iterator<char>(file)),
+                           std::istreambuf_iterator<char>());
+  const auto        circuit =
+      std::make_shared<Circuit>(importVerilog(source, "fp32_multiplier"));
+  const auto inputA = findNamedComponent<DummyBusInputComponent>(*circuit, "a");
+  const auto inputB = findNamedComponent<DummyBusInputComponent>(*circuit, "b");
+  const auto output = findNamedComponent<DummyBusOutputComponent>(*circuit, "result");
+  ASSERT_TRUE(inputA);
+  ASSERT_TRUE(inputB);
+  ASSERT_TRUE(output);
+  Simulator simulator(circuit);
+
+  const auto check = [&](std::uint32_t a, std::uint32_t b) {
+    SCOPED_TRACE(std::format("a={:08x} b={:08x}", a, b));
+    const float         product = std::bit_cast<float>(a) * std::bit_cast<float>(b);
+    const std::uint32_t expected =
+        std::isnan(product) ? 0x7fc00000u : std::bit_cast<std::uint32_t>(product);
+    ASSERT_EQ(simulator.setBus(inputA->outputBuses()[0], valueFor(32, a), inputA),
+              Simulator::RunResult::Completed);
+    ASSERT_EQ(simulator.setBus(inputB->outputBuses()[0], valueFor(32, b), inputB),
+              Simulator::RunResult::Completed);
+    ASSERT_EQ(simulator.runUntilIdle(), Simulator::RunResult::Completed);
+    EXPECT_EQ(output->inputBuses()[0].getCurrentValue(), valueFor(32, expected));
+  };
+  // Include zeros, subnormals, rounding ties, normalization carries, overflow,
+  // infinities and NaNs, in addition to arbitrary operand bit patterns.
+  for (const auto [a, b] : std::array<std::pair<std::uint32_t, std::uint32_t>, 18>{
+           {{0x3f800000u, 0x3f800000u},
+            {0x3fc00000u, 0x40000000u},
+            {0xbfc00000u, 0x40000000u},
+            {0x3fffffffu, 0x3fffffffu},
+            {0x3fb504f3u, 0x3fb504f3u},
+            {0x00000001u, 0x3f800000u},
+            {0x00800000u, 0x3f000000u},
+            {0x007fffffu, 0x3f800001u},
+            {0x00000001u, 0x3f000000u},
+            {0x00000003u, 0x3f000000u},
+            {0x7f7fffffu, 0x40000000u},
+            {0x80000000u, 0x3f800000u},
+            {0x00000000u, 0x7f800000u},
+            {0xff800000u, 0x40000000u},
+            {0x7fc12345u, 0x3f800000u},
+            {0x7f812345u, 0x3f800000u},
+            {0x00000001u, 0x00000001u},
+            {0x00800000u, 0x00800000u}}})
+    check(a, b);
+
+  std::uint32_t state = 0x516c0ffeu;
+  const auto    next  = [&] {
+    state ^= state << 13;
+    state ^= state >> 17;
+    state ^= state << 5;
+    return state;
+  };
+  for (int sample = 0; sample < 100; ++sample) {
+    const auto a = next();
+    const auto b = next();
+    check(a, b);
+  }
+#else
+  GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
+#endif
+}
+
 TEST(YosysTest, YosysAcceptsEveryBuiltInLowering)
 {
 #ifndef SILICON_TEST_YOSYS_EXECUTABLE

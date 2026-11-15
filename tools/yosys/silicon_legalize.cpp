@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <limits>
 #include <string>
+#include <vector>
 
 USING_YOSYS_NAMESPACE
 PRIVATE_NAMESPACE_BEGIN
@@ -122,10 +123,83 @@ void runCompare(RTLIL::Design* design)
     }
 }
 
+// Unlike logical shifts, dynamic selections fill out-of-range bits with X.
+// Keep the muxes word-wide and collapse all excessive shift bits into one test.
+RTLIL::SigSpec selectionShift(RTLIL::Module* module, RTLIL::SigSpec value,
+                              const RTLIL::SigSpec& amount, bool left,
+                              RTLIL::Cell*& finalMux)
+{
+  const int dataWidth = GetSize(value);
+  int       bit       = 0;
+  for (int distance = 1; bit < GetSize(amount) && distance < dataWidth;
+       ++bit, distance *= 2) {
+    RTLIL::SigSpec shifted;
+    if (left) {
+      shifted = RTLIL::SigSpec(RTLIL::State::Sx, distance);
+      shifted.append(value.extract(0, dataWidth - distance));
+    } else {
+      shifted = value.extract(distance, dataWidth - distance);
+      shifted.append(RTLIL::SigSpec(RTLIL::State::Sx, distance));
+    }
+    RTLIL::SigSpec next(module->addWire(NEW_ID, dataWidth));
+    finalMux = module->addMux(NEW_ID, value, shifted, amount[bit], next);
+    value = next;
+  }
+  if (bit < GetSize(amount)) {
+    RTLIL::SigSpec overflow(module->addWire(NEW_ID));
+    module->addReduceOr(NEW_ID, amount.extract(bit, GetSize(amount) - bit), overflow);
+    RTLIL::SigSpec next(module->addWire(NEW_ID, dataWidth));
+    finalMux = module->addMux(NEW_ID, value, RTLIL::SigSpec(RTLIL::State::Sx, dataWidth),
+                              overflow, next);
+    value = next;
+  }
+  return value;
+}
+
+void lowerSelection(RTLIL::Module* module, RTLIL::Cell* cell)
+{
+  const int aWidth = width(module, cell, ID::A_WIDTH);
+  const int bWidth = width(module, cell, ID::B_WIDTH);
+  const int yWidth = width(module, cell, ID::Y_WIDTH);
+  (void)flag(module, cell, ID::A_SIGNED);
+  const bool signedOffset = flag(module, cell, ID::B_SIGNED);
+  auto       a            = port(module, cell, ID::A, aWidth);
+  const auto b            = port(module, cell, ID::B, bWidth);
+  const auto y            = port(module, cell, ID::Y, yWidth);
+  // Pad before shifting so negative offsets can move input bits into a wider Y.
+  if (yWidth > aWidth)
+    a.append(RTLIL::SigSpec(RTLIL::State::Sx, yWidth - aWidth));
+  RTLIL::Cell* finalMux = nullptr;
+  auto         result   = selectionShift(module, a, b, false, finalMux);
+  if (signedOffset) {
+    RTLIL::SigSpec magnitude(module->addWire(NEW_ID, bWidth));
+    module->addNeg(NEW_ID, b, magnitude);
+    const auto     negative = selectionShift(module, a, magnitude, true, finalMux);
+    RTLIL::SigSpec selected(module->addWire(NEW_ID, GetSize(a)));
+    finalMux = module->addMux(NEW_ID, result, negative, b[bWidth - 1], selected);
+    result = selected;
+  }
+  // Retain the final computation and its dependency cone, without protecting
+  // every intermediate or spreading unrelated source attributes.
+  if (cell->get_bool_attribute(ID::keep)) {
+    log_assert(finalMux != nullptr);
+    finalMux->attributes[ID::keep] = cell->attributes.at(ID::keep);
+  }
+  module->connect(y, result.extract(0, yWidth));
+  module->remove(cell);
+}
+
 void runShift(RTLIL::Design* design)
 {
-  for (auto* module : design->selected_modules())
-    for (auto* cell : module->selected_cells()) {
+  for (auto* module : design->selected_modules()) {
+    // Selection lowering adds cells, so iterate a snapshot of the selection.
+    const auto                      selected = module->selected_cells();
+    const std::vector<RTLIL::Cell*> cells(selected.begin(), selected.end());
+    for (auto* cell : cells) {
+      if (cell->type == ID($shiftx)) {
+        lowerSelection(module, cell);
+        continue;
+      }
       int direction = cell->type == ID($shl) ? 0 :
                       (cell->type == ID($shr) || cell->type == ID($sshr)) ? 1 : -1;
       if (direction < 0) continue;
@@ -147,6 +221,7 @@ void runShift(RTLIL::Design* design)
       cell->setParam(id("ARITHMETIC"), arithmeticCell && signedInput ? 1 : 0);
       cell->type = id("SILICON_SHIFT");
     }
+  }
 }
 
 bool supported(RTLIL::IdString type)
@@ -172,10 +247,6 @@ void runValidate(RTLIL::Design* design)
 {
   for (auto* module : design->selected_modules())
     for (auto* cell : module->selected_cells()) {
-      if (cell->type == ID($add)
-          && (flag(module, cell, ID::A_SIGNED) || flag(module, cell, ID::B_SIGNED)))
-        log_error("SILICON: unsupported signed $add in module %s cell %s.\n",
-                  log_id(module), log_id(cell));
       if (supported(cell->type) || design->module(cell->type)) continue;
       log_error("SILICON: unsupported cell type %s in module %s cell %s.\n",
                 log_id(cell->type), log_id(module), log_id(cell));

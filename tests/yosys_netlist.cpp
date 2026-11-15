@@ -200,6 +200,35 @@ TEST(YosysTest, ImportsSubWithYosysWidthAndSignednessSemantics)
   EXPECT_EQ(evaluateBinaryCircuit(addCircuit, 2, 5), valueFor(4, 7));
 }
 
+TEST(YosysTest, ImportsAdditionWithMixedWidthsAndSignedness)
+{
+  for (bool aSigned : {false, true}) {
+    for (bool bSigned : {false, true}) {
+      for (int yWidth : {2, 5, 7}) {
+        SCOPED_TRACE(
+            std::format("aSigned={} bSigned={} yWidth={}", aSigned, bSigned, yWidth));
+        auto design = subtractionDesign(3, 5, yWidth, aSigned, bSigned);
+        onlyModule(design)["cells"].begin().value()["type"] = "$add";
+        const auto circuit =
+            std::make_shared<Circuit>(SILICON::yosys::deserialize(design.dump()));
+        EXPECT_EQ(componentTypes(*circuit).count("AdderNBits"), 1);
+        for (unsigned a = 0; a < 8; ++a) {
+          for (unsigned b : {0u, 1u, 15u, 16u, 31u}) {
+            const int lhs = aSigned && bSigned && a >= 4 ? static_cast<int>(a) - 8 : a;
+            const int rhs = aSigned && bSigned && b >= 16 ? static_cast<int>(b) - 32 : b;
+            EXPECT_EQ(evaluateBinaryCircuit(circuit, a, b),
+                      valueFor(yWidth, (lhs + rhs) & ((1u << yWidth) - 1)));
+          }
+        }
+        const auto restored = std::make_shared<Circuit>(
+            SILICON::yosys::deserialize(SILICON::yosys::serialize(*circuit, "top")));
+        EXPECT_EQ(evaluateBinaryCircuit(restored, 7, 31),
+                  evaluateBinaryCircuit(circuit, 7, 31));
+      }
+    }
+  }
+}
+
 TEST(YosysTest, ImportsComparisonCellsWithYosysWidthAndSignednessSemantics)
 {
   // legalizeExpressions is a pass-through without the plugin, and the importer

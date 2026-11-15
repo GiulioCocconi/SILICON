@@ -1048,18 +1048,17 @@ namespace {
     void importAdd(const Cell& cell)
     {
       cell.requireConnections({"A", "B", "Y"});
-      if (cell.flag("A_SIGNED") || cell.flag("B_SIGNED"))
-        fail(cell.where(), "signed $add cells are not supported");
-      const auto aWidth = cell.width("A_WIDTH");
-      const auto bWidth = cell.width("B_WIDTH");
-      const auto yWidth = cell.width("Y_WIDTH");
-      const Bus  a      = cell.consumer("A", aWidth);
-      const Bus  b      = cell.consumer("B", bWidth);
-      const Bus  y      = cell.driver("Y", yWidth);
+      const bool signedArithmetic = cell.flag("A_SIGNED") && cell.flag("B_SIGNED");
+      const auto aWidth           = cell.width("A_WIDTH");
+      const auto bWidth           = cell.width("B_WIDTH");
+      const auto yWidth           = cell.width("Y_WIDTH");
+      const Bus  a                = cell.consumer("A", aWidth);
+      const Bus  b                = cell.consumer("B", bWidth);
+      const Bus  y                = cell.driver("Y", yWidth);
 
       const auto arithmeticWidth = std::max({aWidth, bWidth, yWidth});
-      const Bus  extendedA       = resizeArithmeticOperand(a, arithmeticWidth, false);
-      const Bus  extendedB       = resizeArithmeticOperand(b, arithmeticWidth, false);
+      const Bus extendedA = resizeArithmeticOperand(a, arithmeticWidth, signedArithmetic);
+      const Bus extendedB = resizeArithmeticOperand(b, arithmeticWidth, signedArithmetic);
 
       auto sumWires = static_cast<std::vector<Wire_ptr>>(y);
       while (sumWires.size() < arithmeticWidth)
