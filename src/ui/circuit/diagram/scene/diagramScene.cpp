@@ -1746,6 +1746,17 @@ void DiagramScene::placeComponent(std::string_view typeName, const bool showSear
 
   if (auto* logicComponent = category_cast<GraphicalLogicComponent>(
           componentToBeDrawn, ItemCategory::LogicComponent)) {
+    if (!initialProperties.contains("portOrientation")) {
+      switch (logicComponent->getComponent()->metadata().portRole) {
+        case PortRole::Input:
+          logicComponent->applyProperty("portOrientation", lastInputOrientation);
+          break;
+        case PortRole::Output:
+          logicComponent->applyProperty("portOrientation", lastOutputOrientation);
+          break;
+        case PortRole::None: break;
+      }
+    }
     for (const auto& [key, value] : initialProperties)
       logicComponent->applyProperty(key, value);
     if (!initialProperties.contains("name"))
@@ -1756,6 +1767,19 @@ void DiagramScene::placeComponent(std::string_view typeName, const bool showSear
   setInteractionMode(InteractionMode::COMPONENT_PLACING_MODE);
   setComponentShadow();
   hideCSB();
+}
+
+void DiagramScene::rememberIoPlacementOrientation(const Component& component)
+{
+  const auto orientation = component.getPropertyValue<std::string>("portOrientation");
+  if (!orientation)
+    return;
+
+  switch (component.metadata().portRole) {
+    case PortRole::Input: lastInputOrientation = *orientation; break;
+    case PortRole::Output: lastOutputOrientation = *orientation; break;
+    case PortRole::None: break;
+  }
 }
 
 void DiagramScene::registerGraphicalItem(GraphicalItem* item)
