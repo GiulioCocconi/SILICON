@@ -32,6 +32,7 @@
 #include <ui/circuit/components/graphicalMemory.hpp>
 #include <ui/circuit/components/graphicalMultiplexer.hpp>
 #include <ui/circuit/components/graphicalRegister.hpp>
+#include <ui/circuit/components/graphicalText.hpp>
 #include <ui/circuit/components/graphicalUtils.hpp>
 #include <ui/circuit/components/subcircuit/graphicalSubcircuit.hpp>
 
@@ -49,6 +50,14 @@ void registerAllGUIComponents(GUIComponentFactory& factory)
     factory.registerType(std::move(name), std::move(factoryFunc),
                          {.coreType = std::move(coreType)});
   };
+
+  factory.registerType(
+      std::string(GraphicalText::COMPONENT_TYPE),
+      [](QGraphicsItem* p) { return std::make_unique<GraphicalText>(p); },
+      {.coreType          = {},
+       .graphicalMetadata = ComponentMetadata{.displayName = "Text",
+                                              .description = "Multiline text annotation",
+                                              .category    = ComponentCategory::Utils}});
 
   reg(std::string(AndGate::Type),
       [](QGraphicsItem* p) { return std::make_unique<GraphicalAnd>(p); });

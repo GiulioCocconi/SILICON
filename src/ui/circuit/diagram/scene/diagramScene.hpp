@@ -217,10 +217,10 @@ public:
   void addComponent(GraphicalComponent* component, QPointF pos);
 
   /**
-   * @brief Begins placing a component and applies initial core properties first.
+   * @brief Begins placing a component and applies its initial properties first.
    * @param typeName The component type name
    * @param showSearchBox Whether entering placement mode should show quick search
-   * @param initialProperties Properties to apply to the associated logic component
+   * @param initialProperties Properties to apply to the graphical component
    */
   void placeComponent(std::string_view typeName, bool showSearchBox = true,
                       const PropertyMap& initialProperties = {});

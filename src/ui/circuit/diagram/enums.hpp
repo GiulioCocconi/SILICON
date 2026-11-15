@@ -112,6 +112,7 @@ enum SiliconTypes {
   SHIFTER,
   MULTIPLIER,
   DIVIDER,
+  TEXT,
 
   SILICON_END,
 };

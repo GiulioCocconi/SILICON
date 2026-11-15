@@ -349,7 +349,7 @@ std::unique_ptr<InteractiveWireRouter> DiagramScene::makeInteractiveRouter() con
   for (const auto* item : items()) {
     const auto* component =
         category_cast<GraphicalComponent>(item, ItemCategory::Component);
-    if (!component)
+    if (!component || !component->participatesInCollisions())
       continue;
 
     RoutingComponent snapshot{
@@ -519,7 +519,9 @@ void DiagramScene::beginComponentDrag()
 {
   cancelComponentDrag();
   for (auto* item : selectedItems()) {
-    if (auto* component = category_cast<GraphicalComponent>(item, ItemCategory::Component)) {
+    if (auto* component =
+            category_cast<GraphicalComponent>(item, ItemCategory::Component);
+        component && component->participatesInCollisions()) {
       componentDrag.initialPositions.emplace_back(component, component->pos());
       componentDrag.validPositions.emplace_back(component, component->pos());
     }
@@ -650,7 +652,7 @@ void DiagramScene::beginMixedDrag()
   for (const auto& entry : mixedDrag) {
     auto* component = category_cast<GraphicalComponent>(entry.item,
                                                         ItemCategory::Component);
-    if (!component)
+    if (!component || !component->participatesInCollisions())
       continue;
     std::vector<QPointF> ports;
     for (const auto* port : component->getPorts())
@@ -1157,7 +1159,7 @@ void DiagramScene::updateWirePreview(const QPointF scenePoint)
   for (auto* item : items()) {
     const auto* component =
         category_cast<GraphicalComponent>(item, ItemCategory::Component);
-    if (!component)
+    if (!component || !component->participatesInCollisions())
       continue;
     obstacles.push_back(component->mapToScene(component->collisionRectForWires())
                             .boundingRect().adjusted(-MARGIN, -MARGIN, MARGIN, MARGIN));
@@ -1757,11 +1759,15 @@ void DiagramScene::placeComponent(std::string_view typeName, const bool showSear
         case PortRole::None: break;
       }
     }
-    for (const auto& [key, value] : initialProperties)
-      logicComponent->applyProperty(key, value);
-    if (!initialProperties.contains("name"))
-      assignDefaultComponentName(*this, *logicComponent);
   }
+
+  for (const auto& [key, value] : initialProperties)
+    componentToBeDrawn->applyProperty(key, value);
+
+  if (auto* logicComponent = category_cast<GraphicalLogicComponent>(
+          componentToBeDrawn, ItemCategory::LogicComponent);
+      logicComponent && !initialProperties.contains("name"))
+    assignDefaultComponentName(*this, *logicComponent);
 
   // TODO: IMPLEMENT COMPONENT SHADOW TO BE SHOWN WHILE DRAGGING
   setInteractionMode(InteractionMode::COMPONENT_PLACING_MODE);

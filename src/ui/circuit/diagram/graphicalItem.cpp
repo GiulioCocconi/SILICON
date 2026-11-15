@@ -169,7 +169,10 @@ QVariant GraphicalItem::itemChange(GraphicsItemChange change, const QVariant& va
 
     setCollidingStatus(NOT_COLLIDING);
 
-    if (!ds->itemCollisionChecksEnabled()) {
+    const auto* component =
+        category_cast<GraphicalComponent>(this, ItemCategory::Component);
+    if (!ds->itemCollisionChecksEnabled()
+        || (component && !component->participatesInCollisions())) {
       onPositionChanged(offset);
       return proposedPos;
     }
@@ -208,6 +211,8 @@ QVariant GraphicalItem::itemChange(GraphicsItemChange change, const QVariant& va
     for (QGraphicsItem* collidingItem : collidingItems) {
       auto* otherComponent = category_cast<GraphicalComponent>(
           collidingItem, ItemCategory::Component);
+      if (otherComponent && !otherComponent->participatesInCollisions())
+        continue;
       if (movingComponent && otherComponent) {
         // Scene queries include visual bounds. Reject only physical overlap.
         const auto* otherItem = static_cast<GraphicalItem*>(otherComponent);

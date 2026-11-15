@@ -96,6 +96,19 @@ GraphicalLogicComponent::inputPortSize(const size_t             portIndex,
   return static_cast<unsigned int>(componentInputs[portIndex].size());
 }
 
+const PropertyMap& GraphicalLogicComponent::getProperties() const
+{
+  return associatedComponent ? associatedComponent->getProperties()
+                             : GraphicalComponent::getProperties();
+}
+
+std::optional<std::reference_wrapper<const StringPropertyOptions>>
+GraphicalLogicComponent::getStringPropertyOptions(std::string_view key) const
+{
+  return associatedComponent ? associatedComponent->getStringPropertyOptions(key)
+                             : std::nullopt;
+}
+
 void GraphicalLogicComponent::applyProperty(std::string_view     key,
                                             const PropertyValue& value)
 {

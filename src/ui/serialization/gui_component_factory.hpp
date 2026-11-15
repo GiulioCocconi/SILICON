@@ -26,6 +26,7 @@
 
 #include <functional>
 #include <map>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -63,6 +64,7 @@ public:
 
   struct EntryMetadata {
     std::string coreType;
+    std::optional<SILICON::core::ComponentMetadata> graphicalMetadata = std::nullopt;
   };
 
   GUIComponentFactory();

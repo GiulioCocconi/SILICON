@@ -21,6 +21,7 @@
 #include <ranges>
 #include <span>
 
+#include <core/component.hpp>
 #include <nlohmann/json.hpp>
 
 #include <ui/circuit/diagram/scene/diagramScene.hpp>
@@ -151,6 +152,17 @@ class GraphicalComponent : public GraphicalItem {
   Q_OBJECT
   friend class Port;
 public:
+  /** @brief Properties exposed by graphical and simulation components alike. */
+  [[nodiscard]] virtual const PropertyMap&   getProperties() const;
+  [[nodiscard]] std::optional<PropertyValue> getProperty(std::string_view key) const;
+  [[nodiscard]] virtual std::optional<std::reference_wrapper<const StringPropertyOptions>>
+                             getStringPropertyOptions(std::string_view key) const;
+  [[nodiscard]] virtual bool isMultilineProperty(std::string_view key) const;
+  virtual void applyProperty(std::string_view key, const PropertyValue& value);
+
+  /** @brief Annotations remain selectable but do not obstruct placement or routing. */
+  [[nodiscard]] virtual bool participatesInCollisions() const { return true; }
+
   /** @brief Prepares a geometry edit and checks its final bounds on the event loop. */
   void prepareSceneBoundsChange();
 
