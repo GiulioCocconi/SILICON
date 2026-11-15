@@ -155,6 +155,39 @@ GraphicalComponent::GraphicalComponent(QGraphicsItem* shape, QGraphicsItem* pare
 {
 }
 
+const PropertyMap& GraphicalComponent::getProperties() const
+{
+  static const PropertyMap empty;
+  return empty;
+}
+
+std::optional<PropertyValue> GraphicalComponent::getProperty(std::string_view key) const
+{
+  const auto& properties = getProperties();
+  const auto  found      = properties.find(key);
+  return found == properties.end() ? std::nullopt
+                                   : std::optional<PropertyValue>(found->second);
+}
+
+std::optional<std::reference_wrapper<const StringPropertyOptions>>
+GraphicalComponent::getStringPropertyOptions(std::string_view key) const
+{
+  Q_UNUSED(key);
+  return std::nullopt;
+}
+
+bool GraphicalComponent::isMultilineProperty(std::string_view key) const
+{
+  Q_UNUSED(key);
+  return false;
+}
+
+void GraphicalComponent::applyProperty(std::string_view key, const PropertyValue& value)
+{
+  Q_UNUSED(value);
+  throw std::invalid_argument("Unknown graphical property: " + std::string(key));
+}
+
 GraphicalComponent::GraphicalComponent(ItemCategory category, QGraphicsItem* shape,
                                        QGraphicsItem* parent, bool scanShape)
   : GraphicalItem(category | ItemCategory::Component, parent)

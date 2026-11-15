@@ -45,8 +45,9 @@ void GUIComponentFactory::registerType(std::string type, Factory factory,
 {
   if (!factory)
     throw std::invalid_argument("GUI component registration requires a factory");
-  if (metadata.coreType.empty())
-    throw std::invalid_argument("GUI component registration requires a core type");
+  if (metadata.coreType.empty() && !metadata.graphicalMetadata)
+    throw std::invalid_argument(
+        "GUI component registration requires core or graphical metadata");
 
   auto [it, inserted] =
       factories.emplace(std::move(type), Entry{std::move(factory), std::move(metadata)});
@@ -75,7 +76,7 @@ GUIComponentFactory::createForCoreType(std::string_view coreType,
   std::string_view matchedGuiType;
 
   for (const auto& [guiType, entry] : factories) {
-    if (entry.metadata.coreType != coreType)
+    if (entry.metadata.coreType.empty() || entry.metadata.coreType != coreType)
       continue;
 
     if (match) {

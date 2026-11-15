@@ -75,12 +75,6 @@ namespace {
                                              ItemCategory::Component);
   }
 
-  GraphicalLogicComponent* findLogicComponent(DiagramScene* scene, const uint64_t uiId)
-  {
-    return category_cast<GraphicalLogicComponent>(findItem(scene, uiId),
-                                                  ItemCategory::LogicComponent);
-  }
-
 }  // namespace
 
 WireTopologyCommand::WireTopologyCommand(
@@ -302,9 +296,9 @@ ModifyPropertyCommand::ModifyPropertyCommand(std::string key, QUndoCommand* pare
   setText("Modify Property");
 }
 
-void ModifyPropertyCommand::addPropertyChange(GraphicalLogicComponent* component,
-                                              const PropertyValue&     oldValue,
-                                              const PropertyValue&     newValue)
+void ModifyPropertyCommand::addPropertyChange(GraphicalComponent*  component,
+                                              const PropertyValue& oldValue,
+                                              const PropertyValue& newValue)
 {
   if (!component || oldValue == newValue)
     return;
@@ -322,7 +316,7 @@ void ModifyPropertyCommand::apply(const bool useNewValue)
 
   bool applied = false;
   for (const auto& change : changes) {
-    if (auto* component = findLogicComponent(change.scene, change.uiId)) {
+    if (auto* component = findComponent(change.scene, change.uiId)) {
       component->applyProperty(key, useNewValue ? change.newValue : change.oldValue);
       applied = true;
     }

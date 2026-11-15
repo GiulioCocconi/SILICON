@@ -125,7 +125,10 @@ public:
    * @param key The property name
    * @param value The new property value
    */
-  virtual void applyProperty(std::string_view key, const PropertyValue& value);
+  void applyProperty(std::string_view key, const PropertyValue& value) override;
+  [[nodiscard]] const PropertyMap& getProperties() const override;
+  [[nodiscard]] std::optional<std::reference_wrapper<const StringPropertyOptions>>
+  getStringPropertyOptions(std::string_view key) const override;
 
   /**
    * @brief Sets the associated logical component.

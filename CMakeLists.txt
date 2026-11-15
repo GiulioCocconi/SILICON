@@ -153,6 +153,7 @@ set(UI_SOURCE_FILES
         ${src_dir}/ui/circuit/components/graphicalArithmetic.cpp
         ${src_dir}/ui/circuit/components/graphicalMultiplexer.cpp
         ${src_dir}/ui/circuit/components/graphicalUtils.cpp
+        ${src_dir}/ui/circuit/components/graphicalText.cpp
         ${src_dir}/ui/circuit/editor/componentCatalogOverlay.cpp
         ${src_dir}/ui/documents/code/codeFilePresentation.cpp
         ${src_dir}/ui/documents/code/codeEditor.cpp

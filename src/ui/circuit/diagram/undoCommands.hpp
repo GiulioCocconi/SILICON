@@ -189,8 +189,8 @@ namespace SILICON::ui {
   public:
     explicit ModifyPropertyCommand(std::string key, QUndoCommand* parent = nullptr);
 
-    void               addPropertyChange(GraphicalLogicComponent* component,
-                                         const PropertyValue& oldValue, const PropertyValue& newValue);
+    void addPropertyChange(GraphicalComponent* component, const PropertyValue& oldValue,
+                           const PropertyValue& newValue);
     [[nodiscard]] bool isEmpty() const { return changes.empty(); }
 
     void undo() override;

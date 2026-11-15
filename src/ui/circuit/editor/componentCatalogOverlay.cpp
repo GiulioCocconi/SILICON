@@ -67,11 +67,8 @@ namespace SILICON::ui {
       if (auto* subcircuit = dynamic_cast<GraphicalSubcircuitComponent*>(component.get()))
         subcircuit->setProjectContext(&documents, resolver);
       if (!rowData.initialProperties.empty()) {
-        if (auto* logicComponent =
-                dynamic_cast<GraphicalLogicComponent*>(component.get())) {
-          for (const auto& [key, value] : rowData.initialProperties)
-            logicComponent->applyProperty(key, value);
-        }
+        for (const auto& [key, value] : rowData.initialProperties)
+          component->applyProperty(key, value);
       }
       const QRectF bounds = component->sceneBoundingRect();
       const QSize  size(
@@ -107,9 +104,12 @@ namespace SILICON::ui {
       std::vector<ComponentCatalogOverlay::CatalogRow> catalogRows;
       for (const std::string& guiType : guiFactory.availableTypes()) {
         const auto& entryMetadata = guiFactory.metadata(guiType);
-        catalogRows.push_back({.guiType  = guiType,
-                               .metadata = coreFactory.metadata(entryMetadata.coreType),
-                               .initialProperties = {}});
+        catalogRows.push_back(
+            {.guiType           = guiType,
+             .metadata          = entryMetadata.graphicalMetadata
+                                      ? *entryMetadata.graphicalMetadata
+                                      : coreFactory.metadata(entryMetadata.coreType),
+             .initialProperties = {}});
       }
 
       for (const auto& document : documents.getDocuments()) {

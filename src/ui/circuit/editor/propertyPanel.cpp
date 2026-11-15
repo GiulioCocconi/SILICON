@@ -106,8 +106,16 @@ void PropertyPanel::refresh()
                                 ? ProjectTree::itemDocumentCategory(selectedProjectItem)
                                 : std::nullopt;
 
-  const bool hasProperties = itemKind != ProjectTreeItemKind::Document
-                             && itemKind != ProjectTreeItemKind::Architecture;
+  std::vector<GraphicalComponent*> selectedNodes;
+  for (QGraphicsItem* item : diagramScene->selectedItems()) {
+    if (auto* component =
+            category_cast<GraphicalComponent>(item, ItemCategory::Component))
+      selectedNodes.push_back(component);
+  }
+
+  const bool hasProperties = !selectedNodes.empty()
+                             || (itemKind != ProjectTreeItemKind::Document
+                                 && itemKind != ProjectTreeItemKind::Architecture);
   propertyDock->setVisible(hasProperties);
   if (!hasProperties)
     return;
@@ -121,16 +129,6 @@ void PropertyPanel::refresh()
   auto* layout    = new QFormLayout(container);
   layout->setRowWrapPolicy(QFormLayout::WrapLongRows);
   propertyDock->setWidget(container);
-
-  // 2. Gather selected logic components cleanly
-  std::vector<GraphicalLogicComponent*> selectedNodes;
-  for (QGraphicsItem* item : diagramScene->selectedItems()) {
-    if (auto* logicComp =
-            category_cast<GraphicalLogicComponent>(item, ItemCategory::LogicComponent);
-        logicComp && logicComp->getComponent()) {
-      selectedNodes.push_back(logicComp);
-    }
-  }
 
   if (selectedNodes.empty()) {
     if (!selectedProjectItem) {
@@ -222,10 +220,10 @@ void PropertyPanel::refresh()
   }
 
   // 3. Intersect properties to find common configurable keys
-  auto commonProps = selectedNodes.front()->getComponent()->getProperties();
+  auto commonProps = selectedNodes.front()->getProperties();
 
-  for (const GraphicalLogicComponent* node : selectedNodes | std::views::drop(1)) {
-    const auto& props = node->getComponent()->getProperties();
+  for (const GraphicalComponent* node : selectedNodes | std::views::drop(1)) {
+    const auto& props = node->getProperties();
 
     std::erase_if(commonProps, [&](const auto& pair) {
       const auto& [key, val] = pair;
@@ -247,8 +245,8 @@ void PropertyPanel::refresh()
     try {
       auto command = std::make_unique<ModifyPropertyCommand>(key);
 
-      for (GraphicalLogicComponent* node : selectedNodes) {
-        const auto oldValue = node->getComponent()->getProperty(key);
+      for (GraphicalComponent* node : selectedNodes) {
+        const auto oldValue = node->getProperty(key);
         if (oldValue)
           command->addPropertyChange(node, *oldValue, newVal);
       }
@@ -260,8 +258,12 @@ void PropertyPanel::refresh()
       undoStack->push(command.get());
       static_cast<void>(command.release());
       if (key == "portOrientation") {
-        for (const auto* node : selectedNodes)
-          diagramScene->rememberIoPlacementOrientation(*node->getComponent());
+        for (const auto* node : selectedNodes) {
+          if (const auto* logic = category_cast<GraphicalLogicComponent>(
+                  node, ItemCategory::LogicComponent);
+              logic && logic->getComponent())
+            diagramScene->rememberIoPlacementOrientation(*logic->getComponent());
+        }
       }
     } catch (const std::exception& e) {
       SILICON::ui::inputDialog::warning(propertyDock, tr("Invalid Property"), e.what());
@@ -273,8 +275,8 @@ void PropertyPanel::refresh()
   for (const auto& [key, initialValue] : commonProps) {
     // Check if the value differs across the selection
     const bool isMixed = std::ranges::any_of(
-        selectedNodes | std::views::drop(1), [&](const GraphicalLogicComponent* node) {
-          return node->getComponent()->getProperty(key) != initialValue;
+        selectedNodes | std::views::drop(1), [&](const GraphicalComponent* node) {
+          return node->getProperty(key) != initialValue;
         });
 
     auto createPropertyWidget = [&]<typename T>(const T& arg) {
@@ -318,8 +320,7 @@ void PropertyPanel::refresh()
 
         layout->addRow(wrappingLabel(QString::fromStdString(key), container), spinBox);
       } else if constexpr (std::is_same_v<T, std::string>) {
-        const auto stringOptions =
-            selectedNodes.front()->getComponent()->getStringPropertyOptions(key);
+        const auto stringOptions = selectedNodes.front()->getStringPropertyOptions(key);
         if (stringOptions) {
           auto* comboBox = new QComboBox(container);
 
@@ -342,6 +343,26 @@ void PropertyPanel::refresh()
                   });
 
           layout->addRow(wrappingLabel(QString::fromStdString(key), container), comboBox);
+          return;
+        }
+
+        if (std::ranges::all_of(selectedNodes, [&key](const auto* node) {
+              return node->isMultilineProperty(key);
+            })) {
+          auto* textEdit = new DescriptionEdit(container);
+          textEdit->setMinimumHeight(90);
+          if (isMixed)
+            textEdit->setPlaceholderText(tr("Mixed values..."));
+          else
+            textEdit->setPlainText(QString::fromStdString(arg));
+          textEdit->document()->setModified(false);
+          textEdit->commit = callbacks.guard([textEdit, applyProperty, key] {
+            if (!textEdit->document()->isModified())
+              return;
+            textEdit->document()->setModified(false);
+            applyProperty(key, textEdit->toPlainText().toStdString());
+          });
+          layout->addRow(wrappingLabel(QString::fromStdString(key), container), textEdit);
           return;
         }
 
