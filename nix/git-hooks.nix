@@ -21,6 +21,8 @@ git-hooks.lib.${system}.run {
       name = "Check staged C++ formatting";
       entry = "${pkgs.python3}/bin/python ${../ci/git-clang-format} --diff --staged --extensions cpp,hpp --binary ${pkgs.clang-tools}/bin/clang-format --";
       files = "\\.(cpp|hpp)$";
+      # git-clang-format batches share a temporary Git index.
+      require_serial = true;
       stages = [ "pre-commit" ];
     };
 
