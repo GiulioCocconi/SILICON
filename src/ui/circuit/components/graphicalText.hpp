@@ -31,6 +31,13 @@ public:
   }
   [[nodiscard]] bool participatesInCollisions() const override { return false; }
 
+  [[nodiscard]] std::span<const ResizeHandle> resizeHandles() const override
+  {
+    return AllResizeHandles;
+  }
+  [[nodiscard]] PropertyMap resizedProperties(QSizeF size, ResizeHandle handle,
+                                              const PropertyMap& initial) override;
+
   void applyProperty(std::string_view key, const PropertyValue& value) override;
   [[nodiscard]] nlohmann::ordered_json serialize() const override;
   void loadSerializedState(const nlohmann::json& json) override;
@@ -40,7 +47,7 @@ private:
   PropertyMap properties{{"text", std::string("Text")},
                          {"size", 12},
                          {"font", std::string("Quicksand")},
-                         {"wrapLength", 0}};
+                         {"wrapWidth", 0}};
 };
 
 }  // namespace SILICON::ui

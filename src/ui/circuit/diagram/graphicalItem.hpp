@@ -107,6 +107,10 @@ public:
   void setUiId(uint64_t newUiId) { uiId = newUiId; }
   void setOwningScene(DiagramScene* scene) { owningScene = scene; }
 
+  /** Restore a geometry edit exactly, without movement snapping or collision rejection.
+   */
+  void setGeometryPosition(QPointF position);
+
   [[nodiscard]] static uint64_t generateUiId();
 
   virtual void updateTopology() {}
@@ -161,6 +165,7 @@ private:
 
   /** @brief Scene used for `uiId` registration bookkeeping during destruction */
   DiagramScene* owningScene = nullptr;
+  bool          settingGeometryPosition = false;
 };
 
 }  // namespace SILICON::ui

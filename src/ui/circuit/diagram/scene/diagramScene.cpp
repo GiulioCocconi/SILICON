@@ -105,6 +105,16 @@ DiagramScene::DiagramScene(QObject* parent) : QGraphicsScene(parent)
 {
   initializeSceneBounds(INITIAL_SCENE_HALF_EXTENT);
 
+  connect(this, &QGraphicsScene::selectionChanged, this, [this] {
+    if (isResizingComponent()) {
+      auto* item = findGraphicalItemByUiId(componentResize.uiId);
+      if (!item || !item->isSelected() || selectedItems().size() != 1)
+        cancelComponentResize();
+    }
+    // Existing selections also need repainting when another item hides their handles.
+    update();
+  });
+
   connect(&ThemeEngine::instance(), &ThemeEngine::themeChanged, this, [this] {
     // QGraphicsItem and background caches do not follow widget palette propagation.
     invalidate(sceneRect(), QGraphicsScene::AllLayers);
@@ -589,7 +599,7 @@ void DiagramScene::updateComponentDrag()
     const bool collisionChecks = itemCollisionChecksEnabled();
     setItemCollisionChecksEnabled(false);
     for (const auto& [component, position] : componentDrag.validPositions)
-      component->setPos(position);
+      component->setGeometryPosition(position);
     setItemCollisionChecksEnabled(collisionChecks);
     return;
   }
@@ -623,7 +633,7 @@ void DiagramScene::cancelComponentDrag()
   const bool collisionChecks = itemCollisionChecksEnabled();
   setItemCollisionChecksEnabled(false);
   for (const auto& [component, position] : componentDrag.initialPositions) {
-    component->setPos(position);
+    component->setGeometryPosition(position);
     component->setInitialPosition();
   }
   setItemCollisionChecksEnabled(collisionChecks);
@@ -689,7 +699,7 @@ void DiagramScene::updateMixedDrag()
     const bool collisionChecks = itemCollisionChecksEnabled();
     setItemCollisionChecksEnabled(false);
     for (const auto& entry : mixedDrag)
-      entry.item->setPos(entry.validPosition);
+      entry.item->setGeometryPosition(entry.validPosition);
     setItemCollisionChecksEnabled(collisionChecks);
     return;
   }
@@ -716,7 +726,7 @@ WireEndpointEdit DiagramScene::finishMixedDrag()
       const bool collisionChecks = itemCollisionChecksEnabled();
       setItemCollisionChecksEnabled(false);
       for (const auto& entry : mixedDrag)
-        entry.item->setPos(entry.originalPosition);
+        entry.item->setGeometryPosition(entry.originalPosition);
       setItemCollisionChecksEnabled(collisionChecks);
     } else {
       for (const auto& [id, before] : mixedDragTopologyBefore) {
@@ -755,7 +765,7 @@ void DiagramScene::cancelMixedDrag()
   const bool collisionChecks = itemCollisionChecksEnabled();
   setItemCollisionChecksEnabled(false);
   for (const auto& entry : mixedDrag)
-    entry.item->setPos(entry.originalPosition);
+    entry.item->setGeometryPosition(entry.originalPosition);
   setItemCollisionChecksEnabled(collisionChecks);
   mixedDrag.clear();
   mixedDragAttachedWires.clear();
@@ -933,13 +943,13 @@ void DiagramScene::applyItemMoves(std::span<const ItemPositionChange> moves,
       previousPositions.emplace_back(item, item->pos());
       if (category_cast<GraphicalWireSegment>(item, ItemCategory::WireSegment))
         wireTranslations.emplace_back(move.uiId, target - item->pos());
-      item->setPos(target);
+      item->setGeometryPosition(target);
       item->setInitialPosition();
     }
   }
   if (!wireManager.commitSegmentTranslations(wireTranslations)) {
     for (const auto& [item, position] : previousPositions)
-      item->setPos(position);
+      item->setGeometryPosition(position);
     setItemCollisionChecksEnabled(collisionChecks);
     throw std::invalid_argument("Cannot restore moved wire topology");
   }
@@ -1021,8 +1031,92 @@ void DiagramScene::setInteractionMode(InteractionMode mode)
   setInteractionMode(mode, false);
 }
 
+bool DiagramScene::beginComponentResize(GraphicalComponent* component,
+                                        ResizeHandle handle, QPointF scenePos)
+{
+  if (!component || component->scene() != this || isResizingComponent()
+      || !component->resizeHandlesVisible()
+      || !std::ranges::contains(component->resizeHandles(), handle))
+    return false;
+  bool       invertible = false;
+  const auto fromScene  = component->sceneTransform().inverted(&invertible);
+  if (!invertible)
+    return false;
+  cancelMixedDrag();
+  cancelWireDrag();
+  cancelComponentDrag();
+  componentResize = {
+      component->getUiId(),
+      handle,
+      component->resizeState(),
+      component->resizeBounds(),
+      fromScene,
+      fromScene.map(scenePos),
+      component->mapToParent(resizeAnchor(component->resizeBounds(), handle))};
+  return true;
+}
+
+void DiagramScene::updateComponentResize(QPointF scenePos)
+{
+  auto* component = category_cast<GraphicalComponent>(
+      findGraphicalItemByUiId(componentResize.uiId), ItemCategory::Component);
+  if (!component) {
+    componentResize = {};
+    return;
+  }
+  const auto& drag  = componentResize;
+  const auto  delta = drag.fromScene.map(scenePos) - drag.start;
+  if (delta.isNull()) {
+    component->applyResizeState(drag.before);
+    return;
+  }
+  auto size = drag.bounds.size();
+  if (resizesLeft(drag.handle))
+    size.rwidth() -= delta.x();
+  if (resizesRight(drag.handle))
+    size.rwidth() += delta.x();
+  if (resizesTop(drag.handle))
+    size.rheight() -= delta.y();
+  if (resizesBottom(drag.handle))
+    size.rheight() += delta.y();
+  size = size.expandedTo(QSizeF(1, 1));
+  auto properties =
+      component->resizedProperties(size, drag.handle, drag.before.properties);
+  component->applyResizeState({drag.before.position, std::move(properties)});
+  const auto anchor =
+      component->mapToParent(resizeAnchor(component->resizeBounds(), drag.handle));
+  component->setGeometryPosition(component->pos() + drag.anchorInParent - anchor);
+  component->setInitialPosition();
+}
+
+void DiagramScene::finishComponentResize()
+{
+  const auto drag = std::exchange(componentResize, {});
+  auto* component = category_cast<GraphicalComponent>(findGraphicalItemByUiId(drag.uiId),
+                                                      ItemCategory::Component);
+  if (!component || component->resizeState() == drag.before)
+    return;
+  if (undoStack)
+    undoStack->push(
+        new ResizeComponentCommand(component, drag.before, component->resizeState()));
+  updateSceneAfterEdit();
+  emit componentResized();
+}
+
+void DiagramScene::cancelComponentResize()
+{
+  const auto drag = std::exchange(componentResize, {});
+  if (auto* component = category_cast<GraphicalComponent>(
+          findGraphicalItemByUiId(drag.uiId), ItemCategory::Component))
+    component->applyResizeState(drag.before);
+}
+
 bool DiagramScene::cancelCurrentInteraction()
 {
+  if (isResizingComponent()) {
+    cancelComponentResize();
+    return true;
+  }
   if (!mixedDrag.empty()) {
     cancelMixedDrag();
     return true;
@@ -1051,6 +1145,7 @@ bool DiagramScene::cancelCurrentInteraction()
 
 void DiagramScene::setInteractionMode(const InteractionMode newMode, const bool force)
 {
+  cancelComponentResize();
   cancelMixedDrag();
   cancelWireDrag();
   cancelComponentDrag();
@@ -1243,6 +1338,11 @@ void DiagramScene::exitSimulationMode()
 
 void DiagramScene::mouseMoveEvent(QGraphicsSceneMouseEvent* mouseEvent)
 {
+  if (isResizingComponent()) {
+    updateComponentResize(mouseEvent->scenePos());
+    mouseEvent->accept();
+    return;
+  }
   const QPointF cursorPos = currentInteractionMode == InteractionMode::WIRE_CREATION_MODE
       ? resolveWireTarget(mouseEvent->scenePos())
       : QPointF(DiagramScene::snapToGrid(mouseEvent->scenePos()));
@@ -1278,6 +1378,22 @@ void DiagramScene::mouseMoveEvent(QGraphicsSceneMouseEvent* mouseEvent)
 
 void DiagramScene::mousePressEvent(QGraphicsSceneMouseEvent* mouseEvent)
 {
+  if (currentInteractionMode == InteractionMode::NORMAL_MODE
+      && mouseEvent->button() == Qt::LeftButton
+      && !(mouseEvent->modifiers() & (Qt::ControlModifier | Qt::ShiftModifier))) {
+    const auto selection = selectedItems();
+    if (selection.size() == 1) {
+      if (auto* component = category_cast<GraphicalComponent>(selection.front(),
+                                                              ItemCategory::Component)) {
+        if (auto handle = component->resizeHandleAt(
+                component->mapFromScene(mouseEvent->scenePos()));
+            handle && beginComponentResize(component, *handle, mouseEvent->scenePos())) {
+          mouseEvent->accept();
+          return;
+        }
+      }
+    }
+  }
   const QPointF cursorPos = currentInteractionMode == InteractionMode::WIRE_CREATION_MODE
       ? resolveWireTarget(mouseEvent->scenePos())
       : QPointF(DiagramScene::snapToGrid(mouseEvent->scenePos()));
@@ -1366,6 +1482,12 @@ void DiagramScene::mousePressEvent(QGraphicsSceneMouseEvent* mouseEvent)
 
 void DiagramScene::mouseReleaseEvent(QGraphicsSceneMouseEvent* mouseEvent)
 {
+  if (isResizingComponent() && mouseEvent->button() == Qt::LeftButton) {
+    updateComponentResize(mouseEvent->scenePos());
+    finishComponentResize();
+    mouseEvent->accept();
+    return;
+  }
   uint64_t clickedId = 0;
   if (currentInteractionMode == InteractionMode::NORMAL_MODE
       && mouseEvent->button() == Qt::LeftButton
@@ -1802,6 +1924,10 @@ void DiagramScene::unregisterGraphicalItem(GraphicalItem* item)
   if (!item)
     return;
 
+  // Direct deletion reaches here after the component's derived state is gone.
+  if (componentResize.uiId == item->getUiId())
+    componentResize = {};
+
   if (auto it = itemsByUiId.find(item->getUiId());
       it != itemsByUiId.end() && it->second == item) {
     itemsByUiId.erase(it);
@@ -1874,6 +2000,7 @@ void DiagramScene::removeItems(const std::vector<QGraphicsItem*>& sceneItems)
   if (sceneItems.empty())
     return;
 
+  cancelComponentResize();
   cancelMixedDrag();
   cancelWireDrag();
   cancelComponentDrag();
@@ -1910,6 +2037,7 @@ void DiagramScene::updateSceneAfterEdit()
 
 void DiagramScene::clear(const bool clearUndoStack, const bool clearLogs)
 {
+  cancelComponentResize();
   cancelMixedDrag();
   cancelWireDrag();
   cancelComponentDrag();
@@ -1947,6 +2075,7 @@ void DiagramScene::clear(const bool clearUndoStack, const bool clearLogs)
 
 DiagramScene::~DiagramScene()
 {
+  cancelComponentResize();
   cancelMixedDrag();
   cancelWireDrag();
   cancelComponentDrag();

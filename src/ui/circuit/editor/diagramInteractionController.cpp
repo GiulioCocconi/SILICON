@@ -97,6 +97,7 @@ void DiagramInteractionController::selectAll()
 
 void DiagramInteractionController::rotate()
 {
+  circuit.scene()->cancelComponentResize();
   std::vector<GraphicalComponent*> selectedComponents;
   for (auto* item : circuit.scene()->selectedItems()) {
     if (auto* component =

@@ -290,6 +290,42 @@ void RotateItemCommand::redo()
 
 // --- ModifyPropertyCommand ---
 
+ResizeComponentCommand::ResizeComponentCommand(GraphicalComponent*  component,
+                                               ComponentResizeState before,
+                                               ComponentResizeState after)
+  : scene(itemScene(component)),
+    documentPath(activeDocumentPath(scene)),
+    uiId(component->getUiId()),
+    before(std::move(before)),
+    after(std::move(after))
+{
+  setText("Resize Component");
+}
+
+void ResizeComponentCommand::apply(const ComponentResizeState& state)
+{
+  if (!activateDocument(scene, documentPath))
+    return;
+  if (auto* component = findComponent(scene, uiId)) {
+    scene->cancelComponentResize();
+    component->applyResizeState(state);
+    scene->updateSceneAfterEdit();
+    emit scene->componentResized();
+  }
+}
+
+void ResizeComponentCommand::undo()
+{
+  apply(before);
+}
+
+void ResizeComponentCommand::redo()
+{
+  if (std::exchange(skipInitialRedo, false))
+    return;
+  apply(after);
+}
+
 ModifyPropertyCommand::ModifyPropertyCommand(std::string key, QUndoCommand* parent)
   : QUndoCommand(parent), key(std::move(key))
 {

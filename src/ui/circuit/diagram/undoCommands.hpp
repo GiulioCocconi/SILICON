@@ -28,9 +28,10 @@
 #include <nlohmann/json.hpp>
 
 #include <core/component.hpp>
+#include <ui/circuit/diagram/componentResize.hpp>
 #include <ui/circuit/diagram/graphicalWire.hpp>
-#include <ui/circuit/diagram/wireManager.hpp>
 #include <ui/circuit/diagram/scene/diagramSceneEdit.hpp>
+#include <ui/circuit/diagram/wireManager.hpp>
 
 namespace SILICON::ui {
   using namespace SILICON::core;
@@ -183,6 +184,23 @@ namespace SILICON::ui {
     qreal         oldRotation;
     qreal         newRotation;
     bool          skipInitialRedo = true;
+  };
+
+  class ResizeComponentCommand : public QUndoCommand {
+  public:
+    ResizeComponentCommand(GraphicalComponent* component, ComponentResizeState before,
+                           ComponentResizeState after);
+    void undo() override;
+    void redo() override;
+
+  private:
+    void                 apply(const ComponentResizeState& state);
+    DiagramScene*        scene;
+    std::string          documentPath;
+    uint64_t             uiId;
+    ComponentResizeState before;
+    ComponentResizeState after;
+    bool                 skipInitialRedo = true;
   };
 
   class ModifyPropertyCommand : public QUndoCommand {

@@ -19,11 +19,13 @@
 #include <QFontInfo>
 
 #include <algorithm>
+#include <limits>
 #include <stdexcept>
 #include <utility>
 
 #include <QDialog>
 #include <QFontMetricsF>
+#include <QGraphicsSceneHoverEvent>
 #include <QGraphicsView>
 #include <QImage>
 #include <QLabel>
@@ -44,6 +46,8 @@ using namespace SILICON::core;
 namespace {
 
 constexpr qreal SelectionMargin = 4.0;
+constexpr qreal ResizeHandleRadius = 3.0;
+constexpr qreal ResizeHitRadius    = 5.0;
 constexpr qreal SelectionPenWidth = 3.0;
 constexpr qreal PortPenWidth = 3.0;
 constexpr qreal PortErrorPenWidth = 4.0;
@@ -244,8 +248,94 @@ void GraphicalComponent::setItemShape(QGraphicsItem* shape)
 
 QRectF GraphicalComponent::boundingRect() const
 {
-  return boundingRectWithoutMargins().adjusted(-SelectionMargin, -SelectionMargin,
-                                              SelectionMargin, SelectionMargin);
+  const auto margin = resizeHandles().empty() ? SelectionMargin : ResizeHitRadius + 1;
+  return boundingRectWithoutMargins().adjusted(-margin, -margin, margin, margin);
+}
+
+PropertyMap GraphicalComponent::resizedProperties(QSizeF, ResizeHandle,
+                                                  const PropertyMap& initial)
+{
+  return initial;
+}
+
+bool GraphicalComponent::resizeHandlesVisible() const
+{
+  const auto* diagram = qobject_cast<DiagramScene*>(scene());
+  return isSelected() && !resizeHandles().empty() && diagram
+         && diagram->getInteractionMode() == InteractionMode::NORMAL_MODE
+         && diagram->selectedItems().size() == 1;
+}
+
+std::optional<ResizeHandle> GraphicalComponent::resizeHandleAt(QPointF localPos) const
+{
+  if (!resizeHandlesVisible())
+    return std::nullopt;
+  std::optional<ResizeHandle> closest;
+  qreal                       nearest = std::numeric_limits<qreal>::max();
+  for (auto handle : resizeHandles()) {
+    const auto center   = resizeHandlePoint(resizeBounds(), handle);
+    const auto offset   = localPos - center;
+    const auto distance = QPointF::dotProduct(offset, offset);
+    if (QRectF(center - QPointF(ResizeHitRadius, ResizeHitRadius),
+               QSizeF(2 * ResizeHitRadius, 2 * ResizeHitRadius))
+            .contains(localPos)
+        && distance < nearest) {
+      closest = handle;
+      nearest = distance;
+    }
+  }
+  return closest;
+}
+
+ComponentResizeState GraphicalComponent::resizeState() const
+{
+  return {pos(), getProperties()};
+}
+
+void GraphicalComponent::applyResizeState(const ComponentResizeState& state)
+{
+  for (const auto& [key, value] : state.properties)
+    if (getProperty(key) != value)
+      applyProperty(key, value);
+  setGeometryPosition(state.position);
+  setInitialPosition();
+}
+
+void GraphicalComponent::hoverMoveEvent(QGraphicsSceneHoverEvent* event)
+{
+  if (const auto handle = resizeHandleAt(event->pos())) {
+    QPointF direction(resizesLeft(*handle)    ? -1
+                      : resizesRight(*handle) ? 1
+                                              : 0,
+                      resizesTop(*handle)      ? -1
+                      : resizesBottom(*handle) ? 1
+                                               : 0);
+    auto transform = sceneTransform();
+    if (!scene()->views().empty())
+      transform *= scene()->views().front()->transform();
+    direction                   = transform.map(direction) - transform.map(QPointF{});
+    const auto           angle  = QLineF(QPointF{}, direction).angle();
+    const int            sector = qRound(angle / 45.0) % 4;
+    constexpr std::array cursors{Qt::SizeHorCursor, Qt::SizeBDiagCursor,
+                                 Qt::SizeVerCursor, Qt::SizeFDiagCursor};
+    setCursor(cursors[sector]);
+  } else {
+    unsetCursor();
+  }
+  GraphicalItem::hoverMoveEvent(event);
+}
+
+void GraphicalComponent::hoverLeaveEvent(QGraphicsSceneHoverEvent* event)
+{
+  unsetCursor();
+  GraphicalItem::hoverLeaveEvent(event);
+}
+
+void GraphicalComponent::modeChanged(InteractionMode mode)
+{
+  GraphicalItem::modeChanged(mode);
+  unsetCursor();
+  update();
 }
 
 QRectF GraphicalComponent::boundingRectWithoutMargins() const
@@ -264,6 +354,15 @@ void GraphicalComponent::paint(QPainter* painter, const QStyleOptionGraphicsItem
     painter->setPen(QPen(color, SelectionPenWidth, style));
     painter->setBrush(Qt::NoBrush);
     painter->drawRect(this->boundingRectWithoutMargins());
+    if (resizeHandlesVisible()) {
+      painter->setPen(QPen(color, 1));
+      painter->setBrush(ThemeEngine::getColor(theme::ColorToken::Internal));
+      for (auto handle : resizeHandles()) {
+        const auto center = resizeHandlePoint(resizeBounds(), handle);
+        painter->drawRect(QRectF(center - QPointF(ResizeHandleRadius, ResizeHandleRadius),
+                                 QSizeF(2 * ResizeHandleRadius, 2 * ResizeHandleRadius)));
+      }
+    }
   }
 }
 

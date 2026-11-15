@@ -120,6 +120,7 @@ void CircuitEditor::apply(const PreparedEditorDocument& prepared)
 
 void CircuitEditor::flush(const std::string& path)
 {
+  diagramScene->cancelComponentResize();
   auto serialized = diagramScene->serialize();
   if (const auto* existing = session.projectContext.documents().find(path)) {
     try {
@@ -152,11 +153,13 @@ void CircuitEditor::reset()
 }
 void CircuitEditor::undo()
 {
+  diagramScene->cancelComponentResize();
   if (canUndo())
     projectHistory->undo();
 }
 void CircuitEditor::redo()
 {
+  diagramScene->cancelComponentResize();
   if (canRedo())
     projectHistory->redo();
 }
@@ -173,6 +176,7 @@ bool CircuitEditor::canRedo() const
 
 bool CircuitEditor::copySelectionToClipboard()
 {
+  diagramScene->cancelComponentResize();
   try {
     const auto payload = diagramScene->serializeSelection();
     if (!hasClipboardItems(payload))
@@ -239,6 +243,7 @@ void CircuitEditor::paste()
 
 void CircuitEditor::deleteSelection()
 {
+  diagramScene->cancelComponentResize();
   auto itemsToDelete =
       diagramScene->selectedItems()
       | std::views::filter([](auto* item) { return item->type() > UNKNOWN; })

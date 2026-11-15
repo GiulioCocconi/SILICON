@@ -48,6 +48,7 @@
 #include <core/component.hpp>
 #include <core/siliconWaveform.hpp>
 
+#include <ui/circuit/diagram/componentResize.hpp>
 #include <ui/circuit/diagram/grid.hpp>
 #include <ui/circuit/diagram/scene/diagramSceneEdit.hpp>
 #include <ui/circuit/diagram/wireManager.hpp>
@@ -163,6 +164,14 @@ public:
    * @return True when there was an interaction to cancel
    */
   bool cancelCurrentInteraction();
+
+  /** Shared resize transaction; component hooks supply the property changes. */
+  bool beginComponentResize(GraphicalComponent* component, ResizeHandle handle,
+                            QPointF scenePos);
+  void updateComponentResize(QPointF scenePos);
+  void finishComponentResize();
+  void cancelComponentResize();
+  [[nodiscard]] bool isResizingComponent() const { return componentResize.uiId != 0; }
 
   /**
    * @brief Gets the current interaction mode.
@@ -514,6 +523,7 @@ public slots:
   void refreshConnections();
 
 signals:
+  void componentResized();
   void logsClearRequested();
   /**
    * @brief Emitted when the interaction mode changes.
@@ -598,6 +608,16 @@ private:
   const CircuitResolver*                 resolver          = nullptr;
   QUndoStack*                            undoStack         = nullptr;
   DocumentNavigator*                     documentNavigator = nullptr;
+
+  struct ComponentResizeTransaction {
+    uint64_t             uiId   = 0;
+    ResizeHandle         handle = ResizeHandle::Right;
+    ComponentResizeState before;
+    QRectF               bounds;
+    QTransform           fromScene;
+    QPointF              start;
+    QPointF              anchorInParent;
+  } componentResize;
 
   /** @brief Component being placed (shadow) */
   GraphicalComponent* componentToBeDrawn = nullptr;

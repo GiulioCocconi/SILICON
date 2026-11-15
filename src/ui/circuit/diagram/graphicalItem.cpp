@@ -16,6 +16,7 @@
  */
 
 #include "graphicalItem.hpp"
+#include <QScopedValueRollback>
 
 #include <algorithm>
 #include <atomic>
@@ -72,6 +73,13 @@ GraphicalItem::~GraphicalItem()
 uint64_t GraphicalItem::generateUiId()
 {
   return NextGraphicalItemUiId.fetch_add(1, std::memory_order_relaxed);
+}
+
+void GraphicalItem::setGeometryPosition(QPointF position)
+{
+  const QScopedValueRollback guard(settingGeometryPosition, true);
+  setCollidingStatus(NOT_COLLIDING);
+  setPos(position);
 }
 
 void GraphicalItem::setCollidingStatus(const CollidingStatus newStatus)
@@ -163,8 +171,18 @@ QVariant GraphicalItem::itemChange(GraphicsItemChange change, const QVariant& va
     ds->expandSceneBounds(sceneBoundingRect());
 
   if (change == ItemPositionChange) {
+    if (settingGeometryPosition) {
+      onPositionChanged(value.toPointF() - pos());
+      return value;
+    }
     // ==== Collision detection ====
-    const auto proposedPos = DiagramScene::snapToGrid(value.toPointF());
+    // Resize anchors can leave a fractional origin. Snap the shared drag delta so
+    // selected items still move together, while preserving that origin on undo.
+    const auto proposedPos =
+        isSelected() && ds->mouseGrabberItem()
+            ? initialPosition
+                  + QPointF(DiagramScene::snapToGrid(value.toPointF() - initialPosition))
+            : QPointF(DiagramScene::snapToGrid(value.toPointF()));
     const auto offset      = proposedPos - pos();
 
     setCollidingStatus(NOT_COLLIDING);
