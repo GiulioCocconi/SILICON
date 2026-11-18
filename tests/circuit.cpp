@@ -1520,3 +1520,70 @@ TEST(CircuitTest, GetLevelMapMultiplePathsDifferentDepths)
   EXPECT_EQ(levelMap[a1], 1);
   EXPECT_EQ(levelMap[n3], 2);
 }
+
+TEST(CircuitTest, BoundaryIdentitySurvivesVertexRebuildAndRoundTrip)
+{
+  auto       a   = std::make_shared<DummyInputComponent>(Bus(1), "same");
+  auto       b   = std::make_shared<DummyInputComponent>(Bus(1), "same");
+  const auto aId = a->portId();
+  const auto bId = b->portId();
+  ASSERT_NE(aId, bId);
+  a->setProperty("name", std::string("renamed"));
+  Circuit rebuilt(std::vector<Component_ptr>{b, a}, false);
+  auto    registry = ComponentRegistry::empty();
+  registerAllComponents(registry);
+  const auto restored = Circuit::deserialize(rebuilt.serialize(), registry);
+  const auto ports    = restored.getInputPorts();
+  ASSERT_EQ(ports.size(), 2);
+  EXPECT_EQ(ports[0].id, bId);
+  EXPECT_EQ(ports[1].id, aId);
+  EXPECT_EQ(ports[1].name, "renamed");
+}
+
+TEST(CircuitTest, LegacyBoundaryIdentityIsStableBeforeFirstSave)
+{
+  auto registry = ComponentRegistry::empty();
+  registerAllComponents(registry);
+  const std::string legacy = R"({"components":[
+    {"id":0,"type":"DummyInputComponent","properties":{"name":"a"},
+     "inputs":[],"outputs":[[10]]},
+    {"id":1,"type":"DummyInputComponent","properties":{"name":"b"},
+     "inputs":[],"outputs":[[11]]}]})";
+  auto              first  = Circuit::deserialize(legacy, registry);
+  auto              second = Circuit::deserialize(legacy, registry);
+  EXPECT_EQ(first.getInputPorts()[0].id, second.getInputPorts()[0].id);
+  EXPECT_EQ(first.getInputPorts()[0].id, 1);
+  EXPECT_EQ(first.getInputPorts()[1].id, 2);
+  auto saved                   = nlohmann::json::parse(first.serialize());
+  EXPECT_TRUE(saved["components"][0]["portId"].is_number_unsigned());
+  saved["components"][0]["id"] = 1;
+  saved["components"][1]["id"] = 0;
+  const auto reordered         = Circuit::deserialize(saved.dump(), registry);
+  EXPECT_EQ(reordered.getInputPorts()[1].id, first.getInputPorts()[0].id);
+}
+
+TEST(CircuitTest, RejectsDuplicateBoundaryIdentities)
+{
+  auto a = std::make_shared<DummyInputComponent>(Bus(1), "a");
+  auto b = std::make_shared<DummyInputComponent>(Bus(1), "b");
+  b->setPortId(a->portId());
+  Circuit circuit(std::vector<Component_ptr>{a, b}, false);
+  EXPECT_THROW(static_cast<void>(circuit.getInputPorts()), std::runtime_error);
+}
+
+TEST(CircuitTest, RejectsInvalidPersistedPortIds)
+{
+  auto registry = ComponentRegistry::empty();
+  registerAllComponents(registry);
+  auto document = nlohmann::json::parse(R"({"components":[
+    {"id":0,"type":"DummyInputComponent","portId":1,
+     "properties":{"name":"a"},"inputs":[],"outputs":[[10]]}]})");
+  EXPECT_NO_THROW(static_cast<void>(Circuit::deserialize(document.dump(), registry)));
+  for (const auto& bad :
+       {nlohmann::json("port:1"), nlohmann::json("legacy:1"),
+        nlohmann::json("topology:0"), nlohmann::json(0), nlohmann::json(-1)}) {
+    document["components"][0]["portId"] = bad;
+    EXPECT_THROW(static_cast<void>(Circuit::deserialize(document.dump(), registry)),
+                 std::exception);
+  }
+}

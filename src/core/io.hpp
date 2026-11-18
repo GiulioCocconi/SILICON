@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <string_view>
 
@@ -48,11 +49,17 @@ public:
 };
 
 class BoundaryIoComponent : public Component {
+  uint64_t portIdentity;
+
 protected:
   BoundaryIoComponent(std::vector<Bus> inputs, std::vector<Bus> outputs,
                       std::string name);
 
 public:
+  /** Persistent interface identity, independent of labels, wires and graph order. */
+  [[nodiscard]] uint64_t           portId() const { return portIdentity; }
+  void                             setPortId(uint64_t id);
+  void                             resetPortId();
   void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
 };
 

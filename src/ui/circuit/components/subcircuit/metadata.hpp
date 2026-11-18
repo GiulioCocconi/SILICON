@@ -58,6 +58,8 @@ struct GraphicalSubcircuitPortMetadata {
   QPoint       position;
   /** @brief Number of wires represented by the port. */
   unsigned int busSize = 1;
+  /** @brief Stable core boundary identity, independent of the display label. */
+  uint64_t id = 0;
 };
 
 /**

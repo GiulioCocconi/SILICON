@@ -22,8 +22,11 @@
 #include <format>
 #include <ranges>
 #include <stdexcept>
+#include <unordered_set>
 
+#include <core/circuitDocument.hpp>
 #include <core/component.hpp>
+#include <core/io.hpp>
 #include <core/serialization/component_registry.hpp>
 #include <core/subcircuit.hpp>
 #include <utils/num_formatting.hpp>
@@ -39,6 +42,20 @@
 namespace SILICON::core {
 
 namespace {
+
+  std::vector<uint64_t> readPortIds(const nlohmann::json& component,
+                                    std::string_view      field)
+  {
+    const auto it = component.find(field);
+    if (it == component.end())
+      return {};
+    if (!it->is_array())
+      throw std::runtime_error("Port identities must be an array");
+    std::vector<uint64_t> ids;
+    for (const auto& value : *it)
+      ids.push_back(deserializePortId(value));
+    return ids;
+  }
 
   const SILICON::logging::Logger circuitLog("circuit");
 
@@ -67,6 +84,7 @@ namespace {
                                                        const PortRole      role)
   {
     std::vector<CircuitPort> ports;
+    std::unordered_set<uint64_t> identities;
     for (const auto vertex : boost::make_iterator_range(boost::vertices(graph))) {
       const auto& component = graph[vertex].component;
       if (!component || component->metadata().portRole != role)
@@ -74,46 +92,22 @@ namespace {
 
       const auto& buses =
           role == PortRole::Input ? component->outputBuses() : component->inputBuses();
+      const auto boundary = std::dynamic_pointer_cast<BoundaryIoComponent>(component);
+      const auto identity = boundary ? boundary->portId() : 0;
       for (const auto& bus : buses) {
+        if (identity != 0 && !identities.insert(identity).second)
+          throw std::runtime_error(
+              std::format("Duplicate boundary port identity: {}", identity));
         ports.push_back(
             {.name = component->getPropertyValue<std::string>("name").value_or(
                  interfacePortName(role, ports.size())),
              .bus            = bus,
-             .boundaryVertex = vertex});
+             .boundaryVertex = vertex,
+             .id             = identity});
       }
     }
     return ports;
   }
-
-  [[nodiscard]] bool hasRegistryDefinedInterface(const std::string_view type)
-  {
-    return type == "Subcircuit";
-  }
-
-  [[nodiscard]] Bus reconcileBus(const Bus& expectedBus, const Bus& serializedBus)
-  {
-    if (expectedBus.size() == serializedBus.size())
-      return serializedBus;
-
-    auto       wires = static_cast<std::vector<Wire_ptr>>(expectedBus);
-    const auto width = std::min(expectedBus.size(), serializedBus.size());
-    for (std::size_t bit = 0; bit < width; ++bit)
-      wires[bit] = serializedBus[static_cast<unsigned short>(bit)];
-    return Bus(std::move(wires));
-  }
-
-  [[nodiscard]] std::vector<Bus> reconcileBuses(std::vector<Bus>        expectedBuses,
-                                                const std::vector<Bus>& serializedBuses)
-  {
-    for (std::size_t busIndex = 0;
-         busIndex < expectedBuses.size() && busIndex < serializedBuses.size();
-         ++busIndex) {
-      expectedBuses[busIndex] =
-          reconcileBus(expectedBuses[busIndex], serializedBuses[busIndex]);
-    }
-    return expectedBuses;
-  }
-
 }  // namespace
 
 Component_ptr Circuit::getComponentByVertexId(VertexDescriptor vertexId) const
@@ -737,6 +731,15 @@ std::string Circuit::serialize() const
                                  {"properties", propsJson},
                                  {"inputs", serializeBusList(cPtr->getInputs())},
                                  {"outputs", serializeBusList(cPtr->getOutputs())}});
+      auto& serialized = j["components"].back();
+      if (const auto boundary = std::dynamic_pointer_cast<BoundaryIoComponent>(cPtr))
+        serialized["portId"] = boundary->portId();
+      if (const auto instance = std::dynamic_pointer_cast<SubcircuitComponent>(cPtr)) {
+        if (!instance->inputPortIds().empty())
+          serialized["inputPortIds"] = instance->inputPortIds();
+        if (!instance->outputPortIds().empty())
+          serialized["outputPortIds"] = instance->outputPortIds();
+      }
     }
   }
 
@@ -823,7 +826,12 @@ Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry
             std::format("Failed to create unknown component type: {}", type));
       }
 
-      const bool reconcileInterface = hasRegistryDefinedInterface(type);
+      if (const auto boundary =
+              std::dynamic_pointer_cast<BoundaryIoComponent>(component)) {
+        // Old documents resolve repeatedly before their first save. Give them a
+        // deterministic identity, then persist it independently of vertex renumbering.
+        boundary->setPortId(deserializeBoundaryPortId(compJson));
+      }
 
       if (const auto propsIt = compJson.find("properties");
           propsIt != compJson.end() && propsIt->is_object()) {
@@ -841,12 +849,20 @@ Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry
         if (it == compJson.end() || !it->is_array())
           return current;
 
-        auto buses = deserializeBusList(*it);
-        return reconcileInterface ? reconcileBuses(current, buses) : std::move(buses);
+        return deserializeBusList(*it);
       };
 
-      component->setInputs(deserializeInterface("inputs", component->getInputs()));
-      component->setOutputs(deserializeInterface("outputs", component->getOutputs()));
+      auto savedInputs  = deserializeInterface("inputs", component->getInputs());
+      auto savedOutputs = deserializeInterface("outputs", component->getOutputs());
+      if (const auto instance =
+              std::dynamic_pointer_cast<SubcircuitComponent>(component)) {
+        instance->restoreConnections(savedInputs, savedOutputs,
+                                     readPortIds(compJson, "inputPortIds"),
+                                     readPortIds(compJson, "outputPortIds"));
+      } else {
+        component->setInputs(savedInputs);
+        component->setOutputs(savedOutputs);
+      }
 
       /* --- CRITICAL ORDERING STEP ------------------------------------------------------
        * Boost.Graph (using boost::vecS) assigns VertexDescriptors strictly as sequential

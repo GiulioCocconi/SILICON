@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <limits>
 #include <stdexcept>
 #include <utility>
@@ -30,6 +31,8 @@
 namespace SILICON::core {
 
 namespace {
+
+  std::atomic<uint64_t> nextPortIdentity{1};
 
   constexpr std::string_view                PORT_ORIENTATION_PROPERTY = "portOrientation";
   constexpr std::array<std::string_view, 4> PORT_ORIENTATIONS = {"UP", "DOWN", "LEFT",
@@ -128,10 +131,29 @@ BoundaryIoComponent::BoundaryIoComponent(std::vector<Bus> inputs,
                                          std::vector<Bus> outputs, std::string name)
   : Component(std::move(inputs), std::move(outputs))
 {
+  resetPortId();
   defineProperty("name", std::move(name));
   defineStringListProperty(std::string(PORT_ORIENTATION_PROPERTY),
                            this->outputs.empty() ? "LEFT" : "RIGHT",
                            orientationOptions());
+}
+
+void BoundaryIoComponent::setPortId(uint64_t id)
+{
+  if (id == 0 || id == std::numeric_limits<uint64_t>::max())
+    throw std::invalid_argument("Boundary port identity must be a nonzero integer");
+  // Identities only need to be unique within one circuit. Reserve loaded numeric
+  // IDs so newly created or pasted boundary ports cannot reuse them.
+  auto next = nextPortIdentity.load(std::memory_order_relaxed);
+  while (next <= id
+         && !nextPortIdentity.compare_exchange_weak(next, id + 1,
+                                                    std::memory_order_relaxed)) {}
+  portIdentity = id;
+}
+
+void BoundaryIoComponent::resetPortId()
+{
+  portIdentity = nextPortIdentity.fetch_add(1, std::memory_order_relaxed);
 }
 
 DummyInputComponent::DummyInputComponent(Bus bus, std::string name)

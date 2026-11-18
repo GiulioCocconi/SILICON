@@ -17,6 +17,7 @@
 
 #include "circuitDocument.hpp"
 
+#include <limits>
 #include <memory>
 #include <ranges>
 #include <stdexcept>
@@ -30,6 +31,33 @@
 #include <core/serialization/component_registry.hpp>
 
 namespace SILICON::core {
+
+/** Read canonical nonzero numeric port IDs. */
+uint64_t deserializePortId(const nlohmann::json& value)
+{
+  if (!value.is_number_unsigned())
+    throw std::runtime_error("Port identity must be an unsigned integer");
+  const auto id = value.get<uint64_t>();
+  if (id == 0 || id == std::numeric_limits<uint64_t>::max())
+    throw std::runtime_error("Port identity must be a valid nonzero integer");
+  return id;
+}
+
+uint64_t deserializeBoundaryPortId(const nlohmann::json& component)
+{
+  if (const auto id = component.find("portId"); id != component.end())
+    return deserializePortId(*id);
+
+  // main did not serialize port IDs. Derive one from the persisted vertex until
+  // the first save, when it becomes a stable explicit identity.
+  const auto& vertex = component.at("id");
+  if (!vertex.is_number_unsigned())
+    throw std::runtime_error("Invalid legacy boundary vertex");
+  const auto number = vertex.get<uint64_t>();
+  if (number >= std::numeric_limits<uint64_t>::max() - 1)
+    throw std::runtime_error("Legacy boundary vertex exceeds the supported range");
+  return number + 1;
+}
 
 Circuit deserializeCircuitDocument(const std::string_view   contents,
                                    const ComponentRegistry& registry,

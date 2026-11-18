@@ -26,6 +26,7 @@
 
 #include <core/activeKeyGuard.hpp>
 #include <core/circuitDocument.hpp>
+#include <core/io.hpp>
 #include <core/memory.hpp>
 #include <core/serialization/component_registry.hpp>
 #include <core/subcircuit.hpp>
@@ -136,6 +137,9 @@ namespace {
     }
 
     copyProperties(*component, cloned);
+    if (const auto boundary = std::dynamic_pointer_cast<BoundaryIoComponent>(component))
+      std::dynamic_pointer_cast<BoundaryIoComponent>(cloned)->setPortId(
+          boundary->portId());
 
     if (const auto sourceRom = std::dynamic_pointer_cast<ROM>(component)) {
       auto clonedRom = std::dynamic_pointer_cast<ROM>(cloned);
@@ -166,11 +170,14 @@ namespace {
     if (!context.resolver)
       throw std::runtime_error("Subcircuit elaboration requires a circuit resolver");
     auto definition = context.resolver->resolve(*slug);
-    validateInterface(key, "input", definition.inputs, component->getInputs());
-    validateInterface(key, "output", definition.outputs, component->getOutputs());
+    const auto instance   = std::dynamic_pointer_cast<SubcircuitComponent>(component);
+    const auto inputs     = instance->inputsForPorts(definition.inputs);
+    const auto outputs    = instance->outputsForPorts(definition.outputs);
+    validateInterface(key, "input", definition.inputs, inputs);
+    validateInterface(key, "output", definition.outputs, outputs);
 
-    auto externalInputs  = remapBuses(component->getInputs(), parentWireMap);
-    auto externalOutputs = remapBuses(component->getOutputs(), parentWireMap);
+    auto externalInputs  = remapBuses(inputs, parentWireMap);
+    auto externalOutputs = remapBuses(outputs, parentWireMap);
 
     WirePtrMap subcircuitWireMap;
     mapInterfaceWires(definition.inputs, externalInputs, subcircuitWireMap);
