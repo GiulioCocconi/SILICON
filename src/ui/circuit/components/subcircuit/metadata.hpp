@@ -38,6 +38,8 @@ class CircuitResolver;
 namespace SILICON::ui {
 using namespace SILICON::core;
 
+enum class PortPositioning { Automatic, Manual };
+
 /** @brief Default subcircuit rectangle size in persisted grid units. */
 inline constexpr int GRAPHICAL_SUBCIRCUIT_DEFAULT_SIZE = 2;
 
@@ -75,6 +77,8 @@ struct GraphicalSubcircuitMetadata {
                     GRAPHICAL_SUBCIRCUIT_DEFAULT_SIZE* GRID_SIZE};
   /** @brief Derive dimensions from port counts until the user edits the size. */
   bool autoSize = true;
+  /** @brief One positioning mode for all input and output ports of the shape. */
+  PortPositioning positioning = PortPositioning::Automatic;
   /** @brief Input boundary ports in core interface order. */
   std::vector<GraphicalSubcircuitPortMetadata> inputs;
   /** @brief Output boundary ports in core interface order. */
@@ -100,10 +104,11 @@ parseGraphicalSubcircuitMetadata(const nlohmann::json& document);
  * @brief Reconciles saved graphical metadata with the current circuit document.
  *
  * Boundary ports are re-derived from the circuit contents while matching existing
- * positions by name or index when possible. Automatic dimensions use twice the
+ * positions by identity, with name/index compatibility for old metadata.
+ * Automatic dimensions use twice the
  * larger boundary port count in grid units, with a minimum of two grid units.
  * Generated port groups are centered on each side with two grid units between centers.
- * Explicit heights grow when needed to fit generated groups; moved ports stay in place.
+ * Automatic layouts follow size/count changes; manual layouts retain saved positions.
  *
  * @param document Parsed subcircuit scene JSON.
  * @param fallbackMetadata Existing metadata to preserve user-edited positions.
