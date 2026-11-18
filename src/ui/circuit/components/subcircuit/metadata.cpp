@@ -22,6 +22,7 @@
 #include <format>
 #include <numeric>
 #include <optional>
+#include <ranges>
 #include <string_view>
 #include <unordered_map>
 #include <utility>
@@ -43,22 +44,27 @@ namespace {
   // Port coordinates in JSON are relative to the rectangle top-left, in grid units.
   return {.name     = json.value("name", std::string()),
           .position = gridToPixels(QPoint(json.value("x", 0), json.value("y", 0))),
-          .busSize  = static_cast<unsigned int>(std::max(1, json.value("busSize", 1)))};
+          .busSize  = static_cast<unsigned int>(std::max(1, json.value("busSize", 1))),
+          .id       = json.contains("id") ? deserializePortId(json.at("id")) : 0};
 }
 
 [[nodiscard]] nlohmann::json portToJson(const GraphicalSubcircuitPortMetadata& port)
 {
   // Keep project files grid-based even though QGraphicsItems consume pixels.
   const auto gridPosition = pixelsToGrid(port.position);
-  return {{"name", port.name},
-          {"x", gridPosition.x()},
-          {"y", gridPosition.y()},
-          {"busSize", port.busSize}};
+  nlohmann::json result       = {{"name", port.name},
+                                 {"x", gridPosition.x()},
+                                 {"y", gridPosition.y()},
+                                 {"busSize", port.busSize}};
+  if (port.id != 0)
+    result["id"] = port.id;
+  return result;
 }
 
 struct PortDefinition {
   std::string  name;
   unsigned int busSize;
+  uint64_t     id;
 };
 
 // Visual positions affect display-name suffixes only. Semantic order and widths
@@ -109,9 +115,41 @@ portDefinitions(const std::vector<CircuitPort>& ports, const nlohmann::json& doc
       name = std::format("{}{}", name, seen + 1);
     definitions[index] = {
         .name    = std::move(name),
-        .busSize = static_cast<unsigned int>(std::max<std::size_t>(1, port.bus.size()))};
+        .busSize = static_cast<unsigned int>(std::max<std::size_t>(1, port.bus.size())),
+        .id      = port.id};
   }
   return definitions;
+}
+
+[[nodiscard]] std::optional<std::size_t>
+findMatchingPort(const PortDefinition& definition, std::size_t index,
+                 const std::vector<GraphicalSubcircuitPortMetadata>& fallbackPorts,
+                 const std::vector<bool>&                            usedFallback)
+{
+  const auto candidates = std::views::iota(std::size_t{0}, fallbackPorts.size());
+  auto       find       = [&](const auto& predicate) -> std::optional<std::size_t> {
+    const auto match = std::ranges::find_if(candidates, [&](std::size_t candidate) {
+      return !usedFallback[candidate] && predicate(fallbackPorts[candidate]);
+    });
+    if (match == candidates.end())
+      return std::nullopt;
+    return *match;
+  };
+
+  if (definition.id != 0) {
+    if (const auto match =
+            find([&](const auto& port) { return port.id == definition.id; }))
+      return match;
+  }
+
+  if (const auto match = find(
+          [&](const auto& port) { return port.id == 0 && port.name == definition.name; }))
+    return match;
+
+  if (index < fallbackPorts.size() && !usedFallback[index]
+      && fallbackPorts[index].id == 0)
+    return index;
+  return std::nullopt;
 }
 
 [[nodiscard]] int distributedPortY(int height, std::size_t index, std::size_t count)
@@ -162,20 +200,8 @@ synchronizePorts(const std::vector<PortDefinition>& definitions,
   std::vector<bool> usedFallback(fallbackPorts.size(), false);
 
   for (std::size_t i = 0; i < definitions.size(); ++i) {
-    const auto&                definition = definitions[i];
-    std::optional<std::size_t> match;
-
-    for (std::size_t fallbackIndex = 0; fallbackIndex < fallbackPorts.size();
-         ++fallbackIndex) {
-      if (!usedFallback[fallbackIndex]
-          && fallbackPorts[fallbackIndex].name == definition.name) {
-        match = fallbackIndex;
-        break;
-      }
-    }
-
-    if (!match && i < fallbackPorts.size() && !usedFallback[i])
-      match = i;
+    const auto& definition = definitions[i];
+    const auto  match      = findMatchingPort(definition, i, fallbackPorts, usedFallback);
 
     // Reflow generated ports while preserving explicitly moved ports.
     const bool useDefaultPosition =
@@ -187,8 +213,10 @@ synchronizePorts(const std::vector<PortDefinition>& definitions,
     if (match)
       usedFallback[*match] = true;
 
-    synchronized.push_back(
-        {.name = definition.name, .position = position, .busSize = definition.busSize});
+    synchronized.push_back({.name     = definition.name,
+                            .position = position,
+                            .busSize  = definition.busSize,
+                            .id       = definition.id});
   }
 
   return synchronized;
@@ -315,7 +343,8 @@ std::vector<GraphicalSubcircuitPortMetadata> synchronizePortsWithBuses(
                                  : defaultExternalPortPosition(metadata, inputPort, i,
                                                                buses.size()),
          .busSize =
-             static_cast<unsigned int>(std::max<std::size_t>(1, buses[i].size()))});
+             static_cast<unsigned int>(std::max<std::size_t>(1, buses[i].size())),
+         .id = hasFallback ? fallbackPorts[i].id : 0});
   }
 
   return synchronized;

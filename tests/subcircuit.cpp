@@ -34,6 +34,7 @@
 #include <core/circuitDocument.hpp>
 #include <core/elaboration.hpp>
 #include <core/gates.hpp>
+#include <core/io.hpp>
 #include <core/memory.hpp>
 #include <core/projectCircuitResolver.hpp>
 #include <core/projectContext.hpp>
@@ -41,6 +42,7 @@
 #include <core/serialization/component_registration.hpp>
 #include <core/serialization/component_registry.hpp>
 #include <core/serialization/projectFile.hpp>
+#include <core/serialization/yosys/netlist.hpp>
 #include <core/simulationSession.hpp>
 #include <core/simulator.hpp>
 #include <core/subcircuit.hpp>
@@ -739,49 +741,34 @@ TEST_F(SubcircuitTest, DelayedGateInsideSubcircuitUsesParentEventQueue)
   EXPECT_EQ(simulator.getCurrentTime(), 2);
 }
 
-TEST_F(SubcircuitTest, RejectsModuleInputBusCountMismatch)
+TEST_F(SubcircuitTest, ReconcilesModuleConnectionsWithoutPersistentIdentities)
 {
   project.upsertDocument(subcircuitDocument("and_gate", andSubcircuitDocument()));
-
   auto component = std::make_shared<SubcircuitComponent>(&resolver);
   component->setPropertyValue("slug", std::string("and_gate"));
-  std::vector<Bus> mismatchedInputs{Bus{std::make_shared<Wire>()}};
-  component->setInputs(mismatchedInputs);
-
-  Circuit                                source(component, false);
-  SILICON::simulation::CircuitElaborator elaborator(ComponentRegistry::instance(),
-                                                    &resolver);
-
-  try {
-    static_cast<void>(elaborator.elaborate(source));
-    FAIL() << "Expected an interface bus-count mismatch";
-  } catch (const std::runtime_error& error) {
-    EXPECT_NE(
-        std::string(error.what()).find("subcircuit:and_gate' input bus count mismatch"),
-        std::string::npos);
-  }
+  const Bus connected(1);
+  component->setInputs({connected});
+  const auto definition = resolver.resolve("and_gate");
+  const auto inputs     = component->inputsForPorts(definition.inputs);
+  ASSERT_EQ(inputs.size(), 2);
+  EXPECT_EQ(inputs[0], connected);
+  EXPECT_EQ(inputs[1].size(), 1);
+  EXPECT_NE(inputs[1][0], connected[0]);
 }
 
-TEST_F(SubcircuitTest, RejectsModuleBusWidthMismatch)
+TEST_F(SubcircuitTest, ReconcilesBusWidthsWithoutPersistentIdentities)
 {
   project.upsertDocument(subcircuitDocument("bus_not", busNotCoreDocument()));
-
   auto component = std::make_shared<SubcircuitComponent>(&resolver);
   component->setPropertyValue("slug", std::string("bus_not"));
-  component->setInput(0, Bus(4));
-
-  Circuit                                source(component, false);
-  SILICON::simulation::CircuitElaborator elaborator(ComponentRegistry::instance(),
-                                                    &resolver);
-
-  try {
-    static_cast<void>(elaborator.elaborate(source));
-    FAIL() << "Expected an interface bus-width mismatch";
-  } catch (const std::runtime_error& error) {
-    EXPECT_NE(
-        std::string(error.what()).find("subcircuit:bus_not' input bus 0 width mismatch"),
-        std::string::npos);
-  }
+  const Bus connected(4);
+  component->setInput(0, connected);
+  const auto definition = resolver.resolve("bus_not");
+  const auto inputs     = component->inputsForPorts(definition.inputs);
+  ASSERT_EQ(inputs.size(), 1);
+  ASSERT_EQ(inputs[0].size(), definition.inputs[0].bus.size());
+  for (std::size_t bit = 0; bit < connected.size(); ++bit)
+    EXPECT_EQ(inputs[0][bit], connected[bit]);
 }
 
 TEST_F(SubcircuitTest, DirectSimulatorRejectsUnprocessedPlaceholder)
@@ -861,10 +848,8 @@ TEST_F(SubcircuitTest, FailedReplacementSessionKeepsPreviousRuntimeUsable)
   SILICON::simulation::Session session(source, {}, &resolver);
 
   EXPECT_EQ(session.run(1), Simulator::RunResult::Completed);
-  std::vector<Bus> mismatchedInputs{Bus{std::make_shared<Wire>()}};
-  component->setInputs(mismatchedInputs);
-  EXPECT_THROW(SILICON::simulation::Session replacement(source, {}, &resolver),
-               std::runtime_error);
+  // A replacement without the required project resolver must not disturb the runtime.
+  EXPECT_THROW(SILICON::simulation::Session replacement(source), std::runtime_error);
 
   EXPECT_EQ(session.getCurrentTime(), 1);
   EXPECT_EQ(session.run(1), Simulator::RunResult::Completed);
@@ -1291,4 +1276,260 @@ TEST_F(SubcircuitTest, DocumentStoreNotifiesSpecificAndGlobalChanges)
   EXPECT_EQ(notifications[1].path, "circuits/adder.json");
   EXPECT_EQ(notifications[2].kind, SILICON::project::DocumentChangeKind::Reset);
   EXPECT_FALSE(notifications[2].path);
+}
+
+namespace {
+
+nlohmann::json identityTestDocument()
+{
+  auto  document   = nlohmann::json::parse(graphicalAndSubcircuitDocument())["circuit"];
+  auto& components = document["components"];
+  components[2]["type"]   = "NotGate";
+  components[2]["inputs"] = {{1}};
+  components.push_back({{"id", 4},
+                        {"type", "DummyOutputComponent"},
+                        {"properties", {{"name", "pass_b"}}},
+                        {"inputs", {{5}}},
+                        {"outputs", nlohmann::json::array()}});
+  // Use real drivers on both outputs so neither boundary aliases an input wire.
+  for (int id = 5; id <= 6; ++id)
+    components.push_back({{"id", id},
+                          {"type", "NotGate"},
+                          {"properties", {{"delay", 0}, {"size", 1}}},
+                          {"inputs", {{id == 5 ? 2 : 4}}},
+                          {"outputs", {{id == 5 ? 4 : 5}}}});
+  return document;
+}
+
+nlohmann::json reorderedIdentityDocument(nlohmann::json document)
+{
+  for (auto& component : document["components"]) {
+    const auto id = component["id"].get<int>();
+    if (id == 0 || id == 1)
+      component["id"] = 1 - id;
+    if (id == 3 || id == 4)
+      component["id"] = 7 - id;
+    // Names, including duplicate names, must not act as identities.
+    if (component["properties"].contains("name"))
+      component["properties"]["name"] = "renamed";
+  }
+  return document;
+}
+
+}  // namespace
+
+TEST_F(SubcircuitTest, ReloadPreservesConnectionsWhenPortsReorderAndRename)
+{
+  const auto definition = Circuit::deserialize(identityTestDocument().dump(), registry);
+  const auto savedDefinition = nlohmann::json::parse(definition.serialize());
+  project.upsertDocument(subcircuitDocument("identity", savedDefinition.dump()));
+  auto instance = std::make_shared<SubcircuitComponent>(&resolver);
+  instance->setPropertyValue("slug", std::string("identity"));
+  const auto a         = instance->getInputs()[0];
+  const auto b         = instance->getInputs()[1];
+  const auto invertedA = instance->getOutputs()[0];
+  const auto passB     = instance->getOutputs()[1];
+  const auto inputIds  = instance->inputPortIds();
+  const auto outputIds = instance->outputPortIds();
+
+  project.upsertDocument(
+      subcircuitDocument("identity", reorderedIdentityDocument(savedDefinition).dump()));
+  instance->reloadFromResolver();
+  EXPECT_EQ(instance->getInputs()[0], b);
+  EXPECT_EQ(instance->getInputs()[1], a);
+  EXPECT_EQ(instance->getOutputs()[0], passB);
+  EXPECT_EQ(instance->getOutputs()[1], invertedA);
+  EXPECT_EQ(instance->inputPortIds()[1], inputIds[0]);
+  EXPECT_EQ(instance->outputPortIds()[1], outputIds[0]);
+
+  auto    circuit = std::make_shared<Circuit>(instance, false);
+  Session simulator(circuit, {}, &resolver);
+  ASSERT_EQ(simulator.setBus(a, valueFor(a, 1)), Simulator::RunResult::Completed);
+  ASSERT_EQ(simulator.setBus(b, valueFor(b, 1)), Simulator::RunResult::Completed);
+  EXPECT_EQ(invertedA.getCurrentValue(), valueFor(invertedA, 0));
+  EXPECT_EQ(passB.getCurrentValue(), valueFor(passB, 1));
+}
+
+TEST_F(SubcircuitTest, SavedAndUnrefreshedInstancesRemapToChangedDefinition)
+{
+  const auto definition = Circuit::deserialize(identityTestDocument().dump(), registry);
+  const auto savedDefinition = nlohmann::json::parse(definition.serialize());
+  project.upsertDocument(subcircuitDocument("identity", savedDefinition.dump()));
+  auto instance = std::make_shared<SubcircuitComponent>(&resolver);
+  instance->setPropertyValue("slug", std::string("identity"));
+  auto       circuit       = std::make_shared<Circuit>(instance, false);
+  const auto savedInstance = circuit->serialize();
+  const auto a             = instance->getInputs()[0];
+  const auto b             = instance->getInputs()[1];
+  const auto invertedA     = instance->getOutputs()[0];
+  const auto passB         = instance->getOutputs()[1];
+
+  project.upsertDocument(
+      subcircuitDocument("identity", reorderedIdentityDocument(savedDefinition).dump()));
+  // Headless callers do not receive GUI document-change notifications.
+  Session simulator(circuit, {}, &resolver);
+  ASSERT_EQ(simulator.setBus(a, valueFor(a, 1)), Simulator::RunResult::Completed);
+  ASSERT_EQ(simulator.setBus(b, valueFor(b, 1)), Simulator::RunResult::Completed);
+  EXPECT_EQ(invertedA.getCurrentValue(), valueFor(invertedA, 0));
+  EXPECT_EQ(passB.getCurrentValue(), valueFor(passB, 1));
+
+  auto       restored         = Circuit::deserialize(savedInstance, registry, &resolver);
+  const auto restoredInstance = restored.getComponentByVertexId(0);
+  EXPECT_EQ(restoredInstance->getInputs()[1][0]->getId(), a[0]->getId());
+  EXPECT_EQ(restoredInstance->getInputs()[0][0]->getId(), b[0]->getId());
+  EXPECT_EQ(restoredInstance->getOutputs()[1][0]->getId(), invertedA[0]->getId());
+  EXPECT_EQ(restoredInstance->getOutputs()[0][0]->getId(), passB[0]->getId());
+  const auto savedAgain = nlohmann::json::parse(restored.serialize())["components"][0];
+  EXPECT_EQ(savedAgain["inputPortIds"][0], instance->inputPortIds()[1]);
+  EXPECT_EQ(savedAgain["outputPortIds"][0], instance->outputPortIds()[1]);
+}
+
+TEST_F(SubcircuitTest, ReloadKeepsResizedPortAndDoesNotReuseRemovedConnection)
+{
+  auto document   = nlohmann::json::parse(graphicalBusSubcircuitDocument())["circuit"];
+  auto definition = Circuit::deserialize(document.dump(), registry);
+  document        = nlohmann::json::parse(definition.serialize());
+  project.upsertDocument(subcircuitDocument("identity", document.dump()));
+  auto instance = std::make_shared<SubcircuitComponent>(&resolver);
+  instance->setPropertyValue("slug", std::string("identity"));
+  const auto original = instance->getInputs()[0];
+
+  document["components"][0]["properties"]["size"] = 16;
+  for (int wire = 20; wire < 28; ++wire)
+    document["components"][0]["outputs"][0].push_back(wire);
+  project.upsertDocument(subcircuitDocument("identity", document.dump()));
+  instance->reloadFromResolver();
+  ASSERT_EQ(instance->getInputs()[0].size(), 16);
+  for (std::size_t bit = 0; bit < original.size(); ++bit)
+    EXPECT_EQ(instance->getInputs()[0][bit], original[bit]);
+
+  document["components"][0]["portId"] = 1000000;
+  project.upsertDocument(subcircuitDocument("identity", document.dump()));
+  instance->reloadFromResolver();
+  EXPECT_NE(instance->getInputs()[0][0], original[0]);
+}
+
+TEST_F(SubcircuitTest, RejectsAmbiguousSavedPortIdentities)
+{
+  project.upsertDocument(subcircuitDocument("identity", identityTestDocument().dump()));
+  auto instance = std::make_shared<SubcircuitComponent>(&resolver);
+  instance->setPropertyValue("slug", std::string("identity"));
+  Circuit circuit(instance, false);
+  auto    document                          = nlohmann::json::parse(circuit.serialize());
+  document["components"][0]["inputPortIds"] = {1, 1};
+  EXPECT_THROW(
+      static_cast<void>(Circuit::deserialize(document.dump(), registry, &resolver)),
+      std::runtime_error);
+}
+
+TEST_F(SubcircuitTest, YosysExportPreservesConnectionsAfterDefinitionReorder)
+{
+  auto definition      = Circuit::deserialize(identityTestDocument().dump(), registry);
+  auto savedDefinition = nlohmann::json::parse(definition.serialize());
+  project.upsertDocument(subcircuitDocument("identity", savedDefinition.dump()));
+  auto instance = std::make_shared<SubcircuitComponent>(&resolver);
+  instance->setPropertyValue("slug", std::string("identity"));
+  auto       a = std::make_shared<DummyInputComponent>(instance->getInputs()[0], "a");
+  auto       b = std::make_shared<DummyInputComponent>(instance->getInputs()[1], "b");
+  auto       y = std::make_shared<DummyOutputComponent>(instance->getOutputs()[0], "y");
+  auto       z = std::make_shared<DummyOutputComponent>(instance->getOutputs()[1], "z");
+  Circuit    root(std::vector<Component_ptr>{a, b, instance, y, z}, false);
+  const auto before = nlohmann::json::parse(SILICON::yosys::serialize(root, "top"));
+  for (auto& component : savedDefinition["components"]) {
+    const auto id = component["id"].get<int>();
+    if (id == 0 || id == 1)
+      component["id"] = 1 - id;
+    if (id == 3 || id == 4)
+      component["id"] = 7 - id;
+  }
+  project.upsertDocument(subcircuitDocument("identity", savedDefinition.dump()));
+  const auto after = nlohmann::json::parse(SILICON::yosys::serialize(root, "top"));
+  for (const auto* design : {&before, &after}) {
+    const auto& top         = (*design)["modules"]["top"];
+    const auto& connections = top["cells"].begin().value()["connections"];
+    EXPECT_EQ(connections["a"], top["ports"]["a"]["bits"]);
+    EXPECT_EQ(connections["b"], top["ports"]["b"]["bits"]);
+    EXPECT_EQ(connections["q"], top["ports"]["y"]["bits"]);
+    EXPECT_EQ(connections["pass_b"], top["ports"]["z"]["bits"]);
+  }
+}
+
+TEST_F(SubcircuitTest, UnrefreshedInstancesReconcileWidthsWithUnchangedIds)
+{
+  auto document   = nlohmann::json::parse(graphicalBusSubcircuitDocument())["circuit"];
+  auto definition = Circuit::deserialize(document.dump(), registry);
+  document        = nlohmann::json::parse(definition.serialize());
+  project.upsertDocument(subcircuitDocument("identity", document.dump()));
+  auto instance = std::make_shared<SubcircuitComponent>(&resolver);
+  instance->setPropertyValue("slug", std::string("identity"));
+  const auto originalInput  = instance->getInputs()[0];
+  const auto originalOutput = instance->getOutputs()[0];
+  const auto inputIds       = instance->inputPortIds();
+  const auto outputIds      = instance->outputPortIds();
+
+  for (auto& component : document["components"]) {
+    component["properties"]["size"] = 16;
+    for (const auto* direction : {"inputs", "outputs"}) {
+      for (auto& bus : component[direction]) {
+        const int start = bus[0] == 1 ? 17 : 25;
+        for (int i = 0; i < 8; ++i)
+          bus.push_back(start + i);
+      }
+    }
+  }
+  project.upsertDocument(subcircuitDocument("identity", document.dump()));
+  const auto updated = resolver.resolve("identity");
+  const auto inputs  = instance->inputsForPorts(updated.inputs);
+  const auto outputs = instance->outputsForPorts(updated.outputs);
+  EXPECT_EQ(instance->inputPortIds(), inputIds);
+  EXPECT_EQ(instance->outputPortIds(), outputIds);
+  ASSERT_EQ(inputs[0].size(), 16);
+  ASSERT_EQ(outputs[0].size(), 16);
+  for (std::size_t bit = 0; bit < 8; ++bit) {
+    EXPECT_EQ(inputs[0][bit], originalInput[bit]);
+    EXPECT_EQ(outputs[0][bit], originalOutput[bit]);
+  }
+  Circuit     root(instance, false);
+  const auto  exported = nlohmann::json::parse(SILICON::yosys::serialize(root, "top"));
+  const auto& connections =
+      exported["modules"]["top"]["cells"].begin().value()["connections"];
+  EXPECT_EQ(connections["data"].size(), 16);
+  EXPECT_EQ(connections["result"].size(), 16);
+
+  for (auto& component : document["components"]) {
+    component["properties"]["size"] = 4;
+    for (const auto* direction : {"inputs", "outputs"})
+      for (auto& bus : component[direction])
+        bus.erase(bus.begin() + 4, bus.end());
+  }
+  project.upsertDocument(subcircuitDocument("identity", document.dump()));
+  const auto reduced        = resolver.resolve("identity");
+  const auto reducedInputs  = instance->inputsForPorts(reduced.inputs);
+  const auto reducedOutputs = instance->outputsForPorts(reduced.outputs);
+  ASSERT_EQ(reducedInputs[0].size(), 4);
+  ASSERT_EQ(reducedOutputs[0].size(), 4);
+  for (std::size_t bit = 0; bit < 4; ++bit) {
+    EXPECT_EQ(reducedInputs[0][bit], originalInput[bit]);
+    EXPECT_EQ(reducedOutputs[0][bit], originalOutput[bit]);
+  }
+}
+
+TEST_F(SubcircuitTest, RemovingBoundariesDoesNotRetargetNamedConnections)
+{
+  project.upsertDocument(
+      subcircuitDocument("identity", graphicalAndSubcircuitDocument()));
+  auto instance = std::make_shared<SubcircuitComponent>(&resolver);
+  instance->setPropertyValue("slug", std::string("identity"));
+  const auto oldInputs = instance->getInputs();
+  const auto oldOutput = instance->getOutputs()[0];
+  project.upsertDocument(subcircuitDocument("identity", andSubcircuitDocument()));
+  const auto definition = resolver.resolve("identity");
+  const auto inputs     = instance->inputsForPorts(definition.inputs);
+  const auto outputs    = instance->outputsForPorts(definition.outputs);
+  ASSERT_EQ(inputs.size(), 2);
+  for (const auto& input : inputs)
+    for (const auto& previous : oldInputs)
+      EXPECT_NE(input[0], previous[0]);
+  ASSERT_EQ(outputs.size(), 1);
+  EXPECT_NE(outputs[0][0], oldOutput[0]);
 }

@@ -105,6 +105,8 @@ struct CircuitPort {
    * This provenance is not serialized.
    */
   std::optional<VertexDescriptor> boundaryVertex = std::nullopt;
+  /** Persisted boundary identity; zero for topology-only ports. */
+  uint64_t id = 0;
 };
 
 /**

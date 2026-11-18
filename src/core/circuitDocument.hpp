@@ -17,14 +17,23 @@
 
 #pragma once
 
+#include <cstdint>
 #include <string_view>
 #include <vector>
+
+#include <nlohmann/json_fwd.hpp>
 
 #include <core/circuit.hpp>
 
 namespace SILICON::core {
 
 class ComponentRegistry;
+
+/** Read a canonical nonzero numeric port ID during deserialization. */
+[[nodiscard]] uint64_t deserializePortId(const nlohmann::json& value);
+
+/** Read a boundary component's ID, deriving a stable ID for documents without one. */
+[[nodiscard]] uint64_t deserializeBoundaryPortId(const nlohmann::json& component);
 
 /** Semantic reusable-circuit implementation and interface. */
 struct SubcircuitDefinition {

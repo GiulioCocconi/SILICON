@@ -28,6 +28,7 @@
 namespace SILICON::core {
 
 class CircuitResolver;
+struct CircuitPort;
 
 class SubcircuitComponent : public Component {
 public:
@@ -72,10 +73,27 @@ public:
   void setCircuitResolver(const CircuitResolver* resolver);
   [[nodiscard]] const CircuitResolver* circuitResolver() const noexcept;
 
+  [[nodiscard]] const std::vector<uint64_t>& inputPortIds() const { return inputIds; }
+  [[nodiscard]] const std::vector<uint64_t>& outputPortIds() const { return outputIds; }
+
+  /** Restore saved buses by identity, with positional compatibility for old files. */
+  void restoreConnections(const std::vector<Bus>&      savedInputs,
+                          const std::vector<Bus>&      savedOutputs,
+                          const std::vector<uint64_t>& savedInputIds,
+                          const std::vector<uint64_t>& savedOutputIds);
+
+  /** Match an existing instance to a definition that may have changed since binding. */
+  [[nodiscard]] std::vector<Bus>
+  inputsForPorts(const std::vector<CircuitPort>& ports) const;
+  [[nodiscard]] std::vector<Bus>
+  outputsForPorts(const std::vector<CircuitPort>& ports) const;
+
 private:
   const CircuitResolver*   resolver = nullptr;
   std::vector<std::string> transientInputNames;
   std::vector<std::string> transientOutputNames;
+  std::vector<uint64_t>    inputIds;
+  std::vector<uint64_t>    outputIds;
 
   void configureFromSlug(std::string_view slug);
   void clearResolvedCircuit();

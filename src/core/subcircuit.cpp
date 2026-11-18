@@ -17,7 +17,10 @@
 
 #include "subcircuit.hpp"
 
+#include <algorithm>
+#include <ranges>
 #include <stdexcept>
+#include <unordered_set>
 #include <vector>
 
 #include <core/circuitDocument.hpp>
@@ -27,14 +30,66 @@ namespace SILICON::core {
 
 namespace {
 
-  [[nodiscard]] std::vector<Bus>
-  makeExternalBuses(const std::vector<CircuitPort>& interfacePorts)
+  [[nodiscard]] std::vector<uint64_t> portIds(const std::vector<CircuitPort>& ports)
   {
-    std::vector<Bus> buses;
-    buses.reserve(interfacePorts.size());
-    for (const auto& port : interfacePorts)
-      buses.emplace_back(static_cast<unsigned short>(port.bus.size()));
-    return buses;
+    if (std::ranges::any_of(ports, [](const CircuitPort& port) { return port.id == 0; }))
+      return {};  // Topology-only interfaces have no persistent identity.
+
+    return ports | std::views::transform(&CircuitPort::id)
+           | std::ranges::to<std::vector>();
+  }
+
+  void preserveConnection(Bus& target, const Bus& source)
+  {
+    auto       wires = static_cast<std::vector<Wire_ptr>>(target);
+    const auto saved = static_cast<std::vector<Wire_ptr>>(source);
+    for (auto [destination, original] : std::views::zip(wires, saved))
+      destination = original;
+    target = Bus(std::move(wires));
+  }
+
+  [[nodiscard]] std::vector<Bus>
+  remapConnections(const std::vector<Bus>&      expected,
+                   const std::vector<uint64_t>& expectedIds,
+                   const std::vector<Bus>& saved, const std::vector<uint64_t>& savedIds)
+  {
+    if (!savedIds.empty()) {
+      std::unordered_set<uint64_t> seen;
+      if (savedIds.size() != saved.size())
+        throw std::runtime_error(
+            "Subcircuit port identity count does not match its buses");
+      for (const auto& id : savedIds)
+        if (id == 0 || !seen.insert(id).second)
+          throw std::runtime_error(
+              "Subcircuit port identities must be nonzero and unique");
+    }
+
+    // Start with the current interface widths and fresh wires. Reuse only the
+    // overlapping bits from a matching saved port; any added bits stay fresh.
+    auto result = expected;
+    for (std::size_t portIndex = 0; portIndex < result.size(); ++portIndex) {
+      auto savedPortIndex = portIndex;
+      if (!savedIds.empty()) {
+        if (portIndex >= expectedIds.size())
+          continue;  // An implicit topology port cannot inherit a removed boundary ID.
+        const auto match = std::ranges::find(savedIds, expectedIds.at(portIndex));
+        if (match == savedIds.end())
+          continue;
+        savedPortIndex = static_cast<std::size_t>(match - savedIds.begin());
+      }
+      if (savedPortIndex >= saved.size())
+        continue;
+      preserveConnection(result[portIndex], saved[savedPortIndex]);
+    }
+    return result;
+  }
+
+  [[nodiscard]] std::vector<Bus> externalBuses(const std::vector<CircuitPort>& ports)
+  {
+    return ports | std::views::transform([](const CircuitPort& port) {
+             return Bus(static_cast<unsigned short>(port.bus.size()));
+           })
+           | std::ranges::to<std::vector>();
   }
 
 }  // namespace
@@ -63,6 +118,8 @@ std::shared_ptr<SubcircuitComponent> SubcircuitComponent::imported(
 
 void SubcircuitComponent::clearResolvedCircuit()
 {
+  inputIds.clear();
+  outputIds.clear();
   inputs.clear();
   outputs.clear();
   notifyIOListeners();
@@ -80,11 +137,45 @@ void SubcircuitComponent::configureFromSlug(std::string_view slug)
     return;
   }
 
-  auto definition      = resolver->resolve(slug);
-  auto externalInputs  = makeExternalBuses(definition.inputs);
-  auto externalOutputs = makeExternalBuses(definition.outputs);
-  setInputs(externalInputs);
-  setOutputs(externalOutputs);
+  auto       definition     = resolver->resolve(slug);
+  const bool sameDefinition = getPropertyValue<std::string>("slug") == slug;
+  auto       newInputs      = externalBuses(definition.inputs);
+  auto       newOutputs     = externalBuses(definition.outputs);
+  if (sameDefinition) {
+    newInputs = remapConnections(newInputs, portIds(definition.inputs), inputs, inputIds);
+    newOutputs =
+        remapConnections(newOutputs, portIds(definition.outputs), outputs, outputIds);
+  }
+  inputIds  = portIds(definition.inputs);
+  outputIds = portIds(definition.outputs);
+  // Update both directions before notifying observers of the new interface.
+  inputs  = std::move(newInputs);
+  outputs = std::move(newOutputs);
+  notifyIOListeners();
+}
+
+void SubcircuitComponent::restoreConnections(const std::vector<Bus>&      savedInputs,
+                                             const std::vector<Bus>&      savedOutputs,
+                                             const std::vector<uint64_t>& savedInputIds,
+                                             const std::vector<uint64_t>& savedOutputIds)
+{
+  auto newInputs  = remapConnections(inputs, inputIds, savedInputs, savedInputIds);
+  auto newOutputs = remapConnections(outputs, outputIds, savedOutputs, savedOutputIds);
+  inputs          = std::move(newInputs);
+  outputs         = std::move(newOutputs);
+  notifyIOListeners();
+}
+
+std::vector<Bus>
+SubcircuitComponent::inputsForPorts(const std::vector<CircuitPort>& ports) const
+{
+  return remapConnections(externalBuses(ports), portIds(ports), inputs, inputIds);
+}
+
+std::vector<Bus>
+SubcircuitComponent::outputsForPorts(const std::vector<CircuitPort>& ports) const
+{
+  return remapConnections(externalBuses(ports), portIds(ports), outputs, outputIds);
 }
 
 void SubcircuitComponent::setCircuitResolver(const CircuitResolver* newResolver)

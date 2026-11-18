@@ -37,6 +37,7 @@
 #include <logging/logger.hpp>
 
 #include <core/circuit.hpp>
+#include <core/io.hpp>
 #include <core/serialization/component_registry.hpp>
 #include <ui/circuit/components/graphicalIO.hpp>
 #include <ui/circuit/components/graphicalLogicComponent.hpp>
@@ -605,6 +606,12 @@ bool DiagramSceneSerializer::insertSelection(const nlohmann::json&    payload,
       DiagramScene::snapToGrid(targetOrigin - payloadOrigin(remappedPayload));
   auto pastedCircuit =
       deserializeCircuitPayload(remappedPayload, coreRegistry, scene.circuitResolver());
+  if (isPaste && pastedCircuit) {
+    for (const auto& [_component, vertex] : pastedCircuit->getComponentToVertex())
+      if (const auto boundary = std::dynamic_pointer_cast<BoundaryIoComponent>(
+              pastedCircuit->getComponentByVertexId(vertex)))
+        boundary->resetPortId();
+  }
   auto pendingComponents = deserializeVisualComponents(
       remappedPayload["visual"], guiFactory, pastedCircuit, pasteOffset, scene);
   auto pendingWires =

@@ -20,6 +20,7 @@
 #include "cells.hpp"
 #include "helpers.hpp"
 
+#include <core/circuitDocument.hpp>
 #include <core/flipflops.hpp>
 #include <core/gates.hpp>
 #include <core/io.hpp>
@@ -780,7 +781,11 @@ void SubcircuitComponent::serializeYosys(SerializationContext& context) const
   // Resolve the referenced definition by slug, serialize it once as its own Yosys
   // module, and instantiate that module with this component's buses as named ports.
   const auto slug = getPropertyValue<std::string>("slug").value_or(std::string());
-  context.addSubcircuitInstance(slug, inputBuses(), outputBuses(), circuitResolver());
+  if (!circuitResolver())
+    throw std::runtime_error("Subcircuit serialization requires a circuit resolver");
+  const auto definition = circuitResolver()->resolve(slug);
+  context.addSubcircuitInstance(slug, inputsForPorts(definition.inputs),
+                                outputsForPorts(definition.outputs), circuitResolver());
 }
 
 }  // namespace SILICON::core
