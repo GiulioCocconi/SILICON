@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <utility>
 
 #include <ui/circuit/diagram/grid.hpp>
@@ -24,6 +25,19 @@
 
 namespace SILICON::ui {
 inline constexpr int EXTERNAL_PORT_MARGIN_GRID = 2;
+inline constexpr int EXTERNAL_PORT_SPACING_GRID = 2;
+
+/** Places one port in the automatic layout for the entire component shape. */
+[[nodiscard]] inline QPoint automaticPortPosition(const QSize& size, bool input,
+                                                  std::size_t index, std::size_t count)
+{
+  const int margin       = gridToPixels(EXTERNAL_PORT_MARGIN_GRID);
+  const int spacing      = gridToPixels(EXTERNAL_PORT_SPACING_GRID);
+  const int columnHeight = (static_cast<int>(count) - 1) * spacing;
+  const int firstPortY   = size.height() / 2 - columnHeight / 2;
+  return {input ? -margin : size.width() + margin,
+          firstPortY + static_cast<int>(index) * spacing};
+}
 
 [[nodiscard]] inline QRect shapeRect(const QSize& size)
 {

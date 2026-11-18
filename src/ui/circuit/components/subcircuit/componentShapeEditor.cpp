@@ -76,10 +76,18 @@ namespace SILICON::ui {
     void sanitizePortPositions(GraphicalSubcircuitMetadata& metadata)
     {
       const QRect rect = shapeRect(metadata.widthHeight);
-      for (auto& port : metadata.inputs)
-        port.position = sanitizePortPosition(port.position, rect);
-      for (auto& port : metadata.outputs)
-        port.position = sanitizePortPosition(port.position, rect);
+      const auto  positionPorts = [&](auto& ports, bool input) {
+        for (std::size_t i = 0; i < ports.size(); ++i) {
+          auto&        port = ports[i];
+          const QPoint position =
+              metadata.positioning == PortPositioning::Automatic
+                  ? automaticPortPosition(metadata.widthHeight, input, i, ports.size())
+                  : port.position;
+          port.position = sanitizePortPosition(position, rect);
+        }
+      };
+      positionPorts(metadata.inputs, true);
+      positionPorts(metadata.outputs, false);
     }
 
     class PreviewSubcircuitComponent : public Component {
@@ -489,6 +497,8 @@ namespace SILICON::ui {
       setPortTablePositions(outputTable, draft->outputs);
     };
 
+    const auto markManual = [draft] { draft->positioning = PortPositioning::Manual; };
+
     auto applySize = [draft, preview, updatePortTables](int widthGrid, int heightGrid) {
       draft->autoSize    = false;
       draft->widthHeight = QSize(gridToPixels(widthGrid), gridToPixels(heightGrid));
@@ -503,8 +513,9 @@ namespace SILICON::ui {
     QObject::connect(height, &QSpinBox::valueChanged, dialog,
                      [width, applySize](int value) { applySize(width->value(), value); });
 
-    auto applyTableEdit = [draft, preview](QTableWidget* table, bool inputPort,
-                                           QTableWidgetItem* item) {
+    auto applyTableEdit = [draft, preview, markManual](QTableWidget*     table,
+                                                       bool              inputPort,
+                                                       QTableWidgetItem* item) {
       if (!item || (item->column() != 1 && item->column() != 2))
         return;
 
@@ -514,6 +525,7 @@ namespace SILICON::ui {
         return;
 
       auto&      port                = ports[static_cast<std::size_t>(row)];
+      markManual();
       const auto currentGridPosition = pixelsToGrid(port.position);
       bool       okX                 = false;
       bool       okY                 = false;
@@ -536,14 +548,15 @@ namespace SILICON::ui {
                        applyTableEdit(outputTable, false, item);
                      });
 
-    preview->setPortMovedCallback([draft, inputTable, outputTable](bool        inputPort,
-                                                                   std::size_t index,
-                                                                   QPoint      position) {
+    preview->setPortMovedCallback([draft, inputTable, outputTable,
+                                   markManual](bool inputPort, std::size_t index,
+                                               QPoint position) {
       auto& ports = inputPort ? draft->inputs : draft->outputs;
       if (index >= ports.size())
         return;
 
       ports[index].position = position;
+      markManual();
       setPortTablePosition(inputPort ? inputTable : outputTable, static_cast<int>(index),
                            position);
     });
