@@ -80,6 +80,7 @@ private:
   bool inputAssignmentError = false;
 
   [[nodiscard]] QLineF connectionLine() const;
+  [[nodiscard]] QTransform labelTransform(const QRectF& rect, bool insideShape) const;
   void prepareBoundsChange();
 
 public:
@@ -214,6 +215,8 @@ protected:
 
   /** @brief Components can rotate by default */
   [[nodiscard]] bool canRotate() const override { return true; }
+
+  QVariant itemChange(GraphicsItemChange change, const QVariant& value) override;
 
   /**
    * @brief Handles double-clicks not consumed by a component-specific action.
