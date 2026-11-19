@@ -151,6 +151,15 @@ QRectF portSizeLabelRect(const QPointF& midpoint, const QRectF& textRect,
           textRect.width(), textRect.height()};
 }
 
+QRectF portNameBounds(QRectF rect, const QString& name)
+{
+  if (name == QStringLiteral("clk")) {
+    constexpr qreal halfPen = ClockIconPenWidth / 2.0;
+    rect.adjust(-halfPen, -halfPen, halfPen, halfPen);
+  }
+  return rect;
+}
+
 }  // namespace
 
 GraphicalComponent::GraphicalComponent(QGraphicsItem* shape, QGraphicsItem* parent,
@@ -383,6 +392,21 @@ void GraphicalComponent::rotate()
   update();
 }
 
+QVariant GraphicalComponent::itemChange(GraphicsItemChange change, const QVariant& value)
+{
+  if (change == ItemRotationChange || change == ItemTransformChange) {
+    prepareSceneBoundsChange();
+    for (auto* port : getPorts())
+      port->prepareGeometryChange();
+  }
+  if (change == ItemRotationHasChanged || change == ItemTransformHasChanged) {
+    for (auto* port : getPorts())
+      port->update();
+    update();
+  }
+  return GraphicalItem::itemChange(change, value);
+}
+
 QRectF GraphicalComponent::getCollisionRect() const
 {
   QRectF rect = itemShape ? itemShape->mapRectToParent(itemShape->boundingRect())
@@ -568,6 +592,35 @@ QLineF Port::connectionLine() const
   return {mapFromItem(line, portLine.p1()), mapFromItem(line, portLine.p2())};
 }
 
+QTransform Port::labelTransform(const QRectF& rect, const bool insideShape) const
+{
+  const auto aroundCenter = [&](qreal angle) {
+    QTransform transform;
+    transform.translate(rect.center().x(), rect.center().y());
+    transform.rotate(angle);
+    transform.translate(-rect.center().x(), -rect.center().y());
+    return transform;
+  };
+
+  const auto  transform  = sceneTransform();
+  const auto  direction  = transform.map(QPointF(1, 0)) - transform.map(QPointF());
+  const qreal angle      = QLineF(QPointF(), direction).angle();
+  const auto  horizontal = aroundCenter(angle);
+  if (!insideShape)
+    return horizontal;
+
+  if (const auto* component = dynamic_cast<const GraphicalComponent*>(parentItem())) {
+    if (const auto* shape = component->getItemShape();
+        shape
+        && shape->boundingRect().contains(
+            shape->mapRectFromItem(this, horizontal.mapRect(rect))))
+      return horizontal;
+  }
+
+  // Keep a label that would overflow aligned with the body, but never upside down.
+  return aroundCenter(angle > 90.0 && angle <= 270.0 ? 180.0 : 0.0);
+}
+
 void Port::prepareBoundsChange()
 {
   // The parent paints its selection outline around the accumulated child bounds.
@@ -591,18 +644,16 @@ QRectF Port::boundingRect() const
   const auto includeLabelBounds = [&](const QFont& baseFont) {
     const QFont markerFont = portMarkerFont(baseFont);
     if (printName) {
-      QRectF labelRect = portNameRect(portLine, name, side, markerFont);
-      if (name == QStringLiteral("clk")) {
-        constexpr qreal halfPen = ClockIconPenWidth / 2.0;
-        labelRect.adjust(-halfPen, -halfPen, halfPen, halfPen);
-      }
-      rect = rect.united(labelRect);
+      const auto labelRect =
+          portNameBounds(portNameRect(portLine, name, side, markerFont), name);
+      rect = rect.united(labelTransform(labelRect, true).mapRect(labelRect));
     }
     if (size != 1) {
       const QFontMetricsF metrics(markerFont);
       const QRectF        textRect =
           metrics.boundingRect(QString::number(size)).adjusted(-4.0, -2.0, 4.0, 2.0);
-      rect = rect.united(portSizeLabelRect(portLine.center(), textRect, side))
+      const auto labelRect = portSizeLabelRect(portLine.center(), textRect, side);
+      rect = rect.united(labelTransform(labelRect, false).mapRect(labelRect))
                  .united(strokedLineRect(portSlash(portLine), SlashPenWidth));
     }
   };
@@ -686,6 +737,7 @@ void Port::paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
     const QTextOption textOption(Qt::AlignCenter);
 
     painter->save();
+    painter->setTransform(labelTransform(portNameBounds(labelRect, name), true), true);
     painter->setFont(markerFont);
     painter->setPen(QPen(portColor));
     if (name == QStringLiteral("clk")) {
@@ -728,6 +780,7 @@ void Port::paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
     const QRectF labelRect = portSizeLabelRect(portLine.center(), textRect, side);
 
     painter->save();
+    painter->setTransform(labelTransform(labelRect, false), true);
     painter->setFont(markerFont);
     painter->setPen(portColor);
     painter->drawText(labelRect, sizeText, QTextOption(Qt::AlignCenter));
