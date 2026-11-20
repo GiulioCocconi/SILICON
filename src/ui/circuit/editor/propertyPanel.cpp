@@ -225,6 +225,12 @@ void PropertyPanel::refresh()
   // 3. Intersect properties to find common configurable keys
   auto commonProps = selectedNodes.front()->getProperties();
 
+  std::erase_if(commonProps, [&](const auto& pair) {
+    return std::ranges::any_of(selectedNodes, [&](const GraphicalComponent* node) {
+      return node->isPropertyHidden(pair.first);
+    });
+  });
+
   for (const GraphicalComponent* node : selectedNodes | std::views::drop(1)) {
     const auto& props = node->getProperties();
 
