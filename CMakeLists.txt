@@ -57,6 +57,7 @@ elseif (UNIX)
         message(WARNING "Nix detected, but not running inside a nix-shell/nix develop environment.")
     endif ()
 elseif (EMSCRIPTEN)
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build static libraries for WebAssembly" FORCE)
     set(CMAKE_EXECUTABLE_SUFFIX ".html")
 elseif (MSVC)
     message(FATAL_ERROR "MSVC is not currently supported!")
@@ -477,7 +478,7 @@ if(EMSCRIPTEN)
   FetchContent_Declare(
     JKQTPlotter6
     GIT_REPOSITORY https://github.com/jkriege2/JKQtPlotter.git
-    GIT_TAG v2019.11.3
+    GIT_TAG v5.0.0-beta2
     GIT_SHALLOW TRUE
   )
 

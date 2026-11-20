@@ -1,0 +1,18 @@
+{
+  "name": "jkqtplotter",
+  "version": "5.0.0-beta2",
+  "description": "JKQTMathText LaTeX equation renderer from JKQtPlotter (Qt 6)",
+  "homepage": "https://github.com/jkriege2/JKQtPlotter",
+  "license": "LGPL-2.1-or-later AND OFL-1.1",
+  "dependencies": [
+    "qtbase",
+    {
+      "name": "vcpkg-cmake",
+      "host": true
+    },
+    {
+      "name": "vcpkg-cmake-config",
+      "host": true
+    }
+  ]
+}
