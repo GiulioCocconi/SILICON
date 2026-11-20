@@ -316,6 +316,7 @@ namespace {
 
 GraphicalText::GraphicalText(QGraphicsItem* parent) : GraphicalComponent(nullptr, parent)
 {
+  hiddenProperties.insert("wrapWidth");
   // Keep annotations above circuit components and wires, regardless of insertion order.
   setZValue(1);
   setProperties(properties);
