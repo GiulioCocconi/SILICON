@@ -430,7 +430,6 @@ target_compile_options(silicon_style PRIVATE -Werror)
 
 set(app_icon_resource_windows "${resources_dir}/app_icon.rc")
 
-
 qt_add_executable(SILICON
         ${src_dir}/main.cpp
 	${app_icon_resource_windows})
@@ -457,6 +456,9 @@ if (TARGET Fontconfig::Fontconfig)
     target_link_libraries(SILICON PRIVATE Fontconfig::Fontconfig)
     target_compile_definitions(SILICON PRIVATE SILICON_HAS_FONTCONFIG=1)
 endif ()
+
+find_package(JKQTPlotter6 REQUIRED)
+target_link_libraries(SILICON PRIVATE JKQTPlotter6::JKQTMathText6)
 
 set_target_properties(SILICON PROPERTIES
         # Spawn a console windows (on Windows) only when in debug mode
