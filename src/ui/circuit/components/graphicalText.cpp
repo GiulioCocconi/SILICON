@@ -12,9 +12,14 @@
 #include <memory>
 #include <stdexcept>
 #include <tuple>
+#include <vector>
 
+#include <QAbstractTextDocumentLayout>
 #include <QFontMetricsF>
 #include <QGraphicsTextItem>
+#include <QImage>
+#include <QObject>
+#include <QPainter>
 #include <QTextBlock>
 #include <QTextCharFormat>
 #include <QTextCursor>
@@ -22,33 +27,106 @@
 #include <QTextLayout>
 #include <QTextOption>
 
+#include <jkqtmathtext/jkqtmathtext.h>
+
 #include <ui/shell/theme.hpp>
-#include <utils/ranges_wrapper.hpp>
 
 namespace SILICON::ui {
 namespace {
 
   const StringPropertyOptions FontOptions{"Quicksand", "Chango", "NovaMono"};
 
+  // Inline objects let Qt wrap prose around vector-rendered equations and include
+  // their full height when measuring annotations and resizing them.
+  class MathTextObjects : public QObject, public QTextObjectInterface {
+    Q_OBJECT
+    Q_INTERFACES(QTextObjectInterface)
+
+  public:
+    static constexpr int ObjectType   = QTextFormat::UserObject;
+    static constexpr int FormulaIndex = QTextFormat::UserProperty;
+
+    void registerWith(QTextDocument* document)
+    {
+      document->documentLayout()->registerHandler(ObjectType, this);
+    }
+
+    bool insert(QTextCursor& cursor, QStringView source, const QTextCharFormat& format)
+    {
+      auto math = std::make_unique<JKQTMathText>();
+      math->setFontSize(cursor.document()->defaultFont().pointSizeF());
+      math->setFontRoman(cursor.document()->defaultFont().family());
+      math->setFontOption(JKQTMathText::BaseFontBold, format.fontWeight() >= QFont::Bold);
+      math->setFontOption(JKQTMathText::BaseFontItalic, format.fontItalic());
+      if (!math->parse(source.toString()))
+        return false;
+
+      QImage     device(1, 1, QImage::Format_ARGB32_Premultiplied);
+      QPainter   painter(&device);
+      const auto size = math->getSize(painter);
+      if (!size.isValid() || size.isEmpty())
+        return false;
+
+      auto objectFormat = format;
+      objectFormat.setObjectType(ObjectType);
+      objectFormat.setProperty(FormulaIndex, static_cast<int>(formulas.size()));
+      objectFormat.setVerticalAlignment(QTextCharFormat::AlignMiddle);
+      formulas.push_back({std::move(math), size});
+      cursor.insertText(QString(QChar::ObjectReplacementCharacter), objectFormat);
+      return true;
+    }
+
+    QSizeF intrinsicSize(QTextDocument*, int, const QTextFormat& format) override
+    {
+      return formulas.at(format.intProperty(FormulaIndex)).size;
+    }
+
+    void drawObject(QPainter* painter, const QRectF& rect, QTextDocument*, int,
+                    const QTextFormat& format) override
+    {
+      auto& math = *formulas.at(format.intProperty(FormulaIndex)).math;
+      painter->save();
+      painter->setRenderHint(QPainter::Antialiasing);
+      painter->setRenderHint(QPainter::TextAntialiasing);
+      math.setFontColor(ThemeEngine::getColor(theme::ColorToken::Ink));
+      math.draw(*painter, Qt::AlignCenter, rect);
+      painter->restore();
+    }
+
+  private:
+    struct Formula {
+      std::unique_ptr<JKQTMathText> math;
+      QSizeF                        size;
+    };
+    std::vector<Formula> formulas;
+  };
+
   bool isFormattingCharacter(QChar character)
   {
-    return std::ranges::contains(QStringView(u"*_\\"), character);
+    return std::ranges::contains(QStringView(u"*_$\\"), character);
   }
 
   qsizetype findClosingDelimiter(QStringView text, QChar delimiter)
   {
     bool escaped = false;
-    for (auto [index, character] : text | SILICON::views::enumerate) {
-      if (character == '\n' || character == '\r')
+    for (qsizetype index = 0; index < text.size(); ++index) {
+      const auto character = text[index];
+      if (delimiter != '$' && (character == '\n' || character == '\r'))
         break;
       if (!escaped && character == delimiter)
         return index;
+      // Emphasis delimiters inside an equation belong to LaTeX.
+      if (!escaped && character == '$' && delimiter != '$') {
+        const auto length = findClosingDelimiter(text.mid(index + 1), '$');
+        if (length >= 0)
+          index += length + 1;
+      }
       escaped = !escaped && character == '\\';
     }
     return -1;
   }
 
-  void insertFormattedText(QTextCursor& cursor, QStringView text,
+  void insertFormattedText(QTextCursor& cursor, MathTextObjects& math, QStringView text,
                            const QTextCharFormat& format = {})
   {
     QString plain;
@@ -60,7 +138,7 @@ namespace {
         continue;
       }
 
-      const auto length = character == '*' || character == '_'
+      const auto length = character == '*' || character == '_' || character == '$'
                               ? findClosingDelimiter(text.mid(index), character)
                               : -1;
       // Unmatched and empty delimiters stay visible as ordinary text.
@@ -71,12 +149,19 @@ namespace {
 
       cursor.insertText(plain, format);
       plain.clear();
+      if (character == '$') {
+        const auto source = text.mid(index - 1, length + 2);
+        if (!math.insert(cursor, source, format))
+          cursor.insertText(source.toString(), format);
+        index += length + 1;
+        continue;
+      }
       auto emphasis = format;
       if (character == '*')
         emphasis.setFontWeight(QFont::Bold);
       else
         emphasis.setFontItalic(true);
-      insertFormattedText(cursor, text.mid(index, length), emphasis);
+      insertFormattedText(cursor, math, text.mid(index, length), emphasis);
       index += length + 1;
     }
     cursor.insertText(plain, format);
@@ -94,10 +179,12 @@ namespace {
       option.setWrapMode(QTextOption::WordWrap);
       document()->setDefaultTextOption(option);
       setFont(font);
+      math.registerWith(document());
       QTextCursor cursor(document());
-      insertFormattedText(cursor, text);
+      insertFormattedText(cursor, math, text);
       // Measure the formatted text once; probes never alter the live item's geometry.
       measurement.reset(document()->clone());
+      math.registerWith(measurement.get());
       measurement->setTextWidth(1);
       (void)measurement->size();
       for (auto block = measurement->begin(); block.isValid(); block = block.next()) {
@@ -187,6 +274,8 @@ namespace {
       if (length == 0)
         return 0;
       std::unique_ptr<QTextDocument> legacy(document()->clone());
+      // QTextDocument::clone() does not copy custom object handlers.
+      math.registerWith(legacy.get());
       legacy->setTextWidth(-1);
       QTextCursor cursor(legacy.get());
       for (auto block = legacy->begin(); block.isValid(); block = block.next()) {
@@ -217,6 +306,7 @@ namespace {
     }
 
   private:
+    mutable MathTextObjects        math;
     std::unique_ptr<QTextDocument> measurement;
     qreal                          minimumWidth = GRID_SIZE;
     qreal                          naturalWidth = GRID_SIZE;
@@ -226,6 +316,7 @@ namespace {
 
 GraphicalText::GraphicalText(QGraphicsItem* parent) : GraphicalComponent(nullptr, parent)
 {
+  hiddenProperties.insert("wrapWidth");
   // Keep annotations above circuit components and wires, regardless of insertion order.
   setZValue(1);
   setProperties(properties);
@@ -241,10 +332,10 @@ GraphicalText::getStringPropertyOptions(std::string_view key) const
 
 void GraphicalText::setProperties(PropertyMap next)
 {
-  const auto* text       = std::get_if<std::string>(&next.at("text"));
-  const auto* size       = std::get_if<int>(&next.at("size"));
-  const auto* font       = std::get_if<std::string>(&next.at("font"));
-  const auto* wrapWidth  = std::get_if<int>(&next.at("wrapWidth"));
+  const auto* text      = std::get_if<std::string>(&next.at("text"));
+  const auto* size      = std::get_if<int>(&next.at("size"));
+  const auto* font      = std::get_if<std::string>(&next.at("font"));
+  const auto* wrapWidth = std::get_if<int>(&next.at("wrapWidth"));
   if (!text || !size || !font || !wrapWidth)
     throw std::invalid_argument(
         "Text properties require text, integer size, font, and integer wrapWidth");
@@ -348,3 +439,5 @@ void GraphicalText::loadSerializedState(const nlohmann::json& json)
 }
 
 }  // namespace SILICON::ui
+
+#include "graphicalText.moc"

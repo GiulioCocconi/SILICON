@@ -20,6 +20,7 @@ set -e
 DEPS_TO_REMOVE=(
   "qtbase"
   "qtsvg"
+  "jkqtplotter"
   "gtest"
   "boost-process"
 )

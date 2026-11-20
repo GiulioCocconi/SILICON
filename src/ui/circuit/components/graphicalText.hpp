@@ -10,7 +10,7 @@
 
 namespace SILICON::ui {
 
-/** Text annotation supporting *bold* and _italics_, with no simulation backend. */
+/** Text annotation supporting *bold*, _italics_, and $LaTeX math$. */
 class GraphicalText : public GraphicalComponent {
 public:
   static constexpr std::string_view COMPONENT_TYPE = "Text";
