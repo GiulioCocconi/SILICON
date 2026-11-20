@@ -195,6 +195,11 @@ bool GraphicalComponent::isMultilineProperty(std::string_view key) const
   return false;
 }
 
+bool GraphicalComponent::isPropertyHidden(std::string_view key) const
+{
+  return hiddenProperties.contains(key);
+}
+
 void GraphicalComponent::applyProperty(std::string_view key, const PropertyValue& value)
 {
   Q_UNUSED(value);

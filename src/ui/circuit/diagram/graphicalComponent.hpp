@@ -20,6 +20,7 @@
 #include <array>
 #include <ranges>
 #include <span>
+#include <unordered_set>
 
 #include <core/component.hpp>
 #include <nlohmann/json.hpp>
@@ -160,6 +161,8 @@ public:
   [[nodiscard]] virtual std::optional<std::reference_wrapper<const StringPropertyOptions>>
                              getStringPropertyOptions(std::string_view key) const;
   [[nodiscard]] virtual bool isMultilineProperty(std::string_view key) const;
+  /** @brief Whether a property is omitted from the properties panel. */
+  [[nodiscard]] bool isPropertyHidden(std::string_view key) const;
   virtual void applyProperty(std::string_view key, const PropertyValue& value);
 
   /** @brief Annotations remain selectable but do not obstruct placement or routing. */
@@ -189,6 +192,12 @@ public:
   [[nodiscard]] QRectF collisionRectForWires() const;
 
 protected:
+  /** @brief Property names hidden from the panel, still accessible and serialized.
+   * Add names in subclasses with hiddenProperties.insert("propertyName").
+   */
+  std::unordered_set<std::string, TransparentStringHash, std::equal_to<>>
+      hiddenProperties;
+
   /**
    * @brief Sets the component shape graphics item.
    * @param shape The shape item
