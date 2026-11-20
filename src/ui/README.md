@@ -9,6 +9,14 @@
 
 The data models and `.sil` archive format live under `src/core/`.
 
+## Text annotations
+
+Text components support `*bold*`, `_italics_`, and inline LaTeX math enclosed in
+`$...$`, for example `Output: $y = \frac{a_1 + a_2}{2}$`. Use `\$` for a literal
+dollar sign. Empty or unmatched delimiters and invalid formulas stay visible as
+text. Formulas are rendered with JKQTMathText and participate in text wrapping
+and resizing. Saved annotations retain their original text and markup.
+
 ## Ownership and callbacks
 
 Qt parents own ordinary child widgets, layouts, and actions. Graphics scenes

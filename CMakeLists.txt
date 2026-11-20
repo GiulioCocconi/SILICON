@@ -56,13 +56,16 @@ elseif (UNIX)
     if (USING_NIX AND NOT DEFINED ENV{IN_NIX_SHELL})
         message(WARNING "Nix detected, but not running inside a nix-shell/nix develop environment.")
     endif ()
-elseif (EMSCRIPTEN)
-    set(CMAKE_EXECUTABLE_SUFFIX ".html")
 elseif (MSVC)
     message(FATAL_ERROR "MSVC is not currently supported!")
 endif ()
 
 option(SILICON_USE_VCPKG "Bootstrap and use bundled vcpkg for dependencies (if using Nix, this option has no effect)" ON)
+
+if (EMSCRIPTEN)
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build static libraries for WebAssembly" FORCE)
+endif ()
+
 
 # Include our custom CMake modules
 include(cmake/vcpkg.cmake)
@@ -430,7 +433,6 @@ target_compile_options(silicon_style PRIVATE -Werror)
 
 set(app_icon_resource_windows "${resources_dir}/app_icon.rc")
 
-
 qt_add_executable(SILICON
         ${src_dir}/main.cpp
 	${app_icon_resource_windows})
@@ -457,6 +459,39 @@ if (TARGET Fontconfig::Fontconfig)
     target_link_libraries(SILICON PRIVATE Fontconfig::Fontconfig)
     target_compile_definitions(SILICON PRIVATE SILICON_HAS_FONTCONFIG=1)
 endif ()
+
+
+if(EMSCRIPTEN)
+  # WASM can't use vcpkg for this dependency because it requires Qt which
+  # is not managed through it
+
+  include(FetchContent)
+
+  # Build only JKQTMathText and its required dependencies.
+  set(JKQtPlotter_BUILD_LIB_JKQTPLOTTER OFF CACHE BOOL "" FORCE)
+  set(JKQtPlotter_BUILD_LIB_JKQTFASTPLOTTER OFF CACHE BOOL "" FORCE)
+  set(JKQtPlotter_BUILD_LIB_JKQTMATH OFF CACHE BOOL "" FORCE)
+  set(JKQtPlotter_BUILD_LIB_JKQTMATHTEXT ON CACHE BOOL "" FORCE)
+
+  set(JKQtPlotter_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+  set(JKQtPlotter_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+  set(JKQtPlotter_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+
+  FetchContent_Declare(
+    JKQTPlotter6
+    GIT_REPOSITORY https://github.com/jkriege2/JKQtPlotter.git
+    GIT_TAG v5.0.0-beta2
+    GIT_SHALLOW TRUE
+  )
+
+  FetchContent_MakeAvailable(JKQTPlotter6)
+elseif (SILICON_USE_VCPKG AND NOT USING_NIX)
+  find_package(JKQTMathText6 CONFIG REQUIRED)
+else ()
+  find_package(JKQTPlotter6 CONFIG REQUIRED)
+endif()
+
+target_link_libraries(SILICON PRIVATE JKQTPlotter6::JKQTMathText6)
 
 set_target_properties(SILICON PROPERTIES
         # Spawn a console windows (on Windows) only when in debug mode
