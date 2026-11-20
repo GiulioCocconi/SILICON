@@ -457,7 +457,35 @@ if (TARGET Fontconfig::Fontconfig)
     target_compile_definitions(SILICON PRIVATE SILICON_HAS_FONTCONFIG=1)
 endif ()
 
-find_package(JKQTPlotter6 REQUIRED)
+
+if(EMSCRIPTEN)
+  # WASM can't use vcpkg for this dependency because it requires Qt which
+  # is not managed through it
+
+  include(FetchContent)
+
+  # Build only JKQTMathText and its required dependencies.
+  set(JKQtPlotter_BUILD_LIB_JKQTPLOTTER OFF CACHE BOOL "" FORCE)
+  set(JKQtPlotter_BUILD_LIB_JKQTFASTPLOTTER OFF CACHE BOOL "" FORCE)
+  set(JKQtPlotter_BUILD_LIB_JKQTMATH OFF CACHE BOOL "" FORCE)
+  set(JKQtPlotter_BUILD_LIB_JKQTMATHTEXT ON CACHE BOOL "" FORCE)
+
+  set(JKQtPlotter_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+  set(JKQtPlotter_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+  set(JKQtPlotter_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+
+  FetchContent_Declare(
+    JKQTPlotter6
+    GIT_REPOSITORY https://github.com/jkriege2/JKQtPlotter.git
+    GIT_TAG v2019.11.3
+    GIT_SHALLOW TRUE
+  )
+
+  FetchContent_MakeAvailable(JKQTPlotter6)
+else()
+  find_package(JKQTPlotter6 CONFIG REQUIRED)
+endif()
+
 target_link_libraries(SILICON PRIVATE JKQTPlotter6::JKQTMathText6)
 
 set_target_properties(SILICON PROPERTIES
