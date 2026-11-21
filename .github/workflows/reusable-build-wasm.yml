@@ -45,6 +45,11 @@ jobs:
           target: "wasm"
           arch: "wasm_singlethread"
 
+      - name: Install pinned CMake
+        uses: jwlawson/actions-setup-cmake@v2
+        with:
+          cmake-version: '4.4.5'
+
       - name: Install build dependencies
         shell: bash
         run: sudo apt-get update && sudo apt-get install -y ninja-build autoconf autoconf-archive automake libtool jq zip
@@ -59,7 +64,6 @@ jobs:
         with:
           path: |
             build/vcpkg_installed
-            build/_deps
           key: wasm-vcpkg-${{ hashFiles('**/vcpkg.json', 'vcpkg-configuration.json', 'vcpkg-ports/**') }}
           restore-keys: |
             wasm-vcpkg-
@@ -76,7 +80,6 @@ jobs:
           fi
           chmod +x ~/work/SILICON/Qt/6.11.0/wasm_singlethread/bin/qt-cmake
           ~/work/SILICON/Qt/6.11.0/wasm_singlethread/bin/qt-cmake -Bbuild -G Ninja "-DCMAKE_BUILD_TYPE=${BUILD_TYPE}" "${version_args[@]}"
-          emcmake cmake -G Ninja "-DCMAKE_BUILD_TYPE=${BUILD_TYPE}" -Bbuild "${version_args[@]}"
 
       - name: Build
         shell: bash
