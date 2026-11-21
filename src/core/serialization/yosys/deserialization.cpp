@@ -175,6 +175,7 @@ namespace {
       Cell(Importer& importer, const Json& cell, std::string context)
         : context(std::move(context)),
           importer(importer),
+          rawJson(cell),
           parametersJson(requireObjectMember(cell, "parameters", this->context)),
           connectionsJson(requireObjectMember(cell, "connections", this->context))
       {
@@ -192,6 +193,14 @@ namespace {
 
       [[nodiscard]] const std::string& cellType() const { return type; }
       [[nodiscard]] const std::string& where() const { return context; }
+
+      [[nodiscard]] Json attributes() const
+      {
+        auto result = rawJson.value("attributes", Json::object());
+        if (!result.is_object())
+          fail(context, "cell attributes must be an object");
+        return result;
+      }
 
       void requireConnections(const std::initializer_list<std::string_view> names) const
       {
@@ -217,6 +226,11 @@ namespace {
       [[nodiscard]] const Json& parameter(const std::string_view name) const
       {
         return requireObjectMember(parametersJson, name, context);
+      }
+
+      [[nodiscard]] bool hasParameter(const std::string_view name) const
+      {
+        return parametersJson.contains(name);
       }
 
       void requireKnownConnectionNames(const std::span<const std::string> names) const
@@ -260,6 +274,21 @@ namespace {
                                                    const std::size_t      laneWidth,
                                                    const std::size_t      laneCount) const
       {
+        return lanes(port, laneWidth, laneCount, ConnectionRole::Consumer);
+      }
+
+      [[nodiscard]] std::vector<Bus> driverLanes(const std::string_view port,
+                                                const std::size_t laneWidth,
+                                                const std::size_t laneCount) const
+      {
+        return lanes(port, laneWidth, laneCount, ConnectionRole::Driver);
+      }
+
+      [[nodiscard]] std::vector<Bus> lanes(const std::string_view port,
+                                          const std::size_t laneWidth,
+                                          const std::size_t laneCount,
+                                          const ConnectionRole role) const
+      {
         // Yosys flattens word lanes into one LSB-first JSON array. Decode each lane
         // separately so readBus() can recognize an all-literal word as a constant bus.
         const auto& bits          = requireObjectMember(connectionsJson, port, context);
@@ -275,7 +304,7 @@ namespace {
           for (std::size_t bit = 0; bit < laneWidth; ++bit)
             laneBits.push_back(bits[lane * laneWidth + bit]);
           lanes.push_back(importer.readBus(
-              laneBits, ConnectionRole::Consumer,
+              laneBits, role,
               std::format("{}.{} lane {}", context, port, lane), laneWidth));
         }
         return lanes;
@@ -333,6 +362,7 @@ namespace {
     private:
       std::string context;
       Importer&   importer;
+      const Json& rawJson;
       const Json& parametersJson;
       const Json& connectionsJson;
       std::string type;
@@ -784,64 +814,115 @@ namespace {
         fail(std::format("{}.cells", moduleContext()), "expected an object");
 
       for (const auto& [name, cell] : cells.items())
-        if (cell.is_object() && cell.value("type", std::string()) == "SILICON_ROM")
-          importRom(name, cell);
-      for (const auto& [name, cell] : cells.items())
-        if (cell.value("type", std::string()) != "SILICON_ROM")
-          importCell(name, cell);
+        importCell(name, cell);
     }
 
-    void importRom(const std::string_view name, const Json& raw)
+    [[nodiscard]] std::string memoryAssetName(const Cell& cell) const
     {
-      Cell cell(*this, raw, std::format("{}.cells.{}", moduleContext(), name));
-      cell.requireSchema(
-          std::array<std::string_view, 7>{"WIDTH", "SIZE", "ABITS", "INIT", "ID", "SYNC", "CLK_POLARITY"},
-          std::array<std::string_view, 5>{"ADDR", "DATA", "SELECT", "CLK", "EN"});
-      const auto width = cell.width("WIDTH");
-      const auto count = static_cast<std::size_t>(parseUnsigned(cell.parameter("SIZE"), cell.where()));
-      const auto abits = cell.width("ABITS");
-      if (!std::has_single_bit(count) || count > std::numeric_limits<int>::max()
-          || abits != std::max<std::size_t>(1, std::bit_width(count - 1)))
-        fail(cell.where(), "invalid canonical ROM geometry");
-      const bool synchronous = cell.flag("SYNC");
-      const bool positiveClock = cell.flag("CLK_POLARITY");
-      const auto init = binaryDigits(cell.parameter("INIT"), cell.where());
-      if (init.size() != count * width)
-        fail(cell.where(), "invalid canonical ROM initialization");
-      std::string bytes((init.size() + 7) / 8, '\0');
-      for (std::size_t bit = 0; bit < init.size(); ++bit)
-        if (init[init.size() - bit - 1] == '1')
-          bytes[bit / 8] = static_cast<char>(static_cast<unsigned char>(bytes[bit / 8]) | (1u << (bit % 8)));
-
       const auto& id = cell.parameter("ID");
       if (!id.is_string())
-        fail(cell.where(), "canonical ROM identifier must be a string");
-      std::string memoryName = id.get<std::string>();
+        fail(cell.where(), "memory identifier must be a string");
+      auto memoryName = id.get<std::string>();
       if (!memoryName.empty() && memoryName.front() == '\\')
         memoryName.erase(0, 1);
       for (auto& character : memoryName)
-        if (character == '/' || character == '\\' || static_cast<unsigned char>(character) < 32
+        if (character == '/' || character == '\\'
+            || static_cast<unsigned char>(character) < 32
             || static_cast<unsigned char>(character) == 127)
           character = '_';
-      std::string assetName = std::format("{}_{}", moduleName, memoryName);
-      const auto attributes = raw.value("attributes", Json::object());
-      if (!attributes.is_object())
-        fail(cell.where(), "ROM attributes must be an object");
-      if (const auto attribute = attributes.find(std::string(attributes::BINARY_DOCUMENT));
-          attribute != attributes.end()) {
-        if (!attribute->is_string())
-          fail(cell.where(), "binary document attribute must be a string");
-        assetName = attribute->get<std::string>();
-        if (!SILICON::project::isValidDocumentSlug(assetName))
-          fail(cell.where(), "binary document attribute is not a valid document name");
+      const auto metadata = cell.attributes();
+      if (const auto attribute = metadata.find(std::string(attributes::BINARY_DOCUMENT));
+          attribute != metadata.end()) {
+        if (!attribute->is_string()
+            || !SILICON::project::isValidDocumentSlug(attribute->get<std::string>()))
+          fail(cell.where(), "invalid memory binary document name");
+        return attribute->get<std::string>();
       }
+      return std::format("{}_{}", moduleName, memoryName);
+    }
 
-      Bus address = cell.consumer("ADDR", abits);
-      const Bus select = cell.consumer("SELECT", 1);
-      const Bus clockBus = cell.consumer("CLK", 1);
+    void importRam(const Cell& cell)
+    {
+      const auto connections = std::to_array<std::string_view>(
+          {"RD_ADDR", "RD_DATA", "WR_ADDR", "WR_DATA", "WR_EN", "WR_CLK"});
+      const auto readPorts = cell.hasParameter("RD_PORTS") ? cell.width("RD_PORTS") : 1;
+      if (cell.hasParameter("RD_PORTS"))
+        cell.requireSchema(std::to_array<std::string_view>(
+            {"ID", "WIDTH", "SIZE", "ABITS", "INIT", "RD_PORTS"}), connections);
+      else
+        cell.requireSchema(std::to_array<std::string_view>(
+            {"ID", "WIDTH", "SIZE", "ABITS", "INIT"}), connections);
+      const auto width = cell.width("WIDTH");
+      const auto count = parseUnsigned(cell.parameter("SIZE"), cell.where());
+      const auto abits = cell.width("ABITS");
+      if (count == 0
+          || count > static_cast<std::size_t>(std::numeric_limits<int>::max()) / width
+          || abits < std::max<std::size_t>(1, std::bit_width(count - 1)))
+        fail(cell.where(), "unsupported RAM geometry");
+
+      const auto& initializer = cell.parameter("INIT");
+      if (!initializer.is_string())
+        fail(cell.where(), "RAM INIT must be a bit string");
+      const auto& init = initializer.get_ref<const std::string&>();
+      if (init.size() != count * width)
+        fail(cell.where(), "RAM INIT does not match its geometry");
+      const bool uninitialized =
+          std::ranges::all_of(init, [](char bit) { return bit == 'x'; });
+      if (!uninitialized && !std::ranges::all_of(init, [](char bit) {
+            return bit == '0' || bit == '1';
+          }))
+        fail(cell.where(), "RAM INIT must be fully binary or entirely X");
+      const auto assetName = memoryAssetName(cell);
+
+      auto ram = std::make_shared<RAM>();
+      ram->setProperty("readPorts", static_cast<int>(readPorts));
+      ram->setProperty("dataWidth", static_cast<int>(width));
+      ram->setMemoryDepth(count);
+      if (!uninitialized) {
+        MemoryImage::Bits bits(init.size());
+        for (std::size_t bit = 0; bit < init.size(); ++bit)
+          bits[bit] = init[init.size() - bit - 1] == '1';
+        ram->setProperty("binaryContents", assetName);
+        ram->setMemoryImage(
+            std::make_shared<const MemoryImage>(std::move(bits), width, count));
+      }
+      const auto addresses = cell.consumerLanes("RD_ADDR", abits, readPorts);
+      std::vector<Bus> inputs{addresses[0], cell.consumer("WR_ADDR", abits),
+                              cell.consumer("WR_DATA", width),
+                              cell.consumer("WR_EN", width), cell.consumer("WR_CLK", 1)};
+      inputs.insert(inputs.end(), addresses.begin() + 1, addresses.end());
+      connectAndAdd(ram, std::move(inputs), cell.driverLanes("RD_DATA", width, readPorts));
+    }
+
+    void importRom(const Cell& cell)
+    {
+      cell.requireSchema(
+          std::array<std::string_view, 7>{"WIDTH", "SIZE", "ABITS", "INIT", "ID", "SYNC",
+                                          "CLK_POLARITY"},
+          std::array<std::string_view, 5>{"ADDR", "DATA", "SELECT", "CLK", "EN"});
+      const auto width = cell.width("WIDTH");
+      const auto count =
+          static_cast<std::size_t>(parseUnsigned(cell.parameter("SIZE"), cell.where()));
+      const auto abits = cell.width("ABITS");
+      if (count == 0 || count > std::numeric_limits<int>::max()
+          || abits != std::max<std::size_t>(1, std::bit_width(count - 1)))
+        fail(cell.where(), "invalid canonical ROM geometry");
+      const bool synchronous   = cell.flag("SYNC");
+      const bool positiveClock = cell.flag("CLK_POLARITY");
+      const auto init          = binaryDigits(cell.parameter("INIT"), cell.where());
+      if (init.size() != count * width)
+        fail(cell.where(), "invalid canonical ROM initialization");
+      MemoryImage::Bits bits(init.size());
+      for (std::size_t bit = 0; bit < init.size(); ++bit)
+        if (init[init.size() - bit - 1] == '1')
+          bits.set(bit);
+
+      const auto assetName = memoryAssetName(cell);
+
+      Bus       address   = cell.consumer("ADDR", abits);
+      const Bus select    = cell.consumer("SELECT", 1);
+      const Bus clockBus  = cell.consumer("CLK", 1);
       const Bus enableBus = cell.consumer("EN", 1);
-      if (count == 1 && !cell.rawConstant("ADDR", "0", abits))
-        fail(cell.where(), "one-word ROM requires a constant zero address");
       if (!synchronous && (!cell.rawConstant("CLK", "0") || !cell.rawConstant("EN", "1")))
         fail(cell.where(), "asynchronous ROM has invalid clock or enable");
       Wire_ptr clock = clockBus[0];
@@ -864,14 +945,17 @@ namespace {
       rom->setProperty("dataWidth", static_cast<int>(width));
       rom->setProperty("binaryContents", assetName);
       const Bus romOutput = synchronous && count == 1
-          ? Bus(static_cast<unsigned short>(width))
-          : cell.driver("DATA", width);
-      connectAndAdd(rom, {address, select,
-                         readBus(Json::array({"1"}), ConnectionRole::Consumer, cell.where(), 1)},
-                    {romOutput});
-      rom->refreshBinaryContents(std::make_shared<const std::string>(bytes), count);
+                                ? Bus(static_cast<unsigned short>(width))
+                                : cell.driver("DATA", width);
+      connectAndAdd(
+          rom,
+          {address, select,
+           readBus(Json::array({"1"}), ConnectionRole::Consumer, cell.where(), 1)},
+          {romOutput});
+      rom->setMemoryImage(
+          std::make_shared<const MemoryImage>(std::move(bits), width, count));
       if (synchronous && count == 1) {
-        const Bus registeredData = cell.driver("DATA", width);
+        const Bus             registeredData = cell.driver("DATA", width);
         std::vector<Wire_ptr> data(romOutput.begin(), romOutput.end());
         std::vector<Wire_ptr> outputs(registeredData.begin(), registeredData.end());
         while (data.size() < 2) {
@@ -1531,6 +1615,8 @@ namespace {
       using CellHandler = void (Importer::*)(const Cell&);
       static constexpr auto HANDLERS =
           std::to_array<std::pair<std::string_view, CellHandler>>({
+              {cells::ROM, &Importer::importRom},
+              {cells::RAM, &Importer::importRam},
               {cells::DFF, &Importer::importSiliconDff<false, false>},
               {cells::DFFE, &Importer::importSiliconDff<true, false>},
               {cells::DLATCH, &Importer::importSiliconDlatch},

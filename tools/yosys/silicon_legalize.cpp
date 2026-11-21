@@ -231,7 +231,7 @@ bool supported(RTLIL::IdString type)
     ID($and), ID($or), ID($xor), ID($not), ID($_NAND_), ID($_NOR_),
     ID($pos), ID($add), ID($sub), ID($neg), ID($mux), ID($bmux), ID($demux),
     ID($adffe),
-    id("SILICON_ROM"), id("SILICON_LOGIC"), id("SILICON_COMPARE"),
+    id("SILICON_ROM"), id("SILICON_RAM"), id("SILICON_LOGIC"), id("SILICON_COMPARE"),
     id("SILICON_SHIFT"), id("SILICON_DFF"), id("SILICON_DFFE"),
     id("SILICON_GATE"), id("SILICON_MUX"),
     id("SILICON_DLATCH"), id("SILICON_DFFSR"), id("SILICON_DFFSRE"),
@@ -292,7 +292,12 @@ struct SiliconLegalizePass : Pass {
     Pass::call(design, "pmuxtree");
     Pass::call(design, "delete t:$scopeinfo");
     Pass::call(design, "opt -nosdff");
-    Pass::call(design, "memory_dff");
+    // Recombine per-bit write ports emitted by write_verilog when they share
+    // an address and clock, preserving independently addressed write ports.
+    Pass::call(design, "memory_share -nosat -nowiden");
+    // ROM imports encode clocked reads. RAM imports use asynchronous reads,
+    // so only apply memory_dff to read-only memories.
+    Pass::call(design, "memory_dff t:$mem_v2 r:WR_PORTS=0 %i");
     Pass::call(design, "silicon_memrd_address");
     Pass::call(design, "silicon_memory_lower");
     Pass::call(design, "silicon_logic");

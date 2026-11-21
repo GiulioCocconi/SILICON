@@ -80,8 +80,8 @@ namespace {
   {
     if (auto* subcircuit = dynamic_cast<GraphicalSubcircuitComponent*>(component))
       subcircuit->setProjectContext(scene.documentStore(), scene.circuitResolver());
-    if (auto* rom = dynamic_cast<GraphicalROM*>(component))
-      rom->setDocumentStore(scene.documentStore());
+    if (auto* memory = dynamic_cast<GraphicalMemory*>(component))
+      memory->setDocumentStore(scene.documentStore());
   }
 
   void attachCoreComponent(GraphicalComponent* component, const nlohmann::json& compJson,

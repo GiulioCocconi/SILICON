@@ -149,7 +149,13 @@ namespace {
 
     if (const auto sourceRom = std::dynamic_pointer_cast<ROM>(component)) {
       auto clonedRom = std::dynamic_pointer_cast<ROM>(cloned);
+      clonedRom->setMemoryDepth(sourceRom->memoryDepth());
       clonedRom->refreshBinaryContents(sourceRom->binaryContentsSnapshot());
+    }
+    if (const auto sourceRam = std::dynamic_pointer_cast<RAM>(component)) {
+      auto clonedRam = std::dynamic_pointer_cast<RAM>(cloned);
+      if (const auto image = sourceRam->memoryImageSnapshot())
+        clonedRam->setMemoryImage(image);
     }
 
     auto inputs = remapBuses(component->getInputs(), wireMap);

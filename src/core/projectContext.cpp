@@ -78,7 +78,9 @@ namespace {
                                       ? SILICON::core::SubcircuitComponent::Type
                                       : SILICON::core::ROM::Type;
         auto       property     = properties->find(propertyName);
-        if (type->get_ref<const std::string&>() == expectedType
+        const auto& componentType = type->get_ref<const std::string&>();
+        if ((componentType == expectedType
+             || (renamedType == DocumentType::RawBinary && componentType == core::RAM::Type))
             && property != properties->end() && property->is_string()
             && property->get_ref<const std::string&>() == oldSlug) {
           *property = std::string(newSlug);
@@ -173,7 +175,7 @@ void ProjectContext::renameDocument(const std::string_view oldPath,
   for (auto& document : nextDocuments) {
     const bool renamedDocument = document.getPath() == oldPath;
     if (renamedDocument)
-      document = Document(std::string(newPath), document.getContents());
+      document = Document(std::string(newPath), document.getPayload());
     if (*oldType == DocumentType::Circuit || *oldType == DocumentType::RawBinary)
       rewriteDocumentReferences(document, *oldType, *oldSlug, *newSlug, renamedDocument);
   }

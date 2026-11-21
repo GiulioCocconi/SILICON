@@ -166,7 +166,7 @@ void Simulator::initializeExecutionPlan()
   auto compiledBlocks = circuit->splitCyclic();
   executionPlan       = compileExecutionPlan(compiledBlocks);
 
-  std::unordered_map<const Component*, std::size_t> componentToStep;
+  auto& componentToStep = componentExecutionSteps;
   for (const auto& [stepIndex, executionStep] :
        executionPlan | SILICON::views::enumerate) {
     for (const auto& comp : executionStep.components)
@@ -676,6 +676,18 @@ void Simulator::updateBus(const Bus& bus, const BusValue& value, const uint64_t 
   }
 }
 
+void Simulator::stageSequentialUpdate(const Component_weakPtr& source,
+                                       std::function<bool()> commit)
+{
+  auto owner = source.lock();
+  if (!owner || !componentExecutionSteps.contains(owner.get()))
+    throw std::invalid_argument("Sequential state update requires a simulated component");
+  const auto key = owner.get();
+  // An SCC may evaluate the owner several times for the same clock transition.
+  // Preserve its first sample so feedback settling cannot replace the write data.
+  stagedStateUpdates.try_emplace(key, StagedStateUpdate{std::move(owner), std::move(commit)});
+}
+
 Simulator::RunResult
 Simulator::evaluateExecutionPlanAndTrace(std::span<const ExecutionStep> steps,
                                          const Context&                  context,
@@ -694,38 +706,56 @@ Simulator::RunResult Simulator::evaluateForwardConeAndTrace(
     const CancellationCheck& isCancelled, const bool enableSequentialStaging)
 {
   Context                    context{false, changedBuses, std::move(previousWireStates)};
-  const auto                 steps = getForwardExecutionSteps(changedBuses);
+  auto                       steps = getForwardExecutionSteps(changedBuses);
   const EvaluationStateGuard evaluationState(*this, &context.previousWireStates,
                                              enableSequentialStaging);
 
   try {
-    const auto completed = evaluateExecutionSteps(steps, context, isCancelled);
-    if (!completed) {
-      stagedSequentialTransitions.clear();
-      return RunResult::Cancelled;
-    }
-
-    evaluationState.setStageSequentialOutputs(false);
-    std::unordered_map<uint64_t, State> stagedPreviousWireStates;
-    const auto                          stagedChangedBuses =
-        enableSequentialStaging
-                                     ? commitStagedSequentialTransitions(stagedPreviousWireStates)
-                                     : std::vector<Bus>{};
-
-    if (!stagedChangedBuses.empty()) {
-      auto stagedContext =
-          Context{false, stagedChangedBuses, std::move(stagedPreviousWireStates)};
-      const auto stagedSteps = getForwardExecutionSteps(stagedChangedBuses);
-      evaluationState.setActivePreviousWireStates(&stagedContext.previousWireStates);
-      if (!evaluateExecutionSteps(stagedSteps, stagedContext, isCancelled)) {
+    std::vector<Bus> committedBuses;
+    // Alternate evaluation and sequential commits until outputs and internal state
+    // settle. These passes share a timestamp; generated clock transitions can
+    // trigger further sequential work without advancing simulation time.
+    for (int delta = 0; ; ++delta) {
+      evaluationState.setActivePreviousWireStates(&context.previousWireStates);
+      if (!evaluateExecutionSteps(steps, context, isCancelled)
+          || cancellationRequested(isCancelled)) {
+        // Discard pending sequential writes. Already applied wire changes and
+        // earlier committed batches remain in place.
+        stagedSequentialTransitions.clear();
+        stagedStateUpdates.clear();
         return RunResult::Cancelled;
       }
+      if (stagedSequentialTransitions.empty() && stagedStateUpdates.empty())
+        break;
+      if (delta >= maxTransitionsPerDeltaCycle)
+        throw std::runtime_error("Sequential delta cycle limit exceeded");
+
+      // No evaluation or cancellation inside this boundary: outputs and internal
+      // state all advance from the samples collected by the preceding pass.
+      std::unordered_map<uint64_t, State> nextPreviousStates;
+      committedBuses = commitStagedSequentialTransitions(nextPreviousStates);
+      steps = getForwardExecutionSteps(committedBuses);
+      auto updates = std::move(stagedStateUpdates);
+      stagedStateUpdates.clear();
+      for (auto& [owner, update] : updates) {
+        if (!update.commit())
+          continue;
+        // A storage mutation has no wire transition yet. Reevaluate its owner to
+        // publish the new read value, then propagate through its downstream cone.
+        steps.set(componentExecutionSteps.at(owner));
+        steps |= getForwardExecutionSteps(update.owner->outputBuses());
+      }
+      // Start a fresh edge history from this commit so a state-only reevaluation
+      // cannot replay the clock edge that caused it.
+      context = Context{false, committedBuses, std::move(nextPreviousStates)};
     }
 
     emitTraceSnapshot();
     return RunResult::Completed;
   } catch (...) {
+    // Failed evaluations must not leave callbacks or wire writes for a later run.
     stagedSequentialTransitions.clear();
+    stagedStateUpdates.clear();
     throw;
   }
 }

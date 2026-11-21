@@ -65,28 +65,24 @@ module _silicon_map_dffe #(
     parameter CLK_POLARITY = 1,
     parameter EN_POLARITY = 1
 ) (input CLK, input EN, input [WIDTH-1:0] D, output [WIDTH-1:0] Q);
+  // Both Silicon storage components use an active-high enable.
+  wire active_en = EN_POLARITY ? EN : ~EN;
   generate
     if (WIDTH == 1) begin
       wire qn;
-      SILICON_DFFE #(.CLK_POLARITY(CLK_POLARITY), .EN_POLARITY(EN_POLARITY))
-        _TECHMAP_REPLACE_ (.D(D), .EN(EN), .CLK(CLK), .Q(Q), .QN(qn));
+      SILICON_DFFE #(.CLK_POLARITY(CLK_POLARITY), .EN_POLARITY(1))
+        _TECHMAP_REPLACE_ (.D(D), .EN(active_en), .CLK(CLK), .Q(Q), .QN(qn));
     end else begin
       // Normalize controls before passing them to the active-high PIPO ABI.
       wire pipo_clk;
-      wire pipo_en;
       if (CLK_POLARITY) begin
         assign pipo_clk = CLK;
       end else begin
         assign pipo_clk = ~CLK;
       end
-      if (EN_POLARITY) begin
-        assign pipo_en = EN;
-      end else begin
-        assign pipo_en = ~EN;
-      end
       SILICON_PIPO #(.WIDTH(WIDTH), .CLK_POLARITY(1), .EN_POLARITY(1),
                     .CLR_POLARITY(1))
-        _TECHMAP_REPLACE_ (.DATA(D), .CLK(pipo_clk), .EN(pipo_en), .CLR(1'b0), .OUT(Q));
+        _TECHMAP_REPLACE_ (.DATA(D), .CLK(pipo_clk), .EN(active_en), .CLR(1'b0), .OUT(Q));
     end
   endgenerate
 endmodule
