@@ -15,7 +15,7 @@
 if (SILICON_USE_VCPKG AND NOT USING_NIX)
     message(STATUS "SILICON_USE_VCPKG is ON. Bootstrapping bundled vcpkg...")
 
-    set(ENV{VCPKG_USE_SYSTEM_BINARIES} "1")
+    set(ENV{VCPKG_FORCE_SYSTEM_BINARIES} "1")
 
     # Get the correct commit hash from vcpkg.json
     file(READ "${CMAKE_CURRENT_SOURCE_DIR}/vcpkg.json" VCPKG_JSON_CONTENT)
