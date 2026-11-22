@@ -15,7 +15,7 @@
 { pkgs, sislPackage, libraries, nativeInputs }:
 { buildType ? "Debug", sanitizers ? false }: pkgs.stdenv.mkDerivation {
   pname = "SILICON";
-  version = "0.1.0-beta.3";
+  version = "0.1.0-beta.4";
 
   # CI selects pr, nightly, or release and reads its buildType with
   # `nix eval --raw .#<package>.buildType` for Windows and WASM.
