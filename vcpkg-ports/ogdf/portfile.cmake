@@ -15,11 +15,11 @@ if(VCPKG_TARGET_IS_EMSCRIPTEN)
     )
 endif()
 
-# Fix OGDF's target include directories to use the unified vcpkg include directory
-# This natively stops OGDF from exporting broken debug/release paths in its CMake targets
+# Match the imported library even when CMake maps or falls back to another configuration.
+set(ogdf_uses_debug_library "$<STREQUAL:$<TARGET_FILE:OGDF>,$<TARGET_PROPERTY:OGDF,IMPORTED_LOCATION_DEBUG>>")
 vcpkg_replace_string("${SOURCE_PATH}/cmake/ogdf.cmake"
     "$<INSTALL_INTERFACE:include/ogdf-$<IF:$<CONFIG:Debug>,debug,release>>"
-    "$<INSTALL_INTERFACE:include>"
+    "$<INSTALL_INTERFACE:include/ogdf-$<IF:${ogdf_uses_debug_library},debug,release>>"
 )
 
 # Architecture/Mach Fix (Only applies x86-64-v2 if building for an x64 target)
@@ -39,15 +39,12 @@ vcpkg_cmake_install()
 # Calling fixup with no arguments perfectly defaults to fixing share/ogdf.
 vcpkg_cmake_config_fixup()
 
-# OGDF generated a config_autogen.h file inside include/ogdf-release/...
-# Move it into the unified include directory so consuming projects can find it.
-if(EXISTS "${CURRENT_PACKAGES_DIR}/include/ogdf-release/ogdf/basic/internal/config_autogen.h")
-    file(COPY "${CURRENT_PACKAGES_DIR}/include/ogdf-release/ogdf/basic/internal/config_autogen.h"
-         DESTINATION "${CURRENT_PACKAGES_DIR}/include/ogdf/basic/internal/")
+# Keep both generated headers where OGDF's exported target expects them.
+# OGDF_DEBUG changes the layout of public types and must match the linked library.
+if(NOT VCPKG_BUILD_TYPE STREQUAL "release")
+    file(RENAME "${CURRENT_PACKAGES_DIR}/debug/include/ogdf-debug"
+        "${CURRENT_PACKAGES_DIR}/include/ogdf-debug")
 endif()
-
-# Remove the config-specific include directories created by OGDF
-file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/include/ogdf-release" "${CURRENT_PACKAGES_DIR}/include/ogdf-debug")
 
 # Clean up debug includes, debug share, and leftover docs
 file(REMOVE_RECURSE
