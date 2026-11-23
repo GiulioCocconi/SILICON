@@ -1,0 +1,33 @@
+name: Cleanup vcpkg binary cache
+
+on:
+  schedule:
+    - cron: '0 3 * * 0'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Report eligible versions without deleting them
+        type: boolean
+        required: false
+        default: true
+
+concurrency:
+  group: cleanup-vcpkg-cache
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    name: Retain 30 days and the newest version of each package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+      # The workflow repository must have admin access to the cache packages.
+      # Publishing associated packages with GITHUB_TOKEN grants this by default.
+      - name: Clean up cache versions
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
+        run: python3 ci/cleanup_vcpkg_cache.py --dry-run "${DRY_RUN}"

@@ -23,7 +23,8 @@ if (SILICON_USE_VCPKG AND NOT USING_NIX)
     # 2. Extract the "builtin-baseline" field
     string(JSON VCPKG_BASELINE_SHA GET "${VCPKG_JSON_CONTENT}" "builtin-baseline")
 
-    # Download Vcpkg source
+    # CI supplies its bootstrapped baseline checkout with
+    # FETCHCONTENT_SOURCE_DIR_VCPKG; local builds retain the bundled bootstrap.
     FetchContent_Declare(
             vcpkg
             GIT_REPOSITORY https://github.com/microsoft/vcpkg.git

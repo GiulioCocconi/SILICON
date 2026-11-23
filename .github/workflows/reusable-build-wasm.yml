@@ -13,6 +13,11 @@ on:
       build_version:
         required: false
         type: string
+      cache_mode:
+        description: vcpkg binary provider mode (PRs always read only)
+        required: false
+        type: string
+        default: read
       package_name:
         required: true
         type: string
@@ -26,6 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      packages: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -58,43 +64,32 @@ jobs:
         shell: bash
         run: bash ./ci/wasm_remove_deps.sh
 
-      - name: Restore vcpkg cache
-        id: vcpkg-cache
-        uses: actions/cache/restore@v6
+      - name: Set up vcpkg binary cache
+        id: vcpkg
+        uses: ./.github/actions/setup-vcpkg
         with:
-          path: |
-            build/vcpkg_installed
-          key: wasm-vcpkg-${{ hashFiles('**/vcpkg.json', 'vcpkg-configuration.json', 'vcpkg-ports/**') }}
-          restore-keys: |
-            wasm-vcpkg-
+          token: ${{ github.token }}
+          cache-mode: ${{ inputs.cache_mode }}
 
       - name: Configure CMake
         shell: bash
         env:
           BUILD_VERSION: ${{ inputs.build_version }}
           BUILD_TYPE: ${{ inputs.build_type }}
+          VCPKG_SOURCE_DIR: ${{ steps.vcpkg.outputs.source-dir }}
         run: |
           version_args=()
           if [[ -n "${BUILD_VERSION}" ]]; then
             version_args+=("-DSILICON_VERSION=${BUILD_VERSION}")
           fi
           chmod +x ~/work/SILICON/Qt/6.11.0/wasm_singlethread/bin/qt-cmake
-          ~/work/SILICON/Qt/6.11.0/wasm_singlethread/bin/qt-cmake -Bbuild -G Ninja "-DCMAKE_BUILD_TYPE=${BUILD_TYPE}" "${version_args[@]}"
+          ~/work/SILICON/Qt/6.11.0/wasm_singlethread/bin/qt-cmake -Bbuild -G Ninja "-DCMAKE_BUILD_TYPE=${BUILD_TYPE}" "-DFETCHCONTENT_SOURCE_DIR_VCPKG=${VCPKG_SOURCE_DIR}" "${version_args[@]}"
 
       - name: Build
         shell: bash
         run: |
           # Replace this section if the project's real Qt for WASM build command changes.
           ninja -C build
-
-      - name: Save vcpkg cache
-        if: always()
-        uses: actions/cache/save@v6
-        with:
-          path: |
-            build/vcpkg_installed
-            build/_deps
-          key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
 
       - name: Package WASM artifact
         shell: bash

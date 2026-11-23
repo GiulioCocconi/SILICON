@@ -10,6 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       release_tag: ${{ steps.validate.outputs.release_tag }}
+      build_version: ${{ steps.validate.outputs.build_version }}
     steps:
       - id: validate
         shell: bash
@@ -22,37 +23,69 @@ jobs:
           fi
 
           echo "release_tag=${tag}" >> "${GITHUB_OUTPUT}"
+          echo "build_version=${tag#v}" >> "${GITHUB_OUTPUT}"
 
   release-wasm:
     name: Release WASM artifact
     needs: validate-release
     uses: ./.github/workflows/reusable-build-wasm.yml
     with:
-      publish: true
+      cache_mode: readwrite
+      checkout_ref: ${{ needs.validate-release.outputs.release_tag }}
+      build_version: ${{ needs.validate-release.outputs.build_version }}
       build_type: "Release"
       package_name: silicon-release-wasm
       package_version: ${{ needs.validate-release.outputs.release_tag }}
-      cloudsmith_owner: ${{ vars.CLOUDSMITH_OWNER }}
-      cloudsmith_repo: ${{ vars.CLOUDSMITH_RELEASE_REPO }}
-      cloudsmith_oidc_namespace: ${{ vars.CLOUDSMITH_OIDC_NAMESPACE }}
-      cloudsmith_oidc_service_slug: ${{ vars.CLOUDSMITH_OIDC_SERVICE_SLUG }}
     permissions:
       contents: read
-      id-token: write
+      packages: write
 
   release-windows:
     name: Release Windows artifact
     needs: validate-release
     uses: ./.github/workflows/reusable-build-windows.yml
     with:
-      publish: true
+      cache_mode: readwrite
+      checkout_ref: ${{ needs.validate-release.outputs.release_tag }}
+      build_version: ${{ needs.validate-release.outputs.build_version }}
       build_type: "Release"
       package_name: silicon-release-windows
       package_version: ${{ needs.validate-release.outputs.release_tag }}
-      cloudsmith_owner: ${{ vars.CLOUDSMITH_OWNER }}
-      cloudsmith_repo: ${{ vars.CLOUDSMITH_RELEASE_REPO }}
-      cloudsmith_oidc_namespace: ${{ vars.CLOUDSMITH_OIDC_NAMESPACE }}
-      cloudsmith_oidc_service_slug: ${{ vars.CLOUDSMITH_OIDC_SERVICE_SLUG }}
+    permissions:
+      contents: read
+      packages: write
+
+  publish:
+    name: Publish legacy release packages
+    needs: [validate-release, release-wasm, release-windows]
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.validate-release.outputs.release_tag }}
+      - uses: nixbuild/nix-quick-install-action@v35
+      - uses: actions/download-artifact@v8
+        with:
+          name: wasm-package
+          path: out
+      - uses: actions/download-artifact@v8
+        with:
+          name: windows-package
+          path: out
+      - uses: cloudsmith-io/cloudsmith-cli-action@v3
+        with:
+          oidc-namespace: ${{ vars.CLOUDSMITH_OIDC_NAMESPACE }}
+          oidc-service-slug: ${{ vars.CLOUDSMITH_OIDC_SERVICE_SLUG }}
+      - name: Publish release ZIPs
+        env:
+          OWNER: ${{ vars.CLOUDSMITH_OWNER }}
+          REPO: ${{ vars.CLOUDSMITH_RELEASE_REPO }}
+          VERSION: ${{ needs.validate-release.outputs.release_tag }}
+        run: |
+          for platform in windows wasm; do
+            name="silicon-release-${platform}"
+            nix develop .#lightCI --command python ci/publish_packages.py cloudsmith "${OWNER}" "${REPO}" "${name}" "${VERSION}" "out/${name}-${VERSION}.zip"
+          done

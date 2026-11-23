@@ -13,6 +13,11 @@ on:
       build_version:
         required: false
         type: string
+      cache_mode:
+        description: vcpkg binary provider mode (PRs always read only)
+        required: false
+        type: string
+        default: read
       package_name:
         required: true
         type: string
@@ -26,6 +31,7 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: read
+      packages: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -39,16 +45,12 @@ jobs:
         shell: powershell
         run: ninja --version
 
-      - name: Restore vcpkg cache
-        id: vcpkg-cache
-        uses: actions/cache/restore@v6
+      - name: Set up vcpkg binary cache
+        id: vcpkg
+        uses: ./.github/actions/setup-vcpkg
         with:
-          path: |
-            build/vcpkg_installed
-            build/_deps
-          key: windows-vcpkg-${{ hashFiles('**/vcpkg.json', 'vcpkg-configuration.json', 'vcpkg-ports/**') }}
-          restore-keys: |
-            windows-vcpkg-
+          token: ${{ github.token }}
+          cache-mode: ${{ inputs.cache_mode }}
 
       - name: Configure CMake
         shell: powershell
@@ -57,12 +59,13 @@ jobs:
           CXX: g++
           BUILD_VERSION: ${{ inputs.build_version }}
           BUILD_TYPE: ${{ inputs.build_type }}
+          VCPKG_SOURCE_DIR: ${{ steps.vcpkg.outputs.source-dir }}
         run: |
           $versionArgs = @()
           if ($env:BUILD_VERSION) {
             $versionArgs += "-DSILICON_VERSION=$env:BUILD_VERSION"
           }
-          cmake -G Ninja "-DCMAKE_BUILD_TYPE=$env:BUILD_TYPE" -Bbuild @versionArgs
+          cmake -G Ninja "-DCMAKE_BUILD_TYPE=$env:BUILD_TYPE" -Bbuild "-DFETCHCONTENT_SOURCE_DIR_VCPKG=$env:VCPKG_SOURCE_DIR" @versionArgs
 
       - name: Build
         shell: powershell
@@ -73,15 +76,6 @@ jobs:
       - name: Test
         shell: powershell
         run: ctest --test-dir build --output-on-failure
-
-      - name: Save vcpkg cache
-        if: always()
-        uses: actions/cache/save@v6
-        with:
-          path: |
-            build/vcpkg_installed
-            build/_deps
-          key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
 
       - name: Package Windows artifact
         shell: powershell

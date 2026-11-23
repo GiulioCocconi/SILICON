@@ -17,6 +17,9 @@ on:
       - ".github/workflows/**"
       - "ci/**"
       - "vcpkg.json"
+      - "vcpkg-configuration.json"
+      - "vcpkg-ports/**"
+      - ".github/actions/**"
   push:
     branches: [ "main" ]
     paths:
@@ -33,6 +36,9 @@ on:
       - ".github/workflows/**"
       - "ci/**"
       - "vcpkg.json"
+      - "vcpkg-configuration.json"
+      - "vcpkg-ports/**"
+      - ".github/actions/**"
 
 concurrency:
   group: snapshot-artifacts-${{ github.event.pull_request.number || github.ref }}
@@ -131,6 +137,7 @@ jobs:
     needs: prepare
     uses: ./.github/workflows/reusable-build-wasm.yml
     with:
+      cache_mode: ${{ github.event_name == 'pull_request' && 'read' || 'readwrite' }}
       checkout_ref: ${{ needs.prepare.outputs.source_sha }}
       build_type: ${{ needs.prepare.outputs.build_type }}
       build_version: ${{ needs.prepare.outputs.build_version }}
@@ -138,12 +145,14 @@ jobs:
       package_version: ${{ needs.prepare.outputs.snapshot_version }}
     permissions:
       contents: read
+      packages: write
 
   windows-snapshot:
     name: Windows snapshot
     needs: prepare
     uses: ./.github/workflows/reusable-build-windows.yml
     with:
+      cache_mode: ${{ github.event_name == 'pull_request' && 'read' || 'readwrite' }}
       checkout_ref: ${{ needs.prepare.outputs.source_sha }}
       build_type: ${{ needs.prepare.outputs.build_type }}
       build_version: ${{ needs.prepare.outputs.build_version }}
@@ -151,6 +160,7 @@ jobs:
       package_version: ${{ needs.prepare.outputs.snapshot_version }}
     permissions:
       contents: read
+      packages: write
 
   publish:
     if: needs.prepare.outputs.publish == 'true'
