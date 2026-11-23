@@ -1,0 +1,90 @@
+name: Set up vcpkg binary cache
+description: Bootstrap the manifest baseline and authenticate to the CI NuGet cache
+inputs:
+  token:
+    description: GITHUB_TOKEN with package access
+    required: true
+  cache-mode:
+    description: Binary provider mode (read or readwrite)
+    required: true
+outputs:
+  source-dir:
+    description: Prepared vcpkg source directory for FetchContent
+    value: ${{ steps.prepare.outputs.source-dir }}
+runs:
+  using: composite
+  steps:
+    - name: Install Mono for NuGet
+      if: runner.os == 'Linux'
+      shell: bash
+      run: sudo apt-get update && sudo apt-get install -y mono-complete
+
+    - name: Prepare vcpkg and NuGet authentication
+      id: prepare
+      shell: pwsh
+      env:
+        CACHE_TOKEN: ${{ inputs.token }}
+        CACHE_MODE: ${{ inputs.cache-mode }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        if ($env:CACHE_MODE -notin @('read', 'readwrite')) {
+          throw 'cache-mode must be read or readwrite'
+        }
+        # All PRs, including internal release-preparation PRs, only read binaries.
+        if ($env:GITHUB_EVENT_NAME -like 'pull_request*') {
+          $env:CACHE_MODE = 'read'
+        }
+        $manifest = Get-Content "$env:GITHUB_WORKSPACE/vcpkg.json" -Raw | ConvertFrom-Json
+        $baseline = $manifest.'builtin-baseline'
+        if ($baseline -notmatch '^[0-9a-f]{40}$') {
+          throw 'The manifest must contain an exact builtin-baseline commit'
+        }
+        $cacheDir = Join-Path $env:RUNNER_TEMP "silicon-vcpkg-$([guid]::NewGuid())"
+        $sourceDir = Join-Path $cacheDir 'source'
+        New-Item -ItemType Directory -Path $sourceDir -Force | Out-Null
+        git init $sourceDir
+        if ($LASTEXITCODE -ne 0) { throw 'git init failed' }
+        git -C $sourceDir remote add origin https://github.com/microsoft/vcpkg.git
+        if ($LASTEXITCODE -ne 0) { throw 'git remote failed' }
+        git -C $sourceDir fetch --depth 1 origin $baseline
+        if ($LASTEXITCODE -ne 0) { throw 'Fetching the vcpkg baseline failed' }
+        git -C $sourceDir checkout --detach FETCH_HEAD
+        if ($LASTEXITCODE -ne 0) { throw 'Checking out the vcpkg baseline failed' }
+        if ($IsWindows) {
+          & "$sourceDir/bootstrap-vcpkg.bat" -disableMetrics
+          $vcpkg = "$sourceDir/vcpkg.exe"
+        } else {
+          & "$sourceDir/bootstrap-vcpkg.sh" -disableMetrics
+          $vcpkg = "$sourceDir/vcpkg"
+        }
+        if ($LASTEXITCODE -ne 0) { throw 'vcpkg bootstrap failed' }
+        $nuget = (& $vcpkg fetch nuget | Select-Object -Last 1).Trim()
+        if ($LASTEXITCODE -ne 0) { throw 'Fetching NuGet failed' }
+        # CMake keeps VCPKG_FORCE_SYSTEM_BINARIES enabled. Make this exact
+        # NuGet discoverable when vcpkg later looks for tools on PATH.
+        if (-not $IsWindows) {
+          New-Item -ItemType SymbolicLink -Path (Join-Path (Split-Path $nuget) 'nuget') -Target $nuget | Out-Null
+        }
+        (Split-Path $nuget) >> $env:GITHUB_PATH
+        function Invoke-NuGet {
+          if ($IsWindows) { & $nuget @args } else { & mono $nuget @args }
+          if ($LASTEXITCODE -ne 0) { throw 'NuGet configuration failed' }
+        }
+        $feed = "https://nuget.pkg.github.com/$env:GITHUB_REPOSITORY_OWNER/index.json"
+        $config = Join-Path $cacheDir 'nuget.config'
+        @"
+        <?xml version="1.0" encoding="utf-8"?>
+        <configuration>
+          <packageSources><clear /></packageSources>
+          <config><add key="defaultPushSource" value="$feed" /></config>
+        </configuration>
+        "@ | Set-Content $config -Encoding utf8
+        Invoke-NuGet sources Add -Name github -Source $feed -Username $env:GITHUB_ACTOR -Password $env:CACHE_TOKEN -StorePasswordInClearText -ConfigFile $config -NonInteractive
+        Invoke-NuGet setapikey $env:CACHE_TOKEN -Source $feed -ConfigFile $config -NonInteractive
+        # Use forward slashes for CMake and vcpkg on both platforms.
+        $config = $config.Replace('\', '/')
+        $sourceDir = $sourceDir.Replace('\', '/')
+        "VCPKG_BINARY_SOURCES=clear;nugetconfig,$config,$env:CACHE_MODE" >> $env:GITHUB_ENV
+        "X_VCPKG_NUGET_ID_PREFIX=silicon-vcpkg-" >> $env:GITHUB_ENV
+        "VCPKG_NUGET_REPOSITORY=$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY.git" >> $env:GITHUB_ENV
+        "source-dir=$sourceDir" >> $env:GITHUB_OUTPUT

@@ -32,12 +32,7 @@ add_executable(subcircuit_tests subcircuit.cpp)
 add_executable(logger_tests logger.cpp)
 add_executable(yosys_tests yosys_rom.cpp yosys_cells.cpp yosys_legalization.cpp yosys_netlist.cpp
         yosys_mux.cpp yosys_verilog.cpp yosys_tool.cpp yosys_technology.cpp)
-add_executable(libavoid_tests libavoid.cpp boundaryIoPlacement.cpp
-        ${CMAKE_SOURCE_DIR}/src/ui/circuit/diagram/boundaryIoPlacement.cpp
-        ${CMAKE_SOURCE_DIR}/src/ui/circuit/diagram/wireRouting.cpp)
-target_sources(libavoid_tests PRIVATE
-        ${CMAKE_SOURCE_DIR}/src/ui/circuit/diagram/interactiveWireRouter.cpp
-        ${CMAKE_SOURCE_DIR}/src/ui/circuit/diagram/localWireEditor.cpp)
+add_executable(libavoid_tests libavoid.cpp boundaryIoPlacement.cpp)
 
 foreach (target logic_tests register_tests memory_tests arithmetic_tests multiplexer_tests utils_tests num_formatting_tests libfst_tests fstwrapper_tests silicon_waveform_tests project_file_tests project_document_tests project_dependency_graph_tests circuit_tests factory_tests subcircuit_tests logger_tests yosys_tests)
     set_target_properties(${target} PROPERTIES
@@ -64,13 +59,11 @@ set_target_properties(libavoid_tests PROPERTIES
         AUTOMOC OFF
         AUTOUIC OFF
         AUTORCC OFF)
-target_link_libraries(libavoid_tests PRIVATE GTest::gtest_main GTest::gtest avoid Qt6::Core Qt6::Gui)
+target_link_libraries(libavoid_tests PRIVATE GTest::gtest_main GTest::gtest silicon_ui avoid)
 gtest_discover_tests(libavoid_tests DISCOVERY_MODE PRE_TEST)
 
-add_executable(autoplacer_tests autoplacer.cpp ${UI_SOURCE_FILES})
+add_executable(autoplacer_tests autoplacer.cpp)
 target_link_libraries(autoplacer_tests PRIVATE GTest::gtest_main GTest::gtest
-        silicon_style silicon_core Qt6::Widgets Qt6::SvgWidgets OGDF avoid
-        JKQTPlotter6::JKQTMathText6)
-add_silicon_resources(autoplacer_tests)
+        silicon_ui)
 gtest_discover_tests(autoplacer_tests DISCOVERY_MODE PRE_TEST
         PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")

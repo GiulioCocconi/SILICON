@@ -431,36 +431,6 @@ add_library(silicon_style STATIC ${SILICON_STYLE_SOURCE_FILES})
 target_link_libraries(silicon_style PUBLIC Qt6::Widgets Qt6::SvgWidgets)
 target_compile_options(silicon_style PRIVATE -Werror)
 
-set(app_icon_resource_windows "${resources_dir}/app_icon.rc")
-
-qt_add_executable(SILICON
-        ${src_dir}/main.cpp
-	${app_icon_resource_windows})
-
-target_sources(SILICON
-        PRIVATE
-        ${UI_SOURCE_FILES})
-
-if (UNIX AND NOT APPLE AND NOT EMSCRIPTEN AND SILICON_ENABLE_SANITIZERS)
-    target_compile_definitions(SILICON PRIVATE SILICON_HAS_SANITIZERS=1)
-endif ()
-
-target_compile_options(SILICON PRIVATE -Werror)
-
-target_link_libraries(SILICON PRIVATE
-        silicon_style
-        Qt6::Widgets
-        Qt6::SvgWidgets
-        OGDF
-        avoid
-        silicon_core)
-
-if (TARGET Fontconfig::Fontconfig)
-    target_link_libraries(SILICON PRIVATE Fontconfig::Fontconfig)
-    target_compile_definitions(SILICON PRIVATE SILICON_HAS_FONTCONFIG=1)
-endif ()
-
-
 if(EMSCRIPTEN)
   # WASM can't use vcpkg for this dependency because it requires Qt which
   # is not managed through it
@@ -491,16 +461,40 @@ else ()
   find_package(JKQTPlotter6 CONFIG REQUIRED)
 endif()
 
-target_link_libraries(SILICON PRIVATE JKQTPlotter6::JKQTMathText6)
+add_library(silicon_ui STATIC ${UI_SOURCE_FILES})
+set_target_properties(silicon_ui PROPERTIES AUTOMOC ON AUTOUIC ON AUTORCC ON)
+target_compile_options(silicon_ui PRIVATE -Werror)
+target_include_directories(silicon_ui PUBLIC "${src_dir}")
+target_link_libraries(silicon_ui
+        PUBLIC silicon_core silicon_style Qt6::Widgets Qt6::SvgWidgets
+        PRIVATE OGDF avoid JKQTPlotter6::JKQTMathText6)
+
+# Qt propagates static-library resource objects to each consuming executable.
+# https://doc.qt.io/qt-6/qt-add-resources.html
+add_silicon_resources(silicon_ui)
+
+set(app_icon_resource_windows "${resources_dir}/app_icon.rc")
+
+qt_add_executable(SILICON
+        ${src_dir}/main.cpp
+        ${app_icon_resource_windows})
+target_compile_options(SILICON PRIVATE -Werror)
+target_link_libraries(SILICON PRIVATE silicon_ui)
+
+if (UNIX AND NOT APPLE AND NOT EMSCRIPTEN AND SILICON_ENABLE_SANITIZERS)
+    target_compile_definitions(SILICON PRIVATE SILICON_HAS_SANITIZERS=1)
+endif ()
+
+if (TARGET Fontconfig::Fontconfig)
+    target_link_libraries(SILICON PRIVATE Fontconfig::Fontconfig)
+    target_compile_definitions(SILICON PRIVATE SILICON_HAS_FONTCONFIG=1)
+endif ()
 
 set_target_properties(SILICON PROPERTIES
         # Spawn a console windows (on Windows) only when in debug mode
         WIN32_EXECUTABLE $<CONFIG:Release>)
 
 win_deploy_qt(SILICON)
-
-# Add resources after Qt setup
-add_silicon_resources(SILICON)
 
 if (SILICON_BUILD_TESTS AND NOT EMSCRIPTEN)
     include(GoogleTest)

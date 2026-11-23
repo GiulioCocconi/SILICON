@@ -43,7 +43,8 @@ round trip; see [Formatting and static analysis](./build.md#formatting-and-stati
 ### Snapshot builds
 
 The snapshot workflow runs only when a pull request changes C++, headers, Python,
-Yosys inputs, CMake files, Nix files, workflows, CI scripts, or the vcpkg manifest.
+Yosys inputs, CMake files, Nix files, workflows, composite actions, CI scripts,
+vcpkg manifests/configuration, or overlay ports under `vcpkg-ports/`.
 Documentation-only changes do not trigger it.
 
 | Job         | Pull-request behavior                                                                                                                       |
@@ -58,6 +59,64 @@ to Cloudsmith because fork workflows do not receive publication authority.
 Branches in the canonical repository may publish PR preview packages. Builds for
 the same pull request share a concurrency group, so pushing a new revision cancels
 an older in-progress run.
+
+### CI dependency binary cache
+
+Windows and WASM CI use `.github/actions/setup-vcpkg` to fetch the exact
+`builtin-baseline` from the checked-out `vcpkg.json` into runner temporary
+storage and bootstrap it before CMake configures manifest dependencies. The
+prepared source directory is passed as `FETCHCONTENT_SOURCE_DIR_VCPKG`.
+Ubuntu installs Mono to run the NuGet executable obtained by `vcpkg fetch nuget`.
+
+The cache is the owner's GitHub Packages NuGet feed,
+`https://nuget.pkg.github.com/<repository-owner>/index.json`. A temporary NuGet
+configuration holds source credentials, an API key, and `defaultPushSource`.
+Authentication uses `GITHUB_TOKEN`; no PAT secret is required. Both reusable
+workflows and their callers declare `packages: write`, while the vcpkg provider
+uses **read** for every PR (including internal release-preparation PRs) and
+**readwrite** for main snapshots and releases. GitHub additionally downgrades
+fork PR tokens to read-only.
+
+CI sets `VCPKG_BINARY_SOURCES=clear;nugetconfig,<temporary-config>,<mode>` and
+`X_VCPKG_NUGET_ID_PREFIX=silicon-vcpkg-`. Package metadata associates cache
+packages with the workflow repository through `VCPKG_NUGET_REPOSITORY`.
+The old `build/vcpkg_installed` and `build/_deps` directory caches are no longer
+restored or saved. vcpkg's ABI identifiers determine compatibility; misses build
+from source and writable jobs upload the resulting binaries. See the
+[vcpkg binary cache configuration](https://learn.microsoft.com/en-us/vcpkg/reference/binarycaching)
+and [GitHub NuGet authentication](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-nuget-registry).
+This setup applies only to CI; local builds keep their existing CMake bootstrap.
+
+### Binary cache retention
+
+**Cleanup vcpkg binary cache** runs Sundays at **03:00 UTC**. Scheduled runs
+delete eligible versions. Manual dispatch defaults `dry_run` to **true**;
+inspect the workflow summary before explicitly selecting a deleting run.
+Cleanup runs are serialized and use a dedicated `packages: write` job,
+independent of builds and releases.
+
+Only NuGet package IDs starting with `silicon-vcpkg-` whose owner and repository
+association can be verified against SILICON are managed. Unknown associations
+are skipped. For each package ID, cleanup always protects the newest version by
+`created_at`, using the higher version ID to break ties. Other versions are
+deleted only when strictly older than **30 days**. Downloads, recent updates,
+and release associations do not extend retention. Packages and versions are
+fully paginated, ownership and eligibility are rechecked before deletion, and
+only individual versions are deleted. The workflow never deletes an entire
+package. Its summary lists deletions, retained counts, dry-run candidates, and
+failures; any cleanup failure fails that job.
+
+The workflow repository needs **admin access** to these cache packages in
+addition to its token's `packages: write` permission. Packages published by its
+workflow receive that access automatically. For pre-existing packages, grant
+the SILICON repository admin access in the package's Actions access settings.
+Unverifiable associations are never treated as permission to delete.
+
+Source rebuilds on cache misses are the normal recovery path, including when an
+older release is rebuilt after its cached version expires. GitHub can restore a
+deleted version only within **30 days of deletion** and only while its package
+namespace and version remain available; restoration also requires package admin
+access. See [GitHub's deletion and restoration rules](https://docs.github.com/en/packages/learn-github-packages/deleting-and-restoring-a-package).
 
 ::: tip
 GitHub shows a workflow as skipped when none of its configured paths changed.
@@ -90,6 +149,10 @@ packages; an explicitly requested version must exist. Downloads are checked
 against Cloudsmith's SHA-256 before extraction. Pages deployment checks that
 its source commit is still the current `main` commit, so an older queued run
 fails instead of replacing a newer site.
+
+Composite action, overlay-port, and vcpkg configuration changes count as build
+changes in both the snapshot trigger and documentation deployment classification.
+When a push also changes documentation, Pages waits for snapshot publication.
 
 When an internal, merged pull request had Cloudsmith preview packages, the cleanup
 workflow deletes its Windows and WASM previews. A separate workflow removes the

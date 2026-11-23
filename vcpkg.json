@@ -4,8 +4,7 @@
   "builtin-baseline": "9eec002df1cd109f8f104cd966a763daf9751489",
   "dependencies": [
     {
-      "name": "gtest",
-      "version>=": "1.14.0"
+      "name": "gtest"
     },
     {
       "name": "qtbase",
@@ -34,8 +33,7 @@
       "name": "libzip"
     },
     {
-      "name": "sisl",
-      "version>=": "0.1.0"
+      "name": "sisl"
     },
     {
       "name": "boost-dynamic-bitset"
