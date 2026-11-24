@@ -14,11 +14,20 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Install Mono for NuGet
+    - name: Install Mono and configure certificates for NuGet
       if: runner.os == 'Linux'
       shell: bash
-      run: sudo apt-get update && sudo apt-get install -y mono-complete
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y mono-devel ca-certificates
+        sudo update-ca-certificates
 
+        mono_store="${XDG_CONFIG_HOME:-$HOME/.config}/.mono/new-certs"
+        mkdir -p "$mono_store"
+
+        if [ ! -e "$mono_store/Trust" ]; then
+          ln -s /etc/ssl/certs "$mono_store/Trust"
+        fi
     - name: Prepare vcpkg and NuGet authentication
       id: prepare
       shell: pwsh
@@ -46,7 +55,7 @@ runs:
         if ($LASTEXITCODE -ne 0) { throw 'git init failed' }
         git -C $sourceDir remote add origin https://github.com/microsoft/vcpkg.git
         if ($LASTEXITCODE -ne 0) { throw 'git remote failed' }
-        git -C $sourceDir fetch --depth 1 origin $baseline
+        git -C $sourceDir fetch origin $baseline
         if ($LASTEXITCODE -ne 0) { throw 'Fetching the vcpkg baseline failed' }
         git -C $sourceDir checkout --detach FETCH_HEAD
         if ($LASTEXITCODE -ne 0) { throw 'Checking out the vcpkg baseline failed' }
