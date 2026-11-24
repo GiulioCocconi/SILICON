@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <format>
+#include <limits>
 #include <ranges>
 #include <stdexcept>
 #include <unordered_set>
@@ -741,9 +742,6 @@ std::string Circuit::serialize() const
         if (!instance->outputPortIds().empty())
           serialized["outputPortIds"] = instance->outputPortIds();
       }
-      if (const auto rom = std::dynamic_pointer_cast<ROM>(cPtr);
-          rom && rom->memoryDepth() != 0)
-        j["components"].back()["memoryDepth"] = rom->memoryDepth();
     }
   }
 
@@ -801,6 +799,13 @@ Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry
       return;
     }
 
+    if (std::dynamic_pointer_cast<Memory>(component)
+        && (key == "depth" || key == "dataWidth" || key == "readPorts")
+        && (!value.is_number_integer() || value < 0
+            || value > std::numeric_limits<int>::max()))
+      throw std::invalid_argument(
+          "Memory geometry must be a non-negative integer within range");
+
     if (value.is_string())
       component->setProperty(key, value.get<std::string>());
     else if (value.is_boolean())
@@ -845,15 +850,6 @@ Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry
 
         for (const auto& [key, value] : propsIt->items())
           applyProperty(component, key, value, true);
-      }
-
-      if (const auto rom = std::dynamic_pointer_cast<ROM>(component)) {
-        if (const auto depth = compJson.find("memoryDepth"); depth != compJson.end()) {
-          if (!depth->is_number_integer()
-              || (!depth->is_number_unsigned() && depth->get<std::int64_t>() < 0))
-            throw std::invalid_argument("ROM memoryDepth must be a non-negative integer");
-          rom->setMemoryDepth(depth->get<std::size_t>());
-        }
       }
 
       const auto deserializeInterface = [&](std::string_view        name,

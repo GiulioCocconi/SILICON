@@ -24,6 +24,8 @@
 #include <string>
 #include <string_view>
 
+#include <nlohmann/json.hpp>
+
 #include <core/circuit.hpp>
 #include <core/memory.hpp>
 #include <core/register.hpp>
@@ -1045,4 +1047,155 @@ TEST(RAMTest, AutomaticInitializationKeepsSimulationWritesOutOfTheImage)
   f.set(RAM::Inputs::ReadAddress, 0);
   EXPECT_EQ(f.output().getCurrentValue(), valueFor(10, 0x234));
   EXPECT_EQ(f.ram->memoryDepth(), 2);
+}
+
+TEST(MemoryGeometryTest, SerializationPreservesModeDepthAndSavedConnections)
+{
+  ComponentRegistry registry;
+  registerAllComponents(registry);
+  for (const auto& memory : memories()) {
+    for (const int depth : {0, 2}) {
+      SCOPED_TRACE(std::string(memory->typeName()) + " depth=" + std::to_string(depth));
+      memory->refreshBinaryContents(nullptr);
+      memory->setProperty("dataWidth", 10);
+      memory->setMemoryDepth(depth);
+      memory->setBinaryDocument("packed", binarySnapshot({0xFF, 0xFF, 0xFF}));
+      if (depth != 0) {
+        auto inputs = memory->inputBuses();
+        inputs[0].setSize(5);
+        if (std::dynamic_pointer_cast<RAM>(memory))
+          inputs[1].setSize(5);
+        memory->setInputs(inputs);
+      }
+      Circuit     circuit(Component_set{memory}, false);
+      const auto  serialized = nlohmann::json::parse(circuit.serialize());
+      const auto& json       = serialized["components"][0];
+      EXPECT_EQ(json["properties"]["depth"], depth);
+      EXPECT_FALSE(json.contains("memoryDepth"));
+      auto       restored = Circuit::deserialize(serialized.dump(), registry);
+      const auto copy =
+          std::dynamic_pointer_cast<Memory>(restored.getComponentByVertexId(0));
+      ASSERT_TRUE(copy);
+      EXPECT_EQ(copy->getPropertyValue<int>("depth"), depth);
+      EXPECT_EQ(copy->memoryDepth(), depth);
+      EXPECT_FALSE(copy->memoryImageSnapshot());
+      const auto inputs  = copy->inputBuses();
+      const auto outputs = copy->outputBuses();
+      for (std::size_t bit = 0; bit < inputs[0].size(); ++bit)
+        EXPECT_EQ(inputs[0][bit]->getId(), memory->inputBuses()[0][bit]->getId());
+      copy->refreshBinaryContents(memory->binaryContentsSnapshot());
+      ASSERT_TRUE(copy->memoryImageSnapshot());
+      EXPECT_EQ(copy->memoryDepth(), depth == 0 ? 3 : 2);
+      EXPECT_EQ(copy->inputBuses(), inputs);
+      EXPECT_EQ(copy->outputBuses(), outputs);
+      copy->refreshBinaryContents(binarySnapshot({1, 2, 3, 4}));
+      EXPECT_EQ(copy->memoryDepth(), depth == 0 ? 4 : 2);
+      EXPECT_EQ(static_cast<bool>(copy->memoryImageSnapshot()), depth == 0);
+    }
+  }
+}
+
+TEST(MemoryGeometryTest, ElaborationPreservesAutomaticModeAndExactExplicitGeometry)
+{
+  ComponentRegistry registry;
+  registerAllComponents(registry);
+  CircuitElaborator elaborator(registry);
+  for (const auto& memory : memories()) {
+    for (const int depth : {0, 2}) {
+      SCOPED_TRACE(std::string(memory->typeName()) + " depth=" + std::to_string(depth));
+      memory->refreshBinaryContents(nullptr);
+      memory->setProperty("dataWidth", 10);
+      memory->setMemoryDepth(depth);
+      memory->setBinaryDocument("packed", binarySnapshot({0xFF, 0xFF, 0xFF}));
+      if (depth != 0) {
+        auto inputs = memory->inputBuses();
+        inputs[0].setSize(5);
+        if (std::dynamic_pointer_cast<RAM>(memory))
+          inputs[1].setSize(5);
+        memory->setInputs(inputs);
+      }
+      Circuit    circuit(Component_set{memory}, false);
+      const auto runtime = elaborator.elaborate(circuit);
+      const auto clone =
+          std::dynamic_pointer_cast<Memory>(runtime->getComponentByVertexId(0));
+      ASSERT_TRUE(clone);
+      EXPECT_EQ(clone->getProperties(), memory->getProperties());
+      EXPECT_EQ(clone->memoryDepth(), memory->memoryDepth());
+      EXPECT_EQ(clone->memoryImageSnapshot()->bits(),
+                memory->memoryImageSnapshot()->bits());
+      EXPECT_EQ(clone->inputBuses(), memory->inputBuses());
+      EXPECT_EQ(clone->outputBuses(), memory->outputBuses());
+      EXPECT_EQ(clone->binaryContentsSnapshot(), memory->binaryContentsSnapshot());
+      memory->refreshBinaryContents(binarySnapshot({0}));
+      EXPECT_EQ(clone->memoryDepth(), depth == 0 ? 3 : 2);
+      EXPECT_EQ(clone->memoryImageSnapshot()->word(0), valueFor(10, 1023));
+    }
+  }
+}
+
+TEST(RAMTest,
+     ElaborationRejectsUnresolvedAutomaticDepthAndAcceptsUninitializedExplicitDepth)
+{
+  ComponentRegistry registry;
+  registerAllComponents(registry);
+  CircuitElaborator elaborator(registry);
+  auto              ram = std::make_shared<RAM>();
+  Circuit           circuit(Component_set{ram}, false);
+  EXPECT_NO_THROW((void)elaborator.elaborate(circuit));
+  ram->setMemoryDepth(0);
+  EXPECT_THROW((void)elaborator.elaborate(circuit), std::runtime_error);
+  ram->setBinaryDocument("missing", nullptr);
+  EXPECT_THROW((void)elaborator.elaborate(circuit), std::runtime_error);
+  ram->refreshBinaryContents(binarySnapshot({}));
+  EXPECT_THROW((void)elaborator.elaborate(circuit), std::runtime_error);
+  ram->refreshBinaryContents(binarySnapshot({1, 2, 3}));
+  EXPECT_NO_THROW((void)elaborator.elaborate(circuit));
+}
+
+TEST(MemoryGeometryTest, ProjectResolverRehydratesAndRecomputesAutomaticGeometry)
+{
+  ComponentRegistry registry;
+  registerAllComponents(registry);
+  for (const auto& memory : memories()) {
+    memory->setMemoryDepth(0);
+    memory->setProperty("dataWidth", 10);
+    memory->setBinaryDocument("packed", binarySnapshot({1, 2, 3}));
+    SILICON::project::ProjectContext project;
+    project.setDocuments(
+        {{"circuits/memory.json", Circuit(Component_set{memory}, false).serialize()},
+         {"bin/packed", std::vector<std::uint8_t>{1, 2, 3}}});
+    SILICON::project::ProjectCircuitResolver resolver(project, registry);
+    const auto                               resolve = [&] {
+      const auto definition = resolver.resolve("memory");
+      return std::dynamic_pointer_cast<Memory>(
+          definition.circuit.getComponentByVertexId(0));
+    };
+    EXPECT_EQ(resolve()->memoryDepth(), 3);
+    project.upsertDocument({"bin/packed", std::vector<std::uint8_t>{1, 2, 3, 4, 5}});
+    EXPECT_EQ(resolve()->memoryDepth(), 4);
+    project.removeDocument("bin/packed");
+    EXPECT_EQ(resolve()->memoryDepth(), 0);
+    project.upsertDocument({"bin/packed", std::vector<std::uint8_t>{0xFF}});
+    EXPECT_EQ(resolve()->memoryDepth(), 1);
+  }
+}
+
+TEST(MemoryGeometryTest, DeserializationRejectsInvalidGeometryWithoutNumericNarrowing)
+{
+  ComponentRegistry registry;
+  registerAllComponents(registry);
+  for (const auto& memory : memories()) {
+    auto json = nlohmann::json::parse(Circuit(Component_set{memory}, false).serialize());
+    for (const auto key : {"depth", "dataWidth"}) {
+      for (const auto& invalid :
+           {nlohmann::json(-1), nlohmann::json(1.5), nlohmann::json("2"),
+            nlohmann::json(nullptr), nlohmann::json(true),
+            nlohmann::json(std::uint64_t{1} << 32)}) {
+        auto candidate                                = json;
+        candidate["components"][0]["properties"][key] = invalid;
+        EXPECT_THROW((void)Circuit::deserialize(candidate.dump(), registry),
+                     std::invalid_argument);
+      }
+    }
+  }
 }
