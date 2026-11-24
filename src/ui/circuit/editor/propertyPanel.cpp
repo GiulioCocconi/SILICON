@@ -44,12 +44,13 @@
 
 #include <utils/num_formatting.hpp>
 
-#include <ui/circuit/diagram/scene/diagramScene.hpp>
-#include <ui/shell/inputDialogUtils.hpp>
-#include <ui/circuit/diagram/undoCommands.hpp>
 #include <ui/circuit/components/graphicalLogicComponent.hpp>
+#include <ui/circuit/components/graphicalMemory.hpp>
+#include <ui/circuit/diagram/scene/diagramScene.hpp>
+#include <ui/circuit/diagram/undoCommands.hpp>
 #include <ui/project/projectDocumentPolicy.hpp>
 #include <ui/project/projectTree.hpp>
+#include <ui/shell/inputDialogUtils.hpp>
 
 namespace SILICON::ui {
 using namespace SILICON::core;
@@ -313,6 +314,12 @@ void PropertyPanel::refresh()
         constexpr int MAX_VAL = std::numeric_limits<int>::max();
 
         spinBox->setRange(MIN_VAL, MAX_VAL);
+
+        if (key == "depth" && std::ranges::all_of(selectedNodes, [](const auto* node) {
+              return dynamic_cast<const GraphicalMemory*>(node) != nullptr;
+            }))
+          spinBox->setToolTip(tr("0: infer depth from the binary document; positive "
+                                 "values: explicit depth."));
 
         if (isMixed) {
           spinBox->setMixed(true, tr("Mixed values"));

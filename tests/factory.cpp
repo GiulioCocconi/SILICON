@@ -60,10 +60,7 @@ TEST_F(FactoryTest, CreatedComponentsHaveExpectedDefaultBuses)
       ASSERT_EQ(memory->getOutputs().size(), 1);
       EXPECT_EQ(memory->getInputs()[0].size(), 1);
       EXPECT_EQ(memory->getOutputs()[0].size(), 8);
-      const auto depth = typeName == RAM::Type
-                             ? std::dynamic_pointer_cast<RAM>(comp)->memoryDepth()
-                             : std::dynamic_pointer_cast<ROM>(comp)->memoryDepth();
-      EXPECT_EQ(depth, typeName == RAM::Type ? 1 : 0);
+      EXPECT_EQ(memory->memoryDepth(), typeName == RAM::Type ? 1 : 0);
       EXPECT_FALSE(memory->memoryImageSnapshot());
     } else {
       EXPECT_TRUE(comp->getInputs().empty());

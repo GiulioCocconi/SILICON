@@ -78,7 +78,7 @@ TEST(YosysRomTest, ImportsInitializedArrayAndCreatesBinaryDocument)
     ++roms;
     EXPECT_EQ(rom->getPropertyValue<std::string>("binaryContents"), "rom_table");
     EXPECT_FALSE(rom->getPropertyValue<int>("wordCount").has_value());
-    EXPECT_EQ(rom->resolvedWordCount(), 4);
+    EXPECT_EQ(rom->memoryDepth(), 4);
     EXPECT_EQ(rom->inputBuses()[0].size(), 2);
     auto simulationCircuit = std::make_shared<Circuit>(Component_set{rom});
     Simulator simulator(simulationCircuit);
@@ -103,9 +103,9 @@ TEST(YosysRomTest, ExportsSelfContainedInitializedArrayAndReimportsIt)
   rom->setProperty("binaryContents", std::string("program"));
   rom->setInputs({address, cs, oe});
   rom->setOutputs({data});
+  rom->setMemoryDepth(3);
   rom->refreshBinaryContents(std::make_shared<const std::vector<std::uint8_t>>(
-                                 (std::vector<std::uint8_t>{0xA5, 0x3C, 0x0F, 0x2E})),
-                             3);
+      (std::vector<std::uint8_t>{0xA5, 0x3C, 0x0F, 0x2E})));
   Circuit circuit(Component_set{
       rom, std::make_shared<DummyInputComponent>(address, "address"),
       std::make_shared<DummyInputComponent>(cs, "cs"),
@@ -121,7 +121,7 @@ TEST(YosysRomTest, ExportsSelfContainedInitializedArrayAndReimportsIt)
     const auto restored = std::dynamic_pointer_cast<ROM>(imported.getComponentByVertexId(vertex));
     if (!restored) continue;
     ++roms;
-    EXPECT_EQ(restored->resolvedWordCount(), 3);
+    EXPECT_EQ(restored->memoryDepth(), 3);
     ASSERT_TRUE(restored->binaryContentsSnapshot());
     EXPECT_EQ(*restored->binaryContentsSnapshot(),
               (std::vector<std::uint8_t>{0xA5, 0x3C, 0x0F, 0x2E}));
@@ -221,6 +221,7 @@ TEST(YosysRomTest, CircuitConversionHydratesBinaryDocument)
   rom->setProperty("binaryContents", std::string("program"));
   rom->setInputs({address, cs, Bus(1)});
   rom->setOutputs({data});
+  rom->setMemoryDepth(2);
   rom->refreshBinaryContents(std::make_shared<const std::vector<std::uint8_t>>(
       (std::vector<std::uint8_t>{0xA5, 0x3C, 0x0F})));
   Circuit circuit(Component_set{
@@ -270,7 +271,7 @@ TEST(YosysRomTest, ImportsClockedReadWithAddressRegister)
   }
   ASSERT_TRUE(addressInput && clockInput && output && rom);
   EXPECT_EQ(registers, 1);
-  EXPECT_EQ(rom->resolvedWordCount(), 4);
+  EXPECT_EQ(rom->memoryDepth(), 4);
   EXPECT_EQ(rom->getPropertyValue<std::string>("binaryContents"), "clocked_program");
   Simulator simulator(circuit);
   const auto addressBus = addressInput->outputBuses()[0];

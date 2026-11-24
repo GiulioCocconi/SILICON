@@ -42,7 +42,8 @@ namespace {
     return bits / width + static_cast<std::size_t>(bits % width != 0);
   }
 
-  // Binary documents contain whole bytes; ROM geometry excludes byte padding.
+  // Explicit geometry accepts canonical byte padding or a partial final word.
+  // Raw bytes alone cannot distinguish padding from additional logical words.
   [[nodiscard]] bool matchesPackedImage(const std::size_t bytes, const std::size_t words,
                                         const std::size_t width)
   {
@@ -146,143 +147,176 @@ BusValue MemoryImage::word(const std::size_t address) const
   return result;
 }
 
-RAM::RAM()
+Memory::Memory(const int depth)
 {
   defineProperty("dataWidth", 8);
-  defineProperty("depth", 1);
-  defineProperty("readPorts", 1);
+  defineProperty("depth", depth);
   defineProperty("binaryContents", std::string());
-  setPropertyCallback("dataWidth", [this](const PropertyValue& value) {
-    const auto width = std::get<int>(requireValidSize("RAM dataWidth", value));
-    configure(width, memoryDepth(), content, true);
+  // setPropertyCallback eagerly invokes callbacks; defer geometry until the
+  // concrete memory's constructor has initialized its port-specific properties.
+  propertyCallbacks["dataWidth"] = [this](const PropertyValue& value) {
+    configure(std::get<int>(value), getPropertyValue<int>("depth").value(),
+              getPropertyValue<std::string>("binaryContents").value(), content, true);
     return value;
-  });
-  setPropertyCallback("depth", [this](const PropertyValue& value) {
-    const auto depth = std::get<int>(value);
-    if (depth <= 0)
-      throw std::invalid_argument("RAM depth must be positive");
-    configure(configuredDataWidth(), static_cast<std::size_t>(depth), content, true);
+  };
+  propertyCallbacks["depth"] = [this](const PropertyValue& value) {
+    configure(configuredDataWidth(), std::get<int>(value),
+              getPropertyValue<std::string>("binaryContents").value(), content, true);
     return value;
-  });
-  setPropertyCallback("binaryContents", [this](const PropertyValue& value) {
-    if (std::get<std::string>(value)
-        != getPropertyValue<std::string>("binaryContents").value_or(""))
-      configure(configuredDataWidth(), memoryDepth(), nullptr, false);
+  };
+  propertyCallbacks["binaryContents"] = [this](const PropertyValue& value) {
+    const auto& slug = std::get<std::string>(value);
+    if (slug != getPropertyValue<std::string>("binaryContents").value())
+      configure(configuredDataWidth(), getPropertyValue<int>("depth").value(), slug,
+                nullptr, false);
     return value;
-  });
+  };
+}
+
+int Memory::configuredDataWidth() const
+{
+  return getPropertyValue<int>("dataWidth").value();
+}
+
+std::size_t Memory::memoryDepth() const noexcept
+{
+  const auto depth = getPropertyValue<int>("depth").value();
+  return depth != 0 ? static_cast<std::size_t>(depth) : image ? image->depth() : 0;
+}
+
+void Memory::setMemoryDepth(const std::size_t depth)
+{
+  if (depth > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+    throw std::invalid_argument("Invalid memory depth");
+  setProperty("depth", static_cast<int>(depth));
+}
+
+unsigned short Memory::addressWidth() const
+{
+  auto width = addressWidthFor(memoryDepth());
+  // Explicit geometry may have a wider address bus, notably after Yosys import.
+  if (getPropertyValue<int>("depth").value() != 0 && !inputs.empty())
+    width = std::max(width, static_cast<unsigned short>(inputs[0].size()));
+  return width;
+}
+
+void Memory::configure(const int width, const int depth, std::string slug,
+                       std::shared_ptr<const std::vector<std::uint8_t>> contents,
+                       const bool                                       rejectInvalid)
+{
+  (void)requireValidSize("Memory dataWidth", PropertyValue{width});
+  (void)requireNonNegative("Memory depth", PropertyValue{depth});
+  if (contents && contents->size() > std::numeric_limits<std::size_t>::max() / 8)
+    throw std::invalid_argument("Memory binary document is too large");
+  const auto count =
+      depth != 0 ? static_cast<std::size_t>(depth)
+      : contents ? packedWordCount(contents->size() * 8, static_cast<std::size_t>(width))
+                 : 0;
+  if (count > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+    throw std::invalid_argument("Memory depth is too large");
+  if (count != 0)
+    bitCount(static_cast<std::size_t>(width), count);
+
+  std::shared_ptr<const MemoryImage> nextImage;
+  if (contents && !contents->empty() && count != 0) {
+    if (!matchesPackedImage(contents->size(), count, static_cast<std::size_t>(width))) {
+      if (rejectInvalid)
+        throw std::invalid_argument("Memory image does not match its geometry");
+    } else {
+      nextImage = std::make_shared<const MemoryImage>(
+          MemoryImage::fromBytes(*contents, static_cast<std::size_t>(width), count));
+    }
+  } else if (contents && depth != 0 && rejectInvalid) {
+    throw std::invalid_argument("Memory image does not match its geometry");
+  }
+  commit(width, depth, std::move(slug), std::move(contents), std::move(nextImage));
+}
+
+void Memory::commit(const int width, const int depth, std::string slug,
+                    std::shared_ptr<const std::vector<std::uint8_t>> contents,
+                    std::shared_ptr<const MemoryImage>               nextImage)
+{
+  // Publish properties before notifying IO observers, including from property callbacks.
+  properties.at("dataWidth")      = width;
+  properties.at("depth")          = depth;
+  properties.at("binaryContents") = std::move(slug);
+  content                         = std::move(contents);
+  image                           = std::move(nextImage);
+  reshapeBuses();
+}
+
+void Memory::setBinaryDocument(std::string                                      slug,
+                               std::shared_ptr<const std::vector<std::uint8_t>> contents)
+{
+  configure(configuredDataWidth(), getPropertyValue<int>("depth").value(),
+            std::move(slug), std::move(contents), true);
+}
+
+void Memory::refreshBinaryContents(
+    std::shared_ptr<const std::vector<std::uint8_t>> contents)
+{
+  configure(configuredDataWidth(), getPropertyValue<int>("depth").value(),
+            getPropertyValue<std::string>("binaryContents").value(), std::move(contents),
+            false);
+}
+
+void Memory::setMemoryImage(std::shared_ptr<const MemoryImage> nextImage)
+{
+  if (!nextImage || nextImage->wordWidth() > std::numeric_limits<unsigned short>::max()
+      || nextImage->depth() > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+    throw std::invalid_argument("Invalid memory image");
+  auto bytes = std::make_shared<const std::vector<std::uint8_t>>(nextImage->bytes());
+  const auto width = static_cast<int>(nextImage->wordWidth());
+  const auto depth = static_cast<int>(nextImage->depth());
+  commit(width, depth, getPropertyValue<std::string>("binaryContents").value(),
+         std::move(bytes), std::move(nextImage));
+}
+
+RAM::RAM() : Memory(1)
+{
+  defineProperty("readPorts", 1);
   setPropertyCallback("readPorts", [this](const PropertyValue& value) {
-    const auto ports = std::get<int>(requireValidSize("RAM readPorts", value));
-    configure(configuredDataWidth(), memoryDepth(), content, true,
-              static_cast<std::size_t>(ports));
+    (void)requireValidSize("RAM readPorts", value);
+    properties.at("readPorts") = value;
+    reshapeBuses();
     return value;
   });
-  configure(8, 1, nullptr, false);
-}
-
-int RAM::configuredDataWidth() const
-{
-  return getPropertyValue<int>("dataWidth").value_or(8);
-}
-
-std::size_t RAM::memoryDepth() const
-{
-  return static_cast<std::size_t>(getPropertyValue<int>("depth").value_or(1));
+  reshapeBuses();
 }
 
 std::size_t RAM::readPortCount() const
 {
-  return static_cast<std::size_t>(getPropertyValue<int>("readPorts").value_or(1));
+  return static_cast<std::size_t>(getPropertyValue<int>("readPorts").value());
 }
 
-void RAM::setMemoryDepth(const std::size_t depth)
+void RAM::reshapeBuses()
 {
-  if (depth == 0 || depth > static_cast<std::size_t>(std::numeric_limits<int>::max()))
-    throw std::invalid_argument("Invalid RAM depth");
-  setProperty("depth", static_cast<int>(depth));
-}
-
-void RAM::configure(const int width, const std::size_t depth,
-                    std::shared_ptr<const std::vector<std::uint8_t>> contents,
-                    const bool rejectInvalid, std::size_t readPorts)
-{
-  if (readPorts == 0)
-    readPorts = readPortCount();
-  const auto bits = bitCount(static_cast<std::size_t>(width), depth);
-  std::shared_ptr<const MemoryImage> nextImage;
-  if (contents) {
-    if (contents->size() != bits / 8 + (bits % 8 != 0)) {
-      if (rejectInvalid)
-        throw std::invalid_argument("RAM image does not match its geometry");
-      contents.reset();
-    } else {
-      nextImage = std::make_shared<const MemoryImage>(
-          MemoryImage::fromBytes(*contents, static_cast<std::size_t>(width), depth));
-    }
-  }
-
-  auto newInputs = inputs;
+  const auto readPorts   = readPortCount();
+  const auto addressBits = addressWidth();
+  const auto width       = static_cast<unsigned short>(configuredDataWidth());
+  auto       newInputs   = inputs;
   newInputs.resize(readPorts + 4);
   for (std::size_t port = 0; port < readPorts; ++port)
-    newInputs[readAddressIndex(port)].setSize(addressWidthFor(depth));
-  newInputs[busIndex(Inputs::WriteAddress)].setSize(addressWidthFor(depth));
-  newInputs[busIndex(Inputs::WriteData)].setSize(static_cast<unsigned short>(width));
-  newInputs[busIndex(Inputs::WriteEnable)].setSize(static_cast<unsigned short>(width));
+    newInputs[readAddressIndex(port)].setSize(addressBits);
+  newInputs[busIndex(Inputs::WriteAddress)].setSize(addressBits);
+  newInputs[busIndex(Inputs::WriteData)].setSize(width);
+  newInputs[busIndex(Inputs::WriteEnable)].setSize(width);
   newInputs[busIndex(Inputs::Clock)].setSize(1);
   auto newOutputs = outputs;
   newOutputs.resize(readPorts);
   for (auto& output : newOutputs)
-    output.setSize(static_cast<unsigned short>(width));
-  content = std::move(contents);
-  image = std::move(nextImage);
+    output.setSize(width);
   words.clear();
   setInputs(newInputs);
   setOutputs(newOutputs);
-}
-
-void RAM::setBinaryDocument(std::string slug,
-                            std::shared_ptr<const std::vector<std::uint8_t>> contents)
-{
-  // Validate before changing either the reference or the cached image.
-  const auto bits = bitCount(static_cast<std::size_t>(configuredDataWidth()), memoryDepth());
-  if (contents && contents->size() != bits / 8 + (bits % 8 != 0))
-    throw std::invalid_argument("RAM image does not match its geometry");
-  setProperty("binaryContents", std::move(slug));
-  refreshBinaryContents(std::move(contents));
-}
-
-void RAM::refreshBinaryContents(std::shared_ptr<const std::vector<std::uint8_t>> contents)
-{
-  // Hydration must not resize saved ports, including wider imported addresses.
-  const auto bits = bitCount(static_cast<std::size_t>(configuredDataWidth()), memoryDepth());
-  image.reset();
-  content.reset();
-  if (contents && contents->size() == bits / 8 + (bits % 8 != 0)) {
-    image = std::make_shared<const MemoryImage>(MemoryImage::fromBytes(
-        *contents, static_cast<std::size_t>(configuredDataWidth()), memoryDepth()));
-    content = std::move(contents);
-  }
-  words.clear();
-}
-
-void RAM::setMemoryImage(std::shared_ptr<const MemoryImage> nextImage)
-{
-  if (!nextImage || nextImage->wordWidth() > std::numeric_limits<unsigned short>::max()
-      || nextImage->depth() > static_cast<std::size_t>(std::numeric_limits<int>::max()))
-    throw std::invalid_argument("Invalid RAM image");
-  auto bytes = std::make_shared<const std::vector<std::uint8_t>>(nextImage->bytes());
-  // Geometry changes must not attempt to reinterpret the old initializer.
-  content.reset();
-  setProperty("dataWidth", static_cast<int>(nextImage->wordWidth()));
-  setMemoryDepth(nextImage->depth());
-  image = std::move(nextImage);
-  content = std::move(bytes);
-  words.clear();
 }
 
 void RAM::initializeWords()
 {
   if (!words.empty())
     return;
+  if (memoryDepth() == 0)
+    throw std::runtime_error("Automatic RAM depth requires a nonempty binary document");
   words.assign(memoryDepth(), BusValue(static_cast<std::size_t>(configuredDataWidth()),
                                        State::UNKNOWN));
   if (image)
@@ -368,24 +402,9 @@ void RAM::simulate(SILICON::simulation::Simulator& sim,
   }
 }
 
-ROM::ROM()
+ROM::ROM() : Memory(0)
 {
-  defineProperty("dataWidth", 8);
-  defineProperty("binaryContents", std::string());
-
-  setPropertyCallback("dataWidth", [this](const PropertyValue& value) {
-    const int width = std::get<int>(requireValidSize("ROM dataWidth", value));
-    if (!settingMemoryImage)
-      configure(width, content, true, false,
-                width == configuredDataWidth() ? imageDepth : 0);
-    return value;
-  });
-  setPropertyCallback("binaryContents", [this](const PropertyValue& value) {
-    const auto& slug = std::get<std::string>(value);
-    if (!settingBinaryDocument && slug != configuredBinaryContents())
-      configure(configuredDataWidth(), nullptr, false);
-    return value;
-  });
+  reshapeBuses();
 }
 
 ROM::ROM(Bus address, Wire_ptr chipSelect, Wire_ptr outputEnable, Bus data) : ROM()
@@ -400,146 +419,19 @@ ROM::ROM(Bus address, Wire_ptr chipSelect, Wire_ptr outputEnable, Bus data) : RO
   setProperty("dataWidth", static_cast<int>(outputs[0].size()));
 }
 
-int ROM::configuredDataWidth() const
-{
-  return getPropertyValue<int>("dataWidth").value_or(8);
-}
-
-std::string ROM::configuredBinaryContents() const
-{
-  return getPropertyValue<std::string>("binaryContents").value_or(std::string());
-}
-
-void ROM::configure(const int                                        dataWidth,
-                    std::shared_ptr<const std::vector<std::uint8_t>> nextContent,
-                    const bool rejectInvalid, const bool preferAddressDepth,
-                    const std::size_t explicitWords)
-{
-  const int width = std::get<int>(requireValidSize("ROM dataWidth", PropertyValue{dataWidth}));
-
-  std::size_t nextWords = 0;
-  if (nextContent) {
-    if (nextContent->size() > std::numeric_limits<std::size_t>::max() / 8)
-      throw std::invalid_argument("ROM binary document is too large");
-    nextWords = packedWordCount(nextContent->size() * 8, static_cast<std::size_t>(width));
-    if (explicitWords != 0) {
-      if (!matchesPackedImage(nextContent->size(), explicitWords,
-                              static_cast<std::size_t>(width))) {
-        if (rejectInvalid)
-          throw std::invalid_argument("ROM image does not match its explicit word count");
-        nextWords = 0;
-      } else {
-        nextWords = explicitWords;
-      }
-    } else if (preferAddressDepth && !nextContent->empty() && !inputs.empty()) {
-      const auto& address = inputs[busIndex(Inputs::Address)];
-      const auto addressBits = address.size();
-      if (addressBits < std::numeric_limits<std::size_t>::digits) {
-        const auto candidate = std::size_t{1} << addressBits;
-        if (matchesPackedImage(nextContent->size(), candidate,
-                               static_cast<std::size_t>(width)))
-          nextWords = candidate;
-      }
-    }
-  }
-
-  auto nextImage = nextWords != 0
-                       ? std::make_shared<const MemoryImage>(MemoryImage::fromBytes(
-                             *nextContent, static_cast<std::size_t>(width), nextWords))
-                       : nullptr;
-  content        = std::move(nextContent);
-  image          = std::move(nextImage);
-  imageDepth     = explicitWords;
-  reshapeBuses(width, resolvedWordCount());
-}
-
-void ROM::reshapeBuses(const int dataWidth, const std::size_t words)
+void ROM::reshapeBuses()
 {
   auto newInputs = inputs;
   newInputs.resize(3);
-  newInputs[busIndex(Inputs::Address)].setSize(addressWidthFor(words));
+  newInputs[busIndex(Inputs::Address)].setSize(addressWidth());
   newInputs[busIndex(Inputs::CS)].setSize(1);
   newInputs[busIndex(Inputs::OE)].setSize(1);
-  setInputs(newInputs);
-
   auto newOutputs = outputs;
   newOutputs.resize(1);
-  newOutputs[busIndex(Outputs::Data)].setSize(static_cast<unsigned short>(dataWidth));
+  newOutputs[busIndex(Outputs::Data)].setSize(
+      static_cast<unsigned short>(configuredDataWidth()));
+  setInputs(newInputs);
   setOutputs(newOutputs);
-}
-
-void ROM::setBinaryDocument(std::string                                      slug,
-                            std::shared_ptr<const std::vector<std::uint8_t>> contents)
-{
-  const int width = configuredDataWidth();
-
-  if (contents && contents->size() > std::numeric_limits<std::size_t>::max() / 8)
-    throw std::invalid_argument("ROM binary document is too large");
-
-  settingBinaryDocument = true;
-  try {
-    setProperty("binaryContents", slug);
-  } catch (...) {
-    settingBinaryDocument = false;
-    throw;
-  }
-  settingBinaryDocument = false;
-  configure(width, std::move(contents), true);
-}
-
-void ROM::refreshBinaryContents(std::shared_ptr<const std::vector<std::uint8_t>> contents)
-{
-  // Preserve saved geometry on hydration, but keep document replacement/resizing
-  // consistent with a newly selected binary file.
-  const auto depth =
-      content && contents && content->size() != contents->size() ? 0 : imageDepth;
-  configure(configuredDataWidth(), std::move(contents), false, true, depth);
-}
-
-void ROM::refreshBinaryContents(std::shared_ptr<const std::vector<std::uint8_t>> contents,
-                                const std::size_t                                words)
-{
-  configure(configuredDataWidth(), std::move(contents), true, false, words);
-}
-
-std::size_t ROM::resolvedWordCount() const noexcept
-{
-  return image ? image->depth() : 0;
-}
-
-std::size_t ROM::memoryDepth() const noexcept
-{
-  return image ? image->depth() : imageDepth;
-}
-
-void ROM::setMemoryImage(std::shared_ptr<const MemoryImage> nextImage)
-{
-  if (!nextImage || nextImage->wordWidth() > std::numeric_limits<unsigned short>::max())
-    throw std::invalid_argument("Invalid ROM image");
-  auto bytes = std::make_shared<const std::vector<std::uint8_t>>(nextImage->bytes());
-  settingMemoryImage = true;
-  try {
-    setProperty("dataWidth", static_cast<int>(nextImage->wordWidth()));
-  } catch (...) {
-    settingMemoryImage = false;
-    throw;
-  }
-  settingMemoryImage = false;
-  imageDepth         = nextImage->depth();
-  image              = std::move(nextImage);
-  content            = std::move(bytes);
-  reshapeBuses(configuredDataWidth(), image->depth());
-}
-
-void ROM::setMemoryDepth(const std::size_t depth)
-{
-  if (depth > std::numeric_limits<std::size_t>::max()
-                  / static_cast<std::size_t>(configuredDataWidth()))
-    throw std::invalid_argument("Invalid ROM depth");
-  if (content)
-    configure(configuredDataWidth(), content, true, false, depth);
-  else
-    imageDepth = depth;
 }
 
 void ROM::driveState(SILICON::simulation::Simulator& sim, const State state)
