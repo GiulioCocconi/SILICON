@@ -56,13 +56,26 @@ private:
   std::size_t words;
 };
 
-/** Common binary-document backing for memory components. */
+/** Common geometry and immutable binary-document backing for RAM and ROM. */
 class Memory : public Component {
 public:
-  virtual void setBinaryDocument(
-      std::string slug, std::shared_ptr<const std::vector<std::uint8_t>> contents) = 0;
-  virtual void refreshBinaryContents(
-      std::shared_ptr<const std::vector<std::uint8_t>> contents) = 0;
+  /** Select a document atomically, rejecting contents incompatible with explicit depth.
+   */
+  void setBinaryDocument(std::string                                      slug,
+                         std::shared_ptr<const std::vector<std::uint8_t>> contents);
+  /** Hydrate or update a document without discarding explicit geometry. */
+  void refreshBinaryContents(std::shared_ptr<const std::vector<std::uint8_t>> contents);
+  /** Install exact geometry and initialization, selecting explicit depth. */
+  void setMemoryImage(std::shared_ptr<const MemoryImage> image);
+
+  /** Resolved depth; zero if automatic depth has no nonempty document. */
+  [[nodiscard]] std::size_t memoryDepth() const noexcept;
+  /**
+   * Zero infers ceil(byte_count * 8 / word_width), zero-filling a partial final word.
+   * Positive depths distinguish logical data from byte padding. Explicit images
+   * may end within their final word; bits beyond the logical image are ignored.
+   */
+  void setMemoryDepth(std::size_t depth);
 
   [[nodiscard]] std::shared_ptr<const MemoryImage> memoryImageSnapshot() const noexcept
   {
@@ -72,8 +85,21 @@ public:
   binaryContentsSnapshot() const noexcept { return content; }
 
 protected:
+  explicit Memory(int depth);
+  [[nodiscard]] int            configuredDataWidth() const;
+  [[nodiscard]] unsigned short addressWidth() const;
+  virtual void                 reshapeBuses() = 0;
+
   std::shared_ptr<const std::vector<std::uint8_t>> content;
   std::shared_ptr<const MemoryImage> image;
+
+private:
+  void configure(int width, int depth, std::string slug,
+                 std::shared_ptr<const std::vector<std::uint8_t>> contents,
+                 bool                                             rejectInvalid);
+  void commit(int width, int depth, std::string slug,
+              std::shared_ptr<const std::vector<std::uint8_t>> contents,
+              std::shared_ptr<const MemoryImage>               nextImage);
 };
 
 /** Independent asynchronous read ports and one masked, positive-edge write port. */
@@ -104,13 +130,6 @@ public:
   [[nodiscard]] bool usesStagedSequentialOutputs() const override { return true; }
   void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
 
-  void setBinaryDocument(std::string slug,
-                         std::shared_ptr<const std::vector<std::uint8_t>> contents) override;
-  void refreshBinaryContents(
-      std::shared_ptr<const std::vector<std::uint8_t>> contents) override;
-  void setMemoryImage(std::shared_ptr<const MemoryImage> image);
-  [[nodiscard]] std::size_t memoryDepth() const;
-  void setMemoryDepth(std::size_t depth);
   [[nodiscard]] std::size_t readPortCount() const;
   // Keep the original five input indices stable; extra read addresses follow them.
   [[nodiscard]] static std::size_t readAddressIndex(std::size_t port)
@@ -123,10 +142,7 @@ private:
   // Only modified words are copied, for cancellation before output publication.
   std::vector<std::pair<std::size_t, BusValue>> previousWords;
 
-  [[nodiscard]] int configuredDataWidth() const;
-  void configure(int width, std::size_t depth,
-                 std::shared_ptr<const std::vector<std::uint8_t>> contents,
-                 bool rejectInvalid, std::size_t readPorts = 0);
+  void               reshapeBuses() override;
   void initializeWords();
   void write(const BusValue& address, const BusValue& data, const BusValue& mask,
              State clockEnable);
@@ -160,50 +176,9 @@ public:
   void simulate(SILICON::simulation::Simulator& sim) override;
   void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
 
-  /**
-   * Sets the document slug and its immutable contents as one operation.
-   *
-   * The address bus is sized to reach every packed word. Addresses beyond
-   * the image depth produce an UNKNOWN data bus.
-   */
-  void setBinaryDocument(std::string                                      slug,
-                         std::shared_ptr<const std::vector<std::uint8_t>> contents) override;
-
-  /**
-   * Replaces the cached contents without changing the document slug.
-   *
-   * Missing, empty, and externally invalidated contents are accepted and leave
-   * the ROM unresolved.
-   */
-  void refreshBinaryContents(
-      std::shared_ptr<const std::vector<std::uint8_t>> contents) override;
-
-  /** Cache a canonical ROM image with an explicit depth, including a single word. */
-  void refreshBinaryContents(std::shared_ptr<const std::vector<std::uint8_t>> contents,
-                             std::size_t                                      words);
-
-  [[nodiscard]] std::size_t resolvedWordCount() const noexcept;
-
-  /** Install an exact image, such as a Yosys memory initializer. */
-  void setMemoryImage(std::shared_ptr<const MemoryImage> image);
-
-  /** Persisted depth; zero means infer geometry for legacy or newly selected documents.
-   */
-  [[nodiscard]] std::size_t memoryDepth() const noexcept;
-  void                      setMemoryDepth(std::size_t depth);
-
 private:
-  std::size_t                                      imageDepth             = 0;
-  bool                                             settingMemoryImage     = false;
-  bool                               settingBinaryDocument  = false;
-
-  void configure(int dataWidth, std::shared_ptr<const std::vector<std::uint8_t>> contents,
-                 bool rejectInvalid, bool preferAddressDepth = false,
-                 std::size_t explicitWords = 0);
-  void              reshapeBuses(int dataWidth, std::size_t words);
-  void              driveState(SILICON::simulation::Simulator& sim, State state);
-  [[nodiscard]] int configuredDataWidth() const;
-  [[nodiscard]] std::string configuredBinaryContents() const;
+  void reshapeBuses() override;
+  void driveState(SILICON::simulation::Simulator& sim, State state);
 };
 
 }  // namespace SILICON::core

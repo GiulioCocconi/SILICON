@@ -86,11 +86,11 @@ TEST(ROMTest, ValidatesPropertiesAndShapesBusesFromPackedWordCount)
 
   EXPECT_NO_THROW(rom.setProperty("dataWidth", 6));
   EXPECT_EQ(rom.getPropertyValue<int>("dataWidth"), 6);
-  EXPECT_EQ(rom.resolvedWordCount(), 6);
+  EXPECT_EQ(rom.memoryDepth(), 6);
   EXPECT_EQ(rom.inputBuses()[0].size(), 3);
 }
 
-TEST(ROMTest, RehydrationUsesSavedAddressWidthForPaddedWords)
+TEST(ROMTest, AutomaticHydrationDoesNotGuessDepthFromSavedAddressWidth)
 {
   ROM rom;
   rom.setProperty("dataWidth", 10);
@@ -98,8 +98,8 @@ TEST(ROMTest, RehydrationUsesSavedAddressWidthForPaddedWords)
   rom.setInputs({Bus(1), Bus(1), Bus(1)});
   rom.refreshBinaryContents(
       binarySnapshot((std::vector<std::uint8_t>{0xA5, 0x3C, 0x0F})));
-  EXPECT_EQ(rom.inputBuses()[0].size(), 1);
-  EXPECT_EQ(rom.resolvedWordCount(), 2);
+  EXPECT_EQ(rom.inputBuses()[0].size(), 2);
+  EXPECT_EQ(rom.memoryDepth(), 3);
 }
 
 TEST(ROMTest, ExplicitOneWordImageUsesValidAddressBus)
@@ -107,8 +107,9 @@ TEST(ROMTest, ExplicitOneWordImageUsesValidAddressBus)
   ROM rom;
   rom.setProperty("dataWidth", 8);
   rom.setInputs({Bus(1), Bus(1), Bus(1)});
-  rom.refreshBinaryContents(binarySnapshot((std::vector<std::uint8_t>{0xA6})), 1);
-  EXPECT_EQ(rom.resolvedWordCount(), 1);
+  rom.setMemoryDepth(1);
+  rom.refreshBinaryContents(binarySnapshot((std::vector<std::uint8_t>{0xA6})));
+  EXPECT_EQ(rom.memoryDepth(), 1);
   ASSERT_EQ(rom.inputBuses()[0].size(), 1);
   EXPECT_NE(rom.inputBuses()[0][0], nullptr);
 }
@@ -192,7 +193,7 @@ TEST(ROMTest, MissingAndOutOfBoundsContentIsUnknown)
 
   rom->refreshBinaryContents(
       binarySnapshot((std::vector<std::uint8_t>{0x10, 0x20, 0x30})));
-  EXPECT_EQ(rom->resolvedWordCount(), 3);
+  EXPECT_EQ(rom->memoryDepth(), 3);
   EXPECT_EQ(rom->inputBuses()[0].size(), 2);
   const auto address = rom->inputBuses()[0];
   ASSERT_EQ(simulator.setBus(address, valueFor(address, 2)),
@@ -239,7 +240,7 @@ TEST(ROMTest, BinaryDocumentChangeAcceptsArbitraryDepthAndClearsStaleContent)
   EXPECT_NE(rom->binaryContentsSnapshot(), originalSnapshot);
   EXPECT_EQ(*rom->binaryContentsSnapshot(),
             (std::vector<std::uint8_t>{0x10, 0x20, 0x30}));
-  EXPECT_EQ(rom->resolvedWordCount(), 3);
+  EXPECT_EQ(rom->memoryDepth(), 3);
   EXPECT_EQ(rom->inputBuses(), originalInputs);
 
   rom->setProperty("binaryContents", std::string("missing"));
@@ -339,12 +340,12 @@ struct RamFixture {
 
 } // namespace
 
-TEST(RAMTest, ValidatesGeometryAndExactBinaryImages)
+TEST(RAMTest, ValidatesGeometryAndBinaryImages)
 {
   RAM ram;
   EXPECT_THROW(ram.setProperty("dataWidth", 0), std::invalid_argument);
   EXPECT_THROW(ram.setProperty("dataWidth", 65536), std::invalid_argument);
-  EXPECT_THROW(ram.setProperty("depth", 0), std::invalid_argument);
+  EXPECT_NO_THROW(ram.setProperty("depth", 0));
   EXPECT_THROW(ram.setProperty("depth", -1), std::invalid_argument);
   EXPECT_THROW(ram.setMemoryDepth(std::numeric_limits<std::size_t>::max()), std::invalid_argument);
   ram.setProperty("depth", 3);
@@ -837,4 +838,211 @@ TEST(RAMTest, CancellationOfGeneratedClockPassKeepsEarlierCommittedBatches)
   ASSERT_EQ(sim.simulateBus(target.output()), Simulator::RunResult::Completed);
   EXPECT_EQ(source.output().getCurrentValue(), valueFor(2, 1));
   EXPECT_EQ(target.output().getCurrentValue(), valueFor(8, 0x12));
+}
+
+namespace {
+
+std::array<std::shared_ptr<Memory>, 2> memories()
+{
+  return {std::make_shared<RAM>(), std::make_shared<ROM>()};
+}
+
+}  // namespace
+
+TEST(MemoryGeometryTest, AutomaticDepthRecomputesForDocumentsAndWordWidths)
+{
+  for (const auto& memory : memories()) {
+    SCOPED_TRACE(memory->typeName());
+    memory->setMemoryDepth(0);
+    memory->setProperty("dataWidth", 10);
+    memory->setBinaryDocument("packed", binarySnapshot({0xFF, 0xFF, 0xFF}));
+    EXPECT_EQ(memory->getPropertyValue<int>("depth"), 0);
+    EXPECT_EQ(memory->memoryDepth(), 3);
+    EXPECT_EQ(memory->inputBuses()[0].size(), 2);
+    EXPECT_EQ(memory->memoryImageSnapshot()->word(2), valueFor(10, 15));
+
+    memory->setProperty("dataWidth", 6);
+    EXPECT_EQ(memory->memoryDepth(), 4);
+    EXPECT_EQ(memory->outputBuses()[0].size(), 6);
+    memory->setBinaryDocument("larger", binarySnapshot({1, 2, 3, 4}));
+    EXPECT_EQ(memory->memoryDepth(), 6);
+    EXPECT_EQ(memory->inputBuses()[0].size(), 3);
+    memory->refreshBinaryContents(binarySnapshot({0xFF}));
+    EXPECT_EQ(memory->memoryDepth(), 2);
+    EXPECT_EQ(memory->inputBuses()[0].size(), 1);
+    EXPECT_EQ(memory->memoryImageSnapshot()->word(1), valueFor(6, 3));
+    memory->setProperty("binaryContents", std::string("other"));
+    EXPECT_EQ(memory->memoryDepth(), 0);
+    EXPECT_FALSE(memory->memoryImageSnapshot());
+    memory->refreshBinaryContents(binarySnapshot({0xA5}));
+    EXPECT_EQ(memory->memoryDepth(), 2);
+    memory->refreshBinaryContents(binarySnapshot({}));
+    EXPECT_EQ(memory->memoryDepth(), 0);
+    memory->refreshBinaryContents(nullptr);
+    EXPECT_EQ(memory->memoryDepth(), 0);
+  }
+}
+
+TEST(MemoryGeometryTest, AutomaticInferenceTreatsEveryByteBitAsData)
+{
+  for (const auto& memory : memories()) {
+    memory->setMemoryDepth(0);
+    for (const auto [width, depth] :
+         std::array<std::pair<int, int>, 5>{{{1, 8}, {6, 2}, {8, 1}, {10, 1}, {16, 1}}}) {
+      memory->setProperty("dataWidth", width);
+      memory->setBinaryDocument("byte", binarySnapshot({0xA5}));
+      EXPECT_EQ(memory->memoryDepth(), depth) << width;
+      EXPECT_EQ(memory->getPropertyValue<int>("depth"), 0);
+      EXPECT_EQ(memory->memoryImageSnapshot()->bits().size(), width * depth);
+    }
+  }
+}
+
+TEST(MemoryGeometryTest, ExplicitDepthDisambiguatesPaddingAndCanReturnToAutomatic)
+{
+  for (const auto& memory : memories()) {
+    SCOPED_TRACE(memory->typeName());
+    memory->setProperty("dataWidth", 10);
+    memory->setMemoryDepth(2);
+    memory->setBinaryDocument("packed", binarySnapshot({0xFF, 0xFF, 0xFF}));
+    ASSERT_TRUE(memory->memoryImageSnapshot());
+    EXPECT_EQ(memory->memoryDepth(), 2);
+    EXPECT_EQ(memory->memoryImageSnapshot()->word(1), valueFor(10, 1023));
+    EXPECT_EQ(memory->memoryImageSnapshot()->bytes(),
+              (std::vector<std::uint8_t>{0xFF, 0xFF, 0x0F}));
+    EXPECT_EQ(*memory->binaryContentsSnapshot(),
+              (std::vector<std::uint8_t>{0xFF, 0xFF, 0xFF}));
+    memory->setMemoryDepth(0);
+    EXPECT_EQ(memory->memoryDepth(), 3);
+    memory->setMemoryDepth(2);
+    EXPECT_EQ(memory->memoryDepth(), 2);
+  }
+}
+
+TEST(MemoryGeometryTest, ExplicitDepthAcceptsPartialFinalWordsButNotMissingWholeWords)
+{
+  for (const auto& memory : memories()) {
+    SCOPED_TRACE(memory->typeName());
+    memory->setProperty("dataWidth", 10);
+    memory->setMemoryDepth(3);
+    memory->setBinaryDocument("partial", binarySnapshot({0xFF, 0xFF, 0xFF}));
+    EXPECT_EQ(memory->memoryImageSnapshot()->word(2), valueFor(10, 15));
+    EXPECT_THROW(memory->setBinaryDocument("short", binarySnapshot({0xFF, 0xFF})),
+                 std::invalid_argument);
+    EXPECT_THROW(memory->setBinaryDocument("long", binarySnapshot({1, 2, 3, 4, 5})),
+                 std::invalid_argument);
+    EXPECT_THROW(memory->setBinaryDocument("empty", binarySnapshot({})),
+                 std::invalid_argument);
+    EXPECT_EQ(memory->getPropertyValue<std::string>("binaryContents"), "partial");
+  }
+}
+
+TEST(MemoryGeometryTest, FailedEditsPreservePropertiesImageAndConnections)
+{
+  for (const auto& memory : memories()) {
+    SCOPED_TRACE(memory->typeName());
+    memory->setMemoryDepth(3);
+    memory->setBinaryDocument("original", binarySnapshot({1, 2, 3}));
+    const auto beforeProperties = memory->getProperties();
+    const auto beforeImage      = memory->memoryImageSnapshot();
+    const auto beforeContent    = memory->binaryContentsSnapshot();
+    const auto beforeInputs     = memory->inputBuses();
+    const auto beforeOutputs    = memory->outputBuses();
+    for (const auto width : {0, -1, 65536, 16})
+      EXPECT_THROW(memory->setProperty("dataWidth", width), std::invalid_argument);
+    EXPECT_THROW(memory->setProperty("depth", -1), std::invalid_argument);
+    EXPECT_THROW(memory->setMemoryDepth(std::numeric_limits<std::size_t>::max()),
+                 std::invalid_argument);
+    EXPECT_THROW(memory->setMemoryDepth(4), std::invalid_argument);
+    EXPECT_THROW(memory->setMemoryImage(nullptr), std::invalid_argument);
+    EXPECT_EQ(memory->getProperties(), beforeProperties);
+    EXPECT_EQ(memory->memoryImageSnapshot(), beforeImage);
+    EXPECT_EQ(memory->binaryContentsSnapshot(), beforeContent);
+    EXPECT_EQ(memory->inputBuses(), beforeInputs);
+    EXPECT_EQ(memory->outputBuses(), beforeOutputs);
+  }
+}
+
+TEST(MemoryGeometryTest, ExplicitHydrationRetainsDepthAndOversizedAddressConnections)
+{
+  for (const auto& memory : memories()) {
+    SCOPED_TRACE(memory->typeName());
+    memory->setProperty("dataWidth", 10);
+    memory->setMemoryDepth(2);
+    auto inputs = memory->inputBuses();
+    inputs[0].setSize(5);
+    if (auto ram = std::dynamic_pointer_cast<RAM>(memory))
+      inputs[1].setSize(5);
+    memory->setInputs(inputs);
+    const auto outputs = memory->outputBuses();
+    memory->refreshBinaryContents(binarySnapshot({1, 2, 3}));
+    EXPECT_EQ(memory->memoryDepth(), 2);
+    EXPECT_TRUE(memory->memoryImageSnapshot());
+    memory->refreshBinaryContents(binarySnapshot({1, 2, 3, 4}));
+    EXPECT_FALSE(memory->memoryImageSnapshot());
+    EXPECT_EQ(memory->getPropertyValue<int>("depth"), 2);
+    EXPECT_EQ(memory->memoryDepth(), 2);
+    memory->refreshBinaryContents(nullptr);
+    EXPECT_FALSE(memory->memoryImageSnapshot());
+    memory->refreshBinaryContents(binarySnapshot({4, 5, 6}));
+    EXPECT_TRUE(memory->memoryImageSnapshot());
+    EXPECT_EQ(memory->inputBuses(), inputs);
+    EXPECT_EQ(memory->outputBuses(), outputs);
+  }
+}
+
+TEST(MemoryGeometryTest, ExactImagesReplaceGeometryAndSelectExplicitDepth)
+{
+  for (const auto& memory : memories()) {
+    SCOPED_TRACE(memory->typeName());
+    memory->setMemoryDepth(0);
+    memory->setBinaryDocument("image", binarySnapshot({1, 2, 3, 4}));
+    auto image = std::make_shared<const MemoryImage>(MemoryImage::Bits(20), 10, 2);
+    memory->setMemoryImage(image);
+    EXPECT_EQ(memory->getPropertyValue<int>("dataWidth"), 10);
+    EXPECT_EQ(memory->getPropertyValue<int>("depth"), 2);
+    EXPECT_EQ(memory->memoryDepth(), 2);
+    EXPECT_EQ(memory->memoryImageSnapshot(), image);
+    EXPECT_EQ(memory->outputBuses()[0].size(), 10);
+    memory->refreshBinaryContents(memory->binaryContentsSnapshot());
+    EXPECT_EQ(memory->memoryDepth(), 2);
+  }
+}
+
+TEST(MemoryImageTest, RejectsInvalidAndOverflowingGeometry)
+{
+  EXPECT_THROW(MemoryImage(MemoryImage::Bits{}, 0, 1), std::invalid_argument);
+  EXPECT_THROW(MemoryImage(MemoryImage::Bits{}, 1, 0), std::invalid_argument);
+  EXPECT_THROW(MemoryImage(MemoryImage::Bits{}, 10, 2), std::invalid_argument);
+  EXPECT_THROW(
+      MemoryImage(MemoryImage::Bits{}, 2, std::numeric_limits<std::size_t>::max()),
+      std::invalid_argument);
+}
+
+TEST(RAMTest, AutomaticDepthRequiresInitializationBeforeSimulation)
+{
+  auto ram = std::make_shared<RAM>();
+  ram->setMemoryDepth(0);
+  auto circuit = std::make_shared<Circuit>(Component_set{ram}, false);
+  EXPECT_THROW((void)Simulator(circuit), std::runtime_error);
+}
+
+TEST(RAMTest, AutomaticInitializationKeepsSimulationWritesOutOfTheImage)
+{
+  RamFixture f(10, 0, {0xA5, 0x3C, 0xFF});
+  EXPECT_EQ(f.ram->memoryDepth(), 3);
+  const auto image = f.ram->memoryImageSnapshot();
+  const auto bytes = f.ram->binaryContentsSnapshot();
+  f.set(RAM::Inputs::WriteData, 0);
+  f.set(RAM::Inputs::WriteEnable, 1023);
+  f.pulse();
+  EXPECT_EQ(f.output().getCurrentValue(), valueFor(10, 0));
+  EXPECT_EQ(f.ram->memoryImageSnapshot(), image);
+  EXPECT_EQ(image->word(0), valueFor(10, 0xA5));
+  EXPECT_EQ(f.ram->binaryContentsSnapshot(), bytes);
+  f.ram->refreshBinaryContents(binarySnapshot({0x34, 0x02}));
+  f.set(RAM::Inputs::ReadAddress, 1);
+  f.set(RAM::Inputs::ReadAddress, 0);
+  EXPECT_EQ(f.output().getCurrentValue(), valueFor(10, 0x234));
+  EXPECT_EQ(f.ram->memoryDepth(), 2);
 }
