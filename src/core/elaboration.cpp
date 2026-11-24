@@ -147,15 +147,12 @@ namespace {
       std::dynamic_pointer_cast<BoundaryIoComponent>(cloned)->setPortId(
           boundary->portId());
 
-    if (const auto sourceRom = std::dynamic_pointer_cast<ROM>(component)) {
-      auto clonedRom = std::dynamic_pointer_cast<ROM>(cloned);
-      clonedRom->setMemoryDepth(sourceRom->memoryDepth());
-      clonedRom->refreshBinaryContents(sourceRom->binaryContentsSnapshot());
-    }
-    if (const auto sourceRam = std::dynamic_pointer_cast<RAM>(component)) {
-      auto clonedRam = std::dynamic_pointer_cast<RAM>(cloned);
-      if (const auto image = sourceRam->memoryImageSnapshot())
-        clonedRam->setMemoryImage(image);
+    if (const auto sourceMemory = std::dynamic_pointer_cast<Memory>(component)) {
+      const auto clonedMemory = std::dynamic_pointer_cast<Memory>(cloned);
+      clonedMemory->refreshBinaryContents(sourceMemory->binaryContentsSnapshot());
+      if (cloned->typeName() == RAM::Type && clonedMemory->memoryDepth() == 0)
+        throw std::runtime_error(
+            "Automatic RAM depth requires a nonempty binary document");
     }
 
     auto inputs = remapBuses(component->getInputs(), wireMap);
