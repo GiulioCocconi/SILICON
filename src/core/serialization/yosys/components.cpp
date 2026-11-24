@@ -116,9 +116,11 @@ void ROM::serializeYosys(SerializationContext& context) const
   const auto  width        = image->wordWidth();
   const auto  count        = image->depth();
   const auto& bits         = image->bits();
-  const auto addressWidth = std::max<std::size_t>(1, std::bit_width(count - 1));
+  const auto  addressWidth = inputBuses().empty() ? 0 : inputBuses()[0].size();
   if (inputBuses().size() != 3 || outputBuses().size() != 1
-      || inputBuses()[0].size() != addressWidth || outputBuses()[0].size() != width)
+      || addressWidth < std::max<std::size_t>(1, std::bit_width(count - 1))
+      || outputBuses()[0].size() != width
+      || count > static_cast<std::size_t>(std::numeric_limits<int>::max()) / width)
     throw std::runtime_error("Cannot export malformed ROM buses");
 
   std::string init(count * width, '0');
@@ -167,6 +169,8 @@ void RAM::serializeYosys(SerializationContext& context) const
   const auto width = static_cast<std::size_t>(getPropertyValue<int>("dataWidth").value());
   const auto count = memoryDepth();
   const auto readPorts = readPortCount();
+  if (count == 0)
+    throw std::runtime_error("Automatic RAM depth requires a nonempty binary document");
   if (inputBuses().size() != readPorts + 4 || outputBuses().size() != readPorts)
     throw std::runtime_error("Cannot export malformed RAM buses");
   const auto abits = inputBuses()[busIndex(Inputs::ReadAddress)].size();

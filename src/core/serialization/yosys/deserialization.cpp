@@ -876,9 +876,10 @@ namespace {
 
       auto ram = std::make_shared<RAM>();
       ram->setProperty("readPorts", static_cast<int>(readPorts));
-      ram->setProperty("dataWidth", static_cast<int>(width));
-      ram->setMemoryDepth(count);
-      if (!uninitialized) {
+      if (uninitialized) {
+        ram->setProperty("dataWidth", static_cast<int>(width));
+        ram->setMemoryDepth(count);
+      } else {
         MemoryImage::Bits bits(init.size());
         for (std::size_t bit = 0; bit < init.size(); ++bit)
           bits[bit] = init[init.size() - bit - 1] == '1';
@@ -904,8 +905,9 @@ namespace {
       const auto count =
           static_cast<std::size_t>(parseUnsigned(cell.parameter("SIZE"), cell.where()));
       const auto abits = cell.width("ABITS");
-      if (count == 0 || count > std::numeric_limits<int>::max()
-          || abits != std::max<std::size_t>(1, std::bit_width(count - 1)))
+      if (count == 0
+          || count > static_cast<std::size_t>(std::numeric_limits<int>::max()) / width
+          || abits < std::max<std::size_t>(1, std::bit_width(count - 1)))
         fail(cell.where(), "invalid canonical ROM geometry");
       const bool synchronous   = cell.flag("SYNC");
       const bool positiveClock = cell.flag("CLK_POLARITY");
@@ -942,8 +944,9 @@ namespace {
       }
 
       auto rom = std::make_shared<ROM>();
-      rom->setProperty("dataWidth", static_cast<int>(width));
       rom->setProperty("binaryContents", assetName);
+      rom->setMemoryImage(
+          std::make_shared<const MemoryImage>(std::move(bits), width, count));
       const Bus romOutput = synchronous && count == 1
                                 ? Bus(static_cast<unsigned short>(width))
                                 : cell.driver("DATA", width);
@@ -952,8 +955,6 @@ namespace {
           {address, select,
            readBus(Json::array({"1"}), ConnectionRole::Consumer, cell.where(), 1)},
           {romOutput});
-      rom->setMemoryImage(
-          std::make_shared<const MemoryImage>(std::move(bits), width, count));
       if (synchronous && count == 1) {
         const Bus             registeredData = cell.driver("DATA", width);
         std::vector<Wire_ptr> data(romOutput.begin(), romOutput.end());

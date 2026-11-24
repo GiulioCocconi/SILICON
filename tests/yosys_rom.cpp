@@ -411,7 +411,7 @@ TEST(YosysRomTest, ClockedReadEnableHoldsAddressOnFallingEdges)
 
 TEST(YosysRomTest, RejectsUnsupportedMemoryBehavior)
 {
-  const std::array<std::string, 7> sources{
+  const std::array<std::string, 6> sources{
       "module bad(input a, input d, output q); reg mem [0:1]; initial mem[0]=0; assign "
       "q=mem[a]; endmodule",
       "module bad(input a, output q); reg mem [0:1]; initial begin mem[0]=0; "
@@ -423,13 +423,47 @@ TEST(YosysRomTest, RejectsUnsupportedMemoryBehavior)
       "module bad(input a, input d, output q); reg mem [0:1]; initial begin mem[0]=0; "
       "mem[1]=1; end always @* mem[a]=d; assign q=mem[a]; endmodule",
       "module bad(input a, output q); (* silicon_mem_slug = \"bad/name\" *) reg mem "
-      "[0:1]; initial begin mem[0]=0; mem[1]=1; end assign q=mem[a]; endmodule",
-      "module bad(input [1:0] a, output q); reg mem [0:0]; initial mem[0]=1; assign "
-      "q=mem[a]; endmodule"};
+      "[0:1]; initial begin mem[0]=0; mem[1]=1; end assign q=mem[a]; endmodule"};
   for (const auto& source : sources)
     EXPECT_THROW(static_cast<void>(SILICON::yosys::deserialize(
         SILICON::yosys::elaborateHierarchy(SILICON::verilog::read(source)), "bad")),
         std::exception) << source;
+}
+
+TEST(YosysRomTest, ClockedReadPreservesWiderAddressBusAndOutOfRangeBehavior)
+{
+  auto circuit = std::make_shared<Circuit>(SILICON::yosys::deserialize(
+      SILICON::yosys::elaborateHierarchy(SILICON::verilog::read(
+          "module wide(input clk, input [4:0] addr, output reg [9:0] q);"
+          "reg [9:0] mem[0:2]; initial begin "
+          "mem[0]=10'h123;mem[1]=10'h234;mem[2]=10'h345;end "
+          "always @(posedge clk) q <= mem[addr]; endmodule")),
+      "wide"));
+  std::map<std::string, Bus> ports;
+  for (const auto& component : componentsIn(*circuit)) {
+    const auto role = component->metadata().portRole;
+    if (role == PortRole::Input || role == PortRole::Output)
+      ports.emplace(component->getPropertyValue<std::string>("name").value(),
+                    role == PortRole::Input ? component->outputBuses()[0]
+                                            : component->inputBuses()[0]);
+  }
+  const auto rom = findComponent<ROM>(*circuit);
+  ASSERT_TRUE(rom);
+  EXPECT_EQ(rom->getPropertyValue<int>("depth"), 3);
+  EXPECT_EQ(rom->inputBuses()[0].size(), 5);
+  Simulator  simulator(circuit);
+  const auto set = [&](const std::string& name, const std::uint64_t value) {
+    EXPECT_EQ(simulator.setBus(ports.at(name), valueFor(ports.at(name), value)),
+              Simulator::RunResult::Completed);
+  };
+  set("clk", 0);
+  set("addr", 2);
+  set("clk", 1);
+  EXPECT_EQ(ports.at("q").getCurrentValue(), valueFor(10, 0x345));
+  set("clk", 0);
+  set("addr", 16);
+  set("clk", 1);
+  EXPECT_EQ(ports.at("q").getCurrentValue(), BusValue(10, State::UNKNOWN));
 }
 
 #endif

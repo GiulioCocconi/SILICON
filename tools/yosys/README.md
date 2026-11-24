@@ -97,7 +97,16 @@ least-significant-lane-first order. Ports are `RD_ADDR`, `RD_DATA`, `WR_ADDR`,
 `WR_DATA`, `WR_EN`, and `WR_CLK`. Initialization must be fully binary or entirely
 X. Address buses may be wider than the minimum needed for `SIZE`. Memory
 attributes, including `silicon_mem_slug`, survive lowering. Memories without
-write ports use `SILICON_ROM` instead.
+write ports use `SILICON_ROM` instead. Both memory types preserve exact `SIZE`
+and `ABITS`, including non-power-of-two depths and wider address buses.
+
+Native memory components share a `depth` property: zero infers
+`ceil(binary_bytes * 8 / dataWidth)` and positive values specify exact depth.
+Automatic mode treats every byte bit as data and zero-fills a partial final word;
+it cannot recover a padded image's original logical depth. Explicit depth accepts
+canonical packed bytes or a partial final word, ignores bits beyond the logical
+image, and persists through save/load and hydration. Yosys imports always use
+explicit depth. Uninitialized RAM requires positive explicit depth before execution.
 
 `silicon_validate` rejects any cell outside this subset, including native
 memories and unsupported operators. The memory pass diagnoses unsupported ROM

@@ -1,5 +1,7 @@
 #include "yosys_test_helpers.hpp"
 
+#include <core/elaboration.hpp>
+
 namespace {
 
 std::shared_ptr<RAM> makeRam(bool initialized = true)
@@ -86,6 +88,29 @@ TEST(YosysRamTest, ExportsIndependentAddressesWithImmutableInitialContents)
   EXPECT_EQ(json.at("modules").at("component_test").at("cells").size(), 1);
   EXPECT_THROW((void)SILICON::yosys::deserialize(json.dump(), "component_test"),
                std::runtime_error);
+}
+
+TEST(YosysRamTest, RejectsAutomaticExportWithoutResolvedInitialization)
+{
+  auto ram = std::make_shared<RAM>();
+  ram->setMemoryDepth(0);
+  EXPECT_THROW((void)exportComponent(ram), std::runtime_error);
+  ram->setBinaryDocument("missing", nullptr);
+  EXPECT_THROW((void)exportComponent(ram), std::runtime_error);
+}
+
+TEST(YosysRamTest, ExportsAutomaticallyInferredPartialWordsWithoutChangingMode)
+{
+  auto ram = std::make_shared<RAM>();
+  ram->setMemoryDepth(0);
+  ram->setProperty("dataWidth", 10);
+  ram->setBinaryDocument("partial", std::make_shared<const std::vector<std::uint8_t>>(
+                                        std::vector<std::uint8_t>{0xFF, 0xFF, 0xFF}));
+  auto        json       = exportComponent(ram);
+  const auto& parameters = memoryCell(json)["parameters"];
+  EXPECT_EQ(std::stoul(parameters["SIZE"].get<std::string>(), nullptr, 2), 3);
+  EXPECT_EQ(parameters["INIT"], std::string(6, '0') + std::string(24, '1'));
+  EXPECT_EQ(ram->getPropertyValue<int>("depth"), 0);
 }
 
 #if !defined(__EMSCRIPTEN__) && defined(SILICON_TEST_YOSYS_EXECUTABLE)
@@ -389,6 +414,69 @@ TEST(YosysRamTest, ProjectConversionCreatesAndRehydratesRamBinaryDocument)
   auto renamed = findRam(resolver.resolve("ram").circuit);
   EXPECT_EQ(renamed->getPropertyValue<std::string>("binaryContents"), "renamed");
   EXPECT_TRUE(renamed->memoryImageSnapshot());
+}
+
+TEST(YosysMemoryTest, ExactGeometrySurvivesImportHydrationElaborationAndExport)
+{
+  auto registry = ComponentRegistry::empty();
+  registerAllComponents(registry);
+  CircuitElaborator elaborator(registry);
+  for (const bool writable : {false, true}) {
+    for (const auto [width, depth] :
+         std::array<std::pair<int, int>, 4>{{{1, 2}, {10, 3}, {8, 3}, {5, 1}}}) {
+      SCOPED_TRACE(std::string(writable ? "RAM" : "ROM") + " width="
+                   + std::to_string(width) + " depth=" + std::to_string(depth));
+      const std::shared_ptr<Memory> memory =
+          writable ? std::static_pointer_cast<Memory>(std::make_shared<RAM>())
+                   : std::static_pointer_cast<Memory>(std::make_shared<ROM>());
+      if (const auto ram = std::dynamic_pointer_cast<RAM>(memory))
+        ram->setProperty("readPorts", 2);
+      memory->setProperty("binaryContents", std::string("packed"));
+      MemoryImage::Bits bits(width * depth);
+      for (std::size_t bit = 0; bit < bits.size(); bit += 3)
+        bits.set(bit);
+      memory->setMemoryImage(
+          std::make_shared<const MemoryImage>(std::move(bits), width, depth));
+      auto inputs = memory->inputBuses();
+      inputs[0].setSize(5);
+      if (writable) {
+        inputs[1].setSize(5);
+        inputs[RAM::readAddressIndex(1)].setSize(5);
+      }
+      memory->setInputs(inputs);
+      const auto original = nlohmann::json::parse(
+          SILICON::yosys::serialize(circuitWithBoundaryPorts(memory), "component_test"));
+      auto       originalCopy = original;
+      const auto parameters   = memoryCell(originalCopy)["parameters"];
+      const auto imported     = SILICON::yosys::deserialize(
+          SILICON::yosys::elaborateHierarchy(original.dump()), "component_test");
+      SILICON::project::ProjectContext project;
+      project.setDocuments({{"circuits/imported.json", imported.serialize()},
+                            {"bin/packed", *memory->binaryContentsSnapshot()}});
+      SILICON::project::ProjectCircuitResolver resolver(project, registry);
+      const auto                               restored = resolver.resolve("imported");
+      const auto runtime = elaborator.elaborate(restored.circuit);
+      const auto clone   = findComponent<Memory>(*runtime);
+      ASSERT_TRUE(clone);
+      EXPECT_EQ(clone->getPropertyValue<int>("depth"), depth);
+      EXPECT_EQ(clone->memoryDepth(), depth);
+      EXPECT_EQ(clone->inputBuses()[0].size(), 5);
+      ASSERT_TRUE(clone->memoryImageSnapshot());
+      EXPECT_EQ(clone->memoryImageSnapshot()->bits(),
+                memory->memoryImageSnapshot()->bits());
+      auto exported =
+          nlohmann::json::parse(SILICON::yosys::serialize(*runtime, "component_test"));
+      for (const auto key : {"WIDTH", "SIZE", "ABITS", "INIT", "RD_PORTS"})
+        EXPECT_EQ(memoryCell(exported)["parameters"][key], parameters[key]) << key;
+
+      const auto invalidInputs = clone->inputBuses();
+      auto       tooNarrow     = invalidInputs;
+      tooNarrow[0].setSize(depth > 2 ? 1 : 0);
+      clone->setInputs(tooNarrow);
+      EXPECT_THROW((void)SILICON::yosys::serialize(*runtime, "component_test"),
+                   std::runtime_error);
+    }
+  }
 }
 
 #endif

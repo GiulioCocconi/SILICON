@@ -470,10 +470,10 @@ struct SiliconMemoryLowerPass : public Pass {
         }
         if (width <= 0 || width > std::numeric_limits<unsigned short>::max() || size <= 0
             || size > std::numeric_limits<int>::max() / width
-            || abits
-                   != std::max(1, static_cast<int>(
-                                      std::bit_width(static_cast<unsigned>(size - 1))))
-            || ports <= 0 || ports > std::numeric_limits<int>::max() / width
+            || abits < std::max(
+                   1, static_cast<int>(std::bit_width(static_cast<unsigned>(size - 1))))
+            || abits > std::numeric_limits<unsigned short>::max() || ports <= 0
+            || ports > std::numeric_limits<int>::max() / width
             || ports > std::numeric_limits<int>::max() / std::max(1, abits)
             || !isZero(mem->getParam(ID::OFFSET)) || !isZero(mem->getParam(ID::WR_PORTS)))
           reject("unsupported geometry or write ports");
