@@ -477,6 +477,47 @@ BusValue Memory::readWord(const std::size_t address) const
   return BusValue(static_cast<std::size_t>(configuredDataWidth()), State::UNKNOWN);
 }
 
+BusValue Memory::read(const BusValue& address) const
+{
+  std::size_t index  = 0;
+  const auto  status = addressState(address, index);
+  const auto  width  = static_cast<std::size_t>(configuredDataWidth());
+  if (status == State::ERROR)
+    return BusValue(width, State::ERROR);
+  if (index >= memoryDepth())
+    return BusValue(width, State::UNKNOWN);
+  if (status == State::HIGH)
+    return readWord(index);
+
+  // An out-of-range possibility contributes an unknown word. Check the largest
+  // possible address without shifting high bits of imported address buses.
+  auto        last        = index;
+  std::size_t unknownMask = 0;
+  for (std::size_t bit = 0; bit < address.size(); ++bit) {
+    if (address[bit] != State::UNKNOWN)
+      continue;
+    if (bit >= std::numeric_limits<std::size_t>::digits)
+      return BusValue(width, State::UNKNOWN);
+    last |= std::size_t{1} << bit;
+    unknownMask |= std::size_t{1} << bit;
+  }
+  if (last >= memoryDepth())
+    return BusValue(width, State::UNKNOWN);
+
+  auto result = readWord(index);
+  // Enumerate subsets of UNKNOWN bits, keeping the known bits fixed. The empty
+  // subset is the word already read above; sparse addresses need no linear scan.
+  for (auto subset = unknownMask; subset != 0; subset = (subset - 1) & unknownMask) {
+    const auto candidate = index | subset;
+    if (!addressMatches(address, candidate))
+      continue;
+    const auto value = readWord(candidate);
+    for (std::size_t bit = 0; bit < width; ++bit)
+      result[bit] = mergeWrite(result[bit], value[bit], State::UNKNOWN);
+  }
+  return result;
+}
+
 void Memory::write(const BusValue& address, const BusValue& data, const BusValue& mask,
                    const State clockEnable)
 {
@@ -549,14 +590,7 @@ void Memory::simulate(SILICON::simulation::Simulator&     sim,
   // same-edge consumer on the old read data until the whole pass has sampled.
   // Recompute on every visit so asynchronous address changes still take effect.
   for (std::size_t port = 0; port < readPortCount(); ++port) {
-    std::size_t address = 0;
-    const auto  status =
-        addressState(inputBuses()[readAddressIndex(port)].getCurrentValue(), address);
-    const auto value =
-        status == State::HIGH && address < memoryDepth()
-            ? readWord(address)
-            : BusValue(static_cast<std::size_t>(configuredDataWidth()),
-                       status == State::ERROR ? State::ERROR : State::UNKNOWN);
+    const auto value = read(inputBuses()[port].getCurrentValue());
     sim.updateBus(outputBuses()[port], value, 0, weak_from_this());
   }
 }
