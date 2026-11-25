@@ -110,7 +110,7 @@ namespace {
         continue;
       const auto slug = memory->getPropertyValue<std::string>("binaryContents");
       std::shared_ptr<const std::vector<std::uint8_t>> snapshot;
-      if (slug) {
+      if (slug && !slug->empty()) {
         const auto path = SILICON::project::documentPathForSlug(DocumentType::RawBinary, *slug);
         for (const auto& document : projectDocuments)
           if (document.getPath() == path)

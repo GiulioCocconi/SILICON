@@ -84,6 +84,16 @@ namespace yosys_component_detail {
 using namespace yosys_component_detail;
 
 namespace {
+  std::string memoryInitialization(const Memory& memory)
+  {
+    memory.validateInitialization();
+    std::string init(memory.capacityBits(), 'x');
+    if (const auto image = memory.memoryImageSnapshot())
+      for (std::size_t bit = 0; bit < image->knownBitCount(); ++bit)
+        init[init.size() - bit - 1] = image->bits()[bit] ? '1' : '0';
+    return init;
+  }
+
   bool emitReductionGate(SerializationContext& context, const Gate& gate,
                          const std::string_view operation, const bool invert = false)
   {
@@ -110,53 +120,65 @@ void Component::serializeYosys(SerializationContext&) const
 
 void ROM::serializeYosys(SerializationContext& context) const
 {
-  const auto image = memoryImageSnapshot();
-  if (!image)
-    throw std::runtime_error("Cannot export ROM without resolved binary contents");
-  const auto  width        = image->wordWidth();
-  const auto  count        = image->depth();
-  const auto& bits         = image->bits();
-  const auto  addressWidth = inputBuses().empty() ? 0 : inputBuses()[0].size();
+  const auto width = static_cast<std::size_t>(getPropertyValue<int>("dataWidth").value());
+  const auto count = memoryDepth();
+  const auto abits = addressWidth();
   if (inputBuses().size() != 3 || outputBuses().size() != 1
-      || addressWidth < std::max<std::size_t>(1, std::bit_width(count - 1))
-      || outputBuses()[0].size() != width
-      || count > static_cast<std::size_t>(std::numeric_limits<int>::max()) / width)
+      || inputBuses()[0].size() != abits || inputBuses()[1].size() != 1
+      || inputBuses()[2].size() != 1 || outputBuses()[0].size() != width)
     throw std::runtime_error("Cannot export malformed ROM buses");
-
-  std::string init(count * width, '0');
-  for (std::size_t bit = 0; bit < init.size(); ++bit) {
-    init[init.size() - bit - 1] = bits[bit] ? '1' : '0';
-  }
+  const auto init           = memoryInitialization(*this);
   const auto p = [](std::uint64_t value) { return SerializationContext::parameter(value); };
   const auto readData = context.allocateBits(width);
-  Json       address        = context.inputBits(*this, 0, addressWidth);
+  Json       address        = context.inputBits(*this, 0, abits);
   Json attributes = Json::object();
   const auto binaryDocument = getPropertyValue<std::string>("binaryContents");
-  if (binaryDocument && !binaryDocument->empty())
+  if (getPropertyValue<std::string>("initialization").value() == BinaryDocument
+      && binaryDocument && !binaryDocument->empty())
     attributes[std::string(SILICON::yosys::attributes::BINARY_DOCUMENT)] = *binaryDocument;
-  context.addCell(
-      "memory", "$mem_v2",
-      Json{{"ABITS", p(addressWidth)}, {"INIT", init},
-           {"MEMID", std::format("\\{}", context.componentIdentifier())},
-           {"OFFSET", p(0)}, {"RD_ARST_VALUE", std::string(width, 'x')},
-           {"RD_CE_OVER_SRST", "0"}, {"RD_CLK_ENABLE", "0"},
-           {"RD_CLK_POLARITY", "0"}, {"RD_COLLISION_X_MASK", "0"},
-           {"RD_INIT_VALUE", std::string(width, 'x')}, {"RD_PORTS", p(1)},
-           {"RD_SRST_VALUE", std::string(width, 'x')},
-           {"RD_TRANSPARENCY_MASK", "0"}, {"RD_WIDE_CONTINUATION", "0"},
-           {"SIZE", p(count)}, {"WIDTH", p(width)}, {"WR_CLK_ENABLE", "0"},
-           {"WR_CLK_POLARITY", "0"}, {"WR_PORTS", p(0)},
-           {"WR_PRIORITY_MASK", "0"}, {"WR_WIDE_CONTINUATION", "0"}},
-      Json{{"RD_ADDR", "input"}, {"RD_ARST", "input"}, {"RD_CLK", "input"},
-           {"RD_DATA", "output"}, {"RD_EN", "input"}, {"RD_SRST", "input"},
-           {"WR_ADDR", "input"}, {"WR_CLK", "input"}, {"WR_DATA", "input"},
-           {"WR_EN", "input"}},
-      Json{{"RD_ADDR", address}, {"RD_ARST", Json::array({"0"})},
-           {"RD_CLK", Json::array({"x"})}, {"RD_DATA", readData},
-           {"RD_EN", Json::array({"1"})}, {"RD_SRST", Json::array({"0"})},
-           {"WR_ADDR", Json::array()}, {"WR_CLK", Json::array()},
-           {"WR_DATA", Json::array()}, {"WR_EN", Json::array()}},
-      std::move(attributes));
+  context.addCell("memory", "$mem_v2",
+                  Json{{"ABITS", p(abits)},
+                       {"INIT", init},
+                       {"MEMID", std::format("\\{}", context.componentIdentifier())},
+                       {"OFFSET", p(0)},
+                       {"RD_ARST_VALUE", std::string(width, 'x')},
+                       {"RD_CE_OVER_SRST", "0"},
+                       {"RD_CLK_ENABLE", "0"},
+                       {"RD_CLK_POLARITY", "0"},
+                       {"RD_COLLISION_X_MASK", "0"},
+                       {"RD_INIT_VALUE", std::string(width, 'x')},
+                       {"RD_PORTS", p(1)},
+                       {"RD_SRST_VALUE", std::string(width, 'x')},
+                       {"RD_TRANSPARENCY_MASK", "0"},
+                       {"RD_WIDE_CONTINUATION", "0"},
+                       {"SIZE", p(count)},
+                       {"WIDTH", p(width)},
+                       {"WR_CLK_ENABLE", "0"},
+                       {"WR_CLK_POLARITY", "0"},
+                       {"WR_PORTS", p(0)},
+                       {"WR_PRIORITY_MASK", "0"},
+                       {"WR_WIDE_CONTINUATION", "0"}},
+                  Json{{"RD_ADDR", "input"},
+                       {"RD_ARST", "input"},
+                       {"RD_CLK", "input"},
+                       {"RD_DATA", "output"},
+                       {"RD_EN", "input"},
+                       {"RD_SRST", "input"},
+                       {"WR_ADDR", "input"},
+                       {"WR_CLK", "input"},
+                       {"WR_DATA", "input"},
+                       {"WR_EN", "input"}},
+                  Json{{"RD_ADDR", address},
+                       {"RD_ARST", Json::array({"0"})},
+                       {"RD_CLK", Json::array({"x"})},
+                       {"RD_DATA", readData},
+                       {"RD_EN", Json::array({"1"})},
+                       {"RD_SRST", Json::array({"0"})},
+                       {"WR_ADDR", Json::array()},
+                       {"WR_CLK", Json::array()},
+                       {"WR_DATA", Json::array()},
+                       {"WR_EN", Json::array()}},
+                  std::move(attributes));
   context.addCell("hold", "$dlatch",
                   Json{{"EN_POLARITY", p(1)}, {"WIDTH", p(width)}},
                   Json{{"D", "input"}, {"EN", "input"}, {"Q", "output"}},
@@ -169,12 +191,10 @@ void RAM::serializeYosys(SerializationContext& context) const
   const auto width = static_cast<std::size_t>(getPropertyValue<int>("dataWidth").value());
   const auto count = memoryDepth();
   const auto readPorts = readPortCount();
-  if (count == 0)
-    throw std::runtime_error("Automatic RAM depth requires a nonempty binary document");
   if (inputBuses().size() != readPorts + 4 || outputBuses().size() != readPorts)
     throw std::runtime_error("Cannot export malformed RAM buses");
   const auto abits = inputBuses()[busIndex(Inputs::ReadAddress)].size();
-  if (abits < std::max<std::size_t>(1, std::bit_width(count - 1))
+  if (abits != addressWidth()
       || inputBuses()[busIndex(Inputs::WriteAddress)].size() != abits
       || inputBuses()[busIndex(Inputs::WriteData)].size() != width
       || inputBuses()[busIndex(Inputs::WriteEnable)].size() != width
@@ -194,18 +214,18 @@ void RAM::serializeYosys(SerializationContext& context) const
       readData.push_back(bit);
   }
 
-  const auto image = memoryImageSnapshot();
-  const auto slug = getPropertyValue<std::string>("binaryContents").value_or("");
-  if (!image && !slug.empty())
-    throw std::runtime_error("Cannot export RAM with unresolved binary contents");
-  std::string init(count * width, 'x');
-  if (image)
-    for (std::size_t bit = 0; bit < init.size(); ++bit)
-      init[init.size() - bit - 1] = image->bits()[bit] ? '1' : '0';
+  const auto init       = memoryInitialization(*this);
+  const auto slug       = getPropertyValue<std::string>("binaryContents").value_or("");
   Json attributes = Json::object();
-  if (!slug.empty())
+  if (getPropertyValue<std::string>("initialization").value() == BinaryDocument
+      && !slug.empty()) {
     attributes[std::string(SILICON::yosys::attributes::BINARY_DOCUMENT)] = slug;
-  const auto p = [](std::uint64_t value) { return SerializationContext::parameter(value); };
+    attributes[std::string(SILICON::yosys::attributes::BINARY_DOCUMENT_BYTES)] =
+        SerializationContext::parameter(binaryContentsSnapshot()->size());
+  }
+  const auto p = [](std::uint64_t value) {
+    return SerializationContext::parameter(value);
+  };
   context.addCell(
       "memory", "$mem_v2",
       Json{{"ABITS", p(abits)}, {"INIT", init},

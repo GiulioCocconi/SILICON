@@ -368,7 +368,20 @@ struct SiliconMemrdAddressPass : public Pass {
 // Writable memories instead emit one SILICON_RAM with WIDTH, SIZE, ABITS, RD_PORTS,
 // INIT and ID parameters, asynchronous RD_ADDR/RD_DATA, and a positive-edge
 // WR_CLK write port with WR_ADDR, WR_DATA and per-bit WR_EN. INIT may be fully
-// defined or entirely X. Read-only memories must retain the ROM contract.
+// defined, entirely X, or a byte-aligned binary prefix followed by X.
+// Read-only memories retain the ROM contract with the same initialization semantics.
+static bool supportedMemoryInit(const RTLIL::Const& init)
+{
+  int known = 0;
+  while (known < GetSize(init)
+         && (init[known] == RTLIL::State::S0 || init[known] == RTLIL::State::S1))
+    ++known;
+  for (int bit = known; bit < GetSize(init); ++bit)
+    if (init[bit] != RTLIL::State::Sx)
+      return false;
+  return known == GetSize(init) || known % 8 == 0;
+}
+
 struct SiliconMemoryLowerPass : public Pass {
   SiliconMemoryLowerPass()
     : Pass("silicon_memory_lower", "lower supported Yosys memories to SILICON_ROM/RAM") {}
@@ -451,9 +464,9 @@ struct SiliconMemoryLowerPass : public Pass {
               || GetSize(mem->getPort(ID::WR_CLK)) != 1)
             reject("invalid read or write port widths");
           const auto init = mem->getParam(ID::INIT);
-          if (GetSize(init) != size * width
-              || (!init.is_fully_def() && !init.is_fully_undef_x_only()))
-            reject("initialization must fully define every word or be entirely X");
+          if (GetSize(init) != size * width || !supportedMemoryInit(init))
+            reject("initialization must be binary, entirely X, or a byte-aligned binary "
+                   "prefix with X tail");
 
           auto* ram = module->addCell(NEW_ID, RTLIL::escape_id("SILICON_RAM"));
           for (auto key : {ID::WIDTH, ID::SIZE, ID::ABITS, ID::INIT})
@@ -487,8 +500,9 @@ struct SiliconMemoryLowerPass : public Pass {
           if (GetSize(mem->getPort(key)) != 0)
             reject("memory write connections are not supported");
         const auto init = mem->getParam(ID::INIT);
-        if (GetSize(init) != size * width || !init.is_fully_def())
-          reject("initialization must fully define every word");
+        if (GetSize(init) != size * width || !supportedMemoryInit(init))
+          reject("initialization must be binary, entirely X, or a byte-aligned binary "
+                 "prefix with X tail");
         const auto addr = mem->getPort(ID::RD_ADDR);
         const auto data = mem->getPort(ID::RD_DATA);
         const auto enable = mem->getPort(ID::RD_EN);

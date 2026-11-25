@@ -18,7 +18,6 @@
 #include "elaboration.hpp"
 
 #include <format>
-#include <map>
 #include <stdexcept>
 #include <unordered_map>
 #include <utility>
@@ -117,19 +116,6 @@ namespace {
     }
   }
 
-  void copyProperties(const Component& source, const Component_ptr& target)
-  {
-    // Match native deserialization: apply dimensions before slice/port layouts,
-    // then bus values after their widths have settled. PropertyMap is unordered.
-    const std::map properties(source.getProperties().begin(),
-                              source.getProperties().end());
-    for (const bool busValue : {false, true})
-      for (const auto& [key, value] : properties)
-        if (target->getProperty(key).has_value()
-            && std::holds_alternative<BusValue>(value) == busValue)
-          target->setProperty(key, value);
-  }
-
   void appendCircuit(const Circuit& circuit, ElaborationContext& context,
                      WirePtrMap wireMap, std::vector<std::string>& activeSubcircuits);
 
@@ -142,7 +128,10 @@ namespace {
                                            component->typeName()));
     }
 
-    copyProperties(*component, cloned);
+    auto properties = component->getProperties();
+    std::erase_if(properties,
+                  [&](const auto& field) { return !cloned->getProperty(field.first); });
+    cloned->setProperties(properties);
     if (const auto boundary = std::dynamic_pointer_cast<BoundaryIoComponent>(component))
       std::dynamic_pointer_cast<BoundaryIoComponent>(cloned)->setPortId(
           boundary->portId());
@@ -150,9 +139,7 @@ namespace {
     if (const auto sourceMemory = std::dynamic_pointer_cast<Memory>(component)) {
       const auto clonedMemory = std::dynamic_pointer_cast<Memory>(cloned);
       clonedMemory->refreshBinaryContents(sourceMemory->binaryContentsSnapshot());
-      if (cloned->typeName() == RAM::Type && clonedMemory->memoryDepth() == 0)
-        throw std::runtime_error(
-            "Automatic RAM depth requires a nonempty binary document");
+      clonedMemory->validateInitialization();
     }
 
     auto inputs = remapBuses(component->getInputs(), wireMap);

@@ -60,7 +60,7 @@ TEST_F(FactoryTest, CreatedComponentsHaveExpectedDefaultBuses)
       ASSERT_EQ(memory->getOutputs().size(), 1);
       EXPECT_EQ(memory->getInputs()[0].size(), 1);
       EXPECT_EQ(memory->getOutputs()[0].size(), 8);
-      EXPECT_EQ(memory->memoryDepth(), typeName == RAM::Type ? 1 : 0);
+      EXPECT_EQ(memory->memoryDepth(), 2);
       EXPECT_FALSE(memory->memoryImageSnapshot());
     } else {
       EXPECT_TRUE(comp->getInputs().empty());

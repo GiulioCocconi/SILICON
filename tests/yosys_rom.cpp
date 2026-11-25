@@ -103,7 +103,7 @@ TEST(YosysRomTest, ExportsSelfContainedInitializedArrayAndReimportsIt)
   rom->setProperty("binaryContents", std::string("program"));
   rom->setInputs({address, cs, oe});
   rom->setOutputs({data});
-  rom->setMemoryDepth(3);
+  rom->setGeometry(10, 2, 3);
   rom->refreshBinaryContents(std::make_shared<const std::vector<std::uint8_t>>(
       (std::vector<std::uint8_t>{0xA5, 0x3C, 0x0F, 0x2E})));
   Circuit circuit(Component_set{
@@ -221,7 +221,7 @@ TEST(YosysRomTest, CircuitConversionHydratesBinaryDocument)
   rom->setProperty("binaryContents", std::string("program"));
   rom->setInputs({address, cs, Bus(1)});
   rom->setOutputs({data});
-  rom->setMemoryDepth(2);
+  rom->setGeometry(10, 1, 2);
   rom->refreshBinaryContents(std::make_shared<const std::vector<std::uint8_t>>(
       (std::vector<std::uint8_t>{0xA5, 0x3C, 0x0F})));
   Circuit circuit(Component_set{
@@ -449,7 +449,7 @@ TEST(YosysRomTest, ClockedReadPreservesWiderAddressBusAndOutOfRangeBehavior)
   }
   const auto rom = findComponent<ROM>(*circuit);
   ASSERT_TRUE(rom);
-  EXPECT_EQ(rom->getPropertyValue<int>("depth"), 3);
+  EXPECT_EQ(rom->getPropertyValue<int>("depthOverride"), 3);
   EXPECT_EQ(rom->inputBuses()[0].size(), 5);
   Simulator  simulator(circuit);
   const auto set = [&](const std::string& name, const std::uint64_t value) {

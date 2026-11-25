@@ -243,3 +243,29 @@ TEST(YosysTest, YosysReadJsonAcceptsExport)
   EXPECT_EQ(validateWithYosys(circuit, "simple"), 0);
 #endif
 }
+
+#ifdef SILICON_TEST_YOSYS_EXECUTABLE
+TEST(YosysTest, ConvertsDocumentFreeMemoryInitializationToVerilog)
+{
+  auto registry = ComponentRegistry::empty();
+  registerAllComponents(registry);
+  SILICON::project::ProjectContext         project;
+  SILICON::project::ProjectCircuitResolver resolver(project, registry);
+  for (const auto policy : {Memory::Uninitialized, Memory::Zero}) {
+    auto memory = std::make_shared<Memory>();
+    memory->setProperty("type", std::string("RAM"));
+    memory->setProperty("initialization", std::string(policy));
+    const SILICON::project::Document source{"circuits/ram.json",
+                                            circuitWithBoundaryPorts(memory).serialize()};
+    auto prepared = SILICON::conversion::prepareDocumentConversion(
+        source, SILICON::project::DocumentType::Verilog,
+        project.documents().getDocuments(), registry, resolver);
+    const auto converted = prepared.execute({});
+    ASSERT_EQ(converted.documents.size(), 1);
+    EXPECT_EQ(converted.documents[0].path, "code/ram.v");
+    EXPECT_FALSE(
+        std::get<SILICON::conversion::VerilogSource>(converted.documents[0].payload)
+            .contents.empty());
+  }
+}
+#endif
