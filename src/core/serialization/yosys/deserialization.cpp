@@ -841,6 +841,66 @@ namespace {
       return std::format("{}_{}", moduleName, memoryName);
     }
 
+    void initializeMemory(const Cell& cell, const std::shared_ptr<Memory>& memory,
+                          const std::size_t width, const std::size_t count,
+                          const unsigned short abits)
+    {
+      // Geometry is installed and bounded before allocating an initialization image.
+      try {
+        memory->setGeometry(static_cast<int>(width), abits, static_cast<int>(count));
+      } catch (const std::invalid_argument& error) {
+        fail(cell.where(), error.what());
+      }
+      const auto& initializer = cell.parameter("INIT");
+      if (!initializer.is_string())
+        fail(cell.where(), "Memory INIT must be a bit string");
+      const auto& init = initializer.get_ref<const std::string&>();
+      if (init.size() != memory->capacityBits())
+        fail(cell.where(), "Memory INIT does not match its geometry");
+      std::size_t known = 0;
+      while (known < init.size()
+             && (init[init.size() - known - 1] == '0'
+                 || init[init.size() - known - 1] == '1'))
+        ++known;
+      for (std::size_t bit = known; bit < init.size(); ++bit)
+        if (init[init.size() - bit - 1] != 'x')
+          fail(cell.where(),
+               "Memory INIT supports binary data followed by an UNKNOWN tail only");
+      const auto metadata = cell.attributes();
+      const auto length   = metadata.find(std::string(attributes::BINARY_DOCUMENT_BYTES));
+      std::optional<std::size_t> documentBytes;
+      if (length != metadata.end()) {
+        if (!metadata.contains(std::string(attributes::BINARY_DOCUMENT)))
+          fail(cell.where(), "Memory document length requires a document name");
+        const auto bytes = parseUnsigned(*length, cell.where());
+        if (bytes > init.size() / 8 + (init.size() % 8 != 0))
+          fail(cell.where(), "Memory document length exceeds its capacity");
+        documentBytes           = static_cast<std::size_t>(bytes);
+        const auto documentBits = std::min(init.size(), *documentBytes * 8);
+        if (known != init.size() && known != documentBits)
+          fail(cell.where(), "Memory document length does not match its UNKNOWN tail");
+        for (auto bit = documentBits; bit < known; ++bit)
+          if (init[init.size() - bit - 1] != '0')
+            fail(cell.where(), "Memory capacity padding must be zero");
+      }
+      if (known == 0 && !documentBytes)
+        return;  // The default policy is uninitialized; no fabricated binary document.
+      if (known != init.size() && known % 8 != 0)
+        fail(cell.where(), "Memory INIT UNKNOWN tail must start at a byte boundary");
+      MemoryImage::Bits bits(init.size());
+      for (std::size_t bit = 0; bit < known; ++bit)
+        bits[bit] = init[init.size() - bit - 1] == '1';
+      memory->setProperty("binaryContents", memoryAssetName(cell));
+      memory->setMemoryImage(
+          std::make_shared<const MemoryImage>(std::move(bits), width, count, known));
+      if (documentBytes) {
+        auto bytes = *memory->binaryContentsSnapshot();
+        bytes.resize(*documentBytes);
+        memory->refreshBinaryContents(
+            std::make_shared<const std::vector<std::uint8_t>>(std::move(bytes)));
+      }
+    }
+
     void importRam(const Cell& cell)
     {
       const auto connections = std::to_array<std::string_view>(
@@ -860,33 +920,9 @@ namespace {
           || abits < std::max<std::size_t>(1, std::bit_width(count - 1)))
         fail(cell.where(), "unsupported RAM geometry");
 
-      const auto& initializer = cell.parameter("INIT");
-      if (!initializer.is_string())
-        fail(cell.where(), "RAM INIT must be a bit string");
-      const auto& init = initializer.get_ref<const std::string&>();
-      if (init.size() != count * width)
-        fail(cell.where(), "RAM INIT does not match its geometry");
-      const bool uninitialized =
-          std::ranges::all_of(init, [](char bit) { return bit == 'x'; });
-      if (!uninitialized && !std::ranges::all_of(init, [](char bit) {
-            return bit == '0' || bit == '1';
-          }))
-        fail(cell.where(), "RAM INIT must be fully binary or entirely X");
-      const auto assetName = memoryAssetName(cell);
-
       auto ram = std::make_shared<RAM>();
       ram->setProperty("readPorts", static_cast<int>(readPorts));
-      if (uninitialized) {
-        ram->setProperty("dataWidth", static_cast<int>(width));
-        ram->setMemoryDepth(count);
-      } else {
-        MemoryImage::Bits bits(init.size());
-        for (std::size_t bit = 0; bit < init.size(); ++bit)
-          bits[bit] = init[init.size() - bit - 1] == '1';
-        ram->setProperty("binaryContents", assetName);
-        ram->setMemoryImage(
-            std::make_shared<const MemoryImage>(std::move(bits), width, count));
-      }
+      initializeMemory(cell, ram, width, count, abits);
       const auto addresses = cell.consumerLanes("RD_ADDR", abits, readPorts);
       std::vector<Bus> inputs{addresses[0], cell.consumer("WR_ADDR", abits),
                               cell.consumer("WR_DATA", width),
@@ -911,15 +947,8 @@ namespace {
         fail(cell.where(), "invalid canonical ROM geometry");
       const bool synchronous   = cell.flag("SYNC");
       const bool positiveClock = cell.flag("CLK_POLARITY");
-      const auto init          = binaryDigits(cell.parameter("INIT"), cell.where());
-      if (init.size() != count * width)
-        fail(cell.where(), "invalid canonical ROM initialization");
-      MemoryImage::Bits bits(init.size());
-      for (std::size_t bit = 0; bit < init.size(); ++bit)
-        if (init[init.size() - bit - 1] == '1')
-          bits.set(bit);
-
-      const auto assetName = memoryAssetName(cell);
+      auto       rom           = std::make_shared<ROM>();
+      initializeMemory(cell, rom, width, count, abits);
 
       Bus       address   = cell.consumer("ADDR", abits);
       const Bus select    = cell.consumer("SELECT", 1);
@@ -943,10 +972,6 @@ namespace {
         address = slice(registeredAddress, 0, abits);
       }
 
-      auto rom = std::make_shared<ROM>();
-      rom->setProperty("binaryContents", assetName);
-      rom->setMemoryImage(
-          std::make_shared<const MemoryImage>(std::move(bits), width, count));
       const Bus romOutput = synchronous && count == 1
                                 ? Bus(static_cast<unsigned short>(width))
                                 : cell.driver("DATA", width);

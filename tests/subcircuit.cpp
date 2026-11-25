@@ -244,7 +244,8 @@ std::string romSubcircuitDocument()
         {
           "id": 0,
           "type": "ROM",
-          "properties": {"dataWidth": 8, "binaryContents": "program"},
+          "properties": {"addressWidth": 2, "dataWidth": 8, "depthOverride": 0,
+                         "initialization": "Binary document", "binaryContents": "program", "padding": "Zero"},
           "inputs": [[1, 2], [3], [4]],
           "outputs": [[5, 6, 7, 8, 9, 10, 11, 12]]
         }
@@ -303,7 +304,8 @@ std::string romSimulationLeafDocument()
         {
           "id": 3,
           "type": "ROM",
-          "properties": {"dataWidth": 8, "binaryContents": "program"},
+          "properties": {"addressWidth": 2, "dataWidth": 8, "depthOverride": 0,
+                         "initialization": "Binary document", "binaryContents": "program", "padding": "Zero"},
           "inputs": [[1, 2], [3], [4]],
           "outputs": [[5, 6, 7, 8, 9, 10, 11, 12]]
         },

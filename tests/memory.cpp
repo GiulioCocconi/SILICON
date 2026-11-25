@@ -18,6 +18,7 @@
 #include "tests.hpp"
 
 #include <array>
+#include <bit>
 #include <cstdint>
 #include <limits>
 #include <stdexcept>
@@ -56,6 +57,10 @@ std::shared_ptr<ROM> configuredRom(std::vector<std::uint8_t> contents,
 {
   auto rom = std::make_shared<ROM>();
   rom->setProperty("dataWidth", dataWidth);
+  const auto words = (contents.size() * 8 + dataWidth - 1) / dataWidth;
+  rom->setGeometry(dataWidth,
+                   static_cast<int>(std::max<std::size_t>(1, std::bit_width(words - 1))),
+                   static_cast<int>(words));
   rom->setBinaryDocument("program", binarySnapshot(std::move(contents)));
   return rom;
 }
@@ -68,40 +73,31 @@ void expectState(const Bus& bus, const State state)
 
 }  // namespace
 
-TEST(ROMTest, ValidatesPropertiesAndShapesBusesFromPackedWordCount)
+TEST(ROMTest, GeometryRemainsConfiguredWhenContentsAndWordWidthChange)
 {
   ROM rom;
-
   EXPECT_THROW(rom.setProperty("dataWidth", 0), std::invalid_argument);
   EXPECT_THROW(rom.setProperty("dataWidth", 65536), std::invalid_argument);
-
-  rom.setProperty("dataWidth", 10);
-  rom.setBinaryDocument(
-      "program", binarySnapshot((std::vector<std::uint8_t>{0x12, 0x34, 0x56, 0x78})));
-
-  ASSERT_EQ(rom.inputBuses().size(), 3);
-  ASSERT_EQ(rom.outputBuses().size(), 1);
-  EXPECT_EQ(rom.inputBuses()[0].size(), 2);
-  EXPECT_EQ(rom.inputBuses()[1].size(), 1);
-  EXPECT_EQ(rom.inputBuses()[2].size(), 1);
-  EXPECT_EQ(rom.outputBuses()[0].size(), 10);
-
-  EXPECT_NO_THROW(rom.setProperty("dataWidth", 6));
-  EXPECT_EQ(rom.getPropertyValue<int>("dataWidth"), 6);
-  EXPECT_EQ(rom.memoryDepth(), 6);
+  rom.setGeometry(10, 3);
+  rom.setBinaryDocument("program", binarySnapshot({0x12, 0x34, 0x56, 0x78}));
+  EXPECT_EQ(rom.memoryDepth(), 8);
   EXPECT_EQ(rom.inputBuses()[0].size(), 3);
+  EXPECT_EQ(rom.outputBuses()[0].size(), 10);
+  rom.setProperty("dataWidth", 6);
+  EXPECT_EQ(rom.memoryDepth(), 8);
+  EXPECT_EQ(rom.inputBuses()[0].size(), 3);
+  EXPECT_EQ(rom.outputBuses()[0].size(), 6);
 }
 
-TEST(ROMTest, AutomaticHydrationDoesNotGuessDepthFromSavedAddressWidth)
+TEST(ROMTest, HydrationPreservesConfiguredAddressWidth)
 {
   ROM rom;
-  rom.setProperty("dataWidth", 10);
+  rom.setGeometry(10, 4);
   rom.setProperty("binaryContents", std::string("packed"));
-  rom.setInputs({Bus(1), Bus(1), Bus(1)});
-  rom.refreshBinaryContents(
-      binarySnapshot((std::vector<std::uint8_t>{0xA5, 0x3C, 0x0F})));
-  EXPECT_EQ(rom.inputBuses()[0].size(), 2);
-  EXPECT_EQ(rom.memoryDepth(), 3);
+  const auto inputs = rom.inputBuses();
+  rom.refreshBinaryContents(binarySnapshot({0xA5, 0x3C, 0x0F}));
+  EXPECT_EQ(rom.inputBuses(), inputs);
+  EXPECT_EQ(rom.memoryDepth(), 16);
 }
 
 TEST(ROMTest, ExplicitOneWordImageUsesValidAddressBus)
@@ -109,7 +105,7 @@ TEST(ROMTest, ExplicitOneWordImageUsesValidAddressBus)
   ROM rom;
   rom.setProperty("dataWidth", 8);
   rom.setInputs({Bus(1), Bus(1), Bus(1)});
-  rom.setMemoryDepth(1);
+  rom.setGeometry(8, 1, 1);
   rom.refreshBinaryContents(binarySnapshot((std::vector<std::uint8_t>{0xA6})));
   EXPECT_EQ(rom.memoryDepth(), 1);
   ASSERT_EQ(rom.inputBuses()[0].size(), 1);
@@ -184,33 +180,26 @@ TEST(ROMTest, OneWordRomChecksAddressStateAndBounds)
   expectState(data, State::UNKNOWN);
 }
 
-TEST(ROMTest, MissingAndOutOfBoundsContentIsUnknown)
+TEST(ROMTest, ShortImagesKeepGeometryAndUnknownTails)
 {
-  auto rom = configuredRom((std::vector<std::uint8_t>{0x10, 0x20, 0x30, 0x40}), 8);
-  auto               circuit = std::make_shared<Circuit>(Component_set{rom});
-  Simulator          simulator(circuit);
-
-  Bus cs = rom->inputBuses()[1];
-  ASSERT_EQ(simulator.setBus(cs, valueFor(cs, 1)), Simulator::RunResult::Completed);
-
-  rom->refreshBinaryContents(
-      binarySnapshot((std::vector<std::uint8_t>{0x10, 0x20, 0x30})));
-  EXPECT_EQ(rom->memoryDepth(), 3);
-  EXPECT_EQ(rom->inputBuses()[0].size(), 2);
+  auto rom = configuredRom({0x10, 0x20, 0x30, 0x40}, 8);
+  rom->setProperty("padding", std::string(Memory::Unknown));
+  auto       circuit = std::make_shared<Circuit>(Component_set{rom});
+  Simulator  simulator(circuit);
+  const auto cs      = rom->inputBuses()[1];
   const auto address = rom->inputBuses()[0];
+  ASSERT_EQ(simulator.setBus(cs, valueFor(cs, 1)), Simulator::RunResult::Completed);
+  rom->refreshBinaryContents(binarySnapshot({0x10, 0x20, 0x30}));
+  EXPECT_EQ(rom->memoryDepth(), 4);
   ASSERT_EQ(simulator.setBus(address, valueFor(address, 2)),
             Simulator::RunResult::Completed);
   EXPECT_EQ(rom->outputBuses()[0].getCurrentValue(), valueFor(8, 0x30));
   ASSERT_EQ(simulator.setBus(address, valueFor(address, 3)),
             Simulator::RunResult::Completed);
   expectState(rom->outputBuses()[0], State::UNKNOWN);
-
   rom->refreshBinaryContents(nullptr);
-  rom->simulate(simulator);
-  expectState(rom->outputBuses()[0], State::UNKNOWN);
-
-  rom->refreshBinaryContents(binarySnapshot((std::vector<std::uint8_t>{0x10, 0x20})));
-  EXPECT_EQ(rom->inputBuses()[0].size(), 1);
+  EXPECT_THROW(rom->simulate(simulator), std::runtime_error);
+  EXPECT_EQ(rom->inputBuses()[0], address);
 }
 
 TEST(ROMTest, ControlUnknownsPropagateWhileEnabledContentIsUnavailable)
@@ -226,11 +215,10 @@ TEST(ROMTest, ControlUnknownsPropagateWhileEnabledContentIsUnavailable)
   expectState(rom->outputBuses()[0], State::ERROR);
 
   cs.forceSetCurrentValue(BusValue{State::HIGH});
-  rom->simulate(simulator);
-  expectState(rom->outputBuses()[0], State::UNKNOWN);
+  EXPECT_THROW(rom->simulate(simulator), std::runtime_error);
 }
 
-TEST(ROMTest, BinaryDocumentChangeAcceptsArbitraryDepthAndClearsStaleContent)
+TEST(ROMTest, BinaryDocumentChangesPreserveGeometryAndClearStaleContent)
 {
   auto       rom = configuredRom((std::vector<std::uint8_t>{0x10, 0x20, 0x30, 0x40}), 8);
   const auto originalSnapshot = rom->binaryContentsSnapshot();
@@ -242,13 +230,13 @@ TEST(ROMTest, BinaryDocumentChangeAcceptsArbitraryDepthAndClearsStaleContent)
   EXPECT_NE(rom->binaryContentsSnapshot(), originalSnapshot);
   EXPECT_EQ(*rom->binaryContentsSnapshot(),
             (std::vector<std::uint8_t>{0x10, 0x20, 0x30}));
-  EXPECT_EQ(rom->memoryDepth(), 3);
+  EXPECT_EQ(rom->memoryDepth(), 4);
   EXPECT_EQ(rom->inputBuses(), originalInputs);
 
   rom->setProperty("binaryContents", std::string("missing"));
   EXPECT_EQ(rom->getPropertyValue<std::string>("binaryContents"), "missing");
   EXPECT_EQ(rom->binaryContentsSnapshot(), nullptr);
-  EXPECT_EQ(rom->inputBuses()[0].size(), 1);
+  EXPECT_EQ(rom->inputBuses()[0].size(), 2);
 }
 
 TEST(ROMTest, SerializationPreservesWiringAndExplicitHydrationFeedsRuntimeSnapshot)
@@ -311,7 +299,10 @@ struct RamFixture {
                       std::vector<std::uint8_t> initial = {})
   {
     ram->setProperty("dataWidth", width);
-    ram->setProperty("depth", depth);
+    ram->setGeometry(width,
+                     static_cast<int>(std::max(1, std::bit_width(static_cast<unsigned>(
+                                                      depth > 0 ? depth - 1 : 0)))),
+                     depth);
     if (!initial.empty())
       ram->setBinaryDocument("initial", binarySnapshot(std::move(initial)));
     circuit = std::make_shared<Circuit>(Component_set{ram}, false);
@@ -347,25 +338,27 @@ TEST(RAMTest, ValidatesGeometryAndBinaryImages)
   RAM ram;
   EXPECT_THROW(ram.setProperty("dataWidth", 0), std::invalid_argument);
   EXPECT_THROW(ram.setProperty("dataWidth", 65536), std::invalid_argument);
-  EXPECT_NO_THROW(ram.setProperty("depth", 0));
-  EXPECT_THROW(ram.setProperty("depth", -1), std::invalid_argument);
-  EXPECT_THROW(ram.setMemoryDepth(std::numeric_limits<std::size_t>::max()), std::invalid_argument);
-  ram.setProperty("depth", 3);
+  EXPECT_NO_THROW(ram.setProperty("depthOverride", 0));
+  EXPECT_THROW(ram.setProperty("depthOverride", -1), std::invalid_argument);
+  EXPECT_THROW(ram.setGeometry(8, 1, std::numeric_limits<int>::max()),
+               std::invalid_argument);
+  ram.setGeometry(8, 2, 3);
   EXPECT_EQ(ram.inputBuses()[0].size(), 2);
   EXPECT_EQ(ram.inputBuses()[1].size(), 2);
-  EXPECT_THROW(ram.setBinaryDocument("wrong", binarySnapshot({1, 2})), std::invalid_argument);
-  EXPECT_EQ(ram.getPropertyValue<std::string>("binaryContents"), "");
+  ram.setBinaryDocument("larger", binarySnapshot({1, 2, 3, 4}));
+  EXPECT_EQ(ram.memoryDepth(), 4);
   ram.setBinaryDocument("initial", binarySnapshot({1, 2, 3}));
-  EXPECT_THROW(ram.setProperty("depth", 4), std::invalid_argument);
+  ram.setGeometry(8, 2, 3);
+  EXPECT_THROW(ram.setProperty("depthOverride", 5), std::invalid_argument);
   EXPECT_EQ(ram.memoryDepth(), 3);
   ram.refreshBinaryContents(binarySnapshot({1}));
-  EXPECT_FALSE(ram.memoryImageSnapshot());
+  EXPECT_TRUE(ram.memoryImageSnapshot());
   EXPECT_EQ(ram.memoryDepth(), 3);
 }
 
 TEST(RAMTest, ReadsPackedInitializationAndChecksBounds)
 {
-  RamFixture f(10, 3, {0xA5, 0x3C, 0xF0, 0xC1});
+  RamFixture                         f(10, 3, {0xA5, 0x3C, 0xF0, 0x01});
   const std::array<std::uint64_t, 3> values{0x0A5, 0x00F, 0x01F};
   for (std::size_t i = 0; i < values.size(); ++i) {
     f.set(RAM::Inputs::ReadAddress, i);
@@ -851,168 +844,170 @@ std::array<std::shared_ptr<Memory>, 2> memories()
 
 }  // namespace
 
-TEST(MemoryGeometryTest, AutomaticDepthRecomputesForDocumentsAndWordWidths)
+TEST(MemoryGeometryTest, AddressWidthResizesEveryAddressBusInBothDirections)
 {
   for (const auto& memory : memories()) {
     SCOPED_TRACE(memory->typeName());
-    memory->setMemoryDepth(0);
-    memory->setProperty("dataWidth", 10);
-    memory->setBinaryDocument("packed", binarySnapshot({0xFF, 0xFF, 0xFF}));
-    EXPECT_EQ(memory->getPropertyValue<int>("depth"), 0);
-    EXPECT_EQ(memory->memoryDepth(), 3);
-    EXPECT_EQ(memory->inputBuses()[0].size(), 2);
-    EXPECT_EQ(memory->memoryImageSnapshot()->word(2), valueFor(10, 15));
-
-    memory->setProperty("dataWidth", 6);
-    EXPECT_EQ(memory->memoryDepth(), 4);
-    EXPECT_EQ(memory->outputBuses()[0].size(), 6);
-    memory->setBinaryDocument("larger", binarySnapshot({1, 2, 3, 4}));
-    EXPECT_EQ(memory->memoryDepth(), 6);
-    EXPECT_EQ(memory->inputBuses()[0].size(), 3);
-    memory->refreshBinaryContents(binarySnapshot({0xFF}));
-    EXPECT_EQ(memory->memoryDepth(), 2);
-    EXPECT_EQ(memory->inputBuses()[0].size(), 1);
-    EXPECT_EQ(memory->memoryImageSnapshot()->word(1), valueFor(6, 3));
-    memory->setProperty("binaryContents", std::string("other"));
-    EXPECT_EQ(memory->memoryDepth(), 0);
-    EXPECT_FALSE(memory->memoryImageSnapshot());
-    memory->refreshBinaryContents(binarySnapshot({0xA5}));
-    EXPECT_EQ(memory->memoryDepth(), 2);
-    memory->refreshBinaryContents(binarySnapshot({}));
-    EXPECT_EQ(memory->memoryDepth(), 0);
-    memory->refreshBinaryContents(nullptr);
-    EXPECT_EQ(memory->memoryDepth(), 0);
-  }
-}
-
-TEST(MemoryGeometryTest, AutomaticInferenceTreatsEveryByteBitAsData)
-{
-  for (const auto& memory : memories()) {
-    memory->setMemoryDepth(0);
-    for (const auto [width, depth] :
-         std::array<std::pair<int, int>, 5>{{{1, 8}, {6, 2}, {8, 1}, {10, 1}, {16, 1}}}) {
-      memory->setProperty("dataWidth", width);
-      memory->setBinaryDocument("byte", binarySnapshot({0xA5}));
-      EXPECT_EQ(memory->memoryDepth(), depth) << width;
-      EXPECT_EQ(memory->getPropertyValue<int>("depth"), 0);
-      EXPECT_EQ(memory->memoryImageSnapshot()->bits().size(), width * depth);
+    const auto ram = std::dynamic_pointer_cast<RAM>(memory);
+    if (ram)
+      ram->setProperty("readPorts", 3);
+    const auto initialInputs  = memory->inputBuses();
+    const auto initialOutputs = memory->outputBuses();
+    for (const auto width : {1, 5, 4, 2, 1, 6, 1}) {
+      memory->setProperty("addressWidth", width);
+      EXPECT_EQ(memory->memoryDepth(), std::size_t{1} << width);
+      EXPECT_EQ(memory->capacityBits(), 8 * (std::size_t{1} << width));
+      EXPECT_EQ(memory->getPropertyValue<int>("depthOverride"), 0);
+      const auto inputs = memory->inputBuses();
+      EXPECT_EQ(inputs[0].size(), width);
+      EXPECT_EQ(inputs[0][0], initialInputs[0][0]);
+      if (ram) {
+        EXPECT_EQ(inputs[1].size(), width);
+        EXPECT_EQ(inputs[1][0], initialInputs[1][0]);
+        for (std::size_t port = 1; port < ram->readPortCount(); ++port) {
+          const auto index = RAM::readAddressIndex(port);
+          EXPECT_EQ(inputs[index].size(), width);
+          EXPECT_EQ(inputs[index][0], initialInputs[index][0]);
+        }
+        for (std::size_t index = 2; index <= 4; ++index)
+          EXPECT_EQ(inputs[index], initialInputs[index]);
+      }
+      EXPECT_EQ(memory->outputBuses(), initialOutputs);
     }
+    EXPECT_FALSE(memory->getProperty("effectiveDepth"));
+    EXPECT_FALSE(memory->getProperty("capacityBits"));
   }
 }
 
-TEST(MemoryGeometryTest, ExplicitDepthDisambiguatesPaddingAndCanReturnToAutomatic)
+TEST(MemoryGeometryTest, ExplicitDepthIsIndependentOfAddressWidth)
 {
   for (const auto& memory : memories()) {
-    SCOPED_TRACE(memory->typeName());
-    memory->setProperty("dataWidth", 10);
-    memory->setMemoryDepth(2);
-    memory->setBinaryDocument("packed", binarySnapshot({0xFF, 0xFF, 0xFF}));
-    ASSERT_TRUE(memory->memoryImageSnapshot());
-    EXPECT_EQ(memory->memoryDepth(), 2);
-    EXPECT_EQ(memory->memoryImageSnapshot()->word(1), valueFor(10, 1023));
-    EXPECT_EQ(memory->memoryImageSnapshot()->bytes(),
-              (std::vector<std::uint8_t>{0xFF, 0xFF, 0x0F}));
-    EXPECT_EQ(*memory->binaryContentsSnapshot(),
-              (std::vector<std::uint8_t>{0xFF, 0xFF, 0xFF}));
-    memory->setMemoryDepth(0);
+    memory->setGeometry(10, 5, 3);
+    memory->setProperty("addressWidth", 2);
+    EXPECT_EQ(memory->addressWidth(), 2);
     EXPECT_EQ(memory->memoryDepth(), 3);
-    memory->setMemoryDepth(2);
+    EXPECT_EQ(memory->capacityBits(), 30);
+    EXPECT_THROW(memory->setProperty("addressWidth", 1), std::invalid_argument);
+    EXPECT_THROW(memory->setProperty("depthOverride", 5), std::invalid_argument);
+    EXPECT_EQ(memory->memoryDepth(), 3);
+    memory->setGeometry(10, 2);
+    EXPECT_EQ(memory->memoryDepth(), 4);
+    memory->setProperty("addressWidth", 1);
     EXPECT_EQ(memory->memoryDepth(), 2);
   }
 }
 
-TEST(MemoryGeometryTest, ExplicitDepthAcceptsPartialFinalWordsButNotMissingWholeWords)
+TEST(MemoryGeometryTest, DocumentSelectionGrowsButNeverShrinksGeometry)
 {
   for (const auto& memory : memories()) {
-    SCOPED_TRACE(memory->typeName());
-    memory->setProperty("dataWidth", 10);
-    memory->setMemoryDepth(3);
-    memory->setBinaryDocument("partial", binarySnapshot({0xFF, 0xFF, 0xFF}));
-    EXPECT_EQ(memory->memoryImageSnapshot()->word(2), valueFor(10, 15));
-    EXPECT_THROW(memory->setBinaryDocument("short", binarySnapshot({0xFF, 0xFF})),
-                 std::invalid_argument);
-    EXPECT_THROW(memory->setBinaryDocument("long", binarySnapshot({1, 2, 3, 4, 5})),
-                 std::invalid_argument);
-    EXPECT_THROW(memory->setBinaryDocument("empty", binarySnapshot({})),
-                 std::invalid_argument);
-    EXPECT_EQ(memory->getPropertyValue<std::string>("binaryContents"), "partial");
+    memory->setGeometry(8, 2);
+    memory->setBinaryDocument("original", binarySnapshot({1, 2}));
+    EXPECT_EQ(memory->memoryDepth(), 4);
+    const auto lowWire = memory->inputBuses()[0][0];
+    memory->setBinaryDocument("larger", binarySnapshot({1, 2, 3, 4, 5}));
+    EXPECT_EQ(memory->addressWidth(), 3);
+    EXPECT_EQ(memory->memoryDepth(), 8);
+    EXPECT_EQ(memory->getPropertyValue<int>("depthOverride"), 0);
+    EXPECT_EQ(memory->inputBuses()[0][0], lowWire);
+    memory->setBinaryDocument("smaller", binarySnapshot({3}));
+    EXPECT_EQ(memory->addressWidth(), 3);
+    EXPECT_EQ(memory->memoryDepth(), 8);
+    memory->setBinaryDocument("", nullptr);
+    EXPECT_EQ(memory->getPropertyValue<std::string>("initialization"),
+              Memory::Uninitialized);
+    EXPECT_EQ(memory->memoryDepth(), 8);
   }
 }
 
-TEST(MemoryGeometryTest, FailedEditsPreservePropertiesImageAndConnections)
+TEST(MemoryGeometryTest, ExternalDocumentChangesReportMismatchWithoutChangingGeometry)
 {
   for (const auto& memory : memories()) {
-    SCOPED_TRACE(memory->typeName());
-    memory->setMemoryDepth(3);
-    memory->setBinaryDocument("original", binarySnapshot({1, 2, 3}));
-    const auto beforeProperties = memory->getProperties();
-    const auto beforeImage      = memory->memoryImageSnapshot();
-    const auto beforeContent    = memory->binaryContentsSnapshot();
-    const auto beforeInputs     = memory->inputBuses();
-    const auto beforeOutputs    = memory->outputBuses();
-    for (const auto width : {0, -1, 65536, 16})
-      EXPECT_THROW(memory->setProperty("dataWidth", width), std::invalid_argument);
-    EXPECT_THROW(memory->setProperty("depth", -1), std::invalid_argument);
-    EXPECT_THROW(memory->setMemoryDepth(std::numeric_limits<std::size_t>::max()),
-                 std::invalid_argument);
-    EXPECT_THROW(memory->setMemoryDepth(4), std::invalid_argument);
-    EXPECT_THROW(memory->setMemoryImage(nullptr), std::invalid_argument);
-    EXPECT_EQ(memory->getProperties(), beforeProperties);
-    EXPECT_EQ(memory->memoryImageSnapshot(), beforeImage);
-    EXPECT_EQ(memory->binaryContentsSnapshot(), beforeContent);
-    EXPECT_EQ(memory->inputBuses(), beforeInputs);
-    EXPECT_EQ(memory->outputBuses(), beforeOutputs);
-  }
-}
-
-TEST(MemoryGeometryTest, ExplicitHydrationRetainsDepthAndOversizedAddressConnections)
-{
-  for (const auto& memory : memories()) {
-    SCOPED_TRACE(memory->typeName());
-    memory->setProperty("dataWidth", 10);
-    memory->setMemoryDepth(2);
-    auto inputs = memory->inputBuses();
-    inputs[0].setSize(5);
-    if (auto ram = std::dynamic_pointer_cast<RAM>(memory))
-      inputs[1].setSize(5);
-    memory->setInputs(inputs);
-    const auto outputs = memory->outputBuses();
-    memory->refreshBinaryContents(binarySnapshot({1, 2, 3}));
-    EXPECT_EQ(memory->memoryDepth(), 2);
-    EXPECT_TRUE(memory->memoryImageSnapshot());
-    memory->refreshBinaryContents(binarySnapshot({1, 2, 3, 4}));
+    memory->setGeometry(8, 2);
+    memory->setBinaryDocument("image", binarySnapshot({1, 2}));
+    const auto inputs = memory->inputBuses();
+    memory->refreshBinaryContents(binarySnapshot({1, 2, 3, 4, 5}));
     EXPECT_FALSE(memory->memoryImageSnapshot());
-    EXPECT_EQ(memory->getPropertyValue<int>("depth"), 2);
-    EXPECT_EQ(memory->memoryDepth(), 2);
-    memory->refreshBinaryContents(nullptr);
-    EXPECT_FALSE(memory->memoryImageSnapshot());
-    memory->refreshBinaryContents(binarySnapshot({4, 5, 6}));
-    EXPECT_TRUE(memory->memoryImageSnapshot());
+    EXPECT_FALSE(memory->initializationError().empty());
+    EXPECT_THROW(memory->validateInitialization(), std::runtime_error);
+    EXPECT_EQ(memory->memoryDepth(), 4);
     EXPECT_EQ(memory->inputBuses(), inputs);
-    EXPECT_EQ(memory->outputBuses(), outputs);
+    memory->refreshBinaryContents(binarySnapshot({1}));
+    EXPECT_TRUE(memory->initializationError().empty());
+    EXPECT_EQ(memory->inputBuses(), inputs);
+    memory->refreshBinaryContents(nullptr);
+    EXPECT_FALSE(memory->initializationError().empty());
+    EXPECT_EQ(memory->inputBuses(), inputs);
   }
 }
 
-TEST(MemoryGeometryTest, ExactImagesReplaceGeometryAndSelectExplicitDepth)
+TEST(MemoryGeometryTest, ManualGeometryEditsRejectTruncationAtomically)
 {
   for (const auto& memory : memories()) {
-    SCOPED_TRACE(memory->typeName());
-    memory->setMemoryDepth(0);
-    memory->setBinaryDocument("image", binarySnapshot({1, 2, 3, 4}));
-    auto image = std::make_shared<const MemoryImage>(MemoryImage::Bits(20), 10, 2);
-    memory->setMemoryImage(image);
-    EXPECT_EQ(memory->getPropertyValue<int>("dataWidth"), 10);
-    EXPECT_EQ(memory->getPropertyValue<int>("depth"), 2);
-    EXPECT_EQ(memory->memoryDepth(), 2);
+    memory->setGeometry(10, 3);
+    memory->setBinaryDocument("packed",
+                              binarySnapshot({0xA5, 0x3C, 0xFF, 0xFF, 0xFF, 0xFF}));
+    const auto properties = memory->getProperties();
+    const auto inputs     = memory->inputBuses();
+    const auto image      = memory->memoryImageSnapshot();
+    EXPECT_THROW(memory->setProperty("addressWidth", 2), std::invalid_argument);
+    EXPECT_THROW(memory->setGeometry(10, 2), std::invalid_argument);
+    EXPECT_THROW(memory->setProperty("dataWidth", 5), std::invalid_argument);
+    EXPECT_THROW(memory->setProperty("depthOverride", 4), std::invalid_argument);
+    EXPECT_EQ(memory->getProperties(), properties);
+    EXPECT_EQ(memory->inputBuses(), inputs);
     EXPECT_EQ(memory->memoryImageSnapshot(), image);
-    EXPECT_EQ(memory->outputBuses()[0].size(), 10);
-    memory->refreshBinaryContents(memory->binaryContentsSnapshot());
+    memory->setBinaryDocument("smaller", binarySnapshot({1}));
+    memory->setProperty("addressWidth", 1);
     EXPECT_EQ(memory->memoryDepth(), 2);
   }
 }
 
-TEST(MemoryImageTest, RejectsInvalidAndOverflowingGeometry)
+TEST(MemoryInitializationTest, PoliciesAndPaddingPreservePackedBitOrdering)
 {
+  for (const auto& memory : memories()) {
+    memory->setGeometry(10, 2, 3);
+    EXPECT_FALSE(memory->memoryImageSnapshot());
+    memory->setProperty("initialization", std::string(Memory::Zero));
+    auto image = memory->memoryImageSnapshot();
+    ASSERT_TRUE(image);
+    EXPECT_EQ(image->word(2), valueFor(10, 0));
+    memory->setBinaryDocument("packed", binarySnapshot({0xA5, 0x3C}));
+    image = memory->memoryImageSnapshot();
+    EXPECT_EQ(image->word(0), valueFor(10, 0xA5));
+    EXPECT_EQ(image->word(1), valueFor(10, 0xF));
+    EXPECT_EQ(image->word(2), valueFor(10, 0));
+    memory->setProperty("padding", std::string(Memory::Unknown));
+    image = memory->memoryImageSnapshot();
+    EXPECT_EQ(image->knownBitCount(), 16);
+    auto partial = valueFor(10, 0xF);
+    for (std::size_t bit = 6; bit < 10; ++bit)
+      partial[bit] = State::UNKNOWN;
+    EXPECT_EQ(image->word(1), partial);
+    EXPECT_EQ(image->word(2), BusValue(10, State::UNKNOWN));
+    EXPECT_EQ(image->bytes(), (std::vector<std::uint8_t>{0xA5, 0x3C}));
+    memory->setProperty("initialization", std::string(Memory::Uninitialized));
+    EXPECT_FALSE(memory->memoryImageSnapshot());
+    memory->setProperty("initialization", std::string(Memory::BinaryDocument));
+    EXPECT_EQ(memory->memoryImageSnapshot()->word(1), partial);
+    memory->setBinaryDocument("empty", binarySnapshot({}));
+    EXPECT_EQ(memory->memoryImageSnapshot()->knownBitCount(), 0);
+    EXPECT_EQ(memory->memoryDepth(), 3);
+    EXPECT_THROW(memory->setProperty("initialization", std::string("random")),
+                 std::invalid_argument);
+    EXPECT_THROW(memory->setProperty("padding", std::string("random")),
+                 std::invalid_argument);
+  }
+}
+
+TEST(MemoryImageTest, PaddingBitsMustBeZeroAndOversizedImagesAreRejected)
+{
+  EXPECT_THROW((void)MemoryImage::fromBytes(std::vector<std::uint8_t>{1, 2, 0xF3}, 10, 2),
+               std::invalid_argument);
+  const auto image = MemoryImage::fromBytes(std::vector<std::uint8_t>{1, 2, 3}, 10, 2);
+  EXPECT_EQ(image.bits().size(), 20);
+  EXPECT_EQ(image.bytes(), (std::vector<std::uint8_t>{1, 2, 3}));
+  EXPECT_THROW((void)MemoryImage::fromBytes(std::vector<std::uint8_t>{1, 2, 3, 0}, 10, 2),
+               std::invalid_argument);
   EXPECT_THROW(MemoryImage(MemoryImage::Bits{}, 0, 1), std::invalid_argument);
   EXPECT_THROW(MemoryImage(MemoryImage::Bits{}, 1, 0), std::invalid_argument);
   EXPECT_THROW(MemoryImage(MemoryImage::Bits{}, 10, 2), std::invalid_argument);
@@ -1021,144 +1016,108 @@ TEST(MemoryImageTest, RejectsInvalidAndOverflowingGeometry)
       std::invalid_argument);
 }
 
-TEST(RAMTest, AutomaticDepthRequiresInitializationBeforeSimulation)
+TEST(MemoryGeometryTest, SelectionGrowsExplicitDepthWithoutChangingImportedAddressWidths)
 {
-  auto ram = std::make_shared<RAM>();
-  ram->setMemoryDepth(0);
-  auto circuit = std::make_shared<Circuit>(Component_set{ram}, false);
-  EXPECT_THROW((void)Simulator(circuit), std::runtime_error);
+  for (const auto& memory : memories()) {
+    memory->setGeometry(10, 5, 2);
+    memory->setBinaryDocument("canonical_padding", binarySnapshot({0xFF, 0xFF, 0x0F}));
+    EXPECT_EQ(memory->memoryDepth(), 2);
+    EXPECT_EQ(memory->addressWidth(), 5);
+    memory->setBinaryDocument("larger", binarySnapshot({0xFF, 0xFF, 0xFF}));
+    EXPECT_EQ(memory->memoryDepth(), 3);
+    EXPECT_EQ(memory->addressWidth(), 5);
+    EXPECT_EQ(memory->memoryImageSnapshot()->word(2), valueFor(10, 15));
+    memory->setBinaryDocument("smaller", binarySnapshot({0xFF}));
+    EXPECT_EQ(memory->memoryDepth(), 3);
+    EXPECT_EQ(memory->addressWidth(), 5);
+    memory->refreshBinaryContents(binarySnapshot({1, 2, 3, 4, 5}));
+    EXPECT_EQ(memory->memoryDepth(), 3);
+    EXPECT_EQ(memory->addressWidth(), 5);
+    EXPECT_FALSE(memory->initializationError().empty());
+  }
 }
 
-TEST(RAMTest, AutomaticInitializationKeepsSimulationWritesOutOfTheImage)
+TEST(MemoryGeometryTest, GeometryAndPortLimitsAreValidatedBeforeAllocation)
 {
-  RamFixture f(10, 0, {0xA5, 0x3C, 0xFF});
-  EXPECT_EQ(f.ram->memoryDepth(), 3);
-  const auto image = f.ram->memoryImageSnapshot();
-  const auto bytes = f.ram->binaryContentsSnapshot();
-  f.set(RAM::Inputs::WriteData, 0);
-  f.set(RAM::Inputs::WriteEnable, 1023);
-  f.pulse();
-  EXPECT_EQ(f.output().getCurrentValue(), valueFor(10, 0));
-  EXPECT_EQ(f.ram->memoryImageSnapshot(), image);
-  EXPECT_EQ(image->word(0), valueFor(10, 0xA5));
-  EXPECT_EQ(f.ram->binaryContentsSnapshot(), bytes);
-  f.ram->refreshBinaryContents(binarySnapshot({0x34, 0x02}));
-  f.set(RAM::Inputs::ReadAddress, 1);
-  f.set(RAM::Inputs::ReadAddress, 0);
-  EXPECT_EQ(f.output().getCurrentValue(), valueFor(10, 0x234));
-  EXPECT_EQ(f.ram->memoryDepth(), 2);
+  for (const auto& memory : memories()) {
+    const auto properties = memory->getProperties();
+    const auto inputs     = memory->inputBuses();
+    for (const auto width : {0, -1, 65536}) {
+      EXPECT_THROW(memory->setProperty("dataWidth", width), std::invalid_argument);
+      EXPECT_THROW(memory->setProperty("addressWidth", width), std::invalid_argument);
+    }
+    EXPECT_THROW(memory->setProperty("addressWidth", 63), std::invalid_argument);
+    EXPECT_THROW(memory->setProperty("addressWidth", 64), std::invalid_argument);
+    EXPECT_THROW(memory->setProperty("addressWidth", 21), std::invalid_argument);
+    EXPECT_THROW(memory->setProperty("depthOverride", -1), std::invalid_argument);
+    EXPECT_THROW(memory->setGeometry(8, 1, std::numeric_limits<int>::max()),
+                 std::invalid_argument);
+    EXPECT_THROW(memory->setGeometry(65535, 20), std::invalid_argument);
+    EXPECT_THROW(memory->setMemoryImage(nullptr), std::invalid_argument);
+    EXPECT_EQ(memory->getProperties(), properties);
+    EXPECT_EQ(memory->inputBuses(), inputs);
+    memory->setGeometry(8, 64, 3);  // Wider imported buses do not imply huge allocations.
+    EXPECT_EQ(memory->memoryDepth(), 3);
+    EXPECT_EQ(memory->addressWidth(), 64);
+    if (const auto ram = std::dynamic_pointer_cast<RAM>(memory)) {
+      EXPECT_THROW(ram->setProperty("readPorts", 65535), std::invalid_argument);
+      EXPECT_EQ(ram->readPortCount(), 1);
+    }
+  }
 }
 
-TEST(MemoryGeometryTest, SerializationPreservesModeDepthAndSavedConnections)
+TEST(MemoryGeometryTest,
+     SerializationAndElaborationPreserveIndependentGeometryAndPolicies)
 {
   ComponentRegistry registry;
   registerAllComponents(registry);
+  CircuitElaborator elaborator(registry);
   for (const auto& memory : memories()) {
-    for (const int depth : {0, 2}) {
-      SCOPED_TRACE(std::string(memory->typeName()) + " depth=" + std::to_string(depth));
-      memory->refreshBinaryContents(nullptr);
-      memory->setProperty("dataWidth", 10);
-      memory->setMemoryDepth(depth);
-      memory->setBinaryDocument("packed", binarySnapshot({0xFF, 0xFF, 0xFF}));
-      if (depth != 0) {
-        auto inputs = memory->inputBuses();
-        inputs[0].setSize(5);
-        if (std::dynamic_pointer_cast<RAM>(memory))
-          inputs[1].setSize(5);
-        memory->setInputs(inputs);
-      }
-      Circuit     circuit(Component_set{memory}, false);
-      const auto  serialized = nlohmann::json::parse(circuit.serialize());
-      const auto& json       = serialized["components"][0];
-      EXPECT_EQ(json["properties"]["depth"], depth);
-      EXPECT_FALSE(json.contains("memoryDepth"));
-      auto       restored = Circuit::deserialize(serialized.dump(), registry);
+    for (const auto policy :
+         {Memory::Uninitialized, Memory::Zero, Memory::BinaryDocument}) {
+      memory->setGeometry(10, 5, 3);
+      memory->setBinaryDocument("packed", binarySnapshot({0xA5, 0x3C}));
+      memory->setProperty("padding", std::string(Memory::Unknown));
+      memory->setProperty("initialization", std::string(policy));
+      Circuit    circuit(Component_set{memory}, false);
+      auto       restored = Circuit::deserialize(circuit.serialize(), registry);
       const auto copy =
           std::dynamic_pointer_cast<Memory>(restored.getComponentByVertexId(0));
       ASSERT_TRUE(copy);
-      EXPECT_EQ(copy->getPropertyValue<int>("depth"), depth);
-      EXPECT_EQ(copy->memoryDepth(), depth);
-      EXPECT_FALSE(copy->memoryImageSnapshot());
-      const auto inputs  = copy->inputBuses();
-      const auto outputs = copy->outputBuses();
+      EXPECT_EQ(copy->getProperties(), memory->getProperties());
+      EXPECT_EQ(copy->memoryDepth(), 3);
+      EXPECT_EQ(copy->addressWidth(), 5);
+      const auto inputs = copy->inputBuses();
       for (std::size_t bit = 0; bit < inputs[0].size(); ++bit)
         EXPECT_EQ(inputs[0][bit]->getId(), memory->inputBuses()[0][bit]->getId());
       copy->refreshBinaryContents(memory->binaryContentsSnapshot());
-      ASSERT_TRUE(copy->memoryImageSnapshot());
-      EXPECT_EQ(copy->memoryDepth(), depth == 0 ? 3 : 2);
       EXPECT_EQ(copy->inputBuses(), inputs);
-      EXPECT_EQ(copy->outputBuses(), outputs);
-      copy->refreshBinaryContents(binarySnapshot({1, 2, 3, 4}));
-      EXPECT_EQ(copy->memoryDepth(), depth == 0 ? 4 : 2);
-      EXPECT_EQ(static_cast<bool>(copy->memoryImageSnapshot()), depth == 0);
-    }
-  }
-}
-
-TEST(MemoryGeometryTest, ElaborationPreservesAutomaticModeAndExactExplicitGeometry)
-{
-  ComponentRegistry registry;
-  registerAllComponents(registry);
-  CircuitElaborator elaborator(registry);
-  for (const auto& memory : memories()) {
-    for (const int depth : {0, 2}) {
-      SCOPED_TRACE(std::string(memory->typeName()) + " depth=" + std::to_string(depth));
-      memory->refreshBinaryContents(nullptr);
-      memory->setProperty("dataWidth", 10);
-      memory->setMemoryDepth(depth);
-      memory->setBinaryDocument("packed", binarySnapshot({0xFF, 0xFF, 0xFF}));
-      if (depth != 0) {
-        auto inputs = memory->inputBuses();
-        inputs[0].setSize(5);
-        if (std::dynamic_pointer_cast<RAM>(memory))
-          inputs[1].setSize(5);
-        memory->setInputs(inputs);
-      }
-      Circuit    circuit(Component_set{memory}, false);
-      const auto runtime = elaborator.elaborate(circuit);
+      const auto runtime = elaborator.elaborate(restored);
       const auto clone =
           std::dynamic_pointer_cast<Memory>(runtime->getComponentByVertexId(0));
-      ASSERT_TRUE(clone);
       EXPECT_EQ(clone->getProperties(), memory->getProperties());
-      EXPECT_EQ(clone->memoryDepth(), memory->memoryDepth());
-      EXPECT_EQ(clone->memoryImageSnapshot()->bits(),
-                memory->memoryImageSnapshot()->bits());
-      EXPECT_EQ(clone->inputBuses(), memory->inputBuses());
-      EXPECT_EQ(clone->outputBuses(), memory->outputBuses());
-      EXPECT_EQ(clone->binaryContentsSnapshot(), memory->binaryContentsSnapshot());
+      EXPECT_EQ(clone->memoryDepth(), 3);
+      EXPECT_EQ(clone->addressWidth(), 5);
+      if (const auto image = memory->memoryImageSnapshot()) {
+        ASSERT_TRUE(clone->memoryImageSnapshot());
+        EXPECT_EQ(clone->memoryImageSnapshot()->word(1), image->word(1));
+      } else {
+        EXPECT_FALSE(clone->memoryImageSnapshot());
+      }
       memory->refreshBinaryContents(binarySnapshot({0}));
-      EXPECT_EQ(clone->memoryDepth(), depth == 0 ? 3 : 2);
-      EXPECT_EQ(clone->memoryImageSnapshot()->word(0), valueFor(10, 1023));
+      if (policy == Memory::BinaryDocument) {
+        EXPECT_EQ(clone->memoryImageSnapshot()->word(0), valueFor(10, 0xA5));
+      }
     }
   }
 }
 
-TEST(RAMTest,
-     ElaborationRejectsUnresolvedAutomaticDepthAndAcceptsUninitializedExplicitDepth)
-{
-  ComponentRegistry registry;
-  registerAllComponents(registry);
-  CircuitElaborator elaborator(registry);
-  auto              ram = std::make_shared<RAM>();
-  Circuit           circuit(Component_set{ram}, false);
-  EXPECT_NO_THROW((void)elaborator.elaborate(circuit));
-  ram->setMemoryDepth(0);
-  EXPECT_THROW((void)elaborator.elaborate(circuit), std::runtime_error);
-  ram->setBinaryDocument("missing", nullptr);
-  EXPECT_THROW((void)elaborator.elaborate(circuit), std::runtime_error);
-  ram->refreshBinaryContents(binarySnapshot({}));
-  EXPECT_THROW((void)elaborator.elaborate(circuit), std::runtime_error);
-  ram->refreshBinaryContents(binarySnapshot({1, 2, 3}));
-  EXPECT_NO_THROW((void)elaborator.elaborate(circuit));
-}
-
-TEST(MemoryGeometryTest, ProjectResolverRehydratesAndRecomputesAutomaticGeometry)
+TEST(MemoryGeometryTest, ProjectResolverUpdatesInitializationWithoutResizing)
 {
   ComponentRegistry registry;
   registerAllComponents(registry);
   for (const auto& memory : memories()) {
-    memory->setMemoryDepth(0);
-    memory->setProperty("dataWidth", 10);
+    memory->setGeometry(10, 4, 3);
     memory->setBinaryDocument("packed", binarySnapshot({1, 2, 3}));
     SILICON::project::ProjectContext project;
     project.setDocuments(
@@ -1166,17 +1125,33 @@ TEST(MemoryGeometryTest, ProjectResolverRehydratesAndRecomputesAutomaticGeometry
          {"bin/packed", std::vector<std::uint8_t>{1, 2, 3}}});
     SILICON::project::ProjectCircuitResolver resolver(project, registry);
     const auto                               resolve = [&] {
-      const auto definition = resolver.resolve("memory");
       return std::dynamic_pointer_cast<Memory>(
-          definition.circuit.getComponentByVertexId(0));
+          resolver.resolve("memory").circuit.getComponentByVertexId(0));
     };
-    EXPECT_EQ(resolve()->memoryDepth(), 3);
+    EXPECT_TRUE(resolve()->initializationError().empty());
     project.upsertDocument({"bin/packed", std::vector<std::uint8_t>{1, 2, 3, 4, 5}});
-    EXPECT_EQ(resolve()->memoryDepth(), 4);
+    EXPECT_FALSE(resolve()->initializationError().empty());
+    EXPECT_EQ(resolve()->memoryDepth(), 3);
+    EXPECT_EQ(resolve()->addressWidth(), 4);
     project.removeDocument("bin/packed");
-    EXPECT_EQ(resolve()->memoryDepth(), 0);
+    EXPECT_FALSE(resolve()->initializationError().empty());
+    EXPECT_EQ(resolve()->memoryDepth(), 3);
     project.upsertDocument({"bin/packed", std::vector<std::uint8_t>{0xFF}});
-    EXPECT_EQ(resolve()->memoryDepth(), 1);
+    EXPECT_TRUE(resolve()->initializationError().empty());
+    EXPECT_EQ(resolve()->memoryDepth(), 3);
+  }
+}
+
+TEST(MemoryGeometryTest, DeserializationDoesNotInferGeometryFromSavedBuses)
+{
+  ComponentRegistry registry;
+  registerAllComponents(registry);
+  for (const auto& memory : memories()) {
+    memory->setGeometry(10, 5);
+    auto json = nlohmann::json::parse(Circuit(Component_set{memory}, false).serialize());
+    json["components"][0]["properties"].erase("addressWidth");
+    EXPECT_THROW((void)Circuit::deserialize(json.dump(), registry),
+                 std::invalid_argument);
   }
 }
 
@@ -1186,7 +1161,7 @@ TEST(MemoryGeometryTest, DeserializationRejectsInvalidGeometryWithoutNumericNarr
   registerAllComponents(registry);
   for (const auto& memory : memories()) {
     auto json = nlohmann::json::parse(Circuit(Component_set{memory}, false).serialize());
-    for (const auto key : {"depth", "dataWidth"}) {
+    for (const auto key : {"depthOverride", "dataWidth", "addressWidth"}) {
       for (const auto& invalid :
            {nlohmann::json(-1), nlohmann::json(1.5), nlohmann::json("2"),
             nlohmann::json(nullptr), nlohmann::json(true),
@@ -1197,5 +1172,137 @@ TEST(MemoryGeometryTest, DeserializationRejectsInvalidGeometryWithoutNumericNarr
                      std::invalid_argument);
       }
     }
+  }
+}
+
+TEST(MemoryInitializationTest, ZeroAndUninitializedPoliciesExecuteForBothMemoryTypes)
+{
+  for (const auto& memory : memories()) {
+    memory->setGeometry(8, 2);
+    memory->setProperty("initialization", std::string(Memory::Zero));
+    auto      circuit = std::make_shared<Circuit>(Component_set{memory}, false);
+    Simulator sim(circuit);
+    if (std::dynamic_pointer_cast<ROM>(memory)) {
+      ASSERT_EQ(sim.setBus(memory->inputBuses()[1], valueFor(1, 1)),
+                Simulator::RunResult::Completed);
+    }
+    ASSERT_EQ(sim.setBus(memory->inputBuses()[0], valueFor(2, 1)),
+              Simulator::RunResult::Completed);
+    EXPECT_EQ(memory->outputBuses()[0].getCurrentValue(), valueFor(8, 0));
+    memory->setProperty("initialization", std::string(Memory::Uninitialized));
+    ASSERT_EQ(sim.setBus(memory->inputBuses()[0], valueFor(2, 2)),
+              Simulator::RunResult::Completed);
+    expectState(memory->outputBuses()[0], State::UNKNOWN);
+  }
+}
+
+TEST(MemoryGeometryTest,
+     AutomaticSelectionGrowthHandlesPackedWordWidthsAndAllocationLimits)
+{
+  for (const auto& memory : memories()) {
+    for (const auto width : {1, 6, 10, 16}) {
+      memory->setBinaryDocument("", nullptr);
+      memory->setGeometry(width, 1);
+      auto previousCapacity = memory->capacityBits();
+      for (const auto bytes : {1, 3, 7, 1, 0}) {
+        memory->setBinaryDocument("packed",
+                                  binarySnapshot(std::vector<std::uint8_t>(bytes, 0xFF)));
+        EXPECT_GE(memory->capacityBits(), static_cast<std::size_t>(bytes * 8));
+        EXPECT_GE(memory->capacityBits(), previousCapacity);
+        EXPECT_EQ(memory->memoryDepth(), std::size_t{1} << memory->addressWidth());
+        EXPECT_TRUE(memory->initializationError().empty());
+        previousCapacity = memory->capacityBits();
+      }
+    }
+    memory->setBinaryDocument("", nullptr);
+    memory->setGeometry(1, 1);
+    const auto before = memory->getProperties();
+    const auto inputs = memory->inputBuses();
+    EXPECT_THROW(
+        memory->setBinaryDocument("too_large", binarySnapshot(std::vector<std::uint8_t>(
+                                                   Memory::MaxDepth / 8 + 1, 0xFF))),
+        std::invalid_argument);
+    EXPECT_EQ(memory->getProperties(), before);
+    EXPECT_EQ(memory->inputBuses(), inputs);
+  }
+}
+
+TEST(MemoryGeometryTest, DeserializationRejectsBusesThatDisagreeWithConfiguredGeometry)
+{
+  ComponentRegistry registry;
+  registerAllComponents(registry);
+  for (const auto& memory : memories()) {
+    memory->setGeometry(10, 5, 3);
+    const auto original =
+        nlohmann::json::parse(Circuit(Component_set{memory}, false).serialize());
+    for (const auto name : {"inputs", "outputs"}) {
+      auto invalid = original;
+      invalid["components"][0][name][0].erase(0);
+      EXPECT_THROW((void)Circuit::deserialize(invalid.dump(), registry),
+                   std::invalid_argument);
+      invalid = original;
+      invalid["components"][0][name].push_back(nlohmann::json::array());
+      EXPECT_THROW((void)Circuit::deserialize(invalid.dump(), registry),
+                   std::invalid_argument);
+    }
+  }
+}
+
+TEST(MemoryGeometryTest, PropertyDescriptionsKeepDerivedInformationOutOfConfiguration)
+{
+  for (const auto& memory : memories()) {
+    const auto configuration = memory->getProperties();
+    auto       fields        = memory->propertyInfo();
+    ASSERT_GE(fields.size(), 5);
+    EXPECT_EQ(fields[0].key, "addressWidth");
+    EXPECT_EQ(fields[1].key, "dataWidth");
+    EXPECT_EQ(std::ranges::find(fields, "binaryContents", &PropertyInfo::key),
+              fields.end());
+    EXPECT_EQ(std::ranges::find(fields, "padding", &PropertyInfo::key), fields.end());
+    EXPECT_TRUE(std::ranges::find(fields, "depthOverride", &PropertyInfo::key)->advanced);
+    EXPECT_TRUE(
+        std::ranges::find(fields, "effectiveDepth", &PropertyInfo::key)->readOnly);
+    EXPECT_TRUE(std::ranges::find(fields, "capacity", &PropertyInfo::key)->readOnly);
+    EXPECT_EQ(memory->getProperties(), configuration);
+    EXPECT_FALSE(memory->getProperty("effectiveDepth"));
+    EXPECT_FALSE(memory->getProperty("capacity"));
+    EXPECT_FALSE(memory->getProperty("depth"));
+    memory->setProperty("initialization", std::string(Memory::BinaryDocument));
+    fields = memory->propertyInfo();
+    EXPECT_NE(std::ranges::find(fields, "binaryContents", &PropertyInfo::key),
+              fields.end());
+    EXPECT_NE(std::ranges::find(fields, "padding", &PropertyInfo::key), fields.end());
+    memory->setGeometry(10, 5, 3);
+    fields = memory->propertyInfo();
+    EXPECT_FALSE(
+        std::ranges::find(fields, "depthOverride", &PropertyInfo::key)->advanced);
+    EXPECT_EQ(std::get<std::string>(
+                  std::ranges::find(fields, "effectiveDepth", &PropertyInfo::key)->value),
+              "3 words");
+    EXPECT_EQ(std::get<std::string>(
+                  std::ranges::find(fields, "capacity", &PropertyInfo::key)->value),
+              "30 bits (4 bytes)");
+  }
+}
+
+TEST(MemoryGeometryTest,
+     CompoundConfigurationValidatesTogetherAndKeepsCurrentDocumentBytes)
+{
+  for (const auto& memory : memories()) {
+    memory->setGeometry(10, 5, 3);
+    memory->setBinaryDocument("image", binarySnapshot({1, 2, 3}));
+    const auto before = memory->getProperties();
+    memory->setGeometry(10, 2, 4);
+    memory->refreshBinaryContents(binarySnapshot({1, 2, 3, 4, 5}));
+    const auto current = memory->binaryContentsSnapshot();
+    memory->setProperties(before);
+    EXPECT_EQ(memory->getProperties(), before);
+    EXPECT_EQ(memory->binaryContentsSnapshot(), current);
+    EXPECT_FALSE(memory->initializationError().empty());
+    EXPECT_THROW(memory->setProperties({{"addressWidth", 1}, {"depthOverride", 3}}),
+                 std::invalid_argument);
+    EXPECT_THROW(memory->setProperties({{"initialization", std::string("invalid")}}),
+                 std::invalid_argument);
+    EXPECT_EQ(memory->getProperties(), before);
   }
 }

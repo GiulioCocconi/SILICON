@@ -800,7 +800,8 @@ Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry
     }
 
     if (std::dynamic_pointer_cast<Memory>(component)
-        && (key == "depth" || key == "dataWidth" || key == "readPorts")
+        && (key == "depthOverride" || key == "dataWidth" || key == "addressWidth"
+            || key == "readPorts")
         && (!value.is_number_integer() || value < 0
             || value > std::numeric_limits<int>::max()))
       throw std::invalid_argument(
@@ -844,9 +845,27 @@ Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry
 
       if (const auto propsIt = compJson.find("properties");
           propsIt != compJson.end() && propsIt->is_object()) {
-        // Width and other scalar properties must settle before value normalization.
+        const auto memory = std::dynamic_pointer_cast<Memory>(component);
+        if (memory) {
+          const auto integer = [&](const char* key, const int fallback) {
+            const auto it = propsIt->find(key);
+            if (it == propsIt->end())
+              return fallback;
+            if (!it->is_number_integer() || *it < 0
+                || *it > std::numeric_limits<int>::max())
+              throw std::invalid_argument(
+                  "Memory geometry must be a non-negative integer within range");
+            return it->get<int>();
+          };
+          memory->setGeometry(integer("dataWidth", 8), integer("addressWidth", 1),
+                              integer("depthOverride", 0));
+        }
+        // Apply dimensions atomically before other properties and bus values.
         for (const auto& [key, value] : propsIt->items())
-          applyProperty(component, key, value, false);
+          if (!(memory
+                && (key == "dataWidth" || key == "addressWidth"
+                    || key == "depthOverride")))
+            applyProperty(component, key, value, false);
 
         for (const auto& [key, value] : propsIt->items())
           applyProperty(component, key, value, true);
@@ -855,9 +874,21 @@ Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry
       const auto deserializeInterface = [&](std::string_view        name,
                                             const std::vector<Bus>& current) {
         const auto it = compJson.find(name);
-        if (it == compJson.end() || !it->is_array())
+        if (it == compJson.end())
           return current;
 
+        if (std::dynamic_pointer_cast<Memory>(component)) {
+          // Validate against configured geometry before allocating saved wires.
+          if (!it->is_array() || it->size() != current.size())
+            throw std::invalid_argument(
+                "Saved memory ports do not match configured geometry");
+          for (std::size_t port = 0; port < current.size(); ++port)
+            if (!(*it)[port].is_array() || (*it)[port].size() != current[port].size())
+              throw std::invalid_argument(
+                  "Saved memory buses do not match configured geometry");
+        }
+        if (!it->is_array())
+          return current;
         return deserializeBusList(*it);
       };
 

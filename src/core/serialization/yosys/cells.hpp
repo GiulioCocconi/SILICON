@@ -50,5 +50,7 @@ namespace SILICON::yosys::attributes {
 
 /** Verilog memory attribute naming the project binary document used by a ROM. */
 inline constexpr std::string_view BINARY_DOCUMENT = "silicon_mem_slug";
+/** Original document byte length, excluding memory capacity padding in INIT. */
+inline constexpr std::string_view BINARY_DOCUMENT_BYTES = "silicon_mem_bytes";
 
 }  // namespace SILICON::yosys::attributes
