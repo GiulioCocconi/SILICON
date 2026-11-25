@@ -199,6 +199,19 @@ bool GraphicalComponent::isPropertyHidden(std::string_view key) const
   return hiddenProperties.contains(key);
 }
 
+std::vector<PropertyInfo> GraphicalComponent::propertyInfo() const
+{
+  return describeProperties(getProperties());
+}
+
+void GraphicalComponent::applyProperties(const PropertyMap& values)
+{
+  for (const auto& field : describeProperties(values))
+    if (getProperty(field.key) != field.value)
+      applyProperty(field.key, field.value);
+  emit propertiesChanged();
+}
+
 void GraphicalComponent::applyProperty(std::string_view key, const PropertyValue& value)
 {
   Q_UNUSED(value);

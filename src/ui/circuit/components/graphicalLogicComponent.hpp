@@ -126,6 +126,7 @@ public:
    * @param value The new property value
    */
   void applyProperty(std::string_view key, const PropertyValue& value) override;
+  [[nodiscard]] std::vector<PropertyInfo> propertyInfo() const override;
   [[nodiscard]] const PropertyMap& getProperties() const override;
   [[nodiscard]] std::optional<std::reference_wrapper<const StringPropertyOptions>>
   getStringPropertyOptions(std::string_view key) const override;

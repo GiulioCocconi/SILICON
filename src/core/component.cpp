@@ -19,12 +19,38 @@
 
 #include <algorithm>
 #include <limits>
+#include <map>
 #include <ranges>
 #include <stdexcept>
 
 #include <utils/ranges_wrapper.hpp>
 
 namespace SILICON::core {
+
+std::vector<PropertyInfo> describeProperties(const PropertyMap& properties)
+{
+  std::vector<PropertyInfo> result;
+  result.reserve(properties.size());
+  for (const auto& [key, value] : properties)
+    result.push_back({key, value});
+  std::ranges::sort(result, {}, &PropertyInfo::key);
+  return result;
+}
+
+std::vector<PropertyInfo> Component::propertyInfo() const
+{
+  return describeProperties(properties);
+}
+
+void Component::setProperties(const PropertyMap& values)
+{
+  // Dimensions and other scalar properties settle before bus-value normalization.
+  const std::map ordered(values.begin(), values.end());
+  for (const bool busValue : {false, true})
+    for (const auto& [key, value] : ordered)
+      if (std::holds_alternative<BusValue>(value) == busValue)
+        setProperty(key, value);
+}
 
 PropertyValue requireNonNegative(const std::string_view name,
                                  const PropertyValue&   value)
