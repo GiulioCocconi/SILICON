@@ -162,6 +162,15 @@ void GraphicalRAM::setComponent(const Component_ptr& component)
   rebuildPorts();
 }
 
+void GraphicalRAM::applyProperties(const PropertyMap& values)
+{
+  const auto ram    = std::dynamic_pointer_cast<RAM>(associatedComponent);
+  const auto before = ram->readPortCount();
+  GraphicalMemory::applyProperties(values);
+  if (before != ram->readPortCount())
+    rebuildPorts();
+}
+
 void GraphicalRAM::applyProperty(const std::string_view key, const PropertyValue& value)
 {
   GraphicalMemory::applyProperty(key, value);
@@ -235,6 +244,17 @@ void GraphicalMemory::applyProperty(const std::string_view key,
   prepareGeometryChange();
   memory->setBinaryDocument(slug, resolveBinaryContents(slug));
   update();
+  emit propertiesChanged();
+}
+
+void GraphicalMemory::applyProperties(const PropertyMap& values)
+{
+  prepareGeometryChange();
+  std::dynamic_pointer_cast<Memory>(associatedComponent)->setProperties(values);
+  if (documents)
+    refreshBinaryContents();  // Resolve current bytes; undo never carries document data.
+  update();
+  emit propertiesChanged();
 }
 
 void GraphicalMemory::setDocumentStore(
@@ -283,8 +303,10 @@ void GraphicalMemory::unsubscribeFromDocuments()
 
 void GraphicalMemory::refreshBinaryContents()
 {
-  if (const auto memory = std::dynamic_pointer_cast<Memory>(associatedComponent))
+  if (const auto memory = std::dynamic_pointer_cast<Memory>(associatedComponent)) {
     memory->refreshBinaryContents(resolveBinaryContents(currentSlug()));
+    emit propertiesChanged();
+  }
 }
 
 std::shared_ptr<const std::vector<std::uint8_t>>

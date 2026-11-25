@@ -215,12 +215,20 @@ namespace SILICON::ui {
     void redo() override;
 
   private:
+    struct Snapshot {
+      PropertyMap      properties;
+      std::vector<Bus> inputs;
+      std::vector<Bus> outputs;
+    };
     struct PropertyChange {
       DiagramScene* scene;
-      uint64_t      uiId;
-      PropertyValue oldValue;
+      uint64_t                uiId;
       PropertyValue newValue;
+      Snapshot                before;
+      std::optional<Snapshot> after;
     };
+    static Snapshot capture(const GraphicalComponent& component);
+    static void     restore(GraphicalComponent& component, const Snapshot& snapshot);
 
     void apply(bool useNewValue);
 

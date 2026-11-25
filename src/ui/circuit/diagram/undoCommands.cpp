@@ -332,32 +332,70 @@ ModifyPropertyCommand::ModifyPropertyCommand(std::string key, QUndoCommand* pare
   setText("Modify Property");
 }
 
+ModifyPropertyCommand::Snapshot
+ModifyPropertyCommand::capture(const GraphicalComponent& component)
+{
+  Snapshot result{component.getProperties(), {}, {}};
+  if (const auto* logic = category_cast<GraphicalLogicComponent>(
+          &component, ItemCategory::LogicComponent);
+      logic && logic->getComponent()) {
+    result.inputs  = logic->getComponent()->inputBuses();
+    result.outputs = logic->getComponent()->outputBuses();
+  }
+  return result;
+}
+
+void ModifyPropertyCommand::restore(GraphicalComponent& component,
+                                    const Snapshot&     snapshot)
+{
+  component.applyProperties(snapshot.properties);
+  if (auto* logic = category_cast<GraphicalLogicComponent>(&component,
+                                                           ItemCategory::LogicComponent);
+      logic && logic->getComponent()) {
+    logic->getComponent()->setInputs(snapshot.inputs);
+    logic->getComponent()->setOutputs(snapshot.outputs);
+  }
+}
+
 void ModifyPropertyCommand::addPropertyChange(GraphicalComponent*  component,
                                               const PropertyValue& oldValue,
                                               const PropertyValue& newValue)
 {
   if (!component || oldValue == newValue)
     return;
-
   auto* scene = itemScene(component);
   if (documentPath.empty())
     documentPath = activeDocumentPath(scene);
-  changes.push_back({scene, component->getUiId(), oldValue, newValue});
+  changes.push_back(
+      {scene, component->getUiId(), newValue, capture(*component), std::nullopt});
 }
 
 void ModifyPropertyCommand::apply(const bool useNewValue)
 {
   if (!changes.empty() && !activateDocument(changes.front().scene, documentPath))
     return;
-
   bool applied = false;
-  for (const auto& change : changes) {
-    if (auto* component = findComponent(change.scene, change.uiId)) {
-      component->applyProperty(key, useNewValue ? change.newValue : change.oldValue);
-      applied = true;
+  std::vector<std::pair<GraphicalComponent*, Snapshot>> rollback;
+  try {
+    for (auto& change : changes) {
+      if (auto* component = findComponent(change.scene, change.uiId)) {
+        rollback.emplace_back(component, capture(*component));
+        if (!useNewValue)
+          restore(*component, change.before);
+        else if (change.after)
+          restore(*component, *change.after);
+        else {
+          component->applyProperty(key, change.newValue);
+          change.after = capture(*component);
+        }
+        applied = true;
+      }
     }
+  } catch (...) {
+    for (auto& [component, snapshot] : rollback | std::views::reverse)
+      restore(*component, snapshot);
+    throw;
   }
-
   if (applied && changes.front().scene)
     changes.front().scene->updateSceneAfterEdit();
 }
