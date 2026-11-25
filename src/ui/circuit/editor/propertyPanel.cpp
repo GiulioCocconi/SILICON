@@ -144,7 +144,7 @@ void PropertyPanel::refresh()
   // configured minimum width of the entire dock column.
   container->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
   auto* layout = new QFormLayout(container);
-  layout->setRowWrapPolicy(QFormLayout::WrapLongRows);
+  layout->setRowWrapPolicy(QFormLayout::DontWrapRows);
 
   auto* scrollArea = new QScrollArea(propertyDock);
   scrollArea->setWidgetResizable(true);
@@ -323,7 +323,7 @@ void PropertyPanel::refresh()
         toggle->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
         auto* advanced = new QWidget(container);
         advancedLayout = new QFormLayout(advanced);
-        advancedLayout->setRowWrapPolicy(QFormLayout::WrapLongRows);
+        advancedLayout->setRowWrapPolicy(QFormLayout::DontWrapRows);
         advanced->hide();
         callbacks.connect(toggle, &QToolButton::toggled, [=](bool open) {
           advanced->setVisible(open);
