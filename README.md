@@ -1,65 +1,59 @@
 ![Silicon](./resources/banner.png)
-An Open Source Suite for simulating Circuits, Finite State Machines and Microcontrollers (WIP)
+**An open-source suite for digital logic design, simulation and computer architecture exploration.**
+
+SILICON combines a graphical circuit editor, an event-driven simulation kernel and Verilog interoperability in a single environment. It is designed for education, experimentation and the exploration of digital systems, from elementary logic gates to hierarchical circuits and processor architectures.
+
+<p align="center">
+   <img width="616" height="420" alt="image" src="https://raw.githubusercontent.com/GiulioCocconi/SILICON/refs/heads/main/webpage/src/assets/demo.gif" />
+</p>
+
+[Website, downloads and documentation](https://giuliococconi.github.io/SILICON/) · [Releases](https://github.com/GiulioCocconi/SILICON/releases) · [Report an issue](https://github.com/GiulioCocconi/SILICON/issues)
+
+_Currently supported by the [Bachelor's Degree programme in Electronic Engineering and Informaton tecnology @ The University of Genoa](https://corsi.unige.it/en/corsi/11911)_
 
 _Package repository hosting is graciously provided by [Cloudsmith](https://cloudsmith.com).
 Cloudsmith is the only fully hosted, cloud-native, universal package management solution, that
 enables your organization to create, store and share packages in any format, to any place, with total
 confidence._
 
-_Currently supported by the [Bachelor's Degree programme in Electronic Engineering and Informaton tecnology @ The University of Genoa](https://corsi.unige.it/en/corsi/11911)_
+## Features
 
+### Circuit design
 
-## TODOs
+- Interactive schematic editor with configurable components and multi-bit buses.
+- Combinational and sequential logic, including gates, arithmetic units, multiplexers, flip-flops, registers and ROMs.
+- Hierarchical design through reusable subcircuits with named ports and customizable graphical symbols.
+- Automatic component placement using OGDF and orthogonal wire routing using libavoid.
 
-A roadmap (+ various diagrams/ideas) is available [here](https://www.canva.com/design/DAGqb7QaA-w/_ld_l41b__KKIG6wlUhFLg/view)![Canva](https://img.shields.io/badge/Canva-%2300C4CC.svg?style=for-the-badge&logo=Canva&logoColor=white), written partly in Italian.
+### Digital simulation
 
-- [ ] MacOS support
-- [X] Documentation
-    * [ ] User docs
-- [X] CI/CD
-    * [X] [GitHub Actions](https://github.com/features/actions)
-    * [X] Multi-OS support (_kinda done: windows builds are now supported_)
-        * [ ] Deployment (setup packages for Win & Mac). See [here](https://www.qt.io/blog/cmake-deployment-api).
+- Event-driven simulation with configurable propagation delays and delta-cycle semantics.
+- Graph-based execution planning, strongly connected component decomposition and incremental evaluation of affected logic.
+- Feedback-loop evaluation and staged updates for edge-triggered sequential components.
+- Interactive signal manipulation and timed simulation, with unknown and error state handling.
+- Waveform visualization, editable input stimuli, simulation replay and FST trace export.
 
-- [X] Multiplexers & demultiplexers
-- [X] Timed simulation
-- [X] Flip flops & synchronous components
-- [X] Wires-to-bus & bus-to-wires
-- [X] INPUTS & OUTPUTS!!!!
-- [X] Bus display
-- [ ] 7-segment display
-- [X] Memories
-- [ ] Waveform input & automated testing
-- [X] Subcircuits
-- [X] Verilog support
-    * Yosys integration (JSON netlist)
-- [X] File format
+### Verilog and Yosys interoperability
 
-_FSMs_
+- Import Verilog designs through Yosys and convert supported netlists into editable graphical circuits.
+- Export circuits to Verilog through the Yosys integration.
+- Support for hierarchical and multi-module designs, with reusable circuit definitions.
+- Integrated source editor with syntax highlighting.
 
-- [ ] TBD
+### Computer architecture and project management
 
-_Microcontrollers_
+- SISL instruction set architecture descriptions, compilation and visualization.
+- Binary document editing and file-backed ROM contents.
+- Integrated workspace for circuit, source, architecture and binary documents.
+- Versioned `.sil` project archives containing logic circuits, HDL code and binary files.
 
-- [ ] TBD
+## Getting started
 
-## Using clangd
+SILICON is available for Linux and Windows, and can also run directly in a browser through WebAssembly. Visit the [website](https://giuliococconi.github.io/SILICON/) for downloads, nightly builds, the online application and documentation.
 
-This project is currently being developed using EMACS. The following packages will be useful:
+SILICON is under active development; features and project file compatibility may evolve between versions. Some integrations depend on the platform and availability of external tools.
 
-- [lsp-mode](https://emacs-lsp.github.io/) for clangd integration.
-- [dir-config.el](https://github.com/jamescherti/dir-config.el) to load this project specific config.
-
-Clangd uses the file `compile_commands.json`, that should be placed in the project root. CMAKE generates it in the build subdirectory so you need to symlink it:
-
-```
-cd <project-root>
-ln -s ./build/compile_commands.json compile_commands.json
-```
-
-## Compiling
-
-### On Linux
+### Compiling on Linux
 
 SILICON uses [Nix](https://nixos.org) and [CMake](https://cmake.org) in order to manage dependencies. It's recomended to use [Ninja Build](https://ninja-build.org) as a generator.
 
@@ -83,7 +77,7 @@ cd SILICON
 nix build # Downloads the dependencies and builds the software
 ```
 
-### On Windows
+### Compiling on Windows
 
 Only recent versions of the MinGW compiler are supported (tested using version `13.0`), you can install them via this [graphical installer](https://github.com/Vuniverse0/mingwInstaller/releases/tag/1.2.1).
 
@@ -119,3 +113,11 @@ mkdir build
 cmake -G "MinGW Makefiles" -Bbuild -DCMAKE_BUILD_TYPE=Debug
 make -C build
 ```
+
+## Documentation and contributing
+
+- [User documentation and digital electronics lessons](https://giuliococconi.github.io/SILICON/)
+- [C++ API reference](https://giuliococconi.github.io/SILICON/internaldocs/)
+- [Contributing guidelines](./CONTRIBUTING.md)
+- [Local build and test guide](./webpage/userdocs/guide/contributing/build.md)
+- [Simulation and project internals](./webpage/userdocs/guide/internals.md)
