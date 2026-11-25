@@ -47,7 +47,7 @@ public:
                                              bool unknownPadding = false);
   /** Encode raw bytes, zero-padding the final byte. */
   [[nodiscard]] std::vector<std::uint8_t> bytes() const;
-  [[nodiscard]] BusValue word(std::size_t address) const;
+  [[nodiscard]] BusValue                  word(std::size_t address) const;
 
   [[nodiscard]] std::size_t knownBitCount() const noexcept { return knownBits; }
   [[nodiscard]] const Bits& bits() const noexcept { return data; }
@@ -61,8 +61,8 @@ private:
   std::size_t knownBits;
 };
 
-/** Shared configured geometry and immutable initialization for RAM and ROM. */
-class Memory : public Component {
+/** Asynchronous read ports with an optional masked, positive-edge write port. */
+class Memory final : public Component {
 public:
   static constexpr std::string_view Uninitialized  = "Uninitialized";
   static constexpr std::string_view Zero           = "Zero";
@@ -88,7 +88,7 @@ public:
   void setProperties(const PropertyMap& values) override;
   [[nodiscard]] std::vector<PropertyInfo> propertyInfo() const override;
 
-  [[nodiscard]] std::size_t memoryDepth() const noexcept;
+  [[nodiscard]] std::size_t    memoryDepth() const noexcept;
   [[nodiscard]] unsigned short addressWidth() const;
   [[nodiscard]] std::size_t    capacityBits() const noexcept;
   [[nodiscard]] std::string    initializationError() const;
@@ -99,99 +99,63 @@ public:
     return image;
   }
   [[nodiscard]] std::shared_ptr<const std::vector<std::uint8_t>>
-  binaryContentsSnapshot() const noexcept { return content; }
+  binaryContentsSnapshot() const noexcept
+  {
+    return content;
+  }
 
-protected:
-  Memory();
-  [[nodiscard]] int configuredDataWidth() const;
-  void              validatePortCount(std::size_t count) const;
-  virtual void      reshapeBuses() = 0;
+  static constexpr std::string_view Type = "Memory";
 
-  std::shared_ptr<const std::vector<std::uint8_t>> content;
-  std::shared_ptr<const MemoryImage> image;
-
-private:
-  void commit(PropertyMap next, std::shared_ptr<const std::vector<std::uint8_t>> contents,
-              bool rejectInvalid);
-};
-
-/** Independent asynchronous read ports and one masked, positive-edge write port. */
-class RAM final : public Memory {
-public:
-  static constexpr std::string_view Type = "RAM";
-
-  enum class Inputs : unsigned int {
-    ReadAddress = 0,
-    WriteAddress,
-    WriteData,
-    WriteEnable,
+  enum class WriteInputs : unsigned int {
+    Address = 0,
+    Data,
+    Enable,
     Clock,
   };
   enum class Outputs : unsigned int { Data = 0 };
 
-  RAM();
-
-  [[nodiscard]] std::string_view typeName() const override { return Type; }
-  [[nodiscard]] ComponentMetadata metadata() const override
-  {
-    return {"RAM", "Asynchronous read and masked synchronous write memory.",
-            ComponentCategory::Memory};
-  }
-
-  void simulate(SILICON::simulation::Simulator& sim,
-                const SILICON::simulation::Context& context) override;
-  [[nodiscard]] bool usesStagedSequentialOutputs() const override { return true; }
-  void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
-
-  [[nodiscard]] std::size_t readPortCount() const;
-  // Keep the original five input indices stable; extra read addresses follow them.
-  [[nodiscard]] static std::size_t readAddressIndex(std::size_t port)
-  {
-    return port == 0 ? 0 : 4 + port;
-  }
-
-private:
-  std::vector<BusValue> words;
-  // Only modified words are copied, for cancellation before output publication.
-  std::vector<std::pair<std::size_t, BusValue>> previousWords;
-
-  void               reshapeBuses() override;
-  void initializeWords();
-  void write(const BusValue& address, const BusValue& data, const BusValue& mask,
-             State clockEnable);
-};
-
-/** Asynchronous read-only memory backed by a project binary document. */
-class ROM final : public Memory {
-public:
-  static constexpr std::string_view Type = "ROM";
-
-  enum class Inputs : unsigned int {
-    Address = 0,
-    CS      = 1,
-    OE      = 2,
-  };
-
-  enum class Outputs : unsigned int {
-    Data = 0,
-  };
-
-  ROM();
-  ROM(Bus address, Wire_ptr chipSelect, Wire_ptr outputEnable, Bus data);
+  Memory();
 
   [[nodiscard]] std::string_view  typeName() const override { return Type; }
   [[nodiscard]] ComponentMetadata metadata() const override
   {
-    return {"ROM", "Reads packed words from a project binary document.",
+    return {"Memory",
+            "Asynchronous read memory with an optional masked synchronous write port.",
             ComponentCategory::Memory};
   }
 
-  void simulate(SILICON::simulation::Simulator& sim) override;
+  using Component::simulate;
+  void               simulate(SILICON::simulation::Simulator&     sim,
+                              const SILICON::simulation::Context& context) override;
+  [[nodiscard]] bool usesStagedSequentialOutputs() const override { return isWritable(); }
   void serializeYosys(SILICON::yosys::SerializationContext& context) const override;
 
+  [[nodiscard]] bool        isWritable() const;
+  [[nodiscard]] std::size_t readPortCount() const;
+  [[nodiscard]] std::size_t readAddressIndex(std::size_t port) const { return port; }
+  // Read address inputs use their port number; the optional write inputs follow.
+  [[nodiscard]] std::size_t writeInputIndex(WriteInputs input) const
+  {
+    return readPortCount() + busIndex(input);
+  }
+
 private:
-  void reshapeBuses() override;
-  void driveState(SILICON::simulation::Simulator& sim, State state);
+  [[nodiscard]] int configuredDataWidth() const;
+  void              reshapeBuses();
+
+  std::shared_ptr<const std::vector<std::uint8_t>> content;
+  std::shared_ptr<const MemoryImage>               image;
+
+  bool                                          shapedWritable = false;
+  std::vector<BusValue>                         words;
+  std::vector<std::pair<std::size_t, BusValue>> previousWords;
+
+  void initializeWords();
+  [[nodiscard]] BusValue readWord(std::size_t address) const;
+  void write(const BusValue& address, const BusValue& data, const BusValue& mask,
+             State clockEnable);
+  void commit(PropertyMap next, std::shared_ptr<const std::vector<std::uint8_t>> contents,
+              bool rejectInvalid);
 };
 
 }  // namespace SILICON::core

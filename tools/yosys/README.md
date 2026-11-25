@@ -28,8 +28,7 @@ canonical type once; a second invocation leaves those cells unchanged.
 The importer accepts `$and`, `$or`, `$xor`, `$not`, `$_NAND_`, `$_NOR_`,
 `$pos`, `$add`, `$sub`, `$neg`, `$mux`, `$bmux`, `$demux`, scalar zero-reset
 `$adffe`, declared module instances, and the existing
-`SILICON_*` technology cells listed in `cells.hpp`, including `SILICON_ROM` and
-`SILICON_RAM`.
+`SILICON_*` technology cells listed in `cells.hpp`, including `SILICON_MEMORY`.
 Native `$mul`, `$div`, `$mod`, `$dff`, `$dffsr`, `$dffsre`, and supported `$dlatch`
 cells are converted to technology cells before this boundary and are rejected by
 both `silicon_validate` and the direct importer if they remain. Native `$add` and
@@ -89,20 +88,42 @@ Additional expression contracts:
   Signed negative offsets shift left; out-of-range selected bits remain unknown.
   Oversized offsets are checked without building a mux for every possible index.
 
-`SILICON_RAM` is emitted only for writable memories. It has independent asynchronous
-read ports and one positive-edge write port with per-bit write enables. Parameters are
-`WIDTH`, `SIZE`, `ABITS`, `INIT`, and `ID`, plus `RD_PORTS` for multiple read ports
-(omitted for a single read port). `RD_ADDR` and `RD_DATA` pack read ports in
-least-significant-lane-first order. Ports are `RD_ADDR`, `RD_DATA`, `WR_ADDR`,
-`WR_DATA`, `WR_EN`, and `WR_CLK`. Initialization can be fully binary, entirely
-X, or a byte-aligned binary prefix followed by an UNKNOWN tail. The same
-initialization contract applies to ROM. Other mixed-X patterns and Z bits are
-rejected explicitly; they are never converted to zero. Address buses may be wider
-than the minimum needed for `SIZE`. Memory attributes, including `silicon_mem_slug`, survive lowering. Memories without
-write ports use `SILICON_ROM` instead. Both memory types preserve exact `SIZE`
-and `ABITS`, including non-power-of-two depths and wider address buses.
+`SILICON_MEMORY` represents one complete memory, using the `$mem_v2` packed-port
+model. Parameters are `WIDTH`, `SIZE`, `ABITS`, `INIT`, `ID`, `RD_PORTS`, and
+`WR_PORTS`; both port counts are always explicit. `RD_PORTS` counts independent
+asynchronous reads. `WR_PORTS=0` describes ROM, and `WR_PORTS=1` describes RAM
+with one positive-edge write port and per-bit write enables. Multiple write ports,
+synchronous RAM read ports, read resets, and collision/priority modes remain
+unsupported and are diagnosed before import.
 
-Native RAM and ROM share `addressWidth` and `dataWidth`. A zero `depthOverride`
+| Port | Width | Meaning |
+| --- | --- | --- |
+| `RD_ADDR` | `ABITS * RD_PORTS` | Packed read addresses |
+| `RD_DATA` | `WIDTH * RD_PORTS` | Packed read data |
+| `WR_ADDR` | `ABITS * WR_PORTS` | Packed write addresses |
+| `WR_DATA` | `WIDTH * WR_PORTS` | Packed write data |
+| `WR_EN` | `WIDTH * WR_PORTS` | Per-bit write enables |
+| `WR_CLK` | `WR_PORTS` | Positive-edge write clocks |
+
+All buses pack ports least-significant-lane first, matching `$mem_v2`. ROM write
+connections are empty arrays. A multi-read ROM imports as one `Memory` component
+and one initialization image/document, with all read ports preserved. Clocked ROM
+reads lower to external enabled address registers (or data registers for `SIZE=1`),
+including falling-edge clocks. Enabled output holds use separate scalar latches;
+these controls belong to the external storage rather than the memory cell.
+
+Initialization can be fully binary, entirely X, or a byte-aligned binary prefix
+followed by an UNKNOWN tail. Other mixed-X patterns and Z bits are rejected
+explicitly; they are never converted to zero. Memory attributes, including
+`silicon_mem_slug`, survive lowering. The cell preserves exact `SIZE` and `ABITS`,
+including non-power-of-two depths and address buses wider than the minimum.
+
+The native `Memory` component has a `type` property (`ROM` by default, or `RAM`).
+Both modes provide independent asynchronous read ports controlled by `readPorts`.
+RAM mode adds one positive-edge write port with independent address, data, and
+per-bit write enable; ROM mode has no write or control inputs. Imported ROM read
+selects use separate latches when output-hold behavior is required. Both modes
+share `addressWidth` and `dataWidth`. A zero `depthOverride`
 (the default) derives `2^addressWidth` words. A positive override selects an exact
 depth within that address space. Imports configure both `SIZE` and `ABITS`
 explicitly; wider address buses and out-of-range addresses survive save/load,

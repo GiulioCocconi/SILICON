@@ -228,11 +228,6 @@ namespace {
         return requireObjectMember(parametersJson, name, context);
       }
 
-      [[nodiscard]] bool hasParameter(const std::string_view name) const
-      {
-        return parametersJson.contains(name);
-      }
-
       void requireKnownConnectionNames(const std::span<const std::string> names) const
       {
         for (const auto& [name, _] : connectionsJson.items())
@@ -901,96 +896,38 @@ namespace {
       }
     }
 
-    void importRam(const Cell& cell)
-    {
-      const auto connections = std::to_array<std::string_view>(
-          {"RD_ADDR", "RD_DATA", "WR_ADDR", "WR_DATA", "WR_EN", "WR_CLK"});
-      const auto readPorts = cell.hasParameter("RD_PORTS") ? cell.width("RD_PORTS") : 1;
-      if (cell.hasParameter("RD_PORTS"))
-        cell.requireSchema(std::to_array<std::string_view>(
-            {"ID", "WIDTH", "SIZE", "ABITS", "INIT", "RD_PORTS"}), connections);
-      else
-        cell.requireSchema(std::to_array<std::string_view>(
-            {"ID", "WIDTH", "SIZE", "ABITS", "INIT"}), connections);
-      const auto width = cell.width("WIDTH");
-      const auto count = parseUnsigned(cell.parameter("SIZE"), cell.where());
-      const auto abits = cell.width("ABITS");
-      if (count == 0
-          || count > static_cast<std::size_t>(std::numeric_limits<int>::max()) / width
-          || abits < std::max<std::size_t>(1, std::bit_width(count - 1)))
-        fail(cell.where(), "unsupported RAM geometry");
-
-      auto ram = std::make_shared<RAM>();
-      ram->setProperty("readPorts", static_cast<int>(readPorts));
-      initializeMemory(cell, ram, width, count, abits);
-      const auto addresses = cell.consumerLanes("RD_ADDR", abits, readPorts);
-      std::vector<Bus> inputs{addresses[0], cell.consumer("WR_ADDR", abits),
-                              cell.consumer("WR_DATA", width),
-                              cell.consumer("WR_EN", width), cell.consumer("WR_CLK", 1)};
-      inputs.insert(inputs.end(), addresses.begin() + 1, addresses.end());
-      connectAndAdd(ram, std::move(inputs), cell.driverLanes("RD_DATA", width, readPorts));
-    }
-
-    void importRom(const Cell& cell)
+    void importMemory(const Cell& cell)
     {
       cell.requireSchema(
-          std::array<std::string_view, 7>{"WIDTH", "SIZE", "ABITS", "INIT", "ID", "SYNC",
-                                          "CLK_POLARITY"},
-          std::array<std::string_view, 5>{"ADDR", "DATA", "SELECT", "CLK", "EN"});
+          std::to_array<std::string_view>(
+              {"ID", "WIDTH", "SIZE", "ABITS", "INIT", "RD_PORTS", "WR_PORTS"}),
+          std::to_array<std::string_view>(
+              {"RD_ADDR", "RD_DATA", "WR_ADDR", "WR_DATA", "WR_EN", "WR_CLK"}));
       const auto width = cell.width("WIDTH");
-      const auto count =
-          static_cast<std::size_t>(parseUnsigned(cell.parameter("SIZE"), cell.where()));
+      const auto count     = parseUnsigned(cell.parameter("SIZE"), cell.where());
       const auto abits = cell.width("ABITS");
+      const auto readPorts = cell.width("RD_PORTS");
+      const bool writable  = cell.flag("WR_PORTS");
       if (count == 0
           || count > static_cast<std::size_t>(std::numeric_limits<int>::max()) / width
           || abits < std::max<std::size_t>(1, std::bit_width(count - 1)))
-        fail(cell.where(), "invalid canonical ROM geometry");
-      const bool synchronous   = cell.flag("SYNC");
-      const bool positiveClock = cell.flag("CLK_POLARITY");
-      auto       rom           = std::make_shared<ROM>();
-      initializeMemory(cell, rom, width, count, abits);
+        fail(cell.where(), "unsupported memory geometry");
 
-      Bus       address   = cell.consumer("ADDR", abits);
-      const Bus select    = cell.consumer("SELECT", 1);
-      const Bus clockBus  = cell.consumer("CLK", 1);
-      const Bus enableBus = cell.consumer("EN", 1);
-      if (!synchronous && (!cell.rawConstant("CLK", "0") || !cell.rawConstant("EN", "1")))
-        fail(cell.where(), "asynchronous ROM has invalid clock or enable");
-      Wire_ptr clock = clockBus[0];
-      if (synchronous && !positiveClock) {
-        const auto inverted = std::make_shared<Wire>();
-        addWithZeroDelay(std::make_shared<NotGate>(clock, inverted));
-        clock = inverted;
+      auto memory = std::make_shared<Memory>();
+      memory->setProperty("type", std::string(writable ? "RAM" : "ROM"));
+      memory->setProperty("readPorts", static_cast<int>(readPorts));
+      initializeMemory(cell, memory, width, count, abits);
+      auto inputs = cell.consumerLanes("RD_ADDR", abits, readPorts);
+      if (writable) {
+        inputs.insert(inputs.end(),
+                      {cell.consumer("WR_ADDR", abits), cell.consumer("WR_DATA", width),
+                       cell.consumer("WR_EN", width), cell.consumer("WR_CLK", 1)});
+      } else {
+        for (const auto port : {"WR_ADDR", "WR_DATA", "WR_EN", "WR_CLK"})
+          (void)cell.consumerLanes(port, 0, 0);
       }
-      if (synchronous && count > 1) {
-        std::vector<Wire_ptr> data(address.begin(), address.end());
-        while (data.size() < 2)
-          data.push_back(constantWire("0", cell.where()));
-        Bus registeredAddress(static_cast<unsigned short>(data.size()));
-        addWithZeroDelay(std::make_shared<Register>(
-            Bus(std::move(data)), clock, enableBus[0], nullptr, registeredAddress));
-        address = slice(registeredAddress, 0, abits);
-      }
-
-      const Bus romOutput = synchronous && count == 1
-                                ? Bus(static_cast<unsigned short>(width))
-                                : cell.driver("DATA", width);
-      connectAndAdd(
-          rom,
-          {address, select,
-           readBus(Json::array({"1"}), ConnectionRole::Consumer, cell.where(), 1)},
-          {romOutput});
-      if (synchronous && count == 1) {
-        const Bus             registeredData = cell.driver("DATA", width);
-        std::vector<Wire_ptr> data(romOutput.begin(), romOutput.end());
-        std::vector<Wire_ptr> outputs(registeredData.begin(), registeredData.end());
-        while (data.size() < 2) {
-          data.push_back(constantWire("0", cell.where()));
-          outputs.push_back(std::make_shared<Wire>());
-        }
-        addWithZeroDelay(std::make_shared<Register>(
-            Bus(std::move(data)), clock, enableBus[0], nullptr, Bus(std::move(outputs))));
-      }
+      connectAndAdd(memory, std::move(inputs),
+                    cell.driverLanes("RD_DATA", width, readPorts));
     }
 
     [[nodiscard]] static std::vector<Bus>
@@ -1641,8 +1578,7 @@ namespace {
       using CellHandler = void (Importer::*)(const Cell&);
       static constexpr auto HANDLERS =
           std::to_array<std::pair<std::string_view, CellHandler>>({
-              {cells::ROM, &Importer::importRom},
-              {cells::RAM, &Importer::importRam},
+              {cells::MEMORY, &Importer::importMemory},
               {cells::DFF, &Importer::importSiliconDff<false, false>},
               {cells::DFFE, &Importer::importSiliconDff<true, false>},
               {cells::DLATCH, &Importer::importSiliconDlatch},

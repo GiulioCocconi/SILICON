@@ -33,54 +33,34 @@ using namespace SILICON::core;
 
 namespace {
 
-  class MemoryShape final : public QGraphicsRectItem {
-  public:
-    MemoryShape(QString label, const QRectF& bounds)
-      : QGraphicsRectItem(bounds), label(std::move(label))
-    {
-    }
+  constexpr int MemoryWidth        = 160;
+  constexpr int MemoryHeaderHeight = 30;
+  constexpr int MemoryWriteHeight  = 110;
+  constexpr int MemoryReadHeight   = 60;
+  constexpr int MemorySectionInset = 10;
+  constexpr int MemoryPortOffset   = 30;
 
-    void paint(QPainter* painter, const QStyleOptionGraphicsItem* option,
-               QWidget* widget) override
-    {
-      Q_UNUSED(option);
-      Q_UNUSED(widget);
-
-      painter->save();
-      painter->setRenderHint(QPainter::Antialiasing, false);
-      painter->setPen(QPen(ThemeEngine::getColor(theme::ColorToken::Ink), 3));
-      painter->setBrush(ThemeEngine::getColor(theme::ColorToken::Internal));
-      painter->drawRect(rect());
-      painter->setPen(QPen(ThemeEngine::getColor(theme::ColorToken::Ink)));
-      painter->setFont(QFont("Quicksand", 10, QFont::Bold));
-      painter->drawText(rect(), label, QTextOption(Qt::AlignCenter));
-      painter->restore();
-    }
-
-  private:
-    QString label;
-  };
-
-  constexpr int RamWidth        = 160;
-  constexpr int RamHeaderHeight = 30;
-  constexpr int RamWriteHeight  = 110;
-  constexpr int RamReadHeight   = 60;
-  constexpr int RamSectionInset = 10;
-  constexpr int RamPortOffset   = 30;
+  int memoryTop(const Memory& memory)
+  {
+    return memory.isWritable() ? -MemoryWriteHeight : 0;
+  }
 
   int readPortY(const std::size_t port)
   {
-    return RamHeaderHeight + RamWriteHeight + static_cast<int>(port) * RamReadHeight
-           + RamPortOffset;
+    // Read lanes keep their endpoints in both modes. The optional write section
+    // grows above them, so no surviving wire can land on another semantic port.
+    return MemoryHeaderHeight + static_cast<int>(port) * MemoryReadHeight
+           + MemoryPortOffset;
   }
 
-  class RamShape final : public QGraphicsRectItem {
+  class MemoryShape final : public QGraphicsRectItem {
   public:
-    explicit RamShape(std::shared_ptr<RAM> ram)
-      : QGraphicsRectItem(0, 0, RamWidth,
-                          RamHeaderHeight + RamWriteHeight
-                              + static_cast<int>(ram->readPortCount()) * RamReadHeight),
-        ram(std::move(ram))
+    explicit MemoryShape(std::shared_ptr<Memory> memory)
+      : QGraphicsRectItem(
+            0, memoryTop(*memory), MemoryWidth,
+            MemoryHeaderHeight + (memory->isWritable() ? MemoryWriteHeight : 0)
+                + static_cast<int>(memory->readPortCount()) * MemoryReadHeight),
+        memory(std::move(memory))
     {
       setPen(QPen(ThemeEngine::getColor(theme::ColorToken::Ink), 2));
     }
@@ -99,11 +79,13 @@ namespace {
       painter->drawRect(rect());
       painter->setPen(ink);
       painter->setFont(QFont("Quicksand", 10, QFont::Bold));
-      painter->drawText(QRectF(0, 4, RamWidth, 22), QStringLiteral("RAM"),
-                        QTextOption(Qt::AlignCenter));
+      painter->drawText(
+          QRectF(0, memoryTop(*memory) + 4, MemoryWidth, 22),
+          QString::fromStdString(memory->getPropertyValue<std::string>("type").value()),
+          QTextOption(Qt::AlignCenter));
       const auto drawSection = [&](int top, int height, const QString& title) {
-        const QRectF bounds(RamSectionInset, top, RamWidth - 2 * RamSectionInset,
-                            height - RamSectionInset);
+        const QRectF bounds(MemorySectionInset, top, MemoryWidth - 2 * MemorySectionInset,
+                            height - MemorySectionInset);
         painter->setPen(QPen(ink, 1));
         painter->setBrush(Qt::NoBrush);
         painter->drawRect(bounds);
@@ -112,93 +94,54 @@ namespace {
         painter->drawText(QRectF(bounds.left(), top + 4, bounds.width(), 20), title,
                           QTextOption(Qt::AlignCenter));
       };
-      drawSection(RamHeaderHeight, RamWriteHeight, QStringLiteral("WRITE 0"));
-      for (std::size_t port = 0; port < ram->readPortCount(); ++port)
-        drawSection(readPortY(port) - RamPortOffset, RamReadHeight,
+      if (memory->isWritable())
+        drawSection(memoryTop(*memory) + MemoryHeaderHeight, MemoryWriteHeight,
+                    QStringLiteral("WRITE 0"));
+      for (std::size_t port = 0; port < memory->readPortCount(); ++port)
+        drawSection(readPortY(port) - MemoryPortOffset, MemoryReadHeight,
                     QStringLiteral("READ %1").arg(port));
       painter->restore();
     }
 
   private:
-    std::shared_ptr<RAM> ram;
+    std::shared_ptr<Memory> memory;
   };
-
-  std::shared_ptr<ROM> makeRom()
-  {
-    return std::make_shared<ROM>(Bus(1), std::make_shared<Wire>(),
-                                 std::make_shared<Wire>(), Bus(8));
-  }
 
 }  // namespace
 
-GraphicalMemory::GraphicalMemory(const std::shared_ptr<Memory>& memory,
-                                 QGraphicsItem* shape, QGraphicsItem* parent)
-  : GraphicalLogicComponent(memory, shape, parent)
+GraphicalMemory::GraphicalMemory(QGraphicsItem* parent)
+  : GraphicalLogicComponent(std::make_shared<Memory>(), nullptr, parent)
 {
   isEditable     = true;
   printPortNames = true;
-}
-
-GraphicalROM::GraphicalROM(QGraphicsItem* parent)
-  : GraphicalMemory(makeRom(),
-                    new MemoryShape(QStringLiteral("ROM"), QRectF(0, 0, 100, 80)), parent)
-{
-  setPorts({PortPair{"addr", QPoint(-20, 20)}, PortPair{"CS", QPoint(-20, 40)},
-            PortPair{"OE", QPoint(-20, 60)}},
-           {PortPair{"d", QPoint(120, 40)}});
-}
-
-GraphicalRAM::GraphicalRAM(QGraphicsItem* parent)
-  : GraphicalMemory(std::make_shared<RAM>(),
-                    new MemoryShape(QStringLiteral("RAM"), QRectF(0, 0, 100, 120)),
-                    parent)
-{
   rebuildPorts();
 }
 
-void GraphicalRAM::setComponent(const Component_ptr& component)
+void GraphicalMemory::rebuildPorts()
 {
-  GraphicalMemory::setComponent(component);
-  rebuildPorts();
-}
-
-void GraphicalRAM::applyProperties(const PropertyMap& values)
-{
-  const auto ram    = std::dynamic_pointer_cast<RAM>(associatedComponent);
-  const auto before = ram->readPortCount();
-  GraphicalMemory::applyProperties(values);
-  if (before != ram->readPortCount())
-    rebuildPorts();
-}
-
-void GraphicalRAM::applyProperty(const std::string_view key, const PropertyValue& value)
-{
-  GraphicalMemory::applyProperty(key, value);
-  if (key == "readPorts")
-    rebuildPorts();
-}
-
-void GraphicalRAM::rebuildPorts()
-{
-  const auto ram = std::dynamic_pointer_cast<RAM>(associatedComponent);
-  const auto count = ram->readPortCount();
-  setItemShape(new RamShape(ram));
-  // Preserve the core input indices while grouping the visible ports by operation.
-  std::vector<PortPair> inputs{
-      {"ADDR", QPoint(-20, readPortY(0))},
-      {"ADDR", QPoint(-20, RamHeaderHeight + RamPortOffset)},
-      {"DATA", QPoint(-20, RamHeaderHeight + RamPortOffset + 20)},
-      {"WE", QPoint(-20, RamHeaderHeight + RamPortOffset + 40)},
-      {"clk", QPoint(-20, RamHeaderHeight + RamPortOffset + 60)}};
+  const auto memory = std::dynamic_pointer_cast<Memory>(associatedComponent);
+  setItemShape(new MemoryShape(memory));
+  std::vector<PortPair> inputs(memory->inputBuses().size());
   std::vector<PortPair> outputs;
-  for (std::size_t port = 0; port < count; ++port) {
-    if (port != 0)
-      inputs.push_back({"ADDR", QPoint(-20, readPortY(port))});
-    outputs.push_back({"DATA", QPoint(RamWidth + 20, readPortY(port))});
+  if (memory->isWritable()) {
+    const auto writeY = memoryTop(*memory) + MemoryHeaderHeight + MemoryPortOffset;
+    inputs[memory->writeInputIndex(Memory::WriteInputs::Address)] = {"ADDR",
+                                                                     QPoint(-20, writeY)};
+    inputs[memory->writeInputIndex(Memory::WriteInputs::Data)]    = {
+        "DATA", QPoint(-20, writeY + 20)};
+    inputs[memory->writeInputIndex(Memory::WriteInputs::Enable)] = {
+        "WE", QPoint(-20, writeY + 40)};
+    inputs[memory->writeInputIndex(Memory::WriteInputs::Clock)] = {
+        "clk", QPoint(-20, writeY + 60)};
+  }
+  for (std::size_t port = 0; port < memory->readPortCount(); ++port) {
+    const auto y = readPortY(port);
+    inputs[port] = {"ADDR", QPoint(-20, y)};
+    outputs.push_back({"DATA", QPoint(MemoryWidth + 20, y)});
   }
   setPorts(inputs, outputs);
   for (auto* port : getPorts())
-    port->setLabelInset(2 * RamSectionInset);
+    port->setLabelInset(2 * MemorySectionInset);
 }
 
 GraphicalMemory::~GraphicalMemory()
@@ -226,6 +169,7 @@ void GraphicalMemory::setComponent(const Component_ptr& component)
 
   if (documents)
     refreshBinaryContents();
+  rebuildPorts();
 }
 
 void GraphicalMemory::applyProperty(const std::string_view key,
@@ -233,6 +177,8 @@ void GraphicalMemory::applyProperty(const std::string_view key,
 {
   if (key != "binaryContents") {
     GraphicalLogicComponent::applyProperty(key, value);
+    if (key == "type" || key == "readPorts")
+      rebuildPorts();
     return;
   }
 
@@ -253,6 +199,7 @@ void GraphicalMemory::applyProperties(const PropertyMap& values)
   std::dynamic_pointer_cast<Memory>(associatedComponent)->setProperties(values);
   if (documents)
     refreshBinaryContents();  // Resolve current bytes; undo never carries document data.
+  rebuildPorts();
   update();
   emit propertiesChanged();
 }

@@ -243,10 +243,10 @@ std::string romSubcircuitDocument()
       "components": [
         {
           "id": 0,
-          "type": "ROM",
-          "properties": {"addressWidth": 2, "dataWidth": 8, "depthOverride": 0,
+          "type": "Memory",
+          "properties": {"type": "ROM", "readPorts": 1, "addressWidth": 2, "dataWidth": 8, "depthOverride": 0,
                          "initialization": "Binary document", "binaryContents": "program", "padding": "Zero"},
-          "inputs": [[1, 2], [3], [4]],
+          "inputs": [[1, 2]],
           "outputs": [[5, 6, 7, 8, 9, 10, 11, 12]]
         }
       ]
@@ -288,25 +288,11 @@ std::string romSimulationLeafDocument()
           "outputs": [[1, 2]]
         },
         {
-          "id": 1,
-          "type": "DummyInputComponent",
-          "properties": {"name": "cs", "portOrientation": "DOWN", "startValue": "0"},
-          "inputs": [],
-          "outputs": [[3]]
-        },
-        {
-          "id": 2,
-          "type": "DummyInputComponent",
-          "properties": {"name": "oe", "portOrientation": "DOWN", "startValue": "0"},
-          "inputs": [],
-          "outputs": [[4]]
-        },
-        {
           "id": 3,
-          "type": "ROM",
-          "properties": {"addressWidth": 2, "dataWidth": 8, "depthOverride": 0,
+          "type": "Memory",
+          "properties": {"type": "ROM", "readPorts": 1, "addressWidth": 2, "dataWidth": 8, "depthOverride": 0,
                          "initialization": "Binary document", "binaryContents": "program", "padding": "Zero"},
-          "inputs": [[1, 2], [3], [4]],
+          "inputs": [[1, 2]],
           "outputs": [[5, 6, 7, 8, 9, 10, 11, 12]]
         },
         {
@@ -336,24 +322,10 @@ std::string romSimulationParentDocument()
           "outputs": [[1, 2]]
         },
         {
-          "id": 1,
-          "type": "DummyInputComponent",
-          "properties": {"name": "cs", "portOrientation": "DOWN", "startValue": "0"},
-          "inputs": [],
-          "outputs": [[3]]
-        },
-        {
-          "id": 2,
-          "type": "DummyInputComponent",
-          "properties": {"name": "oe", "portOrientation": "DOWN", "startValue": "0"},
-          "inputs": [],
-          "outputs": [[4]]
-        },
-        {
           "id": 3,
           "type": "Subcircuit",
           "properties": {"slug": "rom_sim_leaf"},
-          "inputs": [[1, 2], [3], [4]],
+          "inputs": [[1, 2]],
           "outputs": [[5, 6, 7, 8, 9, 10, 11, 12]]
         },
         {
@@ -953,7 +925,7 @@ TEST_F(SubcircuitTest, HydratesRomSnapshotsInNestedResolvedDefinitions)
   auto              runtime = elaborator.elaborate(source);
 
   ASSERT_EQ(runtime->getComponentToVertex().size(), 1);
-  const auto rom = std::dynamic_pointer_cast<ROM>(runtime->getComponentByVertexId(0));
+  const auto rom = std::dynamic_pointer_cast<Memory>(runtime->getComponentByVertexId(0));
   ASSERT_NE(rom, nullptr);
   ASSERT_NE(rom->binaryContentsSnapshot(), nullptr);
   EXPECT_EQ(*rom->binaryContentsSnapshot(),
@@ -971,19 +943,13 @@ TEST_F(SubcircuitTest, SimulatesRomInsideSingleSubcircuit)
   component->setPropertyValue("slug", std::string("rom_sim_leaf"));
 
   Bus  address(2);
-  auto cs = std::make_shared<Wire>();
-  auto oe = std::make_shared<Wire>();
   Bus  data(8);
   component->setInput(0, address);
-  component->setInput(1, Bus{cs});
-  component->setInput(2, Bus{oe});
   component->setOutput(0, data);
 
   auto                         circuit = std::make_shared<Circuit>(component, false);
   SILICON::simulation::Session simulator(circuit, {}, &resolver);
 
-  ASSERT_EQ(simulator.setBus(Bus{cs}, valueFor(Bus{cs}, 1)),
-            Simulator::RunResult::Completed);
   const std::array<std::uint8_t, 4> expected{0x10, 0x20, 0x30, 0x40};
   for (std::size_t index = 0; index < expected.size(); ++index) {
     ASSERT_EQ(simulator.setBus(address, valueFor(address, index)),
@@ -1004,19 +970,13 @@ TEST_F(SubcircuitTest, SimulatesRomInsideNestedSubcircuits)
   component->setPropertyValue("slug", std::string("rom_sim_parent"));
 
   Bus  address(2);
-  auto cs = std::make_shared<Wire>();
-  auto oe = std::make_shared<Wire>();
   Bus  data(8);
   component->setInput(0, address);
-  component->setInput(1, Bus{cs});
-  component->setInput(2, Bus{oe});
   component->setOutput(0, data);
 
   auto                         circuit = std::make_shared<Circuit>(component, false);
   SILICON::simulation::Session simulator(circuit, {}, &resolver);
 
-  ASSERT_EQ(simulator.setBus(Bus{cs}, valueFor(Bus{cs}, 1)),
-            Simulator::RunResult::Completed);
   const std::array<std::uint8_t, 4> expected{0x10, 0x20, 0x30, 0x40};
   for (std::size_t index = 0; index < expected.size(); ++index) {
     ASSERT_EQ(simulator.setBus(address, valueFor(address, index)),
@@ -1035,19 +995,13 @@ TEST_F(SubcircuitTest, ElaboratedRomRuntimeStaysStableAfterSourceRefresh)
   component->setPropertyValue("slug", std::string("rom_sim_leaf"));
 
   Bus  address(2);
-  auto cs = std::make_shared<Wire>();
-  auto oe = std::make_shared<Wire>();
   Bus  data(8);
   component->setInput(0, address);
-  component->setInput(1, Bus{cs});
-  component->setInput(2, Bus{oe});
   component->setOutput(0, data);
 
   auto                         circuit = std::make_shared<Circuit>(component, false);
   SILICON::simulation::Session simulator(circuit, {}, &resolver);
 
-  ASSERT_EQ(simulator.setBus(Bus{cs}, valueFor(Bus{cs}, 1)),
-            Simulator::RunResult::Completed);
   ASSERT_EQ(simulator.setBus(address, valueFor(address, 1)),
             Simulator::RunResult::Completed);
   EXPECT_EQ(data.getCurrentValue(), valueFor(data, 0x20));

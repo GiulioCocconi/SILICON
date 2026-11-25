@@ -30,11 +30,14 @@ TEST(YosysRomTest, NormalizesMemoryBeforeJsonExport)
   for (const auto& [name, cell] : cells.items()) {
     (void)name;
     EXPECT_NE(cell.at("type"), "$mem_v2");
-    if (cell.at("type") == "SILICON_ROM") {
+    if (cell.at("type") == "SILICON_MEMORY") {
       ++canonical;
       EXPECT_TRUE(cell.at("parameters").contains("SIZE"));
       EXPECT_TRUE(cell.at("parameters").contains("INIT"));
-      EXPECT_TRUE(cell.at("connections").contains("SELECT"));
+      EXPECT_TRUE(cell.at("connections").contains("RD_ADDR"));
+      EXPECT_EQ(
+          std::stoul(cell.at("parameters").at("WR_PORTS").get<std::string>(), nullptr, 2),
+          0);
     }
   }
   EXPECT_EQ(canonical, 1);
@@ -72,8 +75,8 @@ TEST(YosysRomTest, ImportsInitializedArrayAndCreatesBinaryDocument)
   const auto& imported = std::get<Circuit>(circuit->payload);
   std::size_t roms = 0;
   for (const auto& [component, vertex] : imported.getComponentToVertex()) {
-    EXPECT_FALSE(std::dynamic_pointer_cast<DLatch>(imported.getComponentByVertexId(vertex)));
-    const auto rom = std::dynamic_pointer_cast<ROM>(imported.getComponentByVertexId(vertex));
+    const auto rom =
+        std::dynamic_pointer_cast<Memory>(imported.getComponentByVertexId(vertex));
     if (!rom) continue;
     ++roms;
     EXPECT_EQ(rom->getPropertyValue<std::string>("binaryContents"), "rom_table");
@@ -83,33 +86,71 @@ TEST(YosysRomTest, ImportsInitializedArrayAndCreatesBinaryDocument)
     auto simulationCircuit = std::make_shared<Circuit>(Component_set{rom});
     Simulator simulator(simulationCircuit);
     const auto address = rom->inputBuses()[0];
-    const auto cs = rom->inputBuses()[1];
-    const auto data = rom->outputBuses()[0];
-    ASSERT_EQ(simulator.setBus(cs, valueFor(cs, 1)), Simulator::RunResult::Completed);
+    const auto data    = rom->outputBuses()[0];
     ASSERT_EQ(simulator.setBus(address, valueFor(address, 2)), Simulator::RunResult::Completed);
     EXPECT_EQ(data.getCurrentValue(), valueFor(data, 0x56));
-    ASSERT_EQ(simulator.setBus(cs, valueFor(cs, 0)), Simulator::RunResult::Completed);
     ASSERT_EQ(simulator.setBus(address, valueFor(address, 3)), Simulator::RunResult::Completed);
-    EXPECT_EQ(data.getCurrentValue(), valueFor(data, 0x56));
+    EXPECT_EQ(data.getCurrentValue(), valueFor(data, 0x78));
   }
   EXPECT_EQ(roms, 1);
 }
 
+TEST(YosysRomTest, ImportedReadSelectHoldsOutputWithSeparateLatches)
+{
+  auto       circuit = std::make_shared<Circuit>(SILICON::yosys::deserialize(
+      SILICON::yosys::elaborateHierarchy(SILICON::verilog::read(
+          "module selected(input a, input cs, output reg [7:0] q); "
+                "reg [7:0] mem[0:1]; initial begin mem[0]=8'h12;mem[1]=8'h34;end "
+                "always @* if (cs) q=mem[a]; endmodule")),
+      "selected"));
+  const auto memory  = findComponent<Memory>(*circuit);
+  ASSERT_TRUE(memory);
+  EXPECT_FALSE(memory->isWritable());
+  EXPECT_EQ(memory->inputBuses().size(), 1);
+  EXPECT_EQ(std::ranges::count_if(componentsIn(*circuit),
+                                  [](const auto& component) {
+                                    return std::dynamic_pointer_cast<DLatch>(component)
+                                           != nullptr;
+                                  }),
+            8);
+  std::map<std::string, Bus> ports;
+  for (const auto& component : componentsIn(*circuit)) {
+    const auto role = component->metadata().portRole;
+    if (role != PortRole::None)
+      ports.emplace(component->getPropertyValue<std::string>("name").value(),
+                    role == PortRole::Input ? component->outputBuses()[0]
+                                            : component->inputBuses()[0]);
+  }
+  Simulator  simulator(circuit);
+  const auto set = [&](const std::string& name, unsigned value) {
+    EXPECT_EQ(simulator.setBus(ports.at(name), valueFor(ports.at(name), value)),
+              Simulator::RunResult::Completed);
+  };
+  set("a", 0);
+  set("cs", 1);
+  EXPECT_EQ(ports.at("q").getCurrentValue(), valueFor(8, 0x12));
+  set("cs", 0);
+  set("a", 1);
+  EXPECT_EQ(ports.at("q").getCurrentValue(), valueFor(8, 0x12));
+  set("cs", 1);
+  EXPECT_EQ(ports.at("q").getCurrentValue(), valueFor(8, 0x34));
+}
+
 TEST(YosysRomTest, ExportsSelfContainedInitializedArrayAndReimportsIt)
 {
-  auto rom = std::make_shared<ROM>();
+  auto rom = std::make_shared<Memory>();
   rom->setProperty("dataWidth", 10);
-  const Bus address(2), cs(1), oe(1), data(10);
+  const Bus address(2), data(10);
   rom->setProperty("binaryContents", std::string("program"));
-  rom->setInputs({address, cs, oe});
+  rom->setInputs({address});
   rom->setOutputs({data});
   rom->setGeometry(10, 2, 3);
   rom->refreshBinaryContents(std::make_shared<const std::vector<std::uint8_t>>(
       (std::vector<std::uint8_t>{0xA5, 0x3C, 0x0F, 0x2E})));
-  Circuit circuit(Component_set{
-      rom, std::make_shared<DummyInputComponent>(address, "address"),
-      std::make_shared<DummyInputComponent>(cs, "cs"),
-      std::make_shared<DummyOutputComponent>(data, "data")}, false);
+  Circuit    circuit(Component_set{rom,
+                                std::make_shared<DummyInputComponent>(address, "address"),
+                                std::make_shared<DummyOutputComponent>(data, "data")},
+                     false);
   const auto source = SILICON::verilog::write(circuit, "romtest");
   EXPECT_NE(source.find("initial"), std::string::npos);
   EXPECT_NE(source.find(SILICON::yosys::attributes::BINARY_DOCUMENT), std::string::npos);
@@ -118,7 +159,8 @@ TEST(YosysRomTest, ExportsSelfContainedInitializedArrayAndReimportsIt)
       SILICON::yosys::elaborateHierarchy(SILICON::verilog::read(source)), "romtest");
   std::size_t roms = 0;
   for (const auto& [component, vertex] : imported.getComponentToVertex()) {
-    const auto restored = std::dynamic_pointer_cast<ROM>(imported.getComponentByVertexId(vertex));
+    const auto restored =
+        std::dynamic_pointer_cast<Memory>(imported.getComponentByVertexId(vertex));
     if (!restored) continue;
     ++roms;
     EXPECT_EQ(restored->memoryDepth(), 3);
@@ -127,10 +169,7 @@ TEST(YosysRomTest, ExportsSelfContainedInitializedArrayAndReimportsIt)
               (std::vector<std::uint8_t>{0xA5, 0x3C, 0x0F, 0x2E}));
     auto       simulationCircuit = std::make_shared<Circuit>(Component_set{restored});
     Simulator  simulator(simulationCircuit);
-    const auto select = restored->inputBuses()[1];
-    const auto addr   = restored->inputBuses()[0];
-    ASSERT_EQ(simulator.setBus(select, valueFor(select, 1)),
-              Simulator::RunResult::Completed);
+    const auto addr = restored->inputBuses()[0];
     ASSERT_EQ(simulator.setBus(addr, valueFor(addr, 2)), Simulator::RunResult::Completed);
     EXPECT_EQ(restored->outputBuses()[0].getCurrentValue(), valueFor(10, 0x2E0));
     ASSERT_EQ(simulator.setBus(addr, valueFor(addr, 3)), Simulator::RunResult::Completed);
@@ -139,26 +178,48 @@ TEST(YosysRomTest, ExportsSelfContainedInitializedArrayAndReimportsIt)
   EXPECT_EQ(roms, 1);
 }
 
-TEST(YosysRomTest, SharesBinaryDocumentAcrossReadPorts)
+TEST(YosysRomTest, ImportsMultipleReadPortsAsOneMemory)
 {
   const std::string sourceText =
       "module multi(input [1:0] a, input [1:0] b, output [7:0] x, output [7:0] y);\n"
       "reg [7:0] table [0:2];\n"
       "initial begin table[0]=8'h12; table[1]=8'h34; table[2]=8'h56; end\n"
       "assign x=table[a]; assign y=table[b]; endmodule\n";
-  const auto imported = SILICON::yosys::deserialize(
-      SILICON::yosys::elaborateHierarchy(SILICON::verilog::read(sourceText)), "multi");
-  std::size_t roms = 0;
-  for (const auto& [component, vertex] : imported.getComponentToVertex()) {
-    const auto rom = std::dynamic_pointer_cast<ROM>(imported.getComponentByVertexId(vertex));
-    if (!rom) continue;
-    ++roms;
+  auto sourceVerilog = sourceText;
+  for (int round = 0; round < 2; ++round) {
+    auto circuit = std::make_shared<Circuit>(importVerilog(sourceVerilog, "multi"));
+    EXPECT_EQ(componentTypes(*circuit).count("Memory"), 1);
+    const auto rom = findComponent<Memory>(*circuit);
+    ASSERT_TRUE(rom);
+    EXPECT_FALSE(rom->isWritable());
+    EXPECT_EQ(rom->readPortCount(), 2);
+    EXPECT_EQ(rom->inputBuses().size(), 2);
+    EXPECT_EQ(rom->outputBuses().size(), 2);
     EXPECT_EQ(rom->getPropertyValue<std::string>("binaryContents"), "multi_table");
     ASSERT_TRUE(rom->binaryContentsSnapshot());
     EXPECT_EQ(*rom->binaryContentsSnapshot(),
               (std::vector<std::uint8_t>{0x12, 0x34, 0x56}));
+    std::map<std::string, Bus> ports;
+    for (const auto& component : componentsIn(*circuit)) {
+      const auto role = component->metadata().portRole;
+      if (role != PortRole::None)
+        ports.emplace(component->getPropertyValue<std::string>("name").value(),
+                      role == PortRole::Input ? component->outputBuses()[0]
+                                              : component->inputBuses()[0]);
+    }
+    Simulator simulator(circuit);
+    EXPECT_EQ(simulator.setBus(ports.at("a"), valueFor(2, 1)),
+              Simulator::RunResult::Completed);
+    EXPECT_EQ(simulator.setBus(ports.at("b"), valueFor(2, 2)),
+              Simulator::RunResult::Completed);
+    EXPECT_EQ(ports.at("x").getCurrentValue(), valueFor(8, 0x34));
+    EXPECT_EQ(ports.at("y").getCurrentValue(), valueFor(8, 0x56));
+    EXPECT_EQ(simulator.setBus(ports.at("a"), valueFor(2, 3)),
+              Simulator::RunResult::Completed);
+    EXPECT_EQ(ports.at("x").getCurrentValue(), BusValue(8, State::UNKNOWN));
+    EXPECT_EQ(ports.at("y").getCurrentValue(), valueFor(8, 0x56));
+    sourceVerilog = SILICON::verilog::write(*circuit, "multi");
   }
-  EXPECT_EQ(roms, 2);
   const SILICON::project::Document source{"code/multi.v", sourceText};
   const std::vector<SILICON::project::Document> documents{source};
   SILICON::project::ProjectContext project;
@@ -173,6 +234,73 @@ TEST(YosysRomTest, SharesBinaryDocumentAcrossReadPorts)
   EXPECT_EQ(std::ranges::count_if(result.documents, [](const auto& document) {
               return std::holds_alternative<SILICON::conversion::BinarySource>(document.payload);
             }), 1);
+}
+
+TEST(YosysRomTest, MultipleReadPortsKeepIndependentRegistersAndLatches)
+{
+  std::string source = "module mixed_reads(input clk,en,cs, input [1:0] a,b,c,d, "
+                       "output reg [7:0] x,y,h, output [7:0] z);"
+                       "reg [7:0] mem[0:2]; initial begin "
+                       "mem[0]=8'h12;mem[1]=8'h34;mem[2]=8'h56;end "
+                       "always @(posedge clk) if(en) x<=mem[a];"
+                       "always @(negedge clk) if(en) y<=mem[b];"
+                       "assign z=mem[c]; always @* if(cs) h=mem[d]; endmodule";
+  for (int round = 0; round < 2; ++round) {
+    auto       circuit = std::make_shared<Circuit>(importVerilog(source, "mixed_reads"));
+    const auto types   = componentTypes(*circuit);
+    EXPECT_EQ(types.count("Memory"), 1);
+    EXPECT_EQ(types.count("Register"), 2);
+    EXPECT_EQ(types.count("DLatch"), 8);
+    const auto rom = findComponent<Memory>(*circuit);
+    ASSERT_TRUE(rom);
+    EXPECT_EQ(rom->readPortCount(), 4);
+    std::map<std::string, Bus> ports;
+    for (const auto& component : componentsIn(*circuit)) {
+      const auto role = component->metadata().portRole;
+      if (role != PortRole::None)
+        ports.emplace(component->getPropertyValue<std::string>("name").value(),
+                      role == PortRole::Input ? component->outputBuses()[0]
+                                              : component->inputBuses()[0]);
+    }
+    Simulator  simulator(circuit);
+    const auto set = [&](const std::string& name, unsigned value) {
+      EXPECT_EQ(simulator.setBus(ports.at(name), valueFor(ports.at(name), value)),
+                Simulator::RunResult::Completed);
+    };
+    set("clk", 0);
+    set("en", 1);
+    set("cs", 1);
+    set("a", 0);
+    set("b", 1);
+    set("c", 2);
+    set("d", 0);
+    set("clk", 1);
+    EXPECT_EQ(ports.at("x").getCurrentValue(), valueFor(8, 0x12));
+    set("clk", 0);
+    EXPECT_EQ(ports.at("y").getCurrentValue(), valueFor(8, 0x34));
+    EXPECT_EQ(ports.at("z").getCurrentValue(), valueFor(8, 0x56));
+    EXPECT_EQ(ports.at("h").getCurrentValue(), valueFor(8, 0x12));
+    set("en", 0);
+    set("cs", 0);
+    set("a", 2);
+    set("b", 0);
+    set("c", 1);
+    set("d", 1);
+    set("clk", 1);
+    set("clk", 0);
+    EXPECT_EQ(ports.at("x").getCurrentValue(), valueFor(8, 0x12));
+    EXPECT_EQ(ports.at("y").getCurrentValue(), valueFor(8, 0x34));
+    EXPECT_EQ(ports.at("z").getCurrentValue(), valueFor(8, 0x34));
+    EXPECT_EQ(ports.at("h").getCurrentValue(), valueFor(8, 0x12));
+    set("en", 1);
+    set("clk", 1);
+    EXPECT_EQ(ports.at("x").getCurrentValue(), valueFor(8, 0x56));
+    set("clk", 0);
+    EXPECT_EQ(ports.at("y").getCurrentValue(), valueFor(8, 0x12));
+    set("cs", 1);
+    EXPECT_EQ(ports.at("h").getCurrentValue(), valueFor(8, 0x34));
+    source = SILICON::verilog::write(*circuit, "mixed_reads");
+  }
 }
 
 TEST(YosysRomTest, VerilogAttributeSetsBinaryDocumentName)
@@ -205,7 +333,7 @@ TEST(YosysRomTest, VerilogAttributeSetsBinaryDocumentName)
   });
   ASSERT_NE(circuit, converted.documents.end());
   for (const auto& [component, vertex] : std::get<Circuit>(circuit->payload).getComponentToVertex()) {
-    const auto rom = std::dynamic_pointer_cast<ROM>(
+    const auto rom = std::dynamic_pointer_cast<Memory>(
         std::get<Circuit>(circuit->payload).getComponentByVertexId(vertex));
     if (rom) {
       EXPECT_EQ(rom->getPropertyValue<std::string>("binaryContents"), "firmware");
@@ -215,19 +343,19 @@ TEST(YosysRomTest, VerilogAttributeSetsBinaryDocumentName)
 
 TEST(YosysRomTest, CircuitConversionHydratesBinaryDocument)
 {
-  auto rom = std::make_shared<ROM>();
+  auto rom = std::make_shared<Memory>();
   rom->setProperty("dataWidth", 10);
-  const Bus address(1), cs(1), data(10);
+  const Bus address(1), data(10);
   rom->setProperty("binaryContents", std::string("program"));
-  rom->setInputs({address, cs, Bus(1)});
+  rom->setInputs({address});
   rom->setOutputs({data});
   rom->setGeometry(10, 1, 2);
   rom->refreshBinaryContents(std::make_shared<const std::vector<std::uint8_t>>(
       (std::vector<std::uint8_t>{0xA5, 0x3C, 0x0F})));
-  Circuit circuit(Component_set{
-      rom, std::make_shared<DummyInputComponent>(address, "address"),
-      std::make_shared<DummyInputComponent>(cs, "cs"),
-      std::make_shared<DummyOutputComponent>(data, "data")}, false);
+  Circuit                          circuit(Component_set{rom,
+                                std::make_shared<DummyInputComponent>(address, "address"),
+                                std::make_shared<DummyOutputComponent>(data, "data")},
+                                           false);
   const SILICON::project::Document source{
       "circuits/romtop.json",
       nlohmann::json{{"circuit", nlohmann::json::parse(circuit.serialize())}}.dump()};
@@ -257,7 +385,7 @@ TEST(YosysRomTest, ImportsClockedReadWithAddressRegister)
   std::shared_ptr<DummyBusInputComponent> addressInput;
   std::shared_ptr<DummyInputComponent> clockInput;
   std::shared_ptr<DummyBusOutputComponent> output;
-  std::shared_ptr<ROM> rom;
+  std::shared_ptr<Memory>                  rom;
   std::size_t registers = 0;
   for (const auto& [component, vertex] : circuit->getComponentToVertex()) {
     const auto item = circuit->getComponentByVertexId(vertex);
@@ -266,7 +394,8 @@ TEST(YosysRomTest, ImportsClockedReadWithAddressRegister)
     if (auto input = std::dynamic_pointer_cast<DummyInputComponent>(item);
         input && input->getPropertyValue<std::string>("name") == "clk") clockInput = input;
     if (auto out = std::dynamic_pointer_cast<DummyBusOutputComponent>(item)) output = out;
-    if (auto memory = std::dynamic_pointer_cast<ROM>(item)) rom = memory;
+    if (auto memory = std::dynamic_pointer_cast<Memory>(item))
+      rom = memory;
     registers += std::dynamic_pointer_cast<Register>(item) != nullptr;
   }
   ASSERT_TRUE(addressInput && clockInput && output && rom);
@@ -295,7 +424,7 @@ TEST(YosysRomTest, ImportsClockedReadWithAddressRegister)
   std::size_t restoredRoms = 0, restoredRegisters = 0;
   for (const auto& [component, vertex] : restored.getComponentToVertex()) {
     const auto item = restored.getComponentByVertexId(vertex);
-    restoredRoms += std::dynamic_pointer_cast<ROM>(item) != nullptr;
+    restoredRoms += std::dynamic_pointer_cast<Memory>(item) != nullptr;
     restoredRegisters += std::dynamic_pointer_cast<Register>(item) != nullptr;
   }
   EXPECT_EQ(restoredRoms, 1);
@@ -326,7 +455,7 @@ TEST(YosysRomTest, ClockedCaseTableDoesNotGrowOnRoundTrip)
   const auto third = SILICON::yosys::deserialize(
       SILICON::yosys::elaborateHierarchy(SILICON::verilog::read(
           SILICON::verilog::write(*second, "case_rom"))), "case_rom");
-  EXPECT_EQ(countTypes(first)["ROM"], 1);
+  EXPECT_EQ(countTypes(first)["Memory"], 1);
   EXPECT_EQ(countTypes(first)["Register"], 1);
   EXPECT_EQ(countTypes(*second), countTypes(first)) << exported;
   EXPECT_EQ(countTypes(third), countTypes(*second));
@@ -447,7 +576,7 @@ TEST(YosysRomTest, ClockedReadPreservesWiderAddressBusAndOutOfRangeBehavior)
                     role == PortRole::Input ? component->outputBuses()[0]
                                             : component->inputBuses()[0]);
   }
-  const auto rom = findComponent<ROM>(*circuit);
+  const auto rom = findComponent<Memory>(*circuit);
   ASSERT_TRUE(rom);
   EXPECT_EQ(rom->getPropertyValue<int>("depthOverride"), 3);
   EXPECT_EQ(rom->inputBuses()[0].size(), 5);

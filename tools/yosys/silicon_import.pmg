@@ -233,25 +233,43 @@ endcode
 pattern memrd_address
 
 udata <pool<Cell*>> selected_cells
+state <int> read_port
+state <SigSpec> read_addr read_clock
 
 match mem
 	select mem->type == $mem_v2
 	select param(mem, \WR_PORTS).as_int() == 0
-	select param(mem, \RD_PORTS).as_int() == 1
-	select param(mem, \RD_CLK_ENABLE).as_int() == 1
-	select mem->getPort(\RD_EN) == SigSpec(State::S1)
-	select port(mem, \RD_ARST) == SigSpec(State::S0)
-	select port(mem, \RD_SRST) == SigSpec(State::S0)
-	select param(mem, \RD_INIT_VALUE).is_fully_undef_x_only()
+	define <int> ports param(mem, \RD_PORTS).as_int()
+	define <int> abits param(mem, \ABITS).as_int()
+	define <int> width param(mem, \WIDTH).as_int()
+	select ports > 0 && abits > 0 && width > 0
+	select GetSize(port(mem, \RD_ADDR)) == ports * abits
+	select GetSize(port(mem, \RD_CLK)) == ports
+	select GetSize(port(mem, \RD_EN)) == ports
+	select GetSize(port(mem, \RD_ARST)) == ports
+	select GetSize(port(mem, \RD_SRST)) == ports
+	select GetSize(param(mem, \RD_CLK_ENABLE)) == ports
+	select GetSize(param(mem, \RD_CLK_POLARITY)) == ports
+	select GetSize(param(mem, \RD_INIT_VALUE)) == ports * width
+	slice port_index ports
+	select param(mem, \RD_CLK_ENABLE)[port_index] == State::S1
+	filter mem->getPort(\RD_EN)[port_index] == State::S1
+	filter port(mem, \RD_ARST)[port_index] == State::S0
+	filter port(mem, \RD_SRST)[port_index] == State::S0
+	filter param(mem, \RD_INIT_VALUE).extract(port_index * width, width).is_fully_undef_x_only()
 	filter selected_cells.count(mem)
+	filter privateReadAddress(mem, port_index, sigmap)
+	set read_port port_index
+	set read_addr port(mem, \RD_ADDR).extract(port_index * abits, abits)
+	set read_clock port(mem, \RD_CLK).extract(port_index, 1)
 endmatch
 
 match mux
 	select mux->type == $mux
-	index <SigSpec> port(mux, \Y) === port(mem, \RD_ADDR)
+	index <SigSpec> port(mux, \Y) === read_addr
 	filter selected_cells.count(mux)
-	filter param(mux, \WIDTH).as_int() == GetSize(port(mem, \RD_ADDR))
-	filter nusers(port(mem, \RD_ADDR)) == 2
+	filter param(mux, \WIDTH).as_int() == GetSize(read_addr)
+	filter nusers(read_addr) == 2
 endmatch
 
 match reg
@@ -260,10 +278,10 @@ match reg
 	index <SigSpec> port(reg, \Q) === port(mux, \A)
 	index <SigSpec> port(reg, \D) === port(mux, \B)
 	index <SigSpec> port(reg, \EN) === port(mux, \S)
-	index <SigSpec> port(reg, \CLK) === port(mem, \RD_CLK)
+	index <SigSpec> port(reg, \CLK) === read_clock
 	filter selected_cells.count(reg)
-	filter param(reg, \WIDTH).as_int() == GetSize(port(mem, \RD_ADDR))
-	filter param(reg, \CLK_POLARITY).as_int() == param(mem, \RD_CLK_POLARITY).as_int()
+	filter param(reg, \WIDTH).as_int() == GetSize(read_addr)
+	filter param(reg, \CLK_POLARITY).as_int() == (param(mem, \RD_CLK_POLARITY)[read_port] == State::S1)
 	filter !hasDefinedInit(port(reg, \Q), module, sigmap)
 	filter nusers(port(reg, \Q)) == 2
 endmatch

@@ -74,14 +74,13 @@ namespace {
 
         const auto propertyName =
             renamedType == DocumentType::Circuit ? "slug" : "binaryContents";
-        const auto expectedType = renamedType == DocumentType::Circuit
-                                      ? SILICON::core::SubcircuitComponent::Type
-                                      : SILICON::core::ROM::Type;
+        const auto  expectedType  = renamedType == DocumentType::Circuit
+                                        ? SILICON::core::SubcircuitComponent::Type
+                                        : SILICON::core::Memory::Type;
         auto       property     = properties->find(propertyName);
         const auto& componentType = type->get_ref<const std::string&>();
-        if ((componentType == expectedType
-             || (renamedType == DocumentType::RawBinary && componentType == core::RAM::Type))
-            && property != properties->end() && property->is_string()
+        if (componentType == expectedType && property != properties->end()
+            && property->is_string()
             && property->get_ref<const std::string&>() == oldSlug) {
           *property = std::string(newSlug);
           changed   = true;

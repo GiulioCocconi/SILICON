@@ -303,7 +303,7 @@ TEST(ProjectDocumentStoreTest, RenamesCircuitAndRewritesSubcircuitReferences)
   ProjectContext project;
   project.setDocuments(
       {{"circuits/main.json",
-        R"({"circuit":{"name":"main","components":[{"type":"Subcircuit","properties":{"slug":"child"}},{"type":"ROM","properties":{"binaryContents":"child"}}]},"visual":{"components":[],"wires":[]}})"},
+        R"({"circuit":{"name":"main","components":[{"type":"Subcircuit","properties":{"slug":"child"}},{"type":"Memory","properties":{"binaryContents":"child"}}]},"visual":{"components":[],"wires":[]}})"},
        {"circuits/child.json",
         R"({"circuit":{"name":"Child title","components":[]},"visual":{"components":[],"wires":[]}})"},
        {"bin/child", std::vector<std::uint8_t>({0xA5})}});
@@ -331,7 +331,7 @@ TEST(ProjectDocumentStoreTest, RenamesBinaryAndRewritesRomReferences)
   ProjectContext project;
   project.setDocuments(
       {{"circuits/main.json",
-        R"({"circuit":{"name":"main","components":[{"type":"ROM","properties":{"binaryContents":"program"}},{"type":"Subcircuit","properties":{"slug":"program"}}]},"visual":{"components":[],"wires":[]}})"},
+        R"({"circuit":{"name":"main","components":[{"type":"Memory","properties":{"binaryContents":"program"}},{"type":"Subcircuit","properties":{"slug":"program"}}]},"visual":{"components":[],"wires":[]}})"},
        {"circuits/program.json",
         R"({"circuit":{"name":"program","components":[]},"visual":{"components":[],"wires":[]}})"},
        {"bin/program", std::vector<std::uint8_t>({0xA5})}});

@@ -4,9 +4,10 @@
 
 namespace {
 
-std::shared_ptr<RAM> makeRam(bool initialized = true)
+std::shared_ptr<Memory> makeRam(bool initialized = true)
 {
-  auto ram = std::make_shared<RAM>();
+  auto ram = std::make_shared<Memory>();
+  ram->setProperty("type", std::string("RAM"));
   ram->setGeometry(8, 2, 3);
   if (initialized)
     ram->setBinaryDocument("initial", std::make_shared<const std::vector<std::uint8_t>>(
@@ -14,15 +15,15 @@ std::shared_ptr<RAM> makeRam(bool initialized = true)
   return ram;
 }
 
-std::shared_ptr<RAM> findRam(const Circuit& circuit)
+std::shared_ptr<Memory> findRam(const Circuit& circuit)
 {
   for (const auto& component : componentsIn(circuit))
-    if (auto ram = std::dynamic_pointer_cast<RAM>(component))
+    if (auto ram = std::dynamic_pointer_cast<Memory>(component); ram && ram->isWritable())
       return ram;
   return nullptr;
 }
 
-Circuit ramWithPorts(const std::shared_ptr<RAM>& ram)
+Circuit ramWithPorts(const std::shared_ptr<Memory>& ram)
 {
   Component_set                    components{ram};
   const std::array<std::string, 5> names{"a", "b", "d", "we", "clk"};
@@ -61,6 +62,29 @@ std::map<std::string, Bus> memoryCircuitPorts(const Circuit& circuit)
 
 }  // namespace
 
+TEST(YosysMemoryTest, TypeControlsExportedWritePorts)
+{
+  auto memory = std::make_shared<Memory>();
+  memory->setProperty("readPorts", 2);
+  for (const auto type : {"ROM", "RAM", "ROM"}) {
+    memory->setProperty("type", std::string(type));
+    auto        json     = exportComponent(memory);
+    const auto& cell     = memoryCell(json);
+    const bool  writable = memory->isWritable();
+    EXPECT_EQ(std::stoul(cell["parameters"]["WR_PORTS"].get<std::string>(), nullptr, 2),
+              writable ? 1 : 0);
+    EXPECT_EQ(std::stoul(cell["parameters"]["RD_PORTS"].get<std::string>(), nullptr, 2),
+              2);
+    EXPECT_EQ(cell["connections"]["WR_ADDR"].size(), writable ? 1 : 0);
+    EXPECT_EQ(cell["connections"]["WR_DATA"].size(), writable ? 8 : 0);
+    EXPECT_EQ(cell["connections"]["WR_EN"].size(), writable ? 8 : 0);
+    EXPECT_EQ(cell["connections"]["WR_CLK"].size(), writable ? 1 : 0);
+    EXPECT_EQ(cell["parameters"]["RD_TRANSPARENCY_MASK"], writable ? "00" : "0");
+    EXPECT_EQ(cell["parameters"]["RD_COLLISION_X_MASK"], writable ? "00" : "0");
+    EXPECT_EQ(json["modules"]["component_test"]["cells"].size(), 1);
+  }
+}
+
 TEST(YosysRamTest, ExportsIndependentAddressesWithImmutableInitialContents)
 {
   auto       ram     = makeRam();
@@ -92,7 +116,8 @@ TEST(YosysRamTest, ExportsIndependentAddressesWithImmutableInitialContents)
 
 TEST(YosysRamTest, DerivedGeometryExportsUninitializedMemoryAndRejectsMissingDocuments)
 {
-  auto ram = std::make_shared<RAM>();
+  auto ram = std::make_shared<Memory>();
+  ram->setProperty("type", std::string("RAM"));
   ram->setGeometry(8, 1);
   EXPECT_NO_THROW((void)exportComponent(ram));
   ram->setBinaryDocument("missing", nullptr);
@@ -101,7 +126,8 @@ TEST(YosysRamTest, DerivedGeometryExportsUninitializedMemoryAndRejectsMissingDoc
 
 TEST(YosysRamTest, ExportsPartialWordsWithoutChangingConfiguredGeometry)
 {
-  auto ram = std::make_shared<RAM>();
+  auto ram = std::make_shared<Memory>();
+  ram->setProperty("type", std::string("RAM"));
   ram->setGeometry(10, 2, 3);
   ram->setBinaryDocument("partial", std::make_shared<const std::vector<std::uint8_t>>(
                                         std::vector<std::uint8_t>{0xFF, 0xFF, 0xFF}));
@@ -113,6 +139,49 @@ TEST(YosysRamTest, ExportsPartialWordsWithoutChangingConfiguredGeometry)
 }
 
 #if !defined(__EMSCRIPTEN__) && defined(SILICON_TEST_YOSYS_EXECUTABLE)
+
+TEST(YosysMemoryTest, RequiresExplicitPortCountsAndMatchingBuses)
+{
+  for (const bool writable : {false, true}) {
+    SCOPED_TRACE(writable ? "RAM" : "ROM");
+    auto memory = makeRam();
+    memory->setProperty("type", std::string(writable ? "RAM" : "ROM"));
+    memory->setProperty("readPorts", 2);
+    const auto original = nlohmann::json::parse(SILICON::yosys::elaborateHierarchy(
+        SILICON::yosys::serialize(circuitWithBoundaryPorts(memory), "component_test")));
+    for (const auto parameter : {"RD_PORTS", "WR_PORTS"}) {
+      auto missing = original;
+      memoryCell(missing, "SILICON_MEMORY")["parameters"].erase(parameter);
+      EXPECT_THROW((void)SILICON::yosys::deserialize(missing.dump(), "component_test"),
+                   std::runtime_error);
+    }
+    for (const auto [parameter, value] :
+         std::array<std::pair<const char*, const char*>, 5>{
+             {{"RD_PORTS", "0"},
+              {"RD_PORTS", "11"},
+              {"WR_PORTS", "10"},
+              {"WR_PORTS", "x"},
+              {"WR_PORTS", writable ? "0" : "1"}}}) {
+      auto malformed                                                   = original;
+      memoryCell(malformed, "SILICON_MEMORY")["parameters"][parameter] = value;
+      EXPECT_THROW((void)SILICON::yosys::deserialize(malformed.dump(), "component_test"),
+                   std::runtime_error)
+          << parameter << "=" << value;
+    }
+    for (const auto port :
+         {"RD_ADDR", "RD_DATA", "WR_ADDR", "WR_DATA", "WR_EN", "WR_CLK"}) {
+      auto  malformed = original;
+      auto& bits      = memoryCell(malformed, "SILICON_MEMORY")["connections"][port];
+      if (bits.empty())
+        bits.push_back("0");
+      else
+        bits.erase(0);
+      EXPECT_THROW((void)SILICON::yosys::deserialize(malformed.dump(), "component_test"),
+                   std::runtime_error)
+          << port;
+    }
+  }
+}
 
 TEST(YosysRamTest, PreservesWiderAddressBusesAndAllUnknownInitialization)
 {
@@ -141,7 +210,7 @@ TEST(YosysRamTest, RejectsUnsupportedConfigurationsAndMixedUnknownInit)
       SILICON::yosys::serialize(ramWithPorts(makeRam()), "component_test")));
   const auto rejectParameter = [&](const std::string& name, const std::string& value) {
     auto json                                           = original;
-    memoryCell(json, "SILICON_RAM")["parameters"][name] = value;
+    memoryCell(json, "SILICON_MEMORY")["parameters"][name] = value;
     EXPECT_THROW((void)SILICON::yosys::deserialize(json.dump(), "component_test"),
                  std::runtime_error)
         << name;
@@ -153,7 +222,7 @@ TEST(YosysRamTest, RejectsUnsupportedConfigurationsAndMixedUnknownInit)
   rejectParameter("INIT", "0");
   for (const auto port : {"WR_DATA", "WR_EN", "RD_ADDR", "WR_CLK", "RD_DATA"}) {
     auto json                                            = original;
-    memoryCell(json, "SILICON_RAM")["connections"][port] = nlohmann::json::array();
+    memoryCell(json, "SILICON_MEMORY")["connections"][port] = nlohmann::json::array();
     EXPECT_THROW((void)SILICON::yosys::deserialize(json.dump(), "component_test"),
                  std::runtime_error)
         << port;
@@ -178,9 +247,15 @@ TEST(YosysRamTest, LowersSinglePortMemoryAndPreservesItsContract)
     const auto& cells = lowered.at("modules").at("component_test").at("cells");
     ASSERT_EQ(cells.size(), 1);
     const auto& cell = cells.begin().value();
-    EXPECT_EQ(cell.at("type"), "SILICON_RAM");
-    EXPECT_EQ(cell.at("parameters").size(), 5);
+    EXPECT_EQ(cell.at("type"), "SILICON_MEMORY");
+    EXPECT_EQ(cell.at("parameters").size(), 7);
     EXPECT_EQ(cell.at("connections").size(), 6);
+    EXPECT_EQ(
+        std::stoul(cell.at("parameters").at("RD_PORTS").get<std::string>(), nullptr, 2),
+        1);
+    EXPECT_EQ(
+        std::stoul(cell.at("parameters").at("WR_PORTS").get<std::string>(), nullptr, 2),
+        1);
     for (const auto key : {"WIDTH", "SIZE", "ABITS", "INIT"})
       EXPECT_EQ(cell.at("parameters").at(key), original.at("parameters").at(key));
     const auto& ports = lowered.at("modules").at("component_test").at("ports");
@@ -208,6 +283,43 @@ TEST(YosysRamTest, LowersSinglePortMemoryAndPreservesItsContract)
   }
 }
 
+TEST(YosysMemoryTest, LowersBothModesWithoutSplittingReadPorts)
+{
+  const auto passes =
+      std::format("read_verilog -lib -D SILICON_BLACKBOX \"{}/silicon_cells.v\"\n"
+                  "silicon_memory_lower\nopt_clean\nsilicon_validate",
+                  SILICON_TEST_YOSYS_RESOURCE_DIR);
+  for (const bool writable : {false, true}) {
+    auto memory = makeRam();
+    memory->setProperty("type", std::string(writable ? "RAM" : "ROM"));
+    memory->setProperty("readPorts", 3);
+    const auto raw = nlohmann::json::parse(
+        SILICON::yosys::serialize(circuitWithBoundaryPorts(memory), "component_test"));
+    const auto  lowered = nlohmann::json::parse(legalizeExpressions(raw.dump(), passes));
+    const auto& cells   = lowered.at("modules").at("component_test").at("cells");
+    ASSERT_EQ(cells.size(), 1);
+    const auto& cell = cells.begin().value();
+    EXPECT_EQ(cell.at("type"), "SILICON_MEMORY");
+    EXPECT_EQ(cell.at("parameters").size(), 7);
+    EXPECT_EQ(
+        std::stoul(cell.at("parameters").at("RD_PORTS").get<std::string>(), nullptr, 2),
+        3);
+    EXPECT_EQ(
+        std::stoul(cell.at("parameters").at("WR_PORTS").get<std::string>(), nullptr, 2),
+        writable ? 1 : 0);
+    EXPECT_EQ(cell.at("connections").at("RD_ADDR").size(), 6);
+    EXPECT_EQ(cell.at("connections").at("RD_DATA").size(), 24);
+    for (const auto port : {"WR_ADDR", "WR_DATA", "WR_EN", "WR_CLK"})
+      EXPECT_EQ(cell.at("connections").at(port).empty(), !writable) << port;
+    const auto second =
+        nlohmann::json::parse(legalizeExpressions(lowered.dump(), passes));
+    EXPECT_EQ(second.at("modules").at("component_test").at("cells"), cells);
+    const auto imported = SILICON::yosys::deserialize(lowered.dump(), "component_test");
+    EXPECT_EQ(componentTypes(imported).count("Memory"), 1);
+    EXPECT_EQ(findComponent<Memory>(imported)->readPortCount(), 3);
+  }
+}
+
 TEST(YosysRamTest, MemoryLoweringRejectsUnsupportedWritableCells)
 {
   const auto original        = exportComponent(makeRam());
@@ -226,6 +338,7 @@ TEST(YosysRamTest, MemoryLoweringRejectsUnsupportedWritableCells)
                           "WR_WIDE_CONTINUATION", "RD_CE_OVER_SRST", "WR_PRIORITY_MASK"})
     rejectParameter(name, "1");
   rejectParameter("WR_PORTS", "10");
+  rejectParameter("WR_PORTS", "x");
   rejectParameter("INIT", std::string(23, '0') + 'x');
   for (const auto port : {"RD_EN", "RD_ARST", "RD_SRST", "WR_DATA", "WR_EN", "WR_ADDR",
                           "RD_ADDR", "WR_CLK", "RD_CLK"}) {
@@ -245,7 +358,7 @@ TEST(YosysRamTest, VerilogRoundTripPreservesIndependentPortsAndMaskedWrites)
     auto source = SILICON::verilog::write(ramWithPorts(ram), "ram");
     for (int round = 0; round < 2; ++round) {
       auto circuit = std::make_shared<Circuit>(importVerilog(source, "ram"));
-      EXPECT_EQ(componentTypes(*circuit).count("RAM"), 1);
+      EXPECT_EQ(componentTypes(*circuit).count("Memory"), 1);
       auto restored = findRam(*circuit);
       ASSERT_TRUE(restored);
       EXPECT_EQ(restored->memoryDepth(), 3);
@@ -301,7 +414,7 @@ TEST(YosysRamTest, ImportsDualReadRamAndPreservesMaskedWrites)
     const auto ram     = findRam(*circuit);
     ASSERT_TRUE(ram);
     EXPECT_EQ(ram->readPortCount(), 2);
-    EXPECT_EQ(componentTypes(*circuit).count("RAM"), 1);
+    EXPECT_EQ(componentTypes(*circuit).count("Memory"), 1);
     EXPECT_EQ(componentTypes(*circuit).count("Register"), 0);
     const auto ports = memoryCircuitPorts(*circuit);
     Simulator  simulator(circuit);
@@ -345,13 +458,13 @@ TEST(YosysRamTest, RejectsMalformedDualReadRamPorts)
       SILICON::yosys::serialize(circuitWithBoundaryPorts(ram), "component_test")));
   for (const auto parameter : {"0", "11"}) {
     auto json                                                 = original;
-    memoryCell(json, "SILICON_RAM")["parameters"]["RD_PORTS"] = parameter;
+    memoryCell(json, "SILICON_MEMORY")["parameters"]["RD_PORTS"] = parameter;
     EXPECT_THROW((void)SILICON::yosys::deserialize(json.dump(), "component_test"),
                  std::runtime_error);
   }
   for (const auto port : {"RD_ADDR", "RD_DATA"}) {
     auto json = original;
-    memoryCell(json, "SILICON_RAM")["connections"][port].erase(0);
+    memoryCell(json, "SILICON_MEMORY")["connections"][port].erase(0);
     EXPECT_THROW((void)SILICON::yosys::deserialize(json.dump(), "component_test"),
                  std::runtime_error);
   }
@@ -367,7 +480,14 @@ TEST(YosysRamTest, ImportsMixedRomAndSinglePortRam)
                                "assign q=ram[a];assign r=rom[a];endmodule",
                                "mixed");
   EXPECT_TRUE(findRam(circuit));
-  EXPECT_EQ(componentTypes(circuit).count("ROM"), 1);
+  EXPECT_EQ(componentTypes(circuit).count("Memory"), 2);
+  EXPECT_EQ(std::ranges::count_if(componentsIn(circuit),
+                                  [](const auto& component) {
+                                    const auto memory =
+                                        std::dynamic_pointer_cast<Memory>(component);
+                                    return memory && !memory->isWritable();
+                                  }),
+            1);
 }
 
 TEST(YosysRamTest, ProjectConversionCreatesAndRehydratesRamBinaryDocument)
@@ -409,6 +529,70 @@ TEST(YosysRamTest, ProjectConversionCreatesAndRehydratesRamBinaryDocument)
   EXPECT_TRUE(renamed->memoryImageSnapshot());
 }
 
+TEST(YosysMemoryTest, SingletonClockedRomUsesIndependentDataRegisters)
+{
+  for (const unsigned short width : {1, 8}) {
+    auto memory = std::make_shared<Memory>();
+    memory->setProperty("readPorts", 2);
+    memory->setGeometry(width, 3, 1);
+    MemoryImage::Bits bits(width);
+    bits.set(0);
+    memory->setProperty("binaryContents", std::string("singleton"));
+    memory->setMemoryImage(
+        std::make_shared<const MemoryImage>(std::move(bits), width, 1));
+    const Bus clk(1), en(1);
+    Circuit   source(
+        Component_set{
+            memory, std::make_shared<DummyInputComponent>(clk, "clk"),
+            std::make_shared<DummyInputComponent>(en, "en"),
+            std::make_shared<DummyBusInputComponent>(memory->inputBuses()[0], "a"),
+            std::make_shared<DummyBusInputComponent>(memory->inputBuses()[1], "b"),
+            std::make_shared<DummyBusOutputComponent>(memory->outputBuses()[0], "q"),
+            std::make_shared<DummyBusOutputComponent>(memory->outputBuses()[1], "r")},
+        false);
+    auto raw = nlohmann::json::parse(SILICON::yosys::serialize(source, "component_test"));
+    auto&       cell  = memoryCell(raw);
+    const auto& ports = raw.at("modules").at("component_test").at("ports");
+    cell["parameters"]["RD_CLK_ENABLE"]   = "11";
+    cell["parameters"]["RD_CLK_POLARITY"] = "01";
+    cell["connections"]["RD_CLK"]         = {ports.at("clk").at("bits")[0],
+                                             ports.at("clk").at("bits")[0]};
+    cell["connections"]["RD_EN"]          = {ports.at("en").at("bits")[0],
+                                             ports.at("en").at("bits")[0]};
+    auto circuit = std::make_shared<Circuit>(SILICON::yosys::deserialize(
+        SILICON::yosys::elaborateHierarchy(raw.dump()), "component_test"));
+    EXPECT_EQ(componentTypes(*circuit).count("Memory"), 1);
+    EXPECT_EQ(componentTypes(*circuit).count("Register"), 2);
+    const auto importedPorts = memoryCircuitPorts(*circuit);
+    Simulator  simulator(circuit);
+    const auto set = [&](const std::string& name, unsigned value) {
+      EXPECT_EQ(simulator.setBus(importedPorts.at(name),
+                                 valueFor(importedPorts.at(name), value)),
+                Simulator::RunResult::Completed);
+    };
+    set("clk", 0);
+    set("en", 1);
+    set("a", 0);
+    set("b", 0);
+    set("clk", 1);
+    EXPECT_EQ(importedPorts.at("q").getCurrentValue(), valueFor(width, 1));
+    set("clk", 0);
+    EXPECT_EQ(importedPorts.at("r").getCurrentValue(), valueFor(width, 1));
+    set("en", 0);
+    set("a", 7);
+    set("b", 7);
+    set("clk", 1);
+    set("clk", 0);
+    EXPECT_EQ(importedPorts.at("q").getCurrentValue(), valueFor(width, 1));
+    EXPECT_EQ(importedPorts.at("r").getCurrentValue(), valueFor(width, 1));
+    set("en", 1);
+    set("clk", 1);
+    EXPECT_EQ(importedPorts.at("q").getCurrentValue(), BusValue(width, State::UNKNOWN));
+    set("clk", 0);
+    EXPECT_EQ(importedPorts.at("r").getCurrentValue(), BusValue(width, State::UNKNOWN));
+  }
+}
+
 TEST(YosysMemoryTest, ExactGeometrySurvivesImportHydrationElaborationAndExport)
 {
   auto registry = ComponentRegistry::empty();
@@ -419,11 +603,9 @@ TEST(YosysMemoryTest, ExactGeometrySurvivesImportHydrationElaborationAndExport)
          std::array<std::pair<int, int>, 4>{{{1, 2}, {10, 3}, {8, 3}, {5, 1}}}) {
       SCOPED_TRACE(std::string(writable ? "RAM" : "ROM") + " width="
                    + std::to_string(width) + " depth=" + std::to_string(depth));
-      const std::shared_ptr<Memory> memory =
-          writable ? std::static_pointer_cast<Memory>(std::make_shared<RAM>())
-                   : std::static_pointer_cast<Memory>(std::make_shared<ROM>());
-      if (const auto ram = std::dynamic_pointer_cast<RAM>(memory))
-        ram->setProperty("readPorts", 2);
+      const auto memory = std::make_shared<Memory>();
+      memory->setProperty("type", std::string(writable ? "RAM" : "ROM"));
+      memory->setProperty("readPorts", 2);
       memory->setProperty("binaryContents", std::string("packed"));
       MemoryImage::Bits bits(width * depth);
       for (std::size_t bit = 0; bit < bits.size(); bit += 3)
@@ -453,7 +635,7 @@ TEST(YosysMemoryTest, ExactGeometrySurvivesImportHydrationElaborationAndExport)
                 memory->memoryImageSnapshot()->bits());
       auto exported =
           nlohmann::json::parse(SILICON::yosys::serialize(*runtime, "component_test"));
-      for (const auto key : {"WIDTH", "SIZE", "ABITS", "INIT", "RD_PORTS"})
+      for (const auto key : {"WIDTH", "SIZE", "ABITS", "INIT", "RD_PORTS", "WR_PORTS"})
         EXPECT_EQ(memoryCell(exported)["parameters"][key], parameters[key]) << key;
 
       const auto invalidInputs = clone->inputBuses();
@@ -475,9 +657,8 @@ TEST(YosysMemoryTest, InitializationPoliciesRoundTripWithoutLosingUnknownBits)
     for (const int policy : {0, 1, 2, 3}) {
       SCOPED_TRACE(std::string(writable ? "RAM" : "ROM")
                    + " policy=" + std::to_string(policy));
-      const std::shared_ptr<Memory> memory =
-          writable ? std::static_pointer_cast<Memory>(std::make_shared<RAM>())
-                   : std::static_pointer_cast<Memory>(std::make_shared<ROM>());
+      const auto memory = std::make_shared<Memory>();
+      memory->setProperty("type", std::string(writable ? "RAM" : "ROM"));
       memory->setGeometry(10, 5, 3);
       if (policy == 1)
         memory->setProperty("initialization", std::string(Memory::Zero));
@@ -613,9 +794,8 @@ TEST(YosysMemoryTest, UntaggedImportsKeepIntentionalTrailingZeroBytes)
 TEST(YosysMemoryTest, InvalidInitializationCannotBeExportedAsUninitialized)
 {
   for (const bool writable : {false, true}) {
-    const std::shared_ptr<Memory> memory =
-        writable ? std::static_pointer_cast<Memory>(std::make_shared<RAM>())
-                 : std::static_pointer_cast<Memory>(std::make_shared<ROM>());
+    const auto memory = std::make_shared<Memory>();
+    memory->setProperty("type", std::string(writable ? "RAM" : "ROM"));
     memory->setGeometry(10, 2, 3);
     memory->setBinaryDocument("packed", nullptr);
     EXPECT_THROW((void)exportComponent(memory), std::runtime_error);
