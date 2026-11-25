@@ -36,6 +36,7 @@ public:
   void setComponent(const SILICON::core::Component_ptr& component) override;
   void applyProperty(std::string_view                    key,
                      const SILICON::core::PropertyValue& value) override;
+  void applyProperties(const SILICON::core::PropertyMap& values) override;
   void setDocumentStore(const SILICON::project::DocumentStore* documents);
 
 protected:
@@ -67,6 +68,7 @@ class GraphicalRAM final : public GraphicalMemory {
 public:
   explicit GraphicalRAM(QGraphicsItem* parent = nullptr);
   int type() const override { return SiliconTypes::RAM_COMPONENT; }
+  void applyProperties(const SILICON::core::PropertyMap& values) override;
   void setComponent(const SILICON::core::Component_ptr& component) override;
   void applyProperty(std::string_view key,
                      const SILICON::core::PropertyValue& value) override;
