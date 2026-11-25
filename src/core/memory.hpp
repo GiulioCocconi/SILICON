@@ -61,7 +61,8 @@ private:
   std::size_t knownBits;
 };
 
-/** Asynchronous read ports with an optional masked, positive-edge write port. */
+/** Asynchronous read ports with an optional masked, positive-edge write port.
+ * Unknown read addresses merge all possible words bit by bit. */
 class Memory final : public Component {
 public:
   static constexpr std::string_view Uninitialized  = "Uninitialized";
@@ -132,7 +133,6 @@ public:
 
   [[nodiscard]] bool        isWritable() const;
   [[nodiscard]] std::size_t readPortCount() const;
-  [[nodiscard]] std::size_t readAddressIndex(std::size_t port) const { return port; }
   // Read address inputs use their port number; the optional write inputs follow.
   [[nodiscard]] std::size_t writeInputIndex(WriteInputs input) const
   {
@@ -152,6 +152,7 @@ private:
 
   void initializeWords();
   [[nodiscard]] BusValue readWord(std::size_t address) const;
+  [[nodiscard]] BusValue read(const BusValue& address) const;
   void write(const BusValue& address, const BusValue& data, const BusValue& mask,
              State clockEnable);
   void commit(PropertyMap next, std::shared_ptr<const std::vector<std::uint8_t>> contents,

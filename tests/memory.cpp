@@ -434,7 +434,17 @@ TEST(MemoryTest, ReadPortsPreservePackedPaddingAndFourStateAddressesInBothModes)
         auto value = valueFor(65, 0);
         value[0]   = state;
         ASSERT_EQ(sim.setBus(address, value), Simulator::RunResult::Completed);
-        expectState(memory->outputBuses()[1], state);
+        if (state == State::ERROR)
+          expectState(memory->outputBuses()[1], State::ERROR);
+        else {
+          auto merged = valueFor(10, 0x5);
+          for (const auto bit : {1, 3, 5, 7})
+            merged[bit] = State::UNKNOWN;
+          if (padding == Memory::Unknown)
+            for (std::size_t bit = 6; bit < 10; ++bit)
+              merged[bit] = State::UNKNOWN;
+          EXPECT_EQ(memory->outputBuses()[1].getCurrentValue(), merged);
+        }
       }
       for (const auto bit : {0, 64}) {
         auto value = valueFor(65, bit == 0 ? 3 : 0);
@@ -454,6 +464,115 @@ TEST(MemoryTest, ReadPortsPreservePackedPaddingAndFourStateAddressesInBothModes)
                     padding == Memory::Unknown ? State::UNKNOWN : State::LOW);
       memory->refreshBinaryContents(binarySnapshot({1, 2, 3, 4, 5}));
       EXPECT_THROW(memory->simulate(sim), std::runtime_error);
+    }
+  }
+}
+
+TEST(MemoryTest, UnknownReadAddressesPreserveConsensusAcrossCandidateWordsAndPorts)
+{
+  for (const auto type : {"ROM", "RAM"}) {
+    for (const auto addressWidth : {2, 65}) {
+      SCOPED_TRACE(std::string(type) + "/" + std::to_string(addressWidth));
+      auto memory = std::make_shared<Memory>();
+      memory->setProperty("type", std::string(type));
+      memory->setProperty("readPorts", 2);
+      memory->setGeometry(8, addressWidth, 4);
+      memory->setBinaryDocument("image", binarySnapshot({0xA5, 0xA5, 0xA5, 0xA5}));
+      auto      circuit = std::make_shared<Circuit>(Component_set{memory}, false);
+      Simulator sim(circuit);
+
+      auto allCandidates = valueFor(addressWidth, 0);
+      allCandidates[0] = allCandidates[1] = State::UNKNOWN;
+      const auto& address0                = memory->inputBuses()[0];
+      const auto& address1                = memory->inputBuses()[1];
+      ASSERT_EQ(sim.setBus(address0, allCandidates), Simulator::RunResult::Completed);
+      EXPECT_EQ(memory->outputBuses()[0].getCurrentValue(), valueFor(8, 0xA5));
+
+      memory->refreshBinaryContents(binarySnapshot({0xA5, 0xA5, 0xA7, 0xA7}));
+      ASSERT_EQ(sim.simulateBus(memory->outputBuses()[0]),
+                Simulator::RunResult::Completed);
+      auto merged = valueFor(8, 0xA5);
+      merged[1]   = State::UNKNOWN;
+      EXPECT_EQ(memory->outputBuses()[0].getCurrentValue(), merged);
+
+      auto firstPair = valueFor(addressWidth, 0);
+      firstPair[0]   = State::UNKNOWN;
+      ASSERT_EQ(sim.setBus(address0, firstPair), Simulator::RunResult::Completed);
+      EXPECT_EQ(memory->outputBuses()[0].getCurrentValue(), valueFor(8, 0xA5));
+      auto secondPair = valueFor(addressWidth, 2);
+      secondPair[0]   = State::UNKNOWN;
+      ASSERT_EQ(sim.setBus(address1, secondPair), Simulator::RunResult::Completed);
+      EXPECT_EQ(memory->outputBuses()[1].getCurrentValue(), valueFor(8, 0xA7));
+
+      auto nonadjacent = valueFor(addressWidth, 1);
+      nonadjacent[1]   = State::UNKNOWN;
+      ASSERT_EQ(sim.setBus(address1, nonadjacent), Simulator::RunResult::Completed);
+      EXPECT_EQ(memory->outputBuses()[1].getCurrentValue(), merged);
+      EXPECT_EQ(memory->outputBuses()[0].getCurrentValue(), valueFor(8, 0xA5));
+    }
+  }
+}
+
+TEST(MemoryTest, SparseUnknownReadAddressesVisitOnlyMatchingWords)
+{
+  for (const auto type : {"ROM", "RAM"}) {
+    auto memory = std::make_shared<Memory>();
+    memory->setProperty("type", std::string(type));
+    memory->setGeometry(8, 16);
+    std::vector<std::uint8_t> bytes(1 << 16, 0);
+    bytes[5]             = 0xA5;
+    bytes[(1 << 15) | 5] = 0xA7;
+    memory->setBinaryDocument("sparse", binarySnapshot(bytes));
+    auto      circuit = std::make_shared<Circuit>(Component_set{memory}, false);
+    Simulator sim(circuit);
+    auto      address = valueFor(16, 5);
+    address[15]       = State::UNKNOWN;
+    ASSERT_EQ(sim.setBus(memory->inputBuses()[0], address),
+              Simulator::RunResult::Completed);
+    auto expected = valueFor(8, 0xA5);
+    expected[1]   = State::UNKNOWN;
+    EXPECT_EQ(memory->outputBuses()[0].getCurrentValue(), expected);
+
+    // Every bit UNKNOWN must include all words, including the final one.
+    bytes.assign(1 << 16, 0xA5);
+    bytes.back() = 0xA7;
+    memory->refreshBinaryContents(binarySnapshot(bytes));
+    ASSERT_EQ(sim.setBus(memory->inputBuses()[0], BusValue(16, State::UNKNOWN)),
+              Simulator::RunResult::Completed);
+    EXPECT_EQ(memory->outputBuses()[0].getCurrentValue(), expected);
+  }
+}
+
+TEST(MemoryTest, UnknownReadAddressesIncludeOutOfRangePossibilities)
+{
+  for (const auto type : {"ROM", "RAM"}) {
+    for (const auto depth : {1, 3}) {
+      SCOPED_TRACE(std::string(type) + "/" + std::to_string(depth));
+      auto memory = std::make_shared<Memory>();
+      memory->setProperty("type", std::string(type));
+      memory->setGeometry(8, 65, depth);
+      memory->setBinaryDocument("image",
+                                binarySnapshot(std::vector<std::uint8_t>(depth, 0xA5)));
+      auto        circuit = std::make_shared<Circuit>(Component_set{memory}, false);
+      Simulator   sim(circuit);
+      const auto& address = memory->inputBuses()[0];
+
+      for (const auto bit : {0, 2, 63, 64}) {
+        auto value = valueFor(65, depth - 1);
+        value[bit] = State::UNKNOWN;
+        ASSERT_EQ(sim.setBus(address, value), Simulator::RunResult::Completed);
+        expectState(memory->outputBuses()[0], State::UNKNOWN);
+      }
+      auto value = valueFor(65, 4);
+      value[0]   = State::UNKNOWN;  // No in-range candidate.
+      ASSERT_EQ(sim.setBus(address, value), Simulator::RunResult::Completed);
+      expectState(memory->outputBuses()[0], State::UNKNOWN);
+      value[64] = State::HIGH;
+      ASSERT_EQ(sim.setBus(address, value), Simulator::RunResult::Completed);
+      expectState(memory->outputBuses()[0], State::UNKNOWN);
+      value[1] = State::ERROR;
+      ASSERT_EQ(sim.setBus(address, value), Simulator::RunResult::Completed);
+      expectState(memory->outputBuses()[0], State::ERROR);
     }
   }
 }
@@ -616,7 +735,10 @@ TEST(RAMTest, ReadsPackedInitializationAndChecksBounds)
   f.set(0, 3);
   expectState(f.output(), State::UNKNOWN);
   f.set(0, BusValue{State::UNKNOWN, State::LOW});
-  expectState(f.output(), State::UNKNOWN);
+  auto merged = valueFor(10, 0x5);
+  for (const auto bit : {1, 3, 5, 7})
+    merged[bit] = State::UNKNOWN;
+  EXPECT_EQ(f.output().getCurrentValue(), merged);
   f.set(0, BusValue{State::UNKNOWN, State::ERROR});
   expectState(f.output(), State::ERROR);
 }
@@ -770,13 +892,36 @@ TEST(RAMTest, UnknownWriteAddressOnlyAffectsPossibleWordsAndEnabledBits)
   EXPECT_EQ(f.output().getCurrentValue(), expected);
 }
 
+TEST(RAMTest, UnknownReadsMergeCurrentStorageIncludingUnknownAndErrorBits)
+{
+  RamFixture f(4, 2, {0x55});
+  f.set(0, BusValue{State::UNKNOWN});
+  EXPECT_EQ(f.output().getCurrentValue(), valueFor(4, 0x5));
+  f.set(Memory::WriteInputs::Data,
+        BusValue{State::ERROR, State::UNKNOWN, State::HIGH, State::LOW});
+  f.set(Memory::WriteInputs::Enable, 0xF);
+  f.pulse();
+  EXPECT_EQ(f.output().getCurrentValue(),
+            (BusValue{State::ERROR, State::UNKNOWN, State::HIGH, State::LOW}));
+
+  f.set(0, 1);
+  EXPECT_EQ(f.output().getCurrentValue(), valueFor(4, 0x5));
+  f.set(0, BusValue{State::UNKNOWN});
+  f.set(Memory::WriteInputs::Address, 1);
+  f.set(Memory::WriteInputs::Data, 1);
+  f.pulse();
+  EXPECT_EQ(f.output().getCurrentValue(),
+            (BusValue{State::ERROR, State::UNKNOWN, State::UNKNOWN, State::LOW}));
+}
+
 TEST(RAMTest, AmbiguousClockMergesPossibleWrites)
 {
   RamFixture f(4, 1, {5});
   f.set(Memory::WriteInputs::Data, 7);
   f.set(Memory::WriteInputs::Enable, 15);
   f.set(Memory::WriteInputs::Clock, BusValue{State::UNKNOWN});
-  EXPECT_EQ(f.output().getCurrentValue(), (BusValue{State::HIGH, State::UNKNOWN, State::HIGH, State::LOW}));
+  EXPECT_EQ(f.output().getCurrentValue(),
+            (BusValue{State::HIGH, State::UNKNOWN, State::HIGH, State::LOW}));
   f.set(Memory::WriteInputs::Clock, 0);
   f.set(Memory::WriteInputs::Data, 0);
   f.set(Memory::WriteInputs::Enable, 1);
@@ -851,7 +996,13 @@ TEST(RAMTest, IndependentReadPortsPublishWritesAndAddressChangesWhileClockIsHigh
   EXPECT_EQ(captured1.getCurrentValue(), valueFor(8, 0x34));
   for (const auto state : {State::UNKNOWN, State::ERROR}) {
     ASSERT_EQ(f.sim->setBus(address1, BusValue{state}), Simulator::RunResult::Completed);
-    expectState(read1, state);
+    if (state == State::ERROR)
+      expectState(read1, State::ERROR);
+    else {
+      auto merged = valueFor(8, 0x12);
+      merged[2] = merged[6] = State::UNKNOWN;
+      EXPECT_EQ(read1.getCurrentValue(), merged);
+    }
     EXPECT_EQ(read0.getCurrentValue(), valueFor(8, 0x56));
   }
 }
