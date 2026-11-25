@@ -878,7 +878,7 @@ namespace {
           if (init[init.size() - bit - 1] != '0')
             fail(cell.where(), "Memory capacity padding must be zero");
       }
-      if (known == 0 && !documentBytes)
+      if (known == 0 && memory->isWritable() && !documentBytes)
         return;  // The default policy is uninitialized; no fabricated binary document.
       if (known != init.size() && known % 8 != 0)
         fail(cell.where(), "Memory INIT UNKNOWN tail must start at a byte boundary");

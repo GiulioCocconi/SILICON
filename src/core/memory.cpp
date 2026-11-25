@@ -172,7 +172,7 @@ Memory::Memory()
   defineProperty("depthOverride", 0);
   defineProperty("binaryContents", std::string());
   defineStringListProperty(
-      "initialization", std::string(Uninitialized),
+      "initialization", std::string(BinaryDocument),
       {std::string(Uninitialized), std::string(Zero), std::string(BinaryDocument)});
   defineStringListProperty("padding", std::string(Zero),
                            {std::string(Zero), std::string(Unknown)});
@@ -183,6 +183,10 @@ Memory::Memory()
       auto next        = properties;
       next.at(key)     = value;
       auto nextContent = content;
+      if (std::string_view(key) == "type" && value != properties.at(key)
+          && std::get<std::string>(value) == "RAM"
+          && std::get<std::string>(next.at("binaryContents")).empty() && !content)
+        next.at("initialization") = std::string(Uninitialized);
       if (std::string_view(key) == "binaryContents" && value != properties.at(key)) {
         nextContent.reset();
         next.at("initialization") = std::string(
@@ -192,7 +196,7 @@ Memory::Memory()
                                 || std::string_view(key) == "dataWidth"
                                 || std::string_view(key) == "depthOverride";
       commit(std::move(next), std::move(nextContent), geometryEdit);
-      return value;
+      return properties.at(key);
     };
   }
   reshapeBuses();
@@ -210,6 +214,10 @@ void Memory::setProperties(const PropertyMap& values)
   }
   const auto contents =
       next.at("binaryContents") == properties.at("binaryContents") ? content : nullptr;
+  if (!values.contains("initialization") && next.at("type") != properties.at("type")
+      && std::get<std::string>(next.at("type")) == "RAM"
+      && std::get<std::string>(next.at("binaryContents")).empty() && !contents)
+    next.at("initialization") = std::string(Uninitialized);
   // Restore configuration without selecting/resizing a document. External image
   // changes may leave initialization unresolved; execution/export diagnose that.
   commit(std::move(next), contents, false);
@@ -222,6 +230,8 @@ std::vector<PropertyInfo> Memory::propertyInfo() const
       getPropertyValue<std::string>("initialization").value() == BinaryDocument;
   for (const auto key : {"type", "addressWidth", "dataWidth", "readPorts",
                          "initialization", "binaryContents", "padding"}) {
+    if (std::string_view(key) == "initialization" && !isWritable())
+      continue;
     if (!binary
         && (std::string_view(key) == "binaryContents"
             || std::string_view(key) == "padding"))
@@ -296,6 +306,8 @@ void Memory::commit(PropertyMap                                      next,
       || ports * perPort + abits + 2 * width + 2 > MaxPortBits)
     throw std::invalid_argument("Memory ports exceed the supported allocation limit");
 
+  if (std::get<std::string>(next.at("type")) == "ROM")
+    next.at("initialization") = std::string(BinaryDocument);
   const auto& policy  = std::get<std::string>(next.at("initialization"));
   const auto& padding = std::get<std::string>(next.at("padding"));
   std::shared_ptr<const MemoryImage> nextImage;
