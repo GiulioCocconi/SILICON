@@ -37,15 +37,15 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPlainTextEdit>
-#include <QSpinBox>
 #include <QSizePolicy>
+#include <QSpinBox>
 #include <QTimer>
+#include <QToolButton>
 #include <QWidget>
 
 #include <utils/num_formatting.hpp>
 
 #include <ui/circuit/components/graphicalLogicComponent.hpp>
-#include <ui/circuit/components/graphicalMemory.hpp>
 #include <ui/circuit/diagram/scene/diagramScene.hpp>
 #include <ui/circuit/diagram/undoCommands.hpp>
 #include <ui/project/projectDocumentPolicy.hpp>
@@ -97,10 +97,18 @@ PropertyPanel::PropertyPanel(QDockWidget* dock, DiagramScene* scene, ProjectTree
   callbacks.connect(diagramScene, &DiagramScene::componentResized, [this] {
     QTimer::singleShot(0, callbacks.context(), [this] { refresh(); });
   });
+  callbacks.connect(undoStack, &QUndoStack::indexChanged, [this] {
+    if (!diagramScene->selectedItems().empty())
+      QTimer::singleShot(0, callbacks.context(), [this] { refresh(); });
+  });
 }
 
 void PropertyPanel::refresh()
 {
+  for (const auto& connection : propertyConnections)
+    QObject::disconnect(connection);
+  propertyConnections.clear();
+
   auto* selectedProjectItem = projectTree ? projectTree->selectedProjectItem() : nullptr;
 
   const auto itemKind     = selectedProjectItem
@@ -124,8 +132,11 @@ void PropertyPanel::refresh()
   if (!hasProperties)
     return;
 
-  // 1. Assign the container immediately.
-  // QDockWidget::setWidget automatically deletes the previous widget.
+  // Defer deletion because a property editor may still be handling its signal.
+  if (auto* previous = propertyDock->widget()) {
+    previous->hide();
+    previous->deleteLater();
+  }
   auto* container = new QWidget();
   // This dock shares its width with the document dock; its form must not raise the
   // configured minimum width of the entire dock column.
@@ -223,28 +234,31 @@ void PropertyPanel::refresh()
     return;
   }
 
-  // 3. Intersect properties to find common configurable keys
-  auto commonProps = selectedNodes.front()->getProperties();
-
-  std::erase_if(commonProps, [&](const auto& pair) {
-    return std::ranges::any_of(selectedNodes, [&](const GraphicalComponent* node) {
-      return node->isPropertyHidden(pair.first);
-    });
-  });
-
-  for (const GraphicalComponent* node : selectedNodes | std::views::drop(1)) {
-    const auto& props = node->getProperties();
-
-    std::erase_if(commonProps, [&](const auto& pair) {
-      const auto& [key, val] = pair;
-      auto it                = props.find(key);
-      return it == props.end() || it->second.index() != val.index();
-    });
+  // Components supply presentation and visibility; only common fields are edited.
+  std::vector<std::vector<PropertyInfo>> descriptions;
+  for (auto* node : selectedNodes) {
+    descriptions.push_back(node->propertyInfo());
+    propertyConnections.push_back(QObject::connect(
+        node, &GraphicalComponent::propertiesChanged, container, callbacks.guard([this] {
+          QTimer::singleShot(0, callbacks.context(), [this] { refresh(); });
+        })));
   }
-
-  if (commonProps.empty()) {
-    layout->addRow(wrappingLabel(
-        tr("No common configurable properties among selection."), container));
+  auto commonFields = descriptions.front();
+  for (std::size_t index = 0; index < selectedNodes.size(); ++index) {
+    const auto& fields = descriptions[index];
+    std::erase_if(commonFields, [&](const PropertyInfo& field) {
+      const auto it = std::ranges::find(fields, field.key, &PropertyInfo::key);
+      return selectedNodes[index]->isPropertyHidden(field.key) || it == fields.end()
+             || it->value.index() != field.value.index()
+             || it->readOnly != field.readOnly;
+    });
+    for (auto& field : commonFields)
+      field.advanced &=
+          std::ranges::find(fields, field.key, &PropertyInfo::key)->advanced;
+  }
+  if (commonFields.empty()) {
+    layout->addRow(wrappingLabel(tr("No common configurable properties among selection."),
+                                 container));
     return;
   }
 
@@ -276,22 +290,72 @@ void PropertyPanel::refresh()
         }
       }
     } catch (const std::exception& e) {
-      SILICON::ui::inputDialog::warning(propertyDock, tr("Invalid Property"), e.what());
-      QTimer::singleShot(0, callbacks.context(), [this] { refresh(); });
+      const QString message = e.what();
+      QTimer::singleShot(0, callbacks.context(), [this, message] {
+        SILICON::ui::inputDialog::warning(propertyDock, tr("Invalid Property"), message);
+        refresh();
+      });
     }
   };
 
-  // 4. Build UI for common properties
-  for (const auto& [key, initialValue] : commonProps) {
-    // Check if the value differs across the selection
-    const bool isMixed = std::ranges::any_of(
-        selectedNodes | std::views::drop(1), [&](const GraphicalComponent* node) {
-          return node->getProperty(key) != initialValue;
+  QFormLayout* advancedLayout = nullptr;
+  for (const auto& field : commonFields) {
+    const auto& key          = field.key;
+    const auto& initialValue = field.value;
+    const bool  isMixed      = std::ranges::any_of(descriptions, [&](const auto& fields) {
+      return std::ranges::find(fields, key, &PropertyInfo::key)->value != initialValue;
+    });
+    auto*       propertyLayout = layout;
+    if (field.advanced) {
+      if (!advancedLayout) {
+        auto* toggle = new QToolButton(container);
+        toggle->setText(tr("Advanced properties"));
+        toggle->setCheckable(true);
+        toggle->setArrowType(Qt::RightArrow);
+        toggle->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        auto* advanced = new QWidget(container);
+        advancedLayout = new QFormLayout(advanced);
+        advancedLayout->setRowWrapPolicy(QFormLayout::WrapLongRows);
+        advanced->hide();
+        callbacks.connect(toggle, &QToolButton::toggled, [=](bool open) {
+          advanced->setVisible(open);
+          toggle->setArrowType(open ? Qt::DownArrow : Qt::RightArrow);
         });
+        layout->addRow(toggle);
+        layout->addRow(advanced);
+      }
+      propertyLayout = advancedLayout;
+    }
+    auto fieldLabel = [&] {
+      auto* label = wrappingLabel(
+          QString::fromStdString(field.label.empty() ? key : field.label), container);
+      label->setToolTip(QString::fromStdString(field.help));
+      return label;
+    };
+    if (field.readOnly) {
+      const auto display = std::visit(
+          [](const auto& value) -> QString {
+            using T = std::decay_t<decltype(value)>;
+            if constexpr (std::is_same_v<T, std::string>)
+              return QString::fromStdString(value);
+            else if constexpr (std::is_same_v<T, BusValue>)
+              return QString::fromStdString(formatValue(value, BusValueFormat::Raw));
+            else if constexpr (std::is_same_v<T, bool>)
+              return value ? tr("Yes") : tr("No");
+            else
+              return QString::number(value);
+          },
+          initialValue);
+      auto* value = wrappingLabel(isMixed ? tr("Mixed values") : display, container);
+      value->setObjectName(QString::fromStdString(key));
+      propertyLayout->addRow(fieldLabel(), value);
+      continue;
+    }
 
     auto createPropertyWidget = [&]<typename T>(const T& arg) {
       if constexpr (std::is_same_v<T, bool>) {
         auto* checkBox = new QCheckBox(container);
+        checkBox->setObjectName(QString::fromStdString(key));
 
         if (isMixed) {
           checkBox->setTristate(true);
@@ -307,19 +371,15 @@ void PropertyPanel::refresh()
           applyProperty(key, state == Qt::Checked);
         });
 
-        layout->addRow(wrappingLabel(QString::fromStdString(key), container), checkBox);
+        propertyLayout->addRow(fieldLabel(), checkBox);
       } else if constexpr (std::is_same_v<T, int>) {
         auto*         spinBox = new PropertySpinBox(container);
+        spinBox->setObjectName(QString::fromStdString(key));
         constexpr int MIN_VAL = std::numeric_limits<int>::min();
         constexpr int MAX_VAL = std::numeric_limits<int>::max();
 
         spinBox->setRange(MIN_VAL, MAX_VAL);
-
-        if (key == "depth" && std::ranges::all_of(selectedNodes, [](const auto* node) {
-              return dynamic_cast<const GraphicalMemory*>(node) != nullptr;
-            }))
-          spinBox->setToolTip(tr("0: infer depth from the binary document; positive "
-                                 "values: explicit depth."));
+        spinBox->setKeyboardTracking(false);
 
         if (isMixed) {
           spinBox->setMixed(true, tr("Mixed values"));
@@ -334,11 +394,12 @@ void PropertyPanel::refresh()
           applyProperty(key, val);
         });
 
-        layout->addRow(wrappingLabel(QString::fromStdString(key), container), spinBox);
+        propertyLayout->addRow(fieldLabel(), spinBox);
       } else if constexpr (std::is_same_v<T, std::string>) {
         const auto stringOptions = selectedNodes.front()->getStringPropertyOptions(key);
         if (stringOptions) {
           auto* comboBox = new QComboBox(container);
+          comboBox->setObjectName(QString::fromStdString(key));
 
           for (const std::string& option : stringOptions->get()) {
             comboBox->addItem(QString::fromStdString(option));
@@ -358,7 +419,7 @@ void PropertyPanel::refresh()
                     applyProperty(key, text.toStdString());
                   });
 
-          layout->addRow(wrappingLabel(QString::fromStdString(key), container), comboBox);
+          propertyLayout->addRow(fieldLabel(), comboBox);
           return;
         }
 
@@ -366,6 +427,7 @@ void PropertyPanel::refresh()
               return node->isMultilineProperty(key);
             })) {
           auto* textEdit = new DescriptionEdit(container);
+          textEdit->setObjectName(QString::fromStdString(key));
           textEdit->setMinimumHeight(90);
           if (isMixed)
             textEdit->setPlaceholderText(tr("Mixed values..."));
@@ -378,11 +440,12 @@ void PropertyPanel::refresh()
             textEdit->document()->setModified(false);
             applyProperty(key, textEdit->toPlainText().toStdString());
           });
-          layout->addRow(wrappingLabel(QString::fromStdString(key), container), textEdit);
+          propertyLayout->addRow(fieldLabel(), textEdit);
           return;
         }
 
         auto* lineEdit = new QLineEdit(container);
+        lineEdit->setObjectName(QString::fromStdString(key));
 
         if (isMixed) {
           lineEdit->setPlaceholderText(tr("Mixed values..."));
@@ -394,13 +457,15 @@ void PropertyPanel::refresh()
           if (!lineEdit->isModified())
             return;
 
-          applyProperty(key, lineEdit->text().toStdString());
+          const auto value = lineEdit->text().toStdString();
           lineEdit->setModified(false);
+          applyProperty(key, value);
         });
 
-        layout->addRow(wrappingLabel(QString::fromStdString(key), container), lineEdit);
+        propertyLayout->addRow(fieldLabel(), lineEdit);
       } else if constexpr (std::is_same_v<T, BusValue>) {
         auto* lineEdit = new QLineEdit(container);
+        lineEdit->setObjectName(QString::fromStdString(key));
         if (isMixed)
           lineEdit->setPlaceholderText(tr("Mixed values..."));
         else
@@ -420,7 +485,7 @@ void PropertyPanel::refresh()
           }
         });
 
-        layout->addRow(wrappingLabel(QString::fromStdString(key), container), lineEdit);
+        propertyLayout->addRow(fieldLabel(), lineEdit);
       }
     };
 

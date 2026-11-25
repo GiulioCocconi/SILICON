@@ -13,6 +13,7 @@
 
 #include <functional>
 #include <optional>
+#include <vector>
 
 #include <QObject>
 #include <QSpinBox>
@@ -46,6 +47,7 @@ private:
   const QString&                                currentFileName;
   std::function<void()>                         rebuildProjectTree;
   CallbackScope                                 callbacks;
+  std::vector<QMetaObject::Connection>          propertyConnections;
 };
 
 class PropertySpinBox : public QSpinBox {

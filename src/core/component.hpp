@@ -145,6 +145,19 @@ using PropertyValue = std::variant<int, bool, std::string, BusValue>;
 using PropertyMap = std::unordered_map<std::string, PropertyValue, TransparentStringHash,
                                        TransparentStringEqual>;
 
+/** Transient editor information. Derived read-only values are never serialized. */
+struct PropertyInfo {
+  std::string   key;
+  PropertyValue value;
+  std::string   label{};
+  std::string   help{};
+  bool          readOnly = false;
+  bool          advanced = false;
+};
+
+/** Default alphabetical descriptions for configurable properties. */
+[[nodiscard]] std::vector<PropertyInfo> describeProperties(const PropertyMap& properties);
+
 /** @brief Callback function for property validation/transformation */
 using PropertyCallback = std::function<PropertyValue(const PropertyValue&)>;
 
@@ -464,6 +477,11 @@ public:
    * @param value The property value
    */
   void setProperty(std::string_view key, const PropertyValue& value);
+  /** Apply a compound configuration. Components may validate dependent fields together.
+   */
+  virtual void setProperties(const PropertyMap& values);
+  /** Ordered, conditionally visible editor fields, including derived information. */
+  [[nodiscard]] virtual std::vector<PropertyInfo> propertyInfo() const;
 
   /**
    * @brief Gets a property value.

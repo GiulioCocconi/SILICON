@@ -170,7 +170,15 @@ public:
   /** @brief Whether a property is omitted from the properties panel. */
   [[nodiscard]] bool isPropertyHidden(std::string_view key) const;
   virtual void applyProperty(std::string_view key, const PropertyValue& value);
+  /** Apply a compound edit without re-running an interactive selection action. */
+  virtual void applyProperties(const PropertyMap& values);
+  [[nodiscard]] virtual std::vector<PropertyInfo> propertyInfo() const;
 
+signals:
+  /** Editor fields or derived information changed, independently of component size. */
+  void propertiesChanged();
+
+public:
   /** @brief Annotations remain selectable but do not obstruct placement or routing. */
   [[nodiscard]] virtual bool participatesInCollisions() const { return true; }
 

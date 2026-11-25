@@ -109,6 +109,12 @@ GraphicalLogicComponent::getStringPropertyOptions(std::string_view key) const
                              : std::nullopt;
 }
 
+std::vector<PropertyInfo> GraphicalLogicComponent::propertyInfo() const
+{
+  return associatedComponent ? associatedComponent->propertyInfo()
+                             : GraphicalComponent::propertyInfo();
+}
+
 void GraphicalLogicComponent::applyProperty(std::string_view     key,
                                             const PropertyValue& value)
 {
@@ -118,6 +124,7 @@ void GraphicalLogicComponent::applyProperty(std::string_view     key,
   prepareGeometryChange();
   associatedComponent->setProperty(key, value);
   update();
+  emit propertiesChanged();
 }
 
 void GraphicalLogicComponent::setComponent(const Component_ptr& component)
