@@ -65,6 +65,8 @@ std::map<std::string, Bus> memoryCircuitPorts(const Circuit& circuit)
 TEST(YosysMemoryTest, TypeControlsExportedWritePorts)
 {
   auto memory = std::make_shared<Memory>();
+  memory->setBinaryDocument("program",
+                            std::make_shared<const std::vector<std::uint8_t>>());
   memory->setProperty("readPorts", 2);
   for (const auto type : {"ROM", "RAM", "ROM"}) {
     memory->setProperty("type", std::string(type));
@@ -660,7 +662,12 @@ TEST(YosysMemoryTest, InitializationPoliciesRoundTripWithoutLosingUnknownBits)
       const auto memory = std::make_shared<Memory>();
       memory->setProperty("type", std::string(writable ? "RAM" : "ROM"));
       memory->setGeometry(10, 5, 3);
-      if (policy == 1)
+      if (!writable && policy < 2) {
+        memory->setBinaryDocument("empty",
+                                  std::make_shared<const std::vector<std::uint8_t>>());
+        if (policy == 0)
+          memory->setProperty("padding", std::string(Memory::Unknown));
+      } else if (policy == 1)
         memory->setProperty("initialization", std::string(Memory::Zero));
       else if (policy >= 2) {
         memory->setBinaryDocument("packed",

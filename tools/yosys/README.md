@@ -134,8 +134,9 @@ in the property panel, rather than additional serialized properties. The optiona
 an active override remains visible. `binaryContents` and `padding` appear only for
 binary-document initialization.
 
-Geometry is independent of initialization. The `initialization` policy selects
-`Uninitialized` (all UNKNOWN), `Zero`, or `Binary document`. `padding` selects
+Geometry is independent of initialization. ROM always uses `Binary document`
+initialization and hides the `initialization` selector. RAM exposes the selector
+with `Uninitialized` (all UNKNOWN), `Zero`, or `Binary document`. `padding` selects
 `Zero` or `Unknown` for any tail beyond the document's bits, including partial
 words. The packed format maps byte bit `b` of byte `n` to memory bit `8*n+b`,
 then to word `bit/dataWidth`, bit `bit%dataWidth`; words are not individually
@@ -144,6 +145,8 @@ high bits must be zero. Images exceeding the configured geometry are never
 truncated. A document that becomes invalid after an external edit remains
 selected and unresolved, with an error in the property panel; execution and
 export fail until it is fixed. Removing or editing a document never resizes buses.
+An entirely UNKNOWN imported ROM uses an empty binary document with `Unknown`
+padding to preserve its initialization.
 
 Selecting an initialization document automatically increases `addressWidth` when
 needed. A smaller selection preserves the configured capacity. If an explicit

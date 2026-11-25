@@ -90,12 +90,58 @@ TEST(MemoryTest, DefaultsToRomAndExposesTypeChoices)
   ASSERT_TRUE(choices);
   EXPECT_EQ(choices->get(), (StringPropertyOptions{"ROM", "RAM"}));
   EXPECT_FALSE(memory.isWritable());
+  EXPECT_EQ(memory.getPropertyValue<std::string>("initialization"),
+            Memory::BinaryDocument);
   EXPECT_FALSE(memory.usesStagedSequentialOutputs());
   EXPECT_EQ(memory.inputBuses().size(), 1);
   EXPECT_EQ(memory.outputBuses().size(), 1);
   const auto info = memory.propertyInfo();
   ASSERT_FALSE(info.empty());
   EXPECT_EQ(info.front().key, "type");
+  EXPECT_EQ(std::ranges::find(info, "initialization", &PropertyInfo::key), info.end());
+  EXPECT_NE(std::ranges::find(info, "binaryContents", &PropertyInfo::key), info.end());
+  EXPECT_NE(std::ranges::find(info, "padding", &PropertyInfo::key), info.end());
+}
+
+TEST(MemoryTest, RomAlwaysUsesBinaryDocumentInitialization)
+{
+  Memory memory;
+  memory.setProperty("initialization", std::string(Memory::Zero));
+  EXPECT_EQ(memory.getPropertyValue<std::string>("initialization"),
+            Memory::BinaryDocument);
+  EXPECT_FALSE(memory.initializationError().empty());
+  EXPECT_THROW(memory.validateInitialization(), std::runtime_error);
+
+  memory.setProperty("type", std::string("RAM"));
+  EXPECT_EQ(memory.getPropertyValue<std::string>("initialization"),
+            Memory::Uninitialized);
+  memory.setProperty("initialization", std::string(Memory::Zero));
+  const auto ramFields = memory.propertyInfo();
+  EXPECT_NE(std::ranges::find(ramFields, "initialization", &PropertyInfo::key),
+            ramFields.end());
+
+  memory.setProperty("type", std::string("ROM"));
+  EXPECT_EQ(memory.getPropertyValue<std::string>("initialization"),
+            Memory::BinaryDocument);
+  EXPECT_FALSE(memory.memoryImageSnapshot());
+  memory.setBinaryDocument("program", binarySnapshot({0xA5}));
+  memory.setProperties({{"initialization", std::string(Memory::Uninitialized)}});
+  EXPECT_EQ(memory.getPropertyValue<std::string>("initialization"),
+            Memory::BinaryDocument);
+  ASSERT_TRUE(memory.memoryImageSnapshot());
+  EXPECT_EQ(memory.memoryImageSnapshot()->word(0), valueFor(8, 0xA5));
+
+  memory.setBinaryDocument("", nullptr);
+  EXPECT_EQ(memory.getPropertyValue<std::string>("initialization"),
+            Memory::BinaryDocument);
+  EXPECT_THROW(memory.validateInitialization(), std::runtime_error);
+  memory.setProperties({{"type", std::string("RAM")}});
+  EXPECT_EQ(memory.getPropertyValue<std::string>("initialization"),
+            Memory::Uninitialized);
+  memory.setProperties(
+      {{"type", std::string("ROM")}, {"initialization", std::string(Memory::Zero)}});
+  EXPECT_EQ(memory.getPropertyValue<std::string>("initialization"),
+            Memory::BinaryDocument);
 }
 
 TEST(MemoryTest, TypeSwitchAddsWritePortAndPreservesAllReadConnections)
@@ -1177,7 +1223,7 @@ TEST(MemoryGeometryTest, DocumentSelectionGrowsButNeverShrinksGeometry)
     EXPECT_EQ(memory->memoryDepth(), 8);
     memory->setBinaryDocument("", nullptr);
     EXPECT_EQ(memory->getPropertyValue<std::string>("initialization"),
-              Memory::Uninitialized);
+              memory->isWritable() ? Memory::Uninitialized : Memory::BinaryDocument);
     EXPECT_EQ(memory->memoryDepth(), 8);
   }
 }
@@ -1230,12 +1276,13 @@ TEST(MemoryInitializationTest, PoliciesAndPaddingPreservePackedBitOrdering)
   for (const auto& memory : memories()) {
     memory->setGeometry(10, 2, 3);
     EXPECT_FALSE(memory->memoryImageSnapshot());
-    memory->setProperty("initialization", std::string(Memory::Zero));
-    auto image = memory->memoryImageSnapshot();
-    ASSERT_TRUE(image);
-    EXPECT_EQ(image->word(2), valueFor(10, 0));
+    if (memory->isWritable()) {
+      memory->setProperty("initialization", std::string(Memory::Zero));
+      ASSERT_TRUE(memory->memoryImageSnapshot());
+      EXPECT_EQ(memory->memoryImageSnapshot()->word(2), valueFor(10, 0));
+    }
     memory->setBinaryDocument("packed", binarySnapshot({0xA5, 0x3C}));
-    image = memory->memoryImageSnapshot();
+    auto image = memory->memoryImageSnapshot();
     EXPECT_EQ(image->word(0), valueFor(10, 0xA5));
     EXPECT_EQ(image->word(1), valueFor(10, 0xF));
     EXPECT_EQ(image->word(2), valueFor(10, 0));
@@ -1248,9 +1295,11 @@ TEST(MemoryInitializationTest, PoliciesAndPaddingPreservePackedBitOrdering)
     EXPECT_EQ(image->word(1), partial);
     EXPECT_EQ(image->word(2), BusValue(10, State::UNKNOWN));
     EXPECT_EQ(image->bytes(), (std::vector<std::uint8_t>{0xA5, 0x3C}));
-    memory->setProperty("initialization", std::string(Memory::Uninitialized));
-    EXPECT_FALSE(memory->memoryImageSnapshot());
-    memory->setProperty("initialization", std::string(Memory::BinaryDocument));
+    if (memory->isWritable()) {
+      memory->setProperty("initialization", std::string(Memory::Uninitialized));
+      EXPECT_FALSE(memory->memoryImageSnapshot());
+      memory->setProperty("initialization", std::string(Memory::BinaryDocument));
+    }
     EXPECT_EQ(memory->memoryImageSnapshot()->word(1), partial);
     memory->setBinaryDocument("empty", binarySnapshot({}));
     EXPECT_EQ(memory->memoryImageSnapshot()->knownBitCount(), 0);
@@ -1338,6 +1387,8 @@ TEST(MemoryGeometryTest,
   for (const auto& memory : memories()) {
     for (const auto policy :
          {Memory::Uninitialized, Memory::Zero, Memory::BinaryDocument}) {
+      if (!memory->isWritable() && policy != Memory::BinaryDocument)
+        continue;
       memory->setGeometry(10, 5, 3);
       memory->setBinaryDocument("packed", binarySnapshot({0xA5, 0x3C}));
       memory->setProperty("padding", std::string(Memory::Unknown));
@@ -1438,21 +1489,20 @@ TEST(MemoryGeometryTest, DeserializationRejectsInvalidGeometryWithoutNumericNarr
   }
 }
 
-TEST(MemoryInitializationTest, ZeroAndUninitializedPoliciesExecuteForBothMemoryTypes)
+TEST(MemoryInitializationTest, ZeroAndUninitializedPoliciesExecuteForRam)
 {
-  for (const auto& memory : memories()) {
-    memory->setGeometry(8, 2);
-    memory->setProperty("initialization", std::string(Memory::Zero));
-    auto      circuit = std::make_shared<Circuit>(Component_set{memory}, false);
-    Simulator sim(circuit);
-    ASSERT_EQ(sim.setBus(memory->inputBuses()[0], valueFor(2, 1)),
-              Simulator::RunResult::Completed);
-    EXPECT_EQ(memory->outputBuses()[0].getCurrentValue(), valueFor(8, 0));
-    memory->setProperty("initialization", std::string(Memory::Uninitialized));
-    ASSERT_EQ(sim.setBus(memory->inputBuses()[0], valueFor(2, 2)),
-              Simulator::RunResult::Completed);
-    expectState(memory->outputBuses()[0], State::UNKNOWN);
-  }
+  const auto memory = configuredRam();
+  memory->setGeometry(8, 2);
+  memory->setProperty("initialization", std::string(Memory::Zero));
+  auto      circuit = std::make_shared<Circuit>(Component_set{memory}, false);
+  Simulator sim(circuit);
+  ASSERT_EQ(sim.setBus(memory->inputBuses()[0], valueFor(2, 1)),
+            Simulator::RunResult::Completed);
+  EXPECT_EQ(memory->outputBuses()[0].getCurrentValue(), valueFor(8, 0));
+  memory->setProperty("initialization", std::string(Memory::Uninitialized));
+  ASSERT_EQ(sim.setBus(memory->inputBuses()[0], valueFor(2, 2)),
+            Simulator::RunResult::Completed);
+  expectState(memory->outputBuses()[0], State::UNKNOWN);
 }
 
 TEST(MemoryGeometryTest,
@@ -1516,9 +1566,14 @@ TEST(MemoryGeometryTest, PropertyDescriptionsKeepDerivedInformationOutOfConfigur
     EXPECT_EQ(fields[0].key, "type");
     EXPECT_EQ(fields[1].key, "addressWidth");
     EXPECT_EQ(fields[2].key, "dataWidth");
-    EXPECT_EQ(std::ranges::find(fields, "binaryContents", &PropertyInfo::key),
-              fields.end());
-    EXPECT_EQ(std::ranges::find(fields, "padding", &PropertyInfo::key), fields.end());
+    EXPECT_EQ(std::ranges::find(fields, "initialization", &PropertyInfo::key)
+                  != fields.end(),
+              memory->isWritable());
+    EXPECT_EQ(std::ranges::find(fields, "binaryContents", &PropertyInfo::key)
+                  != fields.end(),
+              !memory->isWritable());
+    EXPECT_EQ(std::ranges::find(fields, "padding", &PropertyInfo::key) != fields.end(),
+              !memory->isWritable());
     EXPECT_TRUE(std::ranges::find(fields, "depthOverride", &PropertyInfo::key)->advanced);
     EXPECT_TRUE(
         std::ranges::find(fields, "effectiveDepth", &PropertyInfo::key)->readOnly);

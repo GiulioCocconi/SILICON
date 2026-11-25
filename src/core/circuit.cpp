@@ -847,6 +847,9 @@ Circuit Circuit::deserialize(const std::string& jsonStr, const ComponentRegistry
           propsIt != compJson.end() && propsIt->is_object()) {
         const auto memory = std::dynamic_pointer_cast<Memory>(component);
         if (memory) {
+          // Select the mode before restoring its initialization policy.
+          if (const auto mode = propsIt->find("type"); mode != propsIt->end())
+            applyProperty(component, "type", *mode, false);
           const auto integer = [&](const char* key, const int fallback) {
             const auto it = propsIt->find(key);
             if (it == propsIt->end())
