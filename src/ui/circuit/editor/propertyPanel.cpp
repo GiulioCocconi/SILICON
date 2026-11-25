@@ -33,10 +33,12 @@
 #include <QDockWidget>
 #include <QFocusEvent>
 #include <QFormLayout>
+#include <QFrame>
 #include <QGraphicsItem>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPlainTextEdit>
+#include <QScrollArea>
 #include <QSizePolicy>
 #include <QSpinBox>
 #include <QTimer>
@@ -141,9 +143,15 @@ void PropertyPanel::refresh()
   // This dock shares its width with the document dock; its form must not raise the
   // configured minimum width of the entire dock column.
   container->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
-  auto* layout    = new QFormLayout(container);
+  auto* layout = new QFormLayout(container);
   layout->setRowWrapPolicy(QFormLayout::WrapLongRows);
-  propertyDock->setWidget(container);
+
+  auto* scrollArea = new QScrollArea(propertyDock);
+  scrollArea->setWidgetResizable(true);
+  scrollArea->setFrameShape(QFrame::NoFrame);
+  scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+  scrollArea->setWidget(container);
+  propertyDock->setWidget(scrollArea);
 
   if (selectedNodes.empty()) {
     if (!selectedProjectItem) {
