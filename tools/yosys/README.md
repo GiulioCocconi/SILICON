@@ -94,19 +94,73 @@ read ports and one positive-edge write port with per-bit write enables. Paramete
 `WIDTH`, `SIZE`, `ABITS`, `INIT`, and `ID`, plus `RD_PORTS` for multiple read ports
 (omitted for a single read port). `RD_ADDR` and `RD_DATA` pack read ports in
 least-significant-lane-first order. Ports are `RD_ADDR`, `RD_DATA`, `WR_ADDR`,
-`WR_DATA`, `WR_EN`, and `WR_CLK`. Initialization must be fully binary or entirely
-X. Address buses may be wider than the minimum needed for `SIZE`. Memory
-attributes, including `silicon_mem_slug`, survive lowering. Memories without
+`WR_DATA`, `WR_EN`, and `WR_CLK`. Initialization can be fully binary, entirely
+X, or a byte-aligned binary prefix followed by an UNKNOWN tail. The same
+initialization contract applies to ROM. Other mixed-X patterns and Z bits are
+rejected explicitly; they are never converted to zero. Address buses may be wider
+than the minimum needed for `SIZE`. Memory attributes, including `silicon_mem_slug`, survive lowering. Memories without
 write ports use `SILICON_ROM` instead. Both memory types preserve exact `SIZE`
 and `ABITS`, including non-power-of-two depths and wider address buses.
 
-Native memory components share a `depth` property: zero infers
-`ceil(binary_bytes * 8 / dataWidth)` and positive values specify exact depth.
-Automatic mode treats every byte bit as data and zero-fills a partial final word;
-it cannot recover a padded image's original logical depth. Explicit depth accepts
-canonical packed bytes or a partial final word, ignores bits beyond the logical
-image, and persists through save/load and hydration. Yosys imports always use
-explicit depth. Uninitialized RAM requires positive explicit depth before execution.
+Native RAM and ROM share `addressWidth` and `dataWidth`. A zero `depthOverride`
+(the default) derives `2^addressWidth` words. A positive override selects an exact
+depth within that address space. Imports configure both `SIZE` and `ABITS`
+explicitly; wider address buses and out-of-range addresses survive save/load,
+hydration, elaboration and export.
+Effective depth and total capacity are read-only values
+in the property panel, rather than additional serialized properties. The optional
+`depthOverride` is under Advanced properties while automatic depth is active;
+an active override remains visible. `binaryContents` and `padding` appear only for
+binary-document initialization.
+
+Geometry is independent of initialization. The `initialization` policy selects
+`Uninitialized` (all UNKNOWN), `Zero`, or `Binary document`. `padding` selects
+`Zero` or `Unknown` for any tail beyond the document's bits, including partial
+words. The packed format maps byte bit `b` of byte `n` to memory bit `8*n+b`,
+then to word `bit/dataWidth`, bit `bit%dataWidth`; words are not individually
+byte-aligned. If the logical capacity ends within the final byte, its unused
+high bits must be zero. Images exceeding the configured geometry are never
+truncated. A document that becomes invalid after an external edit remains
+selected and unresolved, with an error in the property panel; execution and
+export fail until it is fixed. Removing or editing a document never resizes buses.
+
+Selecting an initialization document automatically increases `addressWidth` when
+needed. A smaller selection preserves the configured capacity. If an explicit
+depth override is active, a larger selection extends it to the required word count
+and grows the address bus only if needed. Canonical zero byte padding does not
+require growth. Manual geometry edits that would truncate the selected image are
+rejected atomically. External document edits never resize geometry: an oversized
+image produces a geometry mismatch until geometry or contents are corrected.
+Yosys import installs exact `SIZE` and `ABITS` without applying selection resizing.
+Selection and any resulting geometry change form one undoable edit. Undo and redo
+restore the recorded properties and connections, then resolve the current project
+document; history never restores old binary bytes or silently resizes an interface
+to accommodate subsequent document edits.
+
+Geometry is validated before allocation: at most 1,048,576 words, 67,108,864
+logical bits, and 1,048,576 aggregate port bits are supported. Default derived
+depths that exceed these bounds are rejected. Wide address buses can still be
+used with a small explicit depth. Immutable packed initialization images are
+separate from the mutable RAM words owned by each elaborated runtime instance;
+simulation writes never modify project documents or subsequent sessions.
+
+RAM captures storage immediately on a possible positive clock edge, like registers
+and flip-flops. Its asynchronous read outputs use the same staged wire transitions:
+consumers sampling on that edge see the old read data, and the new data appears
+when the output batch commits at the same simulation time. Read addresses are
+recomputed on every evaluation, including while the clock stays high. Only changed
+output wires schedule another forward-cone pass; writing an unread word needs no
+extra evaluation. Generated clocks require successive staged output batches, each
+with fresh edge history, rather than an immediate-output second pass.
+
+RAM also claims its first write sample per output batch so repeated SCC evaluation
+cannot overwrite it, and journals modified words for rollback if that batch is
+cancelled or fails. The rollback action never schedules work or drives wires.
+These are stronger guarantees than existing registers and flip-flops provide:
+those components can recapture during repeated SCC evaluation, and cancellation
+discards their staged outputs without restoring their internal state. Those
+pre-existing limitations remain outside the RAM change. Cancellation after an
+output batch commits does not undo that batch or earlier combinational changes.
 
 `silicon_validate` rejects any cell outside this subset, including native
 memories and unsupported operators. The memory pass diagnoses unsupported ROM
