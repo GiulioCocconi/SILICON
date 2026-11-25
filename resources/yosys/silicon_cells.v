@@ -524,34 +524,20 @@ endmodule
 // Port-direction declarations for canonical import cells. The plugin emits
 // these cells only after all memory optimization passes have finished.
 `ifdef SILICON_BLACKBOX
-(* blackbox *) module SILICON_RAM #(
+(* blackbox *) module SILICON_MEMORY #(
     parameter WIDTH = 8,
     parameter SIZE = 2,
     parameter ABITS = 1,
     parameter RD_PORTS = 1,
+    parameter WR_PORTS = 0,
     parameter [WIDTH*SIZE-1:0] INIT = {WIDTH*SIZE{1'bx}},
     parameter ID = ""
 ) (
     input [ABITS*RD_PORTS-1:0] RD_ADDR,
-    input [ABITS-1:0] WR_ADDR,
-    input [WIDTH-1:0] WR_DATA, WR_EN,
-    input WR_CLK,
+    input [ABITS*WR_PORTS-1:0] WR_ADDR,
+    input [WIDTH*WR_PORTS-1:0] WR_DATA, WR_EN,
+    input [WR_PORTS-1:0] WR_CLK,
     output [WIDTH*RD_PORTS-1:0] RD_DATA
-);
-endmodule
-
-(* blackbox *) module SILICON_ROM #(
-    parameter WIDTH = 8,
-    parameter SIZE = 2,
-    parameter ABITS = 1,
-    parameter [WIDTH*SIZE-1:0] INIT = 0,
-    parameter ID = "",
-    parameter SYNC = 0,
-    parameter CLK_POLARITY = 1
-) (
-    input [ABITS-1:0] ADDR,
-    output [WIDTH-1:0] DATA,
-    input SELECT, CLK, EN
 );
 endmodule
 `endif

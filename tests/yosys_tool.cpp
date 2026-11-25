@@ -663,6 +663,50 @@ TEST(YosysToolTest, KeepsRomAddressRegisterWithExternalConsumer)
   #endif
 }
 
+TEST(YosysToolTest, KeepsRomAddressRegisterWhenAnotherMemoryInputUsesItsBits)
+{
+  #ifndef SILICON_TEST_YOSYS_PLUGIN_PATH
+  GTEST_SKIP() << "The SILICON Yosys plugin is unavailable";
+  #else
+  constexpr std::string_view SOURCE = R"(
+    module top(input clk, input en, input addr, input other,
+               output [7:0] data, extra);
+      reg saved_addr;
+      reg [7:0] rom [0:1];
+      initial begin rom[0] = 8'h12; rom[1] = 8'h34; end
+      always @(posedge clk) if (en) saved_addr <= addr;
+      assign data = rom[saved_addr];
+      assign extra = rom[other];
+    endmodule
+  )";
+  for (const auto port : {"RD_ADDR", "RD_CLK", "RD_EN", "RD_ARST", "RD_SRST"}) {
+    SCOPED_TRACE(port);
+    const auto ownBit = std::string_view(port) == "RD_ADDR"  ? "candidate_0"
+                        : std::string_view(port) == "RD_CLK" ? "clk"
+                        : std::string_view(port) == "RD_EN"  ? "1'b1"
+                                                             : "1'b0";
+    EXPECT_NO_THROW(runPluginScript(
+        SOURCE,
+        std::format("hierarchy -check -top top\n"
+                    "proc\nmemory_collect\nopt -nosdff\nmemory_dff\n"
+                    "cd top\n"
+                    // Name the feedback mux output without relying on Yosys auto IDs.
+                    "rename -enumerate -pattern candidate_% t:$mux %co1 w:* %i\n"
+                    "add -wire reused 2\n"
+                    "connect -set reused[1] candidate_0\n"
+                    "connect -set reused[0] {}\n"
+                    "connect -port rom {} reused\n"
+                    "cd\n"
+                    "silicon_memrd_address\n"
+                    "select -assert-count 1 top/t:$dffe\n"
+                    "select -assert-count 1 top/t:$mux\n"
+                    "select -assert-count 1 top/t:$mem_v2\n",
+                    ownBit, port),
+        std::string("memory_address_used_by_") + port));
+  }
+  #endif
+}
+
 TEST(YosysToolTest, KeepsRomAddressRegisterWithResetOrInitialization)
 {
   #ifndef SILICON_TEST_YOSYS_PLUGIN_PATH

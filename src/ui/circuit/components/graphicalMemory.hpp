@@ -28,9 +28,11 @@ class DocumentStore;
 
 namespace SILICON::ui {
 
-class GraphicalMemory : public GraphicalLogicComponent {
+class GraphicalMemory final : public GraphicalLogicComponent {
   Q_OBJECT
 public:
+  explicit GraphicalMemory(QGraphicsItem* parent = nullptr);
+  int type() const override { return SiliconTypes::MEMORY_COMPONENT; }
   ~GraphicalMemory() override;
 
   void setComponent(const SILICON::core::Component_ptr& component) override;
@@ -40,41 +42,19 @@ public:
   void setDocumentStore(const SILICON::project::DocumentStore* documents);
 
 protected:
-  GraphicalMemory(const std::shared_ptr<SILICON::core::Memory>& memory,
-                  QGraphicsItem* shape, QGraphicsItem* parent);
   void mouseDoubleClickEvent(QGraphicsSceneMouseEvent* event) override;
 
 private:
   const SILICON::project::DocumentStore* documents          = nullptr;
   std::uint64_t                          documentListenerId = 0;
 
+  void rebuildPorts();
   void subscribeToDocuments();
   void unsubscribeFromDocuments();
   void refreshBinaryContents();
   [[nodiscard]] std::shared_ptr<const std::vector<std::uint8_t>>
                             resolveBinaryContents(std::string_view slug) const;
   [[nodiscard]] std::string currentSlug() const;
-};
-
-class GraphicalROM final : public GraphicalMemory {
-  Q_OBJECT
-public:
-  explicit GraphicalROM(QGraphicsItem* parent = nullptr);
-  int type() const override { return SiliconTypes::ROM_COMPONENT; }
-};
-
-class GraphicalRAM final : public GraphicalMemory {
-  Q_OBJECT
-public:
-  explicit GraphicalRAM(QGraphicsItem* parent = nullptr);
-  int type() const override { return SiliconTypes::RAM_COMPONENT; }
-  void applyProperties(const SILICON::core::PropertyMap& values) override;
-  void setComponent(const SILICON::core::Component_ptr& component) override;
-  void applyProperty(std::string_view key,
-                     const SILICON::core::PropertyValue& value) override;
-
-private:
-  void rebuildPorts();
 };
 
 }  // namespace SILICON::ui

@@ -52,10 +52,17 @@ binarySnapshot(std::vector<std::uint8_t> contents)
   return std::make_shared<const std::vector<std::uint8_t>>(std::move(contents));
 }
 
-std::shared_ptr<ROM> configuredRom(std::vector<std::uint8_t> contents,
-                                   const int                 dataWidth)
+std::shared_ptr<Memory> configuredRam()
 {
-  auto rom = std::make_shared<ROM>();
+  auto memory = std::make_shared<Memory>();
+  memory->setProperty("type", std::string("RAM"));
+  return memory;
+}
+
+std::shared_ptr<Memory> configuredRom(std::vector<std::uint8_t> contents,
+                                      const int                 dataWidth)
+{
+  auto rom = std::make_shared<Memory>();
   rom->setProperty("dataWidth", dataWidth);
   const auto words = (contents.size() * 8 + dataWidth - 1) / dataWidth;
   rom->setGeometry(dataWidth,
@@ -73,9 +80,163 @@ void expectState(const Bus& bus, const State state)
 
 }  // namespace
 
+TEST(MemoryTest, DefaultsToRomAndExposesTypeChoices)
+{
+  Memory memory;
+  EXPECT_EQ(memory.typeName(), "Memory");
+  EXPECT_EQ(memory.metadata().displayName, "Memory");
+  EXPECT_EQ(memory.getPropertyValue<std::string>("type"), "ROM");
+  const auto choices = memory.getStringPropertyOptions("type");
+  ASSERT_TRUE(choices);
+  EXPECT_EQ(choices->get(), (StringPropertyOptions{"ROM", "RAM"}));
+  EXPECT_FALSE(memory.isWritable());
+  EXPECT_FALSE(memory.usesStagedSequentialOutputs());
+  EXPECT_EQ(memory.inputBuses().size(), 1);
+  EXPECT_EQ(memory.outputBuses().size(), 1);
+  const auto info = memory.propertyInfo();
+  ASSERT_FALSE(info.empty());
+  EXPECT_EQ(info.front().key, "type");
+}
+
+TEST(MemoryTest, TypeSwitchAddsWritePortAndPreservesAllReadConnections)
+{
+  Memory memory;
+  memory.setProperty("readPorts", 3);
+  memory.setGeometry(10, 4, 3);
+  memory.setBinaryDocument("program", binarySnapshot({0xA5, 0x3C}));
+  const auto addresses = memory.inputBuses();
+  const auto outputs   = memory.outputBuses();
+  for (const auto type : {"RAM", "ROM", "RAM", "ROM"}) {
+    memory.setProperty("type", std::string(type));
+    const bool writable = std::string_view(type) == "RAM";
+    EXPECT_EQ(memory.isWritable(), writable);
+    EXPECT_EQ(memory.usesStagedSequentialOutputs(), writable);
+    ASSERT_EQ(memory.inputBuses().size(), writable ? 7 : 3);
+    for (std::size_t port = 0; port < addresses.size(); ++port)
+      EXPECT_EQ(memory.inputBuses()[port], addresses[port]);
+    EXPECT_EQ(memory.outputBuses(), outputs);
+    EXPECT_EQ(memory.memoryDepth(), 3);
+    EXPECT_EQ(memory.memoryImageSnapshot()->word(0), valueFor(10, 0xA5));
+    if (writable) {
+      EXPECT_EQ(memory.inputBuses()[memory.writeInputIndex(Memory::WriteInputs::Address)]
+                    .size(),
+                4);
+      EXPECT_EQ(
+          memory.inputBuses()[memory.writeInputIndex(Memory::WriteInputs::Data)].size(),
+          10);
+      EXPECT_EQ(
+          memory.inputBuses()[memory.writeInputIndex(Memory::WriteInputs::Enable)].size(),
+          10);
+      EXPECT_EQ(
+          memory.inputBuses()[memory.writeInputIndex(Memory::WriteInputs::Clock)].size(),
+          1);
+    }
+  }
+}
+
+TEST(MemoryTest, ReadPortCountChangesPreserveReadAndWriteConnections)
+{
+  for (const auto type : {"ROM", "RAM"}) {
+    Memory memory;
+    memory.setProperty("type", std::string(type));
+    memory.setGeometry(8, 3);
+    const std::array<Bus, 4> writeInputs{Bus(3), Bus(8), Bus(8), Bus(1)};
+    if (memory.isWritable())
+      for (std::size_t input = 0; input < writeInputs.size(); ++input)
+        memory.setInput(memory.readPortCount() + input, writeInputs[input], true);
+
+    for (const auto count : {3, 1, 5, 2, 6, 1}) {
+      const auto oldInputs  = memory.inputBuses();
+      const auto oldOutputs = memory.outputBuses();
+      // Exercise both individual property edits and compound/undo-style updates.
+      if (count % 2 == 0)
+        memory.setProperties({{"readPorts", count}});
+      else
+        memory.setProperty("readPorts", count);
+      const auto inputs  = memory.inputBuses();
+      const auto outputs = memory.outputBuses();
+      ASSERT_EQ(inputs.size(), count + (memory.isWritable() ? 4 : 0));
+      ASSERT_EQ(outputs.size(), count);
+      for (std::size_t port = 0; port < std::min(outputs.size(), oldOutputs.size());
+           ++port) {
+        EXPECT_EQ(inputs[port], oldInputs[port]);
+        EXPECT_EQ(outputs[port], oldOutputs[port]);
+      }
+      for (std::size_t port = 0; port < outputs.size(); ++port) {
+        EXPECT_EQ(inputs[port].size(), 3);
+        EXPECT_EQ(outputs[port].size(), 8);
+        if (memory.isWritable()) {
+          for (const auto& writeInput : writeInputs)
+            for (const auto& addressWire : inputs[port])
+              EXPECT_EQ(std::ranges::find(writeInput, addressWire), writeInput.end());
+        }
+      }
+      if (memory.isWritable()) {
+        for (std::size_t input = 0; input < writeInputs.size(); ++input)
+          EXPECT_EQ(inputs[count + input], writeInputs[input]);
+      }
+    }
+  }
+}
+
+TEST(MemoryTest, WritesUsePreservedConnectionsAfterReadPortCountChanges)
+{
+  const auto memory = configuredRam();
+  memory->setGeometry(8, 2);
+  memory->setProperty("initialization", std::string(Memory::Zero));
+  const auto original = memory->inputBuses();
+  for (const auto count : {3, 1, 5, 2}) {
+    memory->setProperty("readPorts", count);
+    auto       circuit = std::make_shared<Circuit>(Component_set{memory}, false);
+    Simulator  sim(circuit);
+    const auto set = [&](const Bus& bus, std::uint64_t value) {
+      ASSERT_EQ(sim.setBus(bus, valueFor(bus, value)), Simulator::RunResult::Completed);
+    };
+    for (std::size_t port = 0; port < memory->readPortCount(); ++port)
+      set(memory->inputBuses()[port], port % 4);
+    // Drive the original write wires after their bus indices have moved.
+    set(original[4], 0);
+    set(original[1], 1);
+    set(original[2], 0xA5);
+    set(original[3], 0x0F);
+    set(original[4], 1);
+    for (std::size_t port = 0; port < memory->readPortCount(); ++port)
+      EXPECT_EQ(memory->outputBuses()[port].getCurrentValue(),
+                valueFor(8, port % 4 == 1 ? 5 : 0));
+  }
+}
+
+TEST(MemoryTest, RejectsInvalidTypeAtomicallyForSingleAndBulkEdits)
+{
+  Memory     memory;
+  const auto properties = memory.getProperties();
+  const auto inputs     = memory.inputBuses();
+  EXPECT_THROW(memory.setProperty("type", std::string("invalid")), std::invalid_argument);
+  auto invalid            = properties;
+  invalid.at("type")      = std::string("invalid");
+  invalid.at("readPorts") = 3;
+  EXPECT_THROW(memory.setProperties(invalid), std::invalid_argument);
+  EXPECT_EQ(memory.getProperties(), properties);
+  EXPECT_EQ(memory.inputBuses(), inputs);
+}
+
+TEST(MemoryTest, BulkEditsRestoreModeAndReadPortCount)
+{
+  Memory     memory;
+  const auto romProperties = memory.getProperties();
+  memory.setProperties({{"type", std::string("RAM")}, {"readPorts", 2}});
+  EXPECT_TRUE(memory.isWritable());
+  EXPECT_EQ(memory.inputBuses().size(), 6);
+  EXPECT_EQ(memory.outputBuses().size(), 2);
+  memory.setProperties(romProperties);
+  EXPECT_FALSE(memory.isWritable());
+  EXPECT_EQ(memory.inputBuses().size(), 1);
+  EXPECT_EQ(memory.outputBuses().size(), 1);
+}
+
 TEST(ROMTest, GeometryRemainsConfiguredWhenContentsAndWordWidthChange)
 {
-  ROM rom;
+  Memory rom;
   EXPECT_THROW(rom.setProperty("dataWidth", 0), std::invalid_argument);
   EXPECT_THROW(rom.setProperty("dataWidth", 65536), std::invalid_argument);
   rom.setGeometry(10, 3);
@@ -91,7 +252,7 @@ TEST(ROMTest, GeometryRemainsConfiguredWhenContentsAndWordWidthChange)
 
 TEST(ROMTest, HydrationPreservesConfiguredAddressWidth)
 {
-  ROM rom;
+  Memory rom;
   rom.setGeometry(10, 4);
   rom.setProperty("binaryContents", std::string("packed"));
   const auto inputs = rom.inputBuses();
@@ -102,9 +263,9 @@ TEST(ROMTest, HydrationPreservesConfiguredAddressWidth)
 
 TEST(ROMTest, ExplicitOneWordImageUsesValidAddressBus)
 {
-  ROM rom;
+  Memory rom;
   rom.setProperty("dataWidth", 8);
-  rom.setInputs({Bus(1), Bus(1), Bus(1)});
+  rom.setInputs({Bus(1)});
   rom.setGeometry(8, 1, 1);
   rom.refreshBinaryContents(binarySnapshot((std::vector<std::uint8_t>{0xA6})));
   EXPECT_EQ(rom.memoryDepth(), 1);
@@ -119,9 +280,7 @@ TEST(ROMTest, ReadsPackedLittleEndianWordsAcrossByteBoundaries)
   Simulator simulator(circuit);
 
   const Bus address = rom->inputBuses()[0];
-  const Bus cs      = rom->inputBuses()[1];
   const Bus data    = rom->outputBuses()[0];
-  ASSERT_EQ(simulator.setBus(cs, valueFor(cs, 1)), Simulator::RunResult::Completed);
 
   const std::array<std::uint64_t, 4> expected{0x0A5, 0x00F, 0x01F, 0x003};
   for (std::size_t index = 0; index < expected.size(); ++index) {
@@ -131,31 +290,18 @@ TEST(ROMTest, ReadsPackedLittleEndianWordsAcrossByteBoundaries)
   }
 }
 
-TEST(ROMTest, ChipSelectLowHoldsLastValueAndOutputEnableIsIgnored)
+TEST(ROMTest, ReadsEveryAddressWithoutControlInputs)
 {
-  auto rom = configuredRom((std::vector<std::uint8_t>{0x11, 0x22, 0x33, 0x44}), 8);
-  auto               circuit = std::make_shared<Circuit>(Component_set{rom});
-  Simulator          simulator(circuit);
-
-  const Bus address = rom->inputBuses()[0];
-  const Bus cs      = rom->inputBuses()[1];
-  Bus       oe      = rom->inputBuses()[2];
-  const Bus data    = rom->outputBuses()[0];
-
-  ASSERT_EQ(simulator.setBus(cs, valueFor(cs, 1)), Simulator::RunResult::Completed);
-  ASSERT_EQ(simulator.setBus(address, valueFor(address, 1)),
-            Simulator::RunResult::Completed);
-  EXPECT_EQ(data.getCurrentValue(), valueFor(data, 0x22));
-
-  ASSERT_EQ(simulator.setBus(cs, valueFor(cs, 0)), Simulator::RunResult::Completed);
-  ASSERT_EQ(simulator.setBus(address, valueFor(address, 2)),
-            Simulator::RunResult::Completed);
-  oe.forceSetCurrentValue(BusValue{State::ERROR});
-  rom->simulate(simulator);
-  EXPECT_EQ(data.getCurrentValue(), valueFor(data, 0x22));
-
-  ASSERT_EQ(simulator.setBus(cs, valueFor(cs, 1)), Simulator::RunResult::Completed);
-  EXPECT_EQ(data.getCurrentValue(), valueFor(data, 0x33));
+  auto memory = configuredRom({0x11, 0x22, 0x33, 0x44}, 8);
+  ASSERT_EQ(memory->inputBuses().size(), 1);
+  auto      circuit = std::make_shared<Circuit>(Component_set{memory});
+  Simulator simulator(circuit);
+  for (unsigned address = 0; address < 4; ++address) {
+    ASSERT_EQ(simulator.setBus(memory->inputBuses()[0], valueFor(2, address)),
+              Simulator::RunResult::Completed);
+    EXPECT_EQ(memory->outputBuses()[0].getCurrentValue(),
+              valueFor(8, 0x11 * (address + 1)));
+  }
 }
 
 TEST(ROMTest, OneWordRomChecksAddressStateAndBounds)
@@ -165,12 +311,11 @@ TEST(ROMTest, OneWordRomChecksAddressStateAndBounds)
   Simulator          simulator(circuit);
 
   Bus       address = rom->inputBuses()[0];
-  const Bus cs      = rom->inputBuses()[1];
   const Bus data    = rom->outputBuses()[0];
   ASSERT_EQ(address.size(), 1);
 
-  address.forceSetCurrentValue(BusValue{State::ERROR});
-  ASSERT_EQ(simulator.setBus(cs, valueFor(cs, 1)), Simulator::RunResult::Completed);
+  ASSERT_EQ(simulator.setBus(address, BusValue{State::ERROR}),
+            Simulator::RunResult::Completed);
   expectState(data, State::ERROR);
   ASSERT_EQ(simulator.setBus(address, valueFor(address, 0)),
             Simulator::RunResult::Completed);
@@ -186,9 +331,7 @@ TEST(ROMTest, ShortImagesKeepGeometryAndUnknownTails)
   rom->setProperty("padding", std::string(Memory::Unknown));
   auto       circuit = std::make_shared<Circuit>(Component_set{rom});
   Simulator  simulator(circuit);
-  const auto cs      = rom->inputBuses()[1];
   const auto address = rom->inputBuses()[0];
-  ASSERT_EQ(simulator.setBus(cs, valueFor(cs, 1)), Simulator::RunResult::Completed);
   rom->refreshBinaryContents(binarySnapshot({0x10, 0x20, 0x30}));
   EXPECT_EQ(rom->memoryDepth(), 4);
   ASSERT_EQ(simulator.setBus(address, valueFor(address, 2)),
@@ -202,20 +345,71 @@ TEST(ROMTest, ShortImagesKeepGeometryAndUnknownTails)
   EXPECT_EQ(rom->inputBuses()[0], address);
 }
 
-TEST(ROMTest, ControlUnknownsPropagateWhileEnabledContentIsUnavailable)
+TEST(ROMTest, MissingBinaryDocumentPreventsSimulation)
 {
-  auto rom = std::make_shared<ROM>();
-  rom->setBinaryDocument("missing", nullptr);
-  auto      circuit = std::make_shared<Circuit>(Component_set{rom});
-  Simulator simulator(circuit);
+  auto memory = std::make_shared<Memory>();
+  memory->setBinaryDocument("missing", nullptr);
+  auto circuit = std::make_shared<Circuit>(Component_set{memory});
+  EXPECT_THROW(Simulator simulator(circuit), std::runtime_error);
+}
 
-  Bus cs = rom->inputBuses()[1];
-  cs.forceSetCurrentValue(BusValue{State::ERROR});
-  rom->simulate(simulator);
-  expectState(rom->outputBuses()[0], State::ERROR);
+TEST(MemoryTest, ReadPortsPreservePackedPaddingAndFourStateAddressesInBothModes)
+{
+  for (const auto type : {"ROM", "RAM"}) {
+    for (const auto padding : {Memory::Zero, Memory::Unknown}) {
+      SCOPED_TRACE(std::string(type) + "/" + std::string(padding));
+      auto memory = std::make_shared<Memory>();
+      memory->setProperty("type", std::string(type));
+      memory->setProperty("readPorts", 3);
+      // Explicit depth also permits addresses wider than a machine word.
+      memory->setGeometry(10, 65, 3);
+      memory->setBinaryDocument("packed", binarySnapshot({0xA5, 0x3C}));
+      memory->setProperty("padding", std::string(padding));
+      auto      circuit = std::make_shared<Circuit>(Component_set{memory}, false);
+      Simulator sim(circuit);
 
-  cs.forceSetCurrentValue(BusValue{State::HIGH});
-  EXPECT_THROW(rom->simulate(simulator), std::runtime_error);
+      auto partial = valueFor(10, 0xF);
+      if (padding == Memory::Unknown)
+        for (std::size_t bit = 6; bit < 10; ++bit)
+          partial[bit] = State::UNKNOWN;
+      const std::array<BusValue, 3> expected{
+          valueFor(10, 0xA5), partial,
+          BusValue(10, padding == Memory::Unknown ? State::UNKNOWN : State::LOW)};
+      for (std::size_t port = 0; port < 3; ++port) {
+        const auto& address = memory->inputBuses()[port];
+        ASSERT_EQ(sim.setBus(address, valueFor(65, port)),
+                  Simulator::RunResult::Completed);
+      }
+      for (std::size_t port = 0; port < 3; ++port)
+        EXPECT_EQ(memory->outputBuses()[port].getCurrentValue(), expected[port]);
+
+      const auto& address = memory->inputBuses()[1];
+      for (const auto state : {State::UNKNOWN, State::ERROR}) {
+        auto value = valueFor(65, 0);
+        value[0]   = state;
+        ASSERT_EQ(sim.setBus(address, value), Simulator::RunResult::Completed);
+        expectState(memory->outputBuses()[1], state);
+      }
+      for (const auto bit : {0, 64}) {
+        auto value = valueFor(65, bit == 0 ? 3 : 0);
+        if (bit == 64)
+          value[64] = State::HIGH;
+        ASSERT_EQ(sim.setBus(address, value), Simulator::RunResult::Completed);
+        expectState(memory->outputBuses()[1], State::UNKNOWN);
+      }
+      EXPECT_EQ(memory->outputBuses()[0].getCurrentValue(), expected[0]);
+      EXPECT_EQ(memory->outputBuses()[2].getCurrentValue(), expected[2]);
+
+      memory->refreshBinaryContents(binarySnapshot({}));
+      ASSERT_EQ(sim.simulateBus(memory->outputBuses()[0]),
+                Simulator::RunResult::Completed);
+      for (const auto port : {0, 2})
+        expectState(memory->outputBuses()[port],
+                    padding == Memory::Unknown ? State::UNKNOWN : State::LOW);
+      memory->refreshBinaryContents(binarySnapshot({1, 2, 3, 4, 5}));
+      EXPECT_THROW(memory->simulate(sim), std::runtime_error);
+    }
+  }
 }
 
 TEST(ROMTest, BinaryDocumentChangesPreserveGeometryAndClearStaleContent)
@@ -246,12 +440,12 @@ TEST(ROMTest, SerializationPreservesWiringAndExplicitHydrationFeedsRuntimeSnapsh
 
   ComponentRegistry registry;
   registerAllComponents(registry);
-  if (!ComponentRegistry::instance().hasType(ROM::Type))
+  if (!ComponentRegistry::instance().hasType(Memory::Type))
     registerAllComponents(ComponentRegistry::instance());
   auto restored =
       std::make_shared<Circuit>(Circuit::deserialize(original.serialize(), registry));
   const auto restoredComponent =
-      std::dynamic_pointer_cast<ROM>(restored->getComponentByVertexId(0));
+      std::dynamic_pointer_cast<Memory>(restored->getComponentByVertexId(0));
   ASSERT_NE(restoredComponent, nullptr);
   EXPECT_EQ(restoredComponent->getPropertyValue<int>("dataWidth"), 8);
   EXPECT_EQ(restoredComponent->getPropertyValue<std::string>("binaryContents"),
@@ -266,9 +460,7 @@ TEST(ROMTest, SerializationPreservesWiringAndExplicitHydrationFeedsRuntimeSnapsh
   restoredComponent->refreshBinaryContents(rom->binaryContentsSnapshot());
   Session   session(restored);
   const Bus address = restoredComponent->inputBuses()[0];
-  const Bus cs      = restoredComponent->inputBuses()[1];
   const Bus data    = restoredComponent->outputBuses()[0];
-  ASSERT_EQ(session.setBus(cs, valueFor(cs, 1)), Simulator::RunResult::Completed);
   ASSERT_EQ(session.setBus(address, valueFor(address, 1)),
             Simulator::RunResult::Completed);
   EXPECT_EQ(data.getCurrentValue(), valueFor(data, 0xC3));
@@ -283,7 +475,7 @@ TEST(ROMTest, MetadataUsesMemoryCategory)
 {
   ComponentRegistry registry;
   registerAllComponents(registry);
-  const auto metadata = registry.metadata(ROM::Type);
+  const auto metadata = registry.metadata(Memory::Type);
   EXPECT_EQ(metadata.category, ComponentCategory::Memory);
   EXPECT_EQ(componentCategoryName(metadata.category), "Memory");
 }
@@ -291,7 +483,7 @@ TEST(ROMTest, MetadataUsesMemoryCategory)
 namespace {
 
 struct RamFixture {
-  std::shared_ptr<RAM> ram = std::make_shared<RAM>();
+  std::shared_ptr<Memory>    ram = configuredRam();
   std::shared_ptr<Circuit> circuit;
   std::unique_ptr<Simulator> sim;
 
@@ -307,27 +499,37 @@ struct RamFixture {
       ram->setBinaryDocument("initial", binarySnapshot(std::move(initial)));
     circuit = std::make_shared<Circuit>(Component_set{ram}, false);
     sim = std::make_unique<Simulator>(circuit);
-    set(RAM::Inputs::ReadAddress, 0);
-    set(RAM::Inputs::WriteAddress, 0);
-    set(RAM::Inputs::WriteData, 0);
-    set(RAM::Inputs::WriteEnable, 0);
-    set(RAM::Inputs::Clock, 0);
+    set(0, 0);
+    set(Memory::WriteInputs::Address, 0);
+    set(Memory::WriteInputs::Data, 0);
+    set(Memory::WriteInputs::Enable, 0);
+    set(Memory::WriteInputs::Clock, 0);
   }
 
-  Bus input(RAM::Inputs port) const { return ram->inputBuses()[static_cast<unsigned>(port)]; }
-  Bus output() const { return ram->outputBuses()[0]; }
-  void set(RAM::Inputs port, std::uint64_t value)
+  Bus  input(Memory::WriteInputs port) const { return input(ram->writeInputIndex(port)); }
+  Bus  input(std::size_t port) const { return ram->inputBuses()[port]; }
+  Bus  output() const { return ram->outputBuses()[0]; }
+  void set(Memory::WriteInputs port, std::uint64_t value)
+  {
+    EXPECT_EQ(sim->setBus(input(port), valueFor(input(port), value)),
+              Simulator::RunResult::Completed);
+  }
+  void set(Memory::WriteInputs port, const BusValue& value)
+  {
+    EXPECT_EQ(sim->setBus(input(port), value), Simulator::RunResult::Completed);
+  }
+  void set(std::size_t port, std::uint64_t value)
   {
     EXPECT_EQ(sim->setBus(input(port), valueFor(input(port), value)), Simulator::RunResult::Completed);
   }
-  void set(RAM::Inputs port, const BusValue& value)
+  void set(std::size_t port, const BusValue& value)
   {
     EXPECT_EQ(sim->setBus(input(port), value), Simulator::RunResult::Completed);
   }
   void pulse()
   {
-    set(RAM::Inputs::Clock, 0);
-    set(RAM::Inputs::Clock, 1);
+    set(Memory::WriteInputs::Clock, 0);
+    set(Memory::WriteInputs::Clock, 1);
   }
 };
 
@@ -335,7 +537,8 @@ struct RamFixture {
 
 TEST(RAMTest, ValidatesGeometryAndBinaryImages)
 {
-  RAM ram;
+  Memory ram;
+  ram.setProperty("type", std::string("RAM"));
   EXPECT_THROW(ram.setProperty("dataWidth", 0), std::invalid_argument);
   EXPECT_THROW(ram.setProperty("dataWidth", 65536), std::invalid_argument);
   EXPECT_NO_THROW(ram.setProperty("depthOverride", 0));
@@ -361,14 +564,14 @@ TEST(RAMTest, ReadsPackedInitializationAndChecksBounds)
   RamFixture                         f(10, 3, {0xA5, 0x3C, 0xF0, 0x01});
   const std::array<std::uint64_t, 3> values{0x0A5, 0x00F, 0x01F};
   for (std::size_t i = 0; i < values.size(); ++i) {
-    f.set(RAM::Inputs::ReadAddress, i);
+    f.set(0, i);
     EXPECT_EQ(f.output().getCurrentValue(), valueFor(f.output(), values[i]));
   }
-  f.set(RAM::Inputs::ReadAddress, 3);
+  f.set(0, 3);
   expectState(f.output(), State::UNKNOWN);
-  f.set(RAM::Inputs::ReadAddress, BusValue{State::UNKNOWN, State::LOW});
+  f.set(0, BusValue{State::UNKNOWN, State::LOW});
   expectState(f.output(), State::UNKNOWN);
-  f.set(RAM::Inputs::ReadAddress, BusValue{State::UNKNOWN, State::ERROR});
+  f.set(0, BusValue{State::UNKNOWN, State::ERROR});
   expectState(f.output(), State::ERROR);
 }
 
@@ -376,15 +579,15 @@ TEST(RAMTest, UninitializedAndSingleWordMemories)
 {
   RamFixture f(1, 1);
   expectState(f.output(), State::UNKNOWN);
-  f.set(RAM::Inputs::WriteData, 1);
-  f.set(RAM::Inputs::WriteEnable, 1);
+  f.set(Memory::WriteInputs::Data, 1);
+  f.set(Memory::WriteInputs::Enable, 1);
   f.pulse();
   expectState(f.output(), State::HIGH);
-  f.set(RAM::Inputs::WriteAddress, 1);
-  f.set(RAM::Inputs::WriteData, 0);
+  f.set(Memory::WriteInputs::Address, 1);
+  f.set(Memory::WriteInputs::Data, 0);
   f.pulse();
   expectState(f.output(), State::HIGH);
-  f.set(RAM::Inputs::ReadAddress, 1);
+  f.set(0, 1);
   expectState(f.output(), State::UNKNOWN);
 }
 
@@ -392,49 +595,106 @@ TEST(RAMTest, IndependentAddressesMaskedWritesAndUnchangedReadAddress)
 {
   RamFixture f(8, 3, {0x12, 0x34, 0x56});
   const auto initial = f.ram->binaryContentsSnapshot();
-  f.set(RAM::Inputs::WriteAddress, 1);
-  f.set(RAM::Inputs::WriteData, 0xAB);
-  f.set(RAM::Inputs::WriteEnable, 0x0F);
+  f.set(Memory::WriteInputs::Address, 1);
+  f.set(Memory::WriteInputs::Data, 0xAB);
+  f.set(Memory::WriteInputs::Enable, 0x0F);
   f.pulse();
   EXPECT_EQ(f.output().getCurrentValue(), valueFor(8, 0x12));
-  f.set(RAM::Inputs::ReadAddress, 1);
+  f.set(0, 1);
   EXPECT_EQ(f.output().getCurrentValue(), valueFor(8, 0x3B));
-  f.set(RAM::Inputs::WriteData, 0xC0);
-  f.set(RAM::Inputs::WriteEnable, 0xF0);
+  f.set(Memory::WriteInputs::Data, 0xC0);
+  f.set(Memory::WriteInputs::Enable, 0xF0);
   f.pulse();
   EXPECT_EQ(f.output().getCurrentValue(), valueFor(8, 0xCB));
   EXPECT_EQ(f.ram->binaryContentsSnapshot(), initial);
   EXPECT_EQ(*initial, (std::vector<std::uint8_t>{0x12, 0x34, 0x56}));
-  f.set(RAM::Inputs::WriteAddress, 3);
+  f.set(Memory::WriteInputs::Address, 3);
   f.pulse();
   EXPECT_EQ(f.output().getCurrentValue(), valueFor(8, 0xCB));
+}
+
+TEST(MemoryTest, SwitchingBetweenRamAndRomRestoresInitializationAfterWrites)
+{
+  RamFixture f(8, 2, {0x12, 0x34});
+  for (const auto type : {"RAM", "ROM", "RAM", "ROM"}) {
+    f.ram->setProperty("type", std::string(type));
+    f.sim = std::make_unique<Simulator>(f.circuit);
+    f.set(0, 0);
+    EXPECT_EQ(f.output().getCurrentValue(), valueFor(8, 0x12));
+    if (f.ram->isWritable()) {
+      f.set(Memory::WriteInputs::Address, 0);
+      f.set(Memory::WriteInputs::Data, 0x56);
+      f.set(Memory::WriteInputs::Enable, 0xFF);
+      f.pulse();
+      EXPECT_EQ(f.output().getCurrentValue(), valueFor(8, 0x56));
+    }
+    EXPECT_EQ(f.ram->memoryImageSnapshot()->word(0), valueFor(8, 0x12));
+  }
+}
+
+TEST(MemoryTest, SharedImagesKeepRomAndWritableInstancesIndependent)
+{
+  const auto image = std::make_shared<const MemoryImage>(
+      MemoryImage::fromBytes(std::vector<std::uint8_t>{0x12, 0x34}, 8, 2));
+  const std::array memories{std::make_shared<Memory>(), configuredRam(), configuredRam()};
+  Component_set    components;
+  for (const auto& memory : memories) {
+    memory->setMemoryImage(image);
+    EXPECT_EQ(memory->memoryImageSnapshot(), image);
+    components.insert(memory);
+  }
+  auto       circuit = std::make_shared<Circuit>(components, false);
+  Simulator  sim(circuit);
+  const auto set = [&](const std::shared_ptr<Memory>& memory, std::size_t input,
+                       std::uint64_t value) {
+    const auto& bus = memory->inputBuses()[input];
+    ASSERT_EQ(sim.setBus(bus, valueFor(bus, value)), Simulator::RunResult::Completed);
+  };
+  for (const auto& memory : memories)
+    set(memory, 0, 0);
+  for (std::size_t index = 1; index < memories.size(); ++index) {
+    const auto& memory = memories[index];
+    set(memory, memory->writeInputIndex(Memory::WriteInputs::Address), 0);
+    set(memory, memory->writeInputIndex(Memory::WriteInputs::Data), 0x50 + index);
+    set(memory, memory->writeInputIndex(Memory::WriteInputs::Enable), 0xFF);
+    set(memory, memory->writeInputIndex(Memory::WriteInputs::Clock), 0);
+    set(memory, memory->writeInputIndex(Memory::WriteInputs::Clock), 1);
+    EXPECT_EQ(memories[0]->outputBuses()[0].getCurrentValue(), valueFor(8, 0x12));
+    EXPECT_EQ(memories[1]->outputBuses()[0].getCurrentValue(), valueFor(8, 0x51));
+    EXPECT_EQ(memories[2]->outputBuses()[0].getCurrentValue(),
+              valueFor(8, index == 1 ? 0x12 : 0x52));
+    EXPECT_EQ(image->word(0), valueFor(8, 0x12));
+  }
 }
 
 TEST(RAMTest, WritesOnlyOnClockEdgesAndDoesNotResetDuringFullEvaluation)
 {
   RamFixture f(8, 1, {0x12});
-  f.set(RAM::Inputs::WriteData, 0x34);
-  f.set(RAM::Inputs::WriteEnable, 0xFF);
+  f.set(Memory::WriteInputs::Data, 0x34);
+  f.set(Memory::WriteInputs::Enable, 0xFF);
   EXPECT_EQ(f.output().getCurrentValue(), valueFor(8, 0x12));
   f.pulse();
   EXPECT_EQ(f.output().getCurrentValue(), valueFor(8, 0x34));
-  f.set(RAM::Inputs::WriteData, 0x56);
-  f.set(RAM::Inputs::Clock, 1);
+  f.set(Memory::WriteInputs::Data, 0x56);
+  f.set(Memory::WriteInputs::Clock, 1);
   EXPECT_EQ(f.output().getCurrentValue(), valueFor(8, 0x34));
-  f.set(RAM::Inputs::Clock, 0);
+  f.set(Memory::WriteInputs::Clock, 0);
   EXPECT_EQ(f.output().getCurrentValue(), valueFor(8, 0x34));
-  EXPECT_EQ(f.sim->simulateBus(f.input(RAM::Inputs::ReadAddress)), Simulator::RunResult::Completed);
+  EXPECT_EQ(f.sim->simulateBus(f.input(0)), Simulator::RunResult::Completed);
   EXPECT_EQ(f.output().getCurrentValue(), valueFor(8, 0x34));
 }
 
 TEST(RAMTest, UnknownMasksAndDataPreserveFourStates)
 {
   RamFixture f(4, 1, {0x05});
-  f.set(RAM::Inputs::WriteData, BusValue{State::HIGH, State::HIGH, State::UNKNOWN, State::ERROR});
-  f.set(RAM::Inputs::WriteEnable, BusValue{State::UNKNOWN, State::UNKNOWN, State::HIGH, State::HIGH});
+  f.set(Memory::WriteInputs::Data,
+        BusValue{State::HIGH, State::HIGH, State::UNKNOWN, State::ERROR});
+  f.set(Memory::WriteInputs::Enable,
+        BusValue{State::UNKNOWN, State::UNKNOWN, State::HIGH, State::HIGH});
   f.pulse();
   EXPECT_EQ(f.output().getCurrentValue(), (BusValue{State::HIGH, State::UNKNOWN, State::UNKNOWN, State::ERROR}));
-  f.set(RAM::Inputs::WriteEnable, BusValue{State::ERROR, State::LOW, State::LOW, State::LOW});
+  f.set(Memory::WriteInputs::Enable,
+        BusValue{State::ERROR, State::LOW, State::LOW, State::LOW});
   f.pulse();
   EXPECT_EQ(f.output().getCurrentValue()[0], State::ERROR);
 }
@@ -442,24 +702,24 @@ TEST(RAMTest, UnknownMasksAndDataPreserveFourStates)
 TEST(RAMTest, UnknownWriteAddressOnlyAffectsPossibleWordsAndEnabledBits)
 {
   RamFixture f(8, 3, {0x55, 0x55, 0xAA});
-  f.set(RAM::Inputs::WriteAddress, BusValue{State::UNKNOWN, State::LOW});
-  f.set(RAM::Inputs::WriteEnable, 1);
+  f.set(Memory::WriteInputs::Address, BusValue{State::UNKNOWN, State::LOW});
+  f.set(Memory::WriteInputs::Enable, 1);
   f.pulse();
   auto expected = valueFor(8, 0x55);
   expected[0] = State::UNKNOWN;
   EXPECT_EQ(f.output().getCurrentValue(), expected);
-  f.set(RAM::Inputs::ReadAddress, 1);
+  f.set(0, 1);
   EXPECT_EQ(f.output().getCurrentValue(), expected);
-  f.set(RAM::Inputs::ReadAddress, 2);
+  f.set(0, 2);
   EXPECT_EQ(f.output().getCurrentValue(), valueFor(8, 0xAA));
-  f.set(RAM::Inputs::WriteAddress, BusValue{State::UNKNOWN, State::HIGH});
-  f.set(RAM::Inputs::WriteData, 1);
+  f.set(Memory::WriteInputs::Address, BusValue{State::UNKNOWN, State::HIGH});
+  f.set(Memory::WriteInputs::Data, 1);
   f.pulse();
   expected = valueFor(8, 0xAA);
   expected[0] = State::UNKNOWN;
   EXPECT_EQ(f.output().getCurrentValue(), expected);
-  f.set(RAM::Inputs::WriteEnable, 0);
-  f.set(RAM::Inputs::WriteAddress, BusValue{State::ERROR, State::ERROR});
+  f.set(Memory::WriteInputs::Enable, 0);
+  f.set(Memory::WriteInputs::Address, BusValue{State::ERROR, State::ERROR});
   f.pulse();
   EXPECT_EQ(f.output().getCurrentValue(), expected);
 }
@@ -467,20 +727,20 @@ TEST(RAMTest, UnknownWriteAddressOnlyAffectsPossibleWordsAndEnabledBits)
 TEST(RAMTest, AmbiguousClockMergesPossibleWrites)
 {
   RamFixture f(4, 1, {5});
-  f.set(RAM::Inputs::WriteData, 7);
-  f.set(RAM::Inputs::WriteEnable, 15);
-  f.set(RAM::Inputs::Clock, BusValue{State::UNKNOWN});
+  f.set(Memory::WriteInputs::Data, 7);
+  f.set(Memory::WriteInputs::Enable, 15);
+  f.set(Memory::WriteInputs::Clock, BusValue{State::UNKNOWN});
   EXPECT_EQ(f.output().getCurrentValue(), (BusValue{State::HIGH, State::UNKNOWN, State::HIGH, State::LOW}));
-  f.set(RAM::Inputs::Clock, 0);
-  f.set(RAM::Inputs::WriteData, 0);
-  f.set(RAM::Inputs::WriteEnable, 1);
-  f.set(RAM::Inputs::Clock, BusValue{State::ERROR});
+  f.set(Memory::WriteInputs::Clock, 0);
+  f.set(Memory::WriteInputs::Data, 0);
+  f.set(Memory::WriteInputs::Enable, 1);
+  f.set(Memory::WriteInputs::Clock, BusValue{State::ERROR});
   EXPECT_EQ(f.output().getCurrentValue()[0], State::ERROR);
 }
 
 TEST(RAMTest, SamplesRegisterOutputsAndReadDataBeforeTheSameEdge)
 {
-  auto ram = std::make_shared<RAM>();
+  auto ram = configuredRam();
   ram->setBinaryDocument("initial", binarySnapshot({0x12}));
   const auto clock = ram->inputBuses()[4][0];
   const Bus data(8);
@@ -517,8 +777,8 @@ TEST(RAMTest, IndependentReadPortsPublishWritesAndAddressChangesWhileClockIsHigh
   f.ram->setProperty("readPorts", 2);
   const auto read0    = f.ram->outputBuses()[0];
   const auto read1    = f.ram->outputBuses()[1];
-  const auto address1 = f.ram->inputBuses()[RAM::readAddressIndex(1)];
-  const auto clock    = f.input(RAM::Inputs::Clock)[0];
+  const auto address1 = f.ram->inputBuses()[1];
+  const auto clock    = f.input(Memory::WriteInputs::Clock)[0];
   const auto high     = std::make_shared<Wire>(State::HIGH);
   const auto low      = std::make_shared<Wire>(State::LOW);
   const Bus  captured0(8), captured1(8);
@@ -526,18 +786,18 @@ TEST(RAMTest, IndependentReadPortsPublishWritesAndAddressChangesWhileClockIsHigh
   auto       reader1 = std::make_shared<Register>(read1, clock, high, low, captured1);
   f.circuit = std::make_shared<Circuit>(Component_set{f.ram, reader0, reader1}, false);
   f.sim     = std::make_unique<Simulator>(f.circuit);
-  f.set(RAM::Inputs::ReadAddress, 0);
+  f.set(0, 0);
   ASSERT_EQ(f.sim->setBus(address1, valueFor(1, 1)), Simulator::RunResult::Completed);
-  f.set(RAM::Inputs::WriteAddress, 1);
-  f.set(RAM::Inputs::WriteData, 0x56);
-  f.set(RAM::Inputs::WriteEnable, 0xFF);
+  f.set(Memory::WriteInputs::Address, 1);
+  f.set(Memory::WriteInputs::Data, 0x56);
+  f.set(Memory::WriteInputs::Enable, 0xFF);
   f.pulse();
   EXPECT_EQ(read0.getCurrentValue(), valueFor(8, 0x12));
   EXPECT_EQ(read1.getCurrentValue(), valueFor(8, 0x56));
   EXPECT_EQ(captured0.getCurrentValue(), valueFor(8, 0x12));
   EXPECT_EQ(captured1.getCurrentValue(), valueFor(8, 0x34));
 
-  f.set(RAM::Inputs::ReadAddress, 1);
+  f.set(0, 1);
   ASSERT_EQ(f.sim->setBus(address1, valueFor(1, 0)), Simulator::RunResult::Completed);
   EXPECT_EQ(read0.getCurrentValue(), valueFor(8, 0x56));
   EXPECT_EQ(read1.getCurrentValue(), valueFor(8, 0x12));
@@ -554,28 +814,31 @@ TEST(RAMTest, SessionsResetFromImmutableInitializationAndKeepTheirOwnContents)
 {
   auto registry = ComponentRegistry::empty();
   registerAllComponents(registry);
-  if (!ComponentRegistry::instance().hasType(RAM::Type))
+  if (!ComponentRegistry::instance().hasType(Memory::Type))
     registerAllComponents(ComponentRegistry::instance());
   RamFixture f(8, 1, {0x12});
   // A runtime mutation on the source component must not be cloned into a session.
-  f.set(RAM::Inputs::WriteEnable, 0xFF);
-  f.set(RAM::Inputs::WriteData, 0x34);
+  f.set(Memory::WriteInputs::Enable, 0xFF);
+  f.set(Memory::WriteInputs::Data, 0x34);
   f.pulse();
   {
     Session session(f.circuit);
     EXPECT_EQ(f.output().getCurrentValue(), valueFor(8, 0x12));
-    EXPECT_EQ(session.setBus(f.input(RAM::Inputs::Clock), valueFor(1, 0)), Simulator::RunResult::Completed);
-    EXPECT_EQ(session.setBus(f.input(RAM::Inputs::Clock), valueFor(1, 1)), Simulator::RunResult::Completed);
+    EXPECT_EQ(session.setBus(f.input(Memory::WriteInputs::Clock), valueFor(1, 0)),
+              Simulator::RunResult::Completed);
+    EXPECT_EQ(session.setBus(f.input(Memory::WriteInputs::Clock), valueFor(1, 1)),
+              Simulator::RunResult::Completed);
     EXPECT_EQ(f.output().getCurrentValue(), valueFor(8, 0x34));
     f.ram->refreshBinaryContents(binarySnapshot({0x56}));
-    EXPECT_EQ(session.setBus(f.input(RAM::Inputs::ReadAddress), valueFor(1, 0)), Simulator::RunResult::Completed);
+    EXPECT_EQ(session.setBus(f.input(0), valueFor(1, 0)),
+              Simulator::RunResult::Completed);
     EXPECT_EQ(f.output().getCurrentValue(), valueFor(8, 0x34));
   }
   Session replacement(f.circuit);
   EXPECT_EQ(f.output().getCurrentValue(), valueFor(8, 0x56));
 
   auto copy = std::make_shared<Circuit>(Circuit::deserialize(f.circuit->serialize(), registry));
-  auto other = std::dynamic_pointer_cast<RAM>(copy->getComponentByVertexId(0));
+  auto other = std::dynamic_pointer_cast<Memory>(copy->getComponentByVertexId(0));
   ASSERT_TRUE(other);
   other->refreshBinaryContents(f.ram->binaryContentsSnapshot());
   Session independent(copy);
@@ -591,9 +854,9 @@ TEST(RAMTest, SessionsResetFromImmutableInitializationAndKeepTheirOwnContents)
 
 TEST(RAMTest, RepeatedSubcircuitInstancesHaveIndependentContents)
 {
-  if (!ComponentRegistry::instance().hasType(RAM::Type))
+  if (!ComponentRegistry::instance().hasType(Memory::Type))
     registerAllComponents(ComponentRegistry::instance());
-  auto ram = std::make_shared<RAM>();
+  auto ram = configuredRam();
   ram->setProperty("binaryContents", std::string("initial"));
   Circuit leaf(Component_set{ram}, false);
   SILICON::project::ProjectContext project;
@@ -648,7 +911,7 @@ public:
 
 TEST(RAMTest, StateCommitsOnlyReevaluateTheAffectedConeAndCancellationDiscardsWrites)
 {
-  auto ram = std::make_shared<RAM>();
+  auto ram = configuredRam();
   ram->setBinaryDocument("initial", binarySnapshot({0x12}));
   auto observer = std::make_shared<MemoryReadObserver>(ram->outputBuses()[0]);
   auto unrelated = std::make_shared<MemoryReadObserver>(Bus(8));
@@ -678,7 +941,7 @@ TEST(RAMTest, StateCommitsOnlyReevaluateTheAffectedConeAndCancellationDiscardsWr
 
 TEST(RAMTest, FeedbackUsesOneSamplePerClockEdge)
 {
-  auto ram = std::make_shared<RAM>();
+  auto ram = configuredRam();
   ram->setProperty("dataWidth", 2);
   ram->setBinaryDocument("initial", binarySnapshot({1}));
   const auto high = std::make_shared<Wire>(State::HIGH);
@@ -701,15 +964,15 @@ TEST(RAMTest, CombinationalFeedbackCannotReplaceTheFirstSccWriteSample)
 {
   RamFixture  f(2, 1, {1});
   const auto& read   = f.ram->outputBuses()[0];
-  const auto  data   = f.input(RAM::Inputs::WriteData);
-  const auto  clock  = f.input(RAM::Inputs::Clock)[0];
+  const auto  data   = f.input(Memory::WriteInputs::Data);
+  const auto  clock  = f.input(Memory::WriteInputs::Clock)[0];
   auto        invert = std::make_shared<NotGate>(read[0], data[0]);
   auto gate = std::make_shared<AndGate>(std::vector<Wire_ptr>{read[0], clock}, data[1]);
   invert->setProperty("delay", 0);
   gate->setProperty("delay", 0);
   f.circuit = std::make_shared<Circuit>(Component_set{f.ram, invert, gate}, false);
   f.sim     = std::make_unique<Simulator>(f.circuit);
-  f.set(RAM::Inputs::WriteEnable, 3);
+  f.set(Memory::WriteInputs::Enable, 3);
   EXPECT_EQ(data.getCurrentValue(), valueFor(2, 0));
 
   // The AND gate changes data to 2 during SCC settling on this edge. The RAM
@@ -726,26 +989,26 @@ TEST(RAMTest, UnobservedWritesNeedNoExtraPassAndFailedPassesRestoreStorage)
   auto       observer = std::make_shared<MemoryReadObserver>(f.output());
   f.circuit           = std::make_shared<Circuit>(Component_set{f.ram, observer}, false);
   f.sim               = std::make_unique<Simulator>(f.circuit);
-  f.set(RAM::Inputs::WriteAddress, 1);
-  f.set(RAM::Inputs::WriteData, 0x34);
-  f.set(RAM::Inputs::WriteEnable, 0xFF);
+  f.set(Memory::WriteInputs::Address, 1);
+  f.set(Memory::WriteInputs::Data, 0x34);
+  f.set(Memory::WriteInputs::Enable, 0xFF);
 
   observer->fail = true;
-  EXPECT_THROW(f.sim->setBus(f.input(RAM::Inputs::Clock), valueFor(1, 1)),
+  EXPECT_THROW(f.sim->setBus(f.input(Memory::WriteInputs::Clock), valueFor(1, 1)),
                std::runtime_error);
   observer->fail = false;
-  f.set(RAM::Inputs::Clock, 0);
-  f.set(RAM::Inputs::ReadAddress, 1);
+  f.set(Memory::WriteInputs::Clock, 0);
+  f.set(0, 1);
   EXPECT_EQ(f.output().getCurrentValue(), valueFor(8, 0x56));
 
-  f.set(RAM::Inputs::ReadAddress, 0);
+  f.set(0, 0);
   const auto before = observer->evaluations;
-  f.set(RAM::Inputs::Clock, 1);
+  f.set(Memory::WriteInputs::Clock, 1);
   // The clock's forward cone runs once. Writing an unread word produces no
   // output transition and must not schedule an owner/cone reevaluation.
   EXPECT_EQ(observer->evaluations, before + 1);
   EXPECT_EQ(f.output().getCurrentValue(), valueFor(8, 0x12));
-  f.set(RAM::Inputs::ReadAddress, 1);
+  f.set(0, 1);
   EXPECT_EQ(f.output().getCurrentValue(), valueFor(8, 0x34));
 }
 
@@ -753,8 +1016,8 @@ TEST(RAMTest, SimultaneousIndependentClocksExchangePreEdgeReadData)
 {
   RamFixture a(8, 1, {0x12});
   RamFixture b(8, 1, {0x34});
-  a.ram->setInput(static_cast<unsigned>(RAM::Inputs::WriteData), b.output(), true);
-  b.ram->setInput(static_cast<unsigned>(RAM::Inputs::WriteData), a.output(), true);
+  a.ram->setInput(a.ram->writeInputIndex(Memory::WriteInputs::Data), b.output(), true);
+  b.ram->setInput(b.ram->writeInputIndex(Memory::WriteInputs::Data), a.output(), true);
   auto      circuit = std::make_shared<Circuit>(Component_set{a.ram, b.ram}, false);
   Simulator sim(circuit);
   for (const auto& ram : {a.ram, b.ram})
@@ -779,8 +1042,8 @@ TEST(RAMTest, GeneratedClockCapturesOldReadDataAndPublishesWithoutTimeAdvance)
   RamFixture source(2, 1, {0});
   RamFixture target(8, 1, {0x12});
   const auto generatedClock = source.output()[0];
-  target.ram->setInput(static_cast<unsigned>(RAM::Inputs::Clock), Bus{generatedClock},
-                       true);
+  target.ram->setInput(target.ram->writeInputIndex(Memory::WriteInputs::Clock),
+                       Bus{generatedClock}, true);
   const Bus  captured(8);
   const auto high = std::make_shared<Wire>(State::HIGH);
   const auto low  = std::make_shared<Wire>(State::LOW);
@@ -792,11 +1055,11 @@ TEST(RAMTest, GeneratedClockCapturesOldReadDataAndPublishesWithoutTimeAdvance)
   const auto set = [&](const Bus& bus, std::uint64_t value) {
     ASSERT_EQ(sim.setBus(bus, valueFor(bus, value)), Simulator::RunResult::Completed);
   };
-  set(source.input(RAM::Inputs::WriteData), 1);
-  set(source.input(RAM::Inputs::WriteEnable), 3);
-  set(target.input(RAM::Inputs::WriteData), 0x34);
-  set(target.input(RAM::Inputs::WriteEnable), 0xFF);
-  set(source.input(RAM::Inputs::Clock), 1);
+  set(source.input(Memory::WriteInputs::Data), 1);
+  set(source.input(Memory::WriteInputs::Enable), 3);
+  set(target.input(Memory::WriteInputs::Data), 0x34);
+  set(target.input(Memory::WriteInputs::Enable), 0xFF);
+  set(source.input(Memory::WriteInputs::Clock), 1);
   EXPECT_EQ(captured.getCurrentValue(), valueFor(8, 0x12));
   EXPECT_EQ(target.output().getCurrentValue(), valueFor(8, 0x34));
   EXPECT_EQ(sim.getCurrentTime(), 0);
@@ -807,8 +1070,8 @@ TEST(RAMTest, CancellationOfGeneratedClockPassKeepsEarlierCommittedBatches)
   RamFixture source(2, 1, {0});
   RamFixture target(8, 1, {0x12});
   const auto generatedClock = source.output()[0];
-  target.ram->setInput(static_cast<unsigned>(RAM::Inputs::Clock), Bus{generatedClock},
-                       true);
+  target.ram->setInput(target.ram->writeInputIndex(Memory::WriteInputs::Clock),
+                       Bus{generatedClock}, true);
   auto observer = std::make_shared<MemoryReadObserver>(target.output());
   auto circuit =
       std::make_shared<Circuit>(Component_set{source.ram, target.ram, observer}, false);
@@ -816,20 +1079,20 @@ TEST(RAMTest, CancellationOfGeneratedClockPassKeepsEarlierCommittedBatches)
   const auto set = [&](const Bus& bus, std::uint64_t value) {
     ASSERT_EQ(sim.setBus(bus, valueFor(bus, value)), Simulator::RunResult::Completed);
   };
-  set(source.input(RAM::Inputs::WriteData), 1);
-  set(source.input(RAM::Inputs::WriteEnable), 3);
-  set(target.input(RAM::Inputs::WriteData), 0x34);
-  set(target.input(RAM::Inputs::WriteEnable), 0xFF);
+  set(source.input(Memory::WriteInputs::Data), 1);
+  set(source.input(Memory::WriteInputs::Enable), 3);
+  set(target.input(Memory::WriteInputs::Data), 0x34);
+  set(target.input(Memory::WriteInputs::Enable), 0xFF);
   bool cancel              = false;
   observer->cancel         = &cancel;
   observer->cancelWhenHigh = generatedClock;
-  EXPECT_EQ(sim.setBus(source.input(RAM::Inputs::Clock), valueFor(1, 1),
+  EXPECT_EQ(sim.setBus(source.input(Memory::WriteInputs::Clock), valueFor(1, 1),
                        [&] { return cancel; }),
             Simulator::RunResult::Cancelled);
   observer->cancel = nullptr;
   EXPECT_EQ(source.output().getCurrentValue(), valueFor(2, 1));
   EXPECT_EQ(target.output().getCurrentValue(), valueFor(8, 0x12));
-  set(source.input(RAM::Inputs::Clock), 0);
+  set(source.input(Memory::WriteInputs::Clock), 0);
   ASSERT_EQ(sim.simulateBus(target.output()), Simulator::RunResult::Completed);
   EXPECT_EQ(source.output().getCurrentValue(), valueFor(2, 1));
   EXPECT_EQ(target.output().getCurrentValue(), valueFor(8, 0x12));
@@ -839,7 +1102,7 @@ namespace {
 
 std::array<std::shared_ptr<Memory>, 2> memories()
 {
-  return {std::make_shared<RAM>(), std::make_shared<ROM>()};
+  return {configuredRam(), std::make_shared<Memory>()};
 }
 
 }  // namespace
@@ -848,7 +1111,7 @@ TEST(MemoryGeometryTest, AddressWidthResizesEveryAddressBusInBothDirections)
 {
   for (const auto& memory : memories()) {
     SCOPED_TRACE(memory->typeName());
-    const auto ram = std::dynamic_pointer_cast<RAM>(memory);
+    const auto ram = memory->isWritable() ? memory : nullptr;
     if (ram)
       ram->setProperty("readPorts", 3);
     const auto initialInputs  = memory->inputBuses();
@@ -862,14 +1125,14 @@ TEST(MemoryGeometryTest, AddressWidthResizesEveryAddressBusInBothDirections)
       EXPECT_EQ(inputs[0].size(), width);
       EXPECT_EQ(inputs[0][0], initialInputs[0][0]);
       if (ram) {
-        EXPECT_EQ(inputs[1].size(), width);
-        EXPECT_EQ(inputs[1][0], initialInputs[1][0]);
+        const auto writeAddress = ram->writeInputIndex(Memory::WriteInputs::Address);
+        EXPECT_EQ(inputs[writeAddress].size(), width);
+        EXPECT_EQ(inputs[writeAddress][0], initialInputs[writeAddress][0]);
         for (std::size_t port = 1; port < ram->readPortCount(); ++port) {
-          const auto index = RAM::readAddressIndex(port);
-          EXPECT_EQ(inputs[index].size(), width);
-          EXPECT_EQ(inputs[index][0], initialInputs[index][0]);
+          EXPECT_EQ(inputs[port].size(), width);
+          EXPECT_EQ(inputs[port][0], initialInputs[port][0]);
         }
-        for (std::size_t index = 2; index <= 4; ++index)
+        for (std::size_t index = writeAddress + 1; index < inputs.size(); ++index)
           EXPECT_EQ(inputs[index], initialInputs[index]);
       }
       EXPECT_EQ(memory->outputBuses(), initialOutputs);
@@ -1059,7 +1322,7 @@ TEST(MemoryGeometryTest, GeometryAndPortLimitsAreValidatedBeforeAllocation)
     memory->setGeometry(8, 64, 3);  // Wider imported buses do not imply huge allocations.
     EXPECT_EQ(memory->memoryDepth(), 3);
     EXPECT_EQ(memory->addressWidth(), 64);
-    if (const auto ram = std::dynamic_pointer_cast<RAM>(memory)) {
+    if (const auto ram = memory->isWritable() ? memory : nullptr) {
       EXPECT_THROW(ram->setProperty("readPorts", 65535), std::invalid_argument);
       EXPECT_EQ(ram->readPortCount(), 1);
     }
@@ -1182,10 +1445,6 @@ TEST(MemoryInitializationTest, ZeroAndUninitializedPoliciesExecuteForBothMemoryT
     memory->setProperty("initialization", std::string(Memory::Zero));
     auto      circuit = std::make_shared<Circuit>(Component_set{memory}, false);
     Simulator sim(circuit);
-    if (std::dynamic_pointer_cast<ROM>(memory)) {
-      ASSERT_EQ(sim.setBus(memory->inputBuses()[1], valueFor(1, 1)),
-                Simulator::RunResult::Completed);
-    }
     ASSERT_EQ(sim.setBus(memory->inputBuses()[0], valueFor(2, 1)),
               Simulator::RunResult::Completed);
     EXPECT_EQ(memory->outputBuses()[0].getCurrentValue(), valueFor(8, 0));
@@ -1254,8 +1513,9 @@ TEST(MemoryGeometryTest, PropertyDescriptionsKeepDerivedInformationOutOfConfigur
     const auto configuration = memory->getProperties();
     auto       fields        = memory->propertyInfo();
     ASSERT_GE(fields.size(), 5);
-    EXPECT_EQ(fields[0].key, "addressWidth");
-    EXPECT_EQ(fields[1].key, "dataWidth");
+    EXPECT_EQ(fields[0].key, "type");
+    EXPECT_EQ(fields[1].key, "addressWidth");
+    EXPECT_EQ(fields[2].key, "dataWidth");
     EXPECT_EQ(std::ranges::find(fields, "binaryContents", &PropertyInfo::key),
               fields.end());
     EXPECT_EQ(std::ranges::find(fields, "padding", &PropertyInfo::key), fields.end());

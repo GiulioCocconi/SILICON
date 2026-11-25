@@ -56,7 +56,7 @@ TEST_F(FactoryTest, CreatedComponentsHaveExpectedDefaultBuses)
     SCOPED_TRACE(typeName);
     auto comp = registry.create(typeName);
     if (const auto memory = std::dynamic_pointer_cast<Memory>(comp)) {
-      EXPECT_EQ(memory->getInputs().size(), typeName == RAM::Type ? 5 : 3);
+      EXPECT_EQ(memory->getInputs().size(), 1);
       ASSERT_EQ(memory->getOutputs().size(), 1);
       EXPECT_EQ(memory->getInputs()[0].size(), 1);
       EXPECT_EQ(memory->getOutputs()[0].size(), 8);
@@ -111,4 +111,11 @@ TEST_F(FactoryTest, OnlyBoundaryIoComponentsDeclarePortRoles)
   EXPECT_EQ(registry.metadata(DummyOutputComponent::Type).portRole, PortRole::Output);
   EXPECT_EQ(registry.metadata(DummyBusOutputComponent::Type).portRole, PortRole::Output);
   EXPECT_EQ(registry.metadata(ConstantComponent::Type).portRole, PortRole::None);
+}
+
+TEST_F(FactoryTest, CatalogContainsOnlyTheUnifiedMemoryComponent)
+{
+  EXPECT_TRUE(registry.hasType("Memory"));
+  EXPECT_FALSE(registry.hasType("RAM"));
+  EXPECT_FALSE(registry.hasType("ROM"));
 }

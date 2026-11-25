@@ -231,7 +231,7 @@ bool supported(RTLIL::IdString type)
     ID($and), ID($or), ID($xor), ID($not), ID($_NAND_), ID($_NOR_),
     ID($pos), ID($add), ID($sub), ID($neg), ID($mux), ID($bmux), ID($demux),
     ID($adffe),
-    id("SILICON_ROM"), id("SILICON_RAM"), id("SILICON_LOGIC"), id("SILICON_COMPARE"),
+    id("SILICON_MEMORY"), id("SILICON_LOGIC"), id("SILICON_COMPARE"),
     id("SILICON_SHIFT"), id("SILICON_DFF"), id("SILICON_DFFE"),
     id("SILICON_GATE"), id("SILICON_MUX"),
     id("SILICON_DLATCH"), id("SILICON_DFFSR"), id("SILICON_DFFSRE"),

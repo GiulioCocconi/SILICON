@@ -118,97 +118,30 @@ void Component::serializeYosys(SerializationContext&) const
       "Component type '{}' does not support Yosys serialization", typeName()));
 }
 
-void ROM::serializeYosys(SerializationContext& context) const
-{
-  const auto width = static_cast<std::size_t>(getPropertyValue<int>("dataWidth").value());
-  const auto count = memoryDepth();
-  const auto abits = addressWidth();
-  if (inputBuses().size() != 3 || outputBuses().size() != 1
-      || inputBuses()[0].size() != abits || inputBuses()[1].size() != 1
-      || inputBuses()[2].size() != 1 || outputBuses()[0].size() != width)
-    throw std::runtime_error("Cannot export malformed ROM buses");
-  const auto init           = memoryInitialization(*this);
-  const auto p = [](std::uint64_t value) { return SerializationContext::parameter(value); };
-  const auto readData = context.allocateBits(width);
-  Json       address        = context.inputBits(*this, 0, abits);
-  Json attributes = Json::object();
-  const auto binaryDocument = getPropertyValue<std::string>("binaryContents");
-  if (getPropertyValue<std::string>("initialization").value() == BinaryDocument
-      && binaryDocument && !binaryDocument->empty())
-    attributes[std::string(SILICON::yosys::attributes::BINARY_DOCUMENT)] = *binaryDocument;
-  context.addCell("memory", "$mem_v2",
-                  Json{{"ABITS", p(abits)},
-                       {"INIT", init},
-                       {"MEMID", std::format("\\{}", context.componentIdentifier())},
-                       {"OFFSET", p(0)},
-                       {"RD_ARST_VALUE", std::string(width, 'x')},
-                       {"RD_CE_OVER_SRST", "0"},
-                       {"RD_CLK_ENABLE", "0"},
-                       {"RD_CLK_POLARITY", "0"},
-                       {"RD_COLLISION_X_MASK", "0"},
-                       {"RD_INIT_VALUE", std::string(width, 'x')},
-                       {"RD_PORTS", p(1)},
-                       {"RD_SRST_VALUE", std::string(width, 'x')},
-                       {"RD_TRANSPARENCY_MASK", "0"},
-                       {"RD_WIDE_CONTINUATION", "0"},
-                       {"SIZE", p(count)},
-                       {"WIDTH", p(width)},
-                       {"WR_CLK_ENABLE", "0"},
-                       {"WR_CLK_POLARITY", "0"},
-                       {"WR_PORTS", p(0)},
-                       {"WR_PRIORITY_MASK", "0"},
-                       {"WR_WIDE_CONTINUATION", "0"}},
-                  Json{{"RD_ADDR", "input"},
-                       {"RD_ARST", "input"},
-                       {"RD_CLK", "input"},
-                       {"RD_DATA", "output"},
-                       {"RD_EN", "input"},
-                       {"RD_SRST", "input"},
-                       {"WR_ADDR", "input"},
-                       {"WR_CLK", "input"},
-                       {"WR_DATA", "input"},
-                       {"WR_EN", "input"}},
-                  Json{{"RD_ADDR", address},
-                       {"RD_ARST", Json::array({"0"})},
-                       {"RD_CLK", Json::array({"x"})},
-                       {"RD_DATA", readData},
-                       {"RD_EN", Json::array({"1"})},
-                       {"RD_SRST", Json::array({"0"})},
-                       {"WR_ADDR", Json::array()},
-                       {"WR_CLK", Json::array()},
-                       {"WR_DATA", Json::array()},
-                       {"WR_EN", Json::array()}},
-                  std::move(attributes));
-  context.addCell("hold", "$dlatch",
-                  Json{{"EN_POLARITY", p(1)}, {"WIDTH", p(width)}},
-                  Json{{"D", "input"}, {"EN", "input"}, {"Q", "output"}},
-                  Json{{"D", readData}, {"EN", context.inputBits(*this, 1, 1)},
-                       {"Q", context.bits(outputBuses()[0])}});
-}
-
-void RAM::serializeYosys(SerializationContext& context) const
+void Memory::serializeYosys(SerializationContext& context) const
 {
   const auto width = static_cast<std::size_t>(getPropertyValue<int>("dataWidth").value());
   const auto count = memoryDepth();
   const auto readPorts = readPortCount();
-  if (inputBuses().size() != readPorts + 4 || outputBuses().size() != readPorts)
-    throw std::runtime_error("Cannot export malformed RAM buses");
-  const auto abits = inputBuses()[busIndex(Inputs::ReadAddress)].size();
+  if (inputBuses().size() != readPorts + (isWritable() ? 4 : 0)
+      || outputBuses().size() != readPorts)
+    throw std::runtime_error("Cannot export malformed memory buses");
+  const auto abits = inputBuses()[0].size();
   if (abits != addressWidth()
-      || inputBuses()[busIndex(Inputs::WriteAddress)].size() != abits
-      || inputBuses()[busIndex(Inputs::WriteData)].size() != width
-      || inputBuses()[busIndex(Inputs::WriteEnable)].size() != width
-      || inputBuses()[busIndex(Inputs::Clock)].size() != 1
+      || (isWritable()
+          && (inputBuses()[writeInputIndex(WriteInputs::Address)].size() != abits
+              || inputBuses()[writeInputIndex(WriteInputs::Data)].size() != width
+              || inputBuses()[writeInputIndex(WriteInputs::Enable)].size() != width
+              || inputBuses()[writeInputIndex(WriteInputs::Clock)].size() != 1))
       || outputBuses()[0].size() != width
       || count > static_cast<std::size_t>(std::numeric_limits<int>::max()) / width)
-    throw std::runtime_error("Cannot export invalid RAM geometry");
+    throw std::runtime_error("Cannot export invalid memory geometry");
 
   Json readAddresses = Json::array(), readData = Json::array();
   for (std::size_t port = 0; port < readPorts; ++port) {
-    if (inputBuses()[readAddressIndex(port)].size() != abits
-        || outputBuses()[port].size() != width)
-      throw std::runtime_error("Cannot export invalid RAM read port geometry");
-    for (const auto& bit : context.inputBits(*this, readAddressIndex(port), abits))
+    if (inputBuses()[port].size() != abits || outputBuses()[port].size() != width)
+      throw std::runtime_error("Cannot export invalid memory read port geometry");
+    for (const auto& bit : context.inputBits(*this, port, abits))
       readAddresses.push_back(bit);
     for (const auto& bit : context.bits(outputBuses()[port]))
       readData.push_back(bit);
@@ -216,7 +149,7 @@ void RAM::serializeYosys(SerializationContext& context) const
 
   const auto init       = memoryInitialization(*this);
   const auto slug       = getPropertyValue<std::string>("binaryContents").value_or("");
-  Json attributes = Json::object();
+  Json       attributes = Json::object();
   if (getPropertyValue<std::string>("initialization").value() == BinaryDocument
       && !slug.empty()) {
     attributes[std::string(SILICON::yosys::attributes::BINARY_DOCUMENT)] = slug;
@@ -228,33 +161,57 @@ void RAM::serializeYosys(SerializationContext& context) const
   };
   context.addCell(
       "memory", "$mem_v2",
-      Json{{"ABITS", p(abits)}, {"INIT", init},
+      Json{{"ABITS", p(abits)},
+           {"INIT", init},
            {"MEMID", std::format("\\{}", context.componentIdentifier())},
-           {"OFFSET", p(0)}, {"WIDTH", p(width)}, {"SIZE", p(count)},
-           {"RD_PORTS", p(readPorts)}, {"RD_CLK_ENABLE", std::string(readPorts, '0')},
+           {"OFFSET", p(0)},
+           {"WIDTH", p(width)},
+           {"SIZE", p(count)},
+           {"RD_PORTS", p(readPorts)},
+           {"RD_CLK_ENABLE", std::string(readPorts, '0')},
            {"RD_CLK_POLARITY", std::string(readPorts, '0')},
            {"RD_ARST_VALUE", std::string(width * readPorts, 'x')},
            {"RD_SRST_VALUE", std::string(width * readPorts, 'x')},
            {"RD_INIT_VALUE", std::string(width * readPorts, 'x')},
            {"RD_CE_OVER_SRST", std::string(readPorts, '0')},
-           {"RD_TRANSPARENCY_MASK", std::string(readPorts, '0')},
-           {"RD_COLLISION_X_MASK", std::string(readPorts, '0')},
-           {"RD_WIDE_CONTINUATION", std::string(readPorts, '0')}, {"WR_PORTS", p(1)},
-           {"WR_CLK_ENABLE", "1"}, {"WR_CLK_POLARITY", "1"},
-           {"WR_PRIORITY_MASK", "0"}, {"WR_WIDE_CONTINUATION", "0"}},
-      directions({{"RD_ADDR", "input"}, {"RD_DATA", "output"}, {"RD_EN", "input"},
-                  {"RD_CLK", "input"}, {"RD_ARST", "input"}, {"RD_SRST", "input"},
-                  {"WR_ADDR", "input"}, {"WR_DATA", "input"}, {"WR_EN", "input"},
+           {"RD_TRANSPARENCY_MASK", std::string(isWritable() ? readPorts : 1, '0')},
+           {"RD_COLLISION_X_MASK", std::string(isWritable() ? readPorts : 1, '0')},
+           {"RD_WIDE_CONTINUATION", std::string(readPorts, '0')},
+           {"WR_PORTS", p(isWritable() ? 1 : 0)},
+           {"WR_CLK_ENABLE", isWritable() ? "1" : "0"},
+           {"WR_CLK_POLARITY", isWritable() ? "1" : "0"},
+           {"WR_PRIORITY_MASK", "0"},
+           {"WR_WIDE_CONTINUATION", "0"}},
+      directions({{"RD_ADDR", "input"},
+                  {"RD_DATA", "output"},
+                  {"RD_EN", "input"},
+                  {"RD_CLK", "input"},
+                  {"RD_ARST", "input"},
+                  {"RD_SRST", "input"},
+                  {"WR_ADDR", "input"},
+                  {"WR_DATA", "input"},
+                  {"WR_EN", "input"},
                   {"WR_CLK", "input"}}),
-      Json{{"RD_ADDR", std::move(readAddresses)}, {"RD_DATA", std::move(readData)},
-           {"RD_EN", Json(std::vector<std::string>(readPorts, "1"))},
-           {"RD_CLK", Json(std::vector<std::string>(readPorts, "x"))},
-           {"RD_ARST", Json(std::vector<std::string>(readPorts, "0"))},
-           {"RD_SRST", Json(std::vector<std::string>(readPorts, "0"))},
-           {"WR_ADDR", context.inputBits(*this, busIndex(Inputs::WriteAddress), abits)},
-           {"WR_DATA", context.inputBits(*this, busIndex(Inputs::WriteData), width)},
-           {"WR_EN", context.inputBits(*this, busIndex(Inputs::WriteEnable), width)},
-           {"WR_CLK", context.inputBits(*this, busIndex(Inputs::Clock), 1)}},
+      Json{
+          {"RD_ADDR", std::move(readAddresses)},
+          {"RD_DATA", std::move(readData)},
+          {"RD_EN", Json(std::vector<std::string>(readPorts, "1"))},
+          {"RD_CLK", Json(std::vector<std::string>(readPorts, "x"))},
+          {"RD_ARST", Json(std::vector<std::string>(readPorts, "0"))},
+          {"RD_SRST", Json(std::vector<std::string>(readPorts, "0"))},
+          {"WR_ADDR",
+           isWritable()
+               ? context.inputBits(*this, writeInputIndex(WriteInputs::Address), abits)
+               : Json::array()},
+          {"WR_DATA", isWritable() ? context.inputBits(
+                                         *this, writeInputIndex(WriteInputs::Data), width)
+                                   : Json::array()},
+          {"WR_EN", isWritable() ? context.inputBits(
+                                       *this, writeInputIndex(WriteInputs::Enable), width)
+                                 : Json::array()},
+          {"WR_CLK",
+           isWritable() ? context.inputBits(*this, writeInputIndex(WriteInputs::Clock), 1)
+                        : Json::array()}},
       std::move(attributes));
 }
 

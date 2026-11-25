@@ -67,9 +67,10 @@ namespace {
   [[nodiscard]] bool addressMatches(const BusValue& address, const std::size_t index)
   {
     for (std::size_t bit = 0; bit < address.size(); ++bit) {
-      const auto expected = bit < std::numeric_limits<std::size_t>::digits
-                                && ((index >> bit) & 1) != 0
-                              ? State::HIGH : State::LOW;
+      const auto expected =
+          bit < std::numeric_limits<std::size_t>::digits && ((index >> bit) & 1) != 0
+              ? State::HIGH
+              : State::LOW;
       if (SILICON::wireUtils::isKnownBinary(address[bit]) && address[bit] != expected)
         return false;
     }
@@ -78,9 +79,9 @@ namespace {
 
   [[nodiscard]] State addressState(const BusValue& address, std::size_t& index)
   {
-    State result = State::HIGH;
-    bool overflow = false;
-    index = 0;
+    State result   = State::HIGH;
+    bool  overflow = false;
+    index          = 0;
     for (std::size_t bit = 0; bit < address.size(); ++bit) {
       const auto state = address[bit];
       if (state == State::ERROR)
@@ -133,7 +134,7 @@ MemoryImage MemoryImage::fromBytes(const std::span<const std::uint8_t> bytes,
 {
   const auto count = bitCount(width, depth);
   validatePackedBytes(bytes, count);
-  Bits bits(bytes.begin(), bytes.end());
+  Bits       bits(bytes.begin(), bytes.end());
   const auto known = unknownPadding ? std::min(count, bits.size()) : count;
   bits.resize(count);
   return MemoryImage(std::move(bits), width, depth, known);
@@ -164,6 +165,8 @@ BusValue MemoryImage::word(const std::size_t address) const
 
 Memory::Memory()
 {
+  defineStringListProperty("type", std::string("ROM"), {"ROM", "RAM"});
+  defineProperty("readPorts", 1);
   defineProperty("addressWidth", 1);
   defineProperty("dataWidth", 8);
   defineProperty("depthOverride", 0);
@@ -173,9 +176,9 @@ Memory::Memory()
       {std::string(Uninitialized), std::string(Zero), std::string(BinaryDocument)});
   defineStringListProperty("padding", std::string(Zero),
                            {std::string(Zero), std::string(Unknown)});
-  // Defer bus reshaping until each concrete constructor has initialized its ports.
-  for (const auto key : {"addressWidth", "dataWidth", "depthOverride", "binaryContents",
-                         "initialization", "padding"}) {
+  for (const auto key :
+       {"type", "readPorts", "addressWidth", "dataWidth", "depthOverride",
+        "binaryContents", "initialization", "padding"}) {
     propertyCallbacks[key] = [this, key](const PropertyValue& value) {
       auto next        = properties;
       next.at(key)     = value;
@@ -192,6 +195,7 @@ Memory::Memory()
       return value;
     };
   }
+  reshapeBuses();
 }
 
 void Memory::setProperties(const PropertyMap& values)
@@ -216,8 +220,8 @@ std::vector<PropertyInfo> Memory::propertyInfo() const
   std::vector<PropertyInfo> result;
   const bool                binary =
       getPropertyValue<std::string>("initialization").value() == BinaryDocument;
-  for (const auto key : {"addressWidth", "dataWidth", "readPorts", "initialization",
-                         "binaryContents", "padding"}) {
+  for (const auto key : {"type", "addressWidth", "dataWidth", "readPorts",
+                         "initialization", "binaryContents", "padding"}) {
     if (!binary
         && (std::string_view(key) == "binaryContents"
             || std::string_view(key) == "padding"))
@@ -266,14 +270,6 @@ std::size_t Memory::capacityBits() const noexcept
   return memoryDepth() * static_cast<std::size_t>(configuredDataWidth());
 }
 
-void Memory::validatePortCount(const std::size_t count) const
-{
-  const auto perPort = static_cast<std::size_t>(addressWidth()) + configuredDataWidth();
-  if (count == 0 || count > MaxPortBits / perPort
-      || count * perPort + addressWidth() + 2 * configuredDataWidth() + 2 > MaxPortBits)
-    throw std::invalid_argument("Memory ports exceed the supported allocation limit");
-}
-
 void Memory::commit(PropertyMap                                      next,
                     std::shared_ptr<const std::vector<std::uint8_t>> contents,
                     const bool                                       rejectInvalid)
@@ -293,11 +289,8 @@ void Memory::commit(PropertyMap                                      next,
   if (abits < static_cast<int>(std::numeric_limits<std::size_t>::digits)
       && count > (std::size_t{1} << abits))
     throw std::invalid_argument("Memory depth override exceeds the address space");
-  if (next.contains("readPorts"))
-    (void)requireValidSize("RAM readPorts", next.at("readPorts"));
-  const auto ports   = next.contains("readPorts")
-                           ? static_cast<std::size_t>(std::get<int>(next.at("readPorts")))
-                           : 1;
+  (void)requireValidSize("Memory readPorts", next.at("readPorts"));
+  const auto ports   = static_cast<std::size_t>(std::get<int>(next.at("readPorts")));
   const auto perPort = static_cast<std::size_t>(abits) + width;
   if (ports == 0 || ports > MaxPortBits / perPort
       || ports * perPort + abits + 2 * width + 2 > MaxPortBits)
@@ -406,68 +399,82 @@ void Memory::setMemoryImage(std::shared_ptr<const MemoryImage> nextImage)
   image = std::move(nextImage);
 }
 
-RAM::RAM()
+bool Memory::isWritable() const
 {
-  defineProperty("readPorts", 1);
-  setPropertyCallback("readPorts", [this](const PropertyValue& value) {
-    (void)requireValidSize("RAM readPorts", value);
-    validatePortCount(static_cast<std::size_t>(std::get<int>(value)));
-    properties.at("readPorts") = value;
-    reshapeBuses();
-    return value;
-  });
-  reshapeBuses();
+  return getPropertyValue<std::string>("type").value() == "RAM";
 }
 
-std::size_t RAM::readPortCount() const
+std::size_t Memory::readPortCount() const
 {
   return static_cast<std::size_t>(getPropertyValue<int>("readPorts").value());
 }
 
-void RAM::reshapeBuses()
+void Memory::reshapeBuses()
 {
-  const auto readPorts   = readPortCount();
-  const auto addressBits = addressWidth();
-  const auto width       = static_cast<unsigned short>(configuredDataWidth());
-  auto       newInputs   = inputs;
-  newInputs.resize(readPorts + 4);
-  for (std::size_t port = 0; port < readPorts; ++port)
-    newInputs[readAddressIndex(port)].setSize(addressBits);
-  newInputs[busIndex(Inputs::WriteAddress)].setSize(addressBits);
-  newInputs[busIndex(Inputs::WriteData)].setSize(width);
-  newInputs[busIndex(Inputs::WriteEnable)].setSize(width);
-  newInputs[busIndex(Inputs::Clock)].setSize(1);
+  const auto       readPorts   = readPortCount();
+  const auto       addressBits = addressWidth();
+  const auto       width       = static_cast<unsigned short>(configuredDataWidth());
+  const auto       oldReadPorts = outputs.size();
+  std::vector<Bus> newInputs(readPorts + (isWritable() ? 4 : 0));
+  for (std::size_t port = 0; port < readPorts; ++port) {
+    auto& address = newInputs[port];
+    if (port < oldReadPorts)
+      address = inputs[port];
+    address.setSize(addressBits);
+  }
+  if (isWritable()) {
+    for (const auto input : {WriteInputs::Address, WriteInputs::Data, WriteInputs::Enable,
+                             WriteInputs::Clock}) {
+      if (shapedWritable)
+        newInputs[writeInputIndex(input)] = inputs[oldReadPorts + busIndex(input)];
+    }
+    newInputs[writeInputIndex(WriteInputs::Address)].setSize(addressBits);
+    newInputs[writeInputIndex(WriteInputs::Data)].setSize(width);
+    newInputs[writeInputIndex(WriteInputs::Enable)].setSize(width);
+    newInputs[writeInputIndex(WriteInputs::Clock)].setSize(1);
+  }
+  shapedWritable  = isWritable();
   auto newOutputs = outputs;
   newOutputs.resize(readPorts);
   for (auto& output : newOutputs)
     output.setSize(width);
-  words.clear();
+  // Release runtime storage too when switching a RAM back to ROM.
+  words         = std::vector<BusValue>();
+  previousWords = std::vector<std::pair<std::size_t, BusValue>>();
   setInputs(newInputs);
   setOutputs(newOutputs);
 }
 
-void RAM::initializeWords()
+void Memory::initializeWords()
 {
   if (!words.empty())
     return;
-  validateInitialization();
-  words.assign(memoryDepth(), BusValue(static_cast<std::size_t>(configuredDataWidth()),
-                                       State::UNKNOWN));
+  words.assign(memoryDepth(),
+               BusValue(static_cast<std::size_t>(configuredDataWidth()), State::UNKNOWN));
   if (image)
     for (std::size_t address = 0; address < words.size(); ++address)
       words[address] = image->word(address);
 }
 
-void RAM::write(const BusValue& address, const BusValue& data, const BusValue& mask,
-                const State clockEnable)
+BusValue Memory::readWord(const std::size_t address) const
+{
+  if (isWritable())
+    return words[address];
+  if (image)
+    return image->word(address);
+  return BusValue(static_cast<std::size_t>(configuredDataWidth()), State::UNKNOWN);
+}
+
+void Memory::write(const BusValue& address, const BusValue& data, const BusValue& mask,
+                   const State clockEnable)
 {
   previousWords.clear();
-  std::size_t index = 0;
-  const auto status = addressState(address, index);
+  std::size_t index  = 0;
+  const auto  status = addressState(address, index);
   if (status == State::HIGH && index >= words.size())
     return;
   const auto first = status == State::HIGH ? index : 0;
-  const auto end = status == State::HIGH ? index + 1 : words.size();
+  const auto end   = status == State::HIGH ? index + 1 : words.size();
   for (auto word = first; word < end; ++word) {
     if (status != State::HIGH && !addressMatches(address, word))
       continue;
@@ -490,34 +497,40 @@ void RAM::write(const BusValue& address, const BusValue& data, const BusValue& m
   }
 }
 
-void RAM::simulate(SILICON::simulation::Simulator& sim,
-                    const SILICON::simulation::Context& context)
+void Memory::simulate(SILICON::simulation::Simulator&     sim,
+                      const SILICON::simulation::Context& context)
 {
   using Simulator = SILICON::simulation::Simulator;
-  initializeWords();
-  const auto clock = inputWire(Inputs::Clock);
-  const auto edge = Simulator::edgeType(context, clock);
-  State enable = State::LOW;
-  if (edge == Simulator::EdgeType::RISE)
-    enable = State::HIGH;
-  else if (edge == Simulator::EdgeType::UNKNOWN) {
-    const auto previous = context.previousState(clock);
-    const auto current = inputState(Inputs::Clock);
-    if (previous && SILICON::wireUtils::mayBe(*previous, State::LOW)
-        && SILICON::wireUtils::mayBe(current, State::HIGH))
-      enable = *previous == State::ERROR || current == State::ERROR
-                   ? State::ERROR : State::UNKNOWN;
-  }
-  if (enable != State::LOW) {
-    const auto address = inputBuses()[busIndex(Inputs::WriteAddress)].getCurrentValue();
-    const auto data    = inputBuses()[busIndex(Inputs::WriteData)].getCurrentValue();
-    const auto mask    = inputBuses()[busIndex(Inputs::WriteEnable)].getCurrentValue();
-    if (sim.beginSequentialCapture(weak_from_this(), [this]() noexcept {
-          for (auto& [address, value] : previousWords)
-            words[address].swap(value);
-          previousWords.clear();
-        }))
-      write(address, data, mask, enable);
+  validateInitialization();
+  if (isWritable()) {
+    initializeWords();
+    const auto clock  = inputWire(writeInputIndex(WriteInputs::Clock));
+    const auto edge   = Simulator::edgeType(context, clock);
+    State      enable = State::LOW;
+    if (edge == Simulator::EdgeType::RISE)
+      enable = State::HIGH;
+    else if (edge == Simulator::EdgeType::UNKNOWN) {
+      const auto previous = context.previousState(clock);
+      const auto current  = inputState(writeInputIndex(WriteInputs::Clock));
+      if (previous && SILICON::wireUtils::mayBe(*previous, State::LOW)
+          && SILICON::wireUtils::mayBe(current, State::HIGH))
+        enable = *previous == State::ERROR || current == State::ERROR ? State::ERROR
+                                                                      : State::UNKNOWN;
+    }
+    if (enable != State::LOW) {
+      const auto address =
+          inputBuses()[writeInputIndex(WriteInputs::Address)].getCurrentValue();
+      const auto data =
+          inputBuses()[writeInputIndex(WriteInputs::Data)].getCurrentValue();
+      const auto mask =
+          inputBuses()[writeInputIndex(WriteInputs::Enable)].getCurrentValue();
+      if (sim.beginSequentialCapture(weak_from_this(), [this]() noexcept {
+            for (auto& [address, value] : previousWords)
+              words[address].swap(value);
+            previousWords.clear();
+          }))
+        write(address, data, mask, enable);
+    }
   }
 
   // Storage changes immediately, as in Register. Staged output wires keep every
@@ -528,95 +541,12 @@ void RAM::simulate(SILICON::simulation::Simulator& sim,
     const auto  status =
         addressState(inputBuses()[readAddressIndex(port)].getCurrentValue(), address);
     const auto value =
-        status == State::HIGH && address < words.size()
-            ? words[address]
+        status == State::HIGH && address < memoryDepth()
+            ? readWord(address)
             : BusValue(static_cast<std::size_t>(configuredDataWidth()),
                        status == State::ERROR ? State::ERROR : State::UNKNOWN);
     sim.updateBus(outputBuses()[port], value, 0, weak_from_this());
   }
-}
-
-ROM::ROM()
-{
-  reshapeBuses();
-}
-
-ROM::ROM(Bus address, Wire_ptr chipSelect, Wire_ptr outputEnable, Bus data) : ROM()
-{
-  if (address.size() == 0)
-    throw std::invalid_argument("ROM address bus must not be empty");
-  if (data.size() == 0)
-    throw std::invalid_argument("ROM data bus must not be empty");
-
-  inputs  = {std::move(address), {std::move(chipSelect)}, {std::move(outputEnable)}};
-  outputs = {std::move(data)};
-  setGeometry(static_cast<int>(outputs[0].size()), static_cast<int>(inputs[0].size()));
-}
-
-void ROM::reshapeBuses()
-{
-  auto newInputs = inputs;
-  newInputs.resize(3);
-  newInputs[busIndex(Inputs::Address)].setSize(addressWidth());
-  newInputs[busIndex(Inputs::CS)].setSize(1);
-  newInputs[busIndex(Inputs::OE)].setSize(1);
-  auto newOutputs = outputs;
-  newOutputs.resize(1);
-  newOutputs[busIndex(Outputs::Data)].setSize(
-      static_cast<unsigned short>(configuredDataWidth()));
-  setInputs(newInputs);
-  setOutputs(newOutputs);
-}
-
-void ROM::driveState(SILICON::simulation::Simulator& sim, const State state)
-{
-  for (unsigned short bit = 0; bit < outputBusSize(Outputs::Data); ++bit)
-    sim.updateWire(outputWire(Outputs::Data, bit), state, 0, weak_from_this());
-}
-
-void ROM::simulate(SILICON::simulation::Simulator& sim)
-{
-  if (outputBusSize(Outputs::Data) == 0)
-    return;
-
-  const State chipSelect = inputState(Inputs::CS);
-  if (chipSelect == State::LOW)
-    return;
-  if (chipSelect == State::UNKNOWN || chipSelect == State::ERROR) {
-    driveState(sim, chipSelect);
-    return;
-  }
-  validateInitialization();
-  if (!image) {
-    driveState(sim, State::UNKNOWN);
-    return;
-  }
-
-  std::size_t address = 0;
-  const auto  addressSize = inputBuses().size() > busIndex(Inputs::Address)
-                                ? inputBuses()[busIndex(Inputs::Address)].size()
-                                : 0;
-  for (std::size_t bit = 0; bit < addressSize; ++bit) {
-    const State state = inputState(Inputs::Address, static_cast<unsigned short>(bit));
-    if (state == State::ERROR || state == State::UNKNOWN) {
-      driveState(sim, state);
-      return;
-    }
-    if (state == State::HIGH) {
-      if (bit >= std::numeric_limits<std::size_t>::digits) {
-        driveState(sim, State::UNKNOWN);
-        return;
-      }
-      address |= std::size_t{1} << bit;
-    }
-  }
-  if (address >= image->depth()) {
-    driveState(sim, State::UNKNOWN);
-    return;
-  }
-
-  sim.updateBus(outputBuses()[busIndex(Outputs::Data)], image->word(address), 0,
-                weak_from_this());
 }
 
 }  // namespace SILICON::core
