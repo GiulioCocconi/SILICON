@@ -97,7 +97,11 @@ namespace {
 SubcircuitComponent::SubcircuitComponent(const CircuitResolver* resolver)
   : resolver(resolver)
 {
-  defineProperty(std::string("slug"), std::string(), [this](const PropertyValue& value) {
+  static const auto slugDefinition = propertyDefinition(
+      std::string("slug"), std::string(),
+      "Circuit document to instantiate. Its resolved named boundary determines this "
+      "component's ports; an empty identifier leaves the interface unbound.");
+  defineProperty(slugDefinition, [this](const PropertyValue& value) {
     configureFromSlug(std::get<std::string>(value));
     return value;
   });
@@ -118,6 +122,8 @@ std::shared_ptr<SubcircuitComponent> SubcircuitComponent::imported(
 
 void SubcircuitComponent::clearResolvedCircuit()
 {
+  transientInputNames.clear();
+  transientOutputNames.clear();
   inputIds.clear();
   outputIds.clear();
   inputs.clear();
@@ -146,6 +152,12 @@ void SubcircuitComponent::configureFromSlug(std::string_view slug)
     newOutputs =
         remapConnections(newOutputs, portIds(definition.outputs), outputs, outputIds);
   }
+  transientInputNames.clear();
+  transientOutputNames.clear();
+  for (const auto& port : definition.inputs)
+    transientInputNames.push_back(port.name);
+  for (const auto& port : definition.outputs)
+    transientOutputNames.push_back(port.name);
   inputIds  = portIds(definition.inputs);
   outputIds = portIds(definition.outputs);
   // Update both directions before notifying observers of the new interface.
@@ -202,6 +214,19 @@ void SubcircuitComponent::simulate(SILICON::simulation::Simulator& sim)
   throw std::logic_error("Unprocessed SubcircuitComponent reached "
                          "SILICON::simulation::Simulator; preprocess the circuit "
                          "with CircuitElaborator or Session before simulation");
+}
+
+std::vector<PortDescription> SubcircuitComponent::portDescriptions() const
+{
+  auto result = Component::portDescriptions();
+  for (auto& port : result) {
+    const auto& names = port.direction == PortDirection::Input ? transientInputNames
+                                                               : transientOutputNames;
+    if (port.index < names.size())
+      port.name = names[port.index];
+    port.description = "Reusable circuit boundary signal: " + port.name + ".";
+  }
+  return result;
 }
 
 }  // namespace SILICON::core

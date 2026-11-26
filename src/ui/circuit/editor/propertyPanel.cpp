@@ -47,7 +47,7 @@
 
 #include <utils/num_formatting.hpp>
 
-#include <ui/circuit/components/graphicalLogicComponent.hpp>
+#include <ui/circuit/diagram/graphicalComponent.hpp>
 #include <ui/circuit/diagram/scene/diagramScene.hpp>
 #include <ui/circuit/diagram/undoCommands.hpp>
 #include <ui/project/projectDocumentPolicy.hpp>
@@ -58,6 +58,21 @@ namespace SILICON::ui {
 using namespace SILICON::core;
 
 namespace {
+  struct EditorField {
+    PropertyDefinition   definition;
+    PropertyValue        value;
+    PropertyPresentation presentation;
+  };
+
+  const std::string& fieldKey(const EditorField& field)
+  {
+    return field.definition.key;
+  }
+  bool readOnly(const EditorField& field)
+  {
+    return field.definition.access != PropertyAccess::Editable;
+  }
+
 QLabel* wrappingLabel(QString text, QWidget* parent)
 {
   auto* label = new QLabel(std::move(text), parent);
@@ -243,26 +258,37 @@ void PropertyPanel::refresh()
   }
 
   // Components supply presentation and visibility; only common fields are edited.
-  std::vector<std::vector<PropertyInfo>> descriptions;
+  std::vector<std::vector<EditorField>> descriptions;
   for (auto* node : selectedNodes) {
-    descriptions.push_back(node->propertyInfo());
+    std::vector<EditorField> fields;
+    for (auto& definition : node->propertyDefinitions()) {
+      const auto presentation = node->propertyPresentation(definition.key);
+      if (const auto value = node->getProperty(definition.key);
+          value && !presentation.hidden)
+        fields.push_back({std::move(definition), *value, presentation});
+    }
+    descriptions.push_back(std::move(fields));
     propertyConnections.push_back(QObject::connect(
         node, &GraphicalComponent::propertiesChanged, container, callbacks.guard([this] {
           QTimer::singleShot(0, callbacks.context(), [this] { refresh(); });
         })));
   }
   auto commonFields = descriptions.front();
-  for (std::size_t index = 0; index < selectedNodes.size(); ++index) {
-    const auto& fields = descriptions[index];
-    std::erase_if(commonFields, [&](const PropertyInfo& field) {
-      const auto it = std::ranges::find(fields, field.key, &PropertyInfo::key);
-      return selectedNodes[index]->isPropertyHidden(field.key) || it == fields.end()
-             || it->value.index() != field.value.index()
-             || it->readOnly != field.readOnly;
-    });
-    for (auto& field : commonFields)
-      field.advanced &=
-          std::ranges::find(fields, field.key, &PropertyInfo::key)->advanced;
+  for (const auto& fields : descriptions | std::views::drop(1)) {
+    std::vector<EditorField> matchingFields;
+    matchingFields.reserve(commonFields.size());
+    for (auto& field : commonFields) {
+      const auto match = std::ranges::find(fields, field.definition.key, fieldKey);
+      if (match == fields.end() || match->value.index() != field.value.index()
+          || match->definition.access != field.definition.access)
+        continue;
+
+      field.presentation.advanced &= match->presentation.advanced;
+      if (field.presentation.editor != match->presentation.editor)
+        field.presentation.editor = PropertyEditor::Automatic;
+      matchingFields.push_back(std::move(field));
+    }
+    commonFields = std::move(matchingFields);
   }
   if (commonFields.empty()) {
     layout->addRow(wrappingLabel(tr("No common configurable properties among selection."),
@@ -289,14 +315,6 @@ void PropertyPanel::refresh()
       // Keep ownership if redo() throws before QUndoStack accepts the command.
       undoStack->push(command.get());
       static_cast<void>(command.release());
-      if (key == "portOrientation") {
-        for (const auto* node : selectedNodes) {
-          if (const auto* logic = category_cast<GraphicalLogicComponent>(
-                  node, ItemCategory::LogicComponent);
-              logic && logic->getComponent())
-            diagramScene->rememberIoPlacementOrientation(*logic->getComponent());
-        }
-      }
     } catch (const std::exception& e) {
       const QString message = e.what();
       QTimer::singleShot(0, callbacks.context(), [this, message] {
@@ -308,13 +326,13 @@ void PropertyPanel::refresh()
 
   QFormLayout* advancedLayout = nullptr;
   for (const auto& field : commonFields) {
-    const auto& key          = field.key;
+    const auto& key          = field.definition.key;
     const auto& initialValue = field.value;
     const bool  isMixed      = std::ranges::any_of(descriptions, [&](const auto& fields) {
-      return std::ranges::find(fields, key, &PropertyInfo::key)->value != initialValue;
+      return std::ranges::find(fields, key, fieldKey)->value != initialValue;
     });
     auto*       propertyLayout = layout;
-    if (field.advanced) {
+    if (field.presentation.advanced) {
       if (!advancedLayout) {
         auto* toggle = new QToolButton(container);
         toggle->setText(tr("Advanced properties"));
@@ -335,13 +353,15 @@ void PropertyPanel::refresh()
       propertyLayout = advancedLayout;
     }
     auto fieldLabel = [&] {
-      auto* label = wrappingLabel(
-          QString::fromStdString(field.label.empty() ? key : field.label), container);
-      label->setToolTip(QString::fromStdString(field.help));
+      auto* label = wrappingLabel(QString::fromStdString(field.definition.label.empty()
+                                                             ? key
+                                                             : field.definition.label),
+                                  container);
+      label->setToolTip(QString::fromStdString(field.definition.description));
       return label;
     };
-    if (field.readOnly) {
-      const auto display = std::visit(
+    if (readOnly(field)) {
+      auto display = std::visit(
           [](const auto& value) -> QString {
             using T = std::decay_t<decltype(value)>;
             if constexpr (std::is_same_v<T, std::string>)
@@ -354,6 +374,8 @@ void PropertyPanel::refresh()
               return QString::number(value);
           },
           initialValue);
+      if (field.presentation.formatValue)
+        display = field.presentation.formatValue(initialValue);
       auto* value = wrappingLabel(isMixed ? tr("Mixed values") : display, container);
       value->setObjectName(QString::fromStdString(key));
       propertyLayout->addRow(fieldLabel(), value);
@@ -404,13 +426,13 @@ void PropertyPanel::refresh()
 
         propertyLayout->addRow(fieldLabel(), spinBox);
       } else if constexpr (std::is_same_v<T, std::string>) {
-        const auto stringOptions = selectedNodes.front()->getStringPropertyOptions(key);
-        if (stringOptions) {
+        const auto& stringOptions = field.definition.acceptedValues;
+        if (!stringOptions.empty()) {
           auto* comboBox = new QComboBox(container);
           comboBox->setObjectName(QString::fromStdString(key));
 
-          for (const std::string& option : stringOptions->get()) {
-            comboBox->addItem(QString::fromStdString(option));
+          for (const auto& option : stringOptions) {
+            comboBox->addItem(QString::fromStdString(std::get<std::string>(option)));
           }
 
           if (isMixed) {
@@ -431,9 +453,7 @@ void PropertyPanel::refresh()
           return;
         }
 
-        if (std::ranges::all_of(selectedNodes, [&key](const auto* node) {
-              return node->isMultilineProperty(key);
-            })) {
+        if (field.presentation.editor == PropertyEditor::Multiline) {
           auto* textEdit = new DescriptionEdit(container);
           textEdit->setObjectName(QString::fromStdString(key));
           textEdit->setMinimumHeight(90);

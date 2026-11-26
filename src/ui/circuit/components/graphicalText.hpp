@@ -23,12 +23,9 @@ public:
     return std::string(COMPONENT_TYPE);
   }
   [[nodiscard]] const PropertyMap& getProperties() const override { return properties; }
-  [[nodiscard]] std::optional<std::reference_wrapper<const StringPropertyOptions>>
-                     getStringPropertyOptions(std::string_view key) const override;
-  [[nodiscard]] bool isMultilineProperty(std::string_view key) const override
-  {
-    return key == "text";
-  }
+  [[nodiscard]] std::vector<PropertyDefinition> propertyDefinitions() const override;
+  [[nodiscard]] PropertyPresentation
+                     propertyPresentation(std::string_view key) const override;
   [[nodiscard]] bool participatesInCollisions() const override { return false; }
 
   [[nodiscard]] std::span<const ResizeHandle> resizeHandles() const override
@@ -44,10 +41,7 @@ public:
 
 private:
   void        setProperties(PropertyMap next);
-  PropertyMap properties{{"text", std::string("Text")},
-                         {"size", 12},
-                         {"font", std::string("Quicksand")},
-                         {"wrapWidth", 0}};
+  PropertyMap properties;
 };
 
 }  // namespace SILICON::ui

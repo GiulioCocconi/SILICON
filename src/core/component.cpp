@@ -27,19 +27,158 @@
 
 namespace SILICON::core {
 
-std::vector<PropertyInfo> describeProperties(const PropertyMap& properties)
+const PropertyDefinition ZeroDelayProperty =
+    propertyDefinition("delay", 0, PropagationDelayDescription, {.minimum = 0});
+
+PropertyType propertyType(const PropertyValue& value)
 {
-  std::vector<PropertyInfo> result;
-  result.reserve(properties.size());
-  for (const auto& [key, value] : properties)
-    result.push_back({key, value});
-  std::ranges::sort(result, {}, &PropertyInfo::key);
+  return std::visit(
+      [](const auto& item) {
+        using T = std::decay_t<decltype(item)>;
+        if constexpr (std::is_same_v<T, int>)
+          return PropertyType::Integer;
+        else if constexpr (std::is_same_v<T, bool>)
+          return PropertyType::Boolean;
+        else if constexpr (std::is_same_v<T, std::string>)
+          return PropertyType::String;
+        else {
+          static_assert(std::is_same_v<T, BusValue>);
+          return PropertyType::BusValue;
+        }
+      },
+      value);
+}
+
+bool PropertyConstraints::contains(int value) const
+{
+  return (!minimum || value >= *minimum) && (!maximum || value <= *maximum);
+}
+
+PropertyValue PropertyDefinition::normalize(const PropertyValue& value) const
+{
+  if (constraints.minimum && constraints.maximum
+      && *constraints.minimum > *constraints.maximum)
+    throw std::logic_error("Invalid declared bounds for property '" + key + "'");
+  if (propertyType(value) != type)
+    throw std::invalid_argument("Type mismatch for property '" + key + "'");
+  if (!acceptedValues.empty() && !std::ranges::contains(acceptedValues, value))
+    throw std::invalid_argument("Invalid value for property '" + key + "'");
+  if (const auto* number = std::get_if<int>(&value);
+      number && !constraints.contains(*number)) {
+    if (constraints.normalization == PropertyNormalization::Clamp)
+      return std::clamp(*number,
+                        constraints.minimum.value_or(std::numeric_limits<int>::min()),
+                        constraints.maximum.value_or(std::numeric_limits<int>::max()));
+    throw std::invalid_argument("Value outside declared bounds for property '" + key
+                                + "'");
+  }
+  return value;
+}
+
+PropertyDefinition propertyDefinition(std::string key, PropertyValue defaultValue,
+                                      std::string         description,
+                                      PropertyConstraints constraints)
+{
+  return {.key          = key,
+          .label        = std::move(key),
+          .description  = std::move(description),
+          .type         = propertyType(defaultValue),
+          .defaultValue = std::move(defaultValue),
+          .constraints  = std::move(constraints)};
+}
+
+PropertyDefinition stringPropertyDefinition(std::string key, std::string defaultValue,
+                                            std::vector<std::string> acceptedValues,
+                                            std::string              description)
+{
+  if (acceptedValues.empty() || !std::ranges::contains(acceptedValues, defaultValue))
+    throw std::invalid_argument("String-list declaration requires an accepted default");
+  return {.key            = key,
+          .label          = std::move(key),
+          .description    = std::move(description),
+          .type           = PropertyType::String,
+          .defaultValue   = std::move(defaultValue),
+          .acceptedValues = acceptedValues | std::views::as_rvalue
+                            | std::ranges::to<std::vector<PropertyValue>>()};
+}
+
+std::vector<PropertyDefinition> Component::declaredProperties() const
+{
+  return propertyDeclarations
+         | std::views::transform(
+             [](const auto* definition) -> const auto& { return *definition; })
+         | std::ranges::to<std::vector>();
+}
+
+const PropertyDefinition& Component::propertyDeclaration(std::string_view key) const
+{
+  const auto it = std::ranges::find(propertyDeclarations, key, &PropertyDefinition::key);
+  if (it == propertyDeclarations.end())
+    throw std::invalid_argument("Unknown property declaration: " + std::string(key));
+  return **it;
+}
+
+std::vector<PropertyDefinition> Component::propertyDefinitions() const
+{
+  return declaredProperties();
+}
+
+void Component::defineProperty(const PropertyDefinition&    definition,
+                               PropertyCallback             callback,
+                               std::optional<PropertyValue> initialValue)
+{
+  if (definition.access != PropertyAccess::Derived && !definition.defaultValue)
+    throw std::invalid_argument("Stored property requires a default: " + definition.key);
+  const auto it =
+      std::ranges::find(propertyDeclarations, definition.key, &PropertyDefinition::key);
+  if (it == propertyDeclarations.end())
+    propertyDeclarations.push_back(&definition);
+  else
+    *it = &definition;
+  if (definition.access == PropertyAccess::Derived)
+    return;
+  auto initial =
+      definition.normalize(initialValue ? *initialValue : *definition.defaultValue);
+  if (callback) {
+    propertyCallbacks.insert_or_assign(definition.key, callback);
+    initial = callback(initial);
+  }
+  properties.insert_or_assign(definition.key, definition.normalize(initial));
+}
+
+std::vector<PortDescription> Component::portDescriptions() const
+{
+  std::vector<PortDescription> result;
+  for (const auto direction : {PortDirection::Input, PortDirection::Output}) {
+    const auto& buses = direction == PortDirection::Input ? inputs : outputs;
+    for (auto [i, bus] : buses | SILICON::views::enumerate)
+      result.push_back(
+          {std::format("{}{}", direction == PortDirection::Input ? "i" : "o", i),
+           direction, static_cast<unsigned int>(i), static_cast<unsigned int>(bus.size()),
+           direction == PortDirection::Input ? "Input signal." : "Output signal."});
+  }
   return result;
 }
 
-std::vector<PropertyInfo> Component::propertyInfo() const
+ComponentDescription Component::describe() const
 {
-  return describeProperties(properties);
+  auto ports = portDescriptions();
+  // Attached buses are authoritative, including constructor-inferred widths.
+  for (auto& port : ports) {
+    const auto& buses = port.direction == PortDirection::Input ? inputs : outputs;
+    if (port.index < buses.size())
+      port.width = buses[port.index].size();
+  }
+  auto definitions = propertyDefinitions();
+  auto values      = properties;
+  for (const auto& definition : definitions)
+    if (definition.access == PropertyAccess::Derived)
+      if (const auto value = getProperty(definition.key))
+        values.insert_or_assign(definition.key, *value);
+  return {.metadata   = metadata(),
+          .ports      = std::move(ports),
+          .properties = std::move(definitions),
+          .values     = std::move(values)};
 }
 
 void Component::setProperties(const PropertyMap& values)
@@ -52,26 +191,6 @@ void Component::setProperties(const PropertyMap& values)
         setProperty(key, value);
 }
 
-PropertyValue requireNonNegative(const std::string_view name,
-                                 const PropertyValue&   value)
-{
-  if (std::get<int>(value) < 0) {
-    throw std::invalid_argument(std::format("{} must be non-negative", name));
-  }
-  return value;
-}
-
-PropertyValue requireValidSize(const std::string_view name,
-                               const PropertyValue&   value)
-{
-  const int size = std::get<int>(value);
-  if (size < 1)
-    throw std::invalid_argument(std::format("{} must be at least 1", name));
-  if (size > std::numeric_limits<unsigned short>::max())
-    throw std::invalid_argument(std::format("{} is too large", name));
-  return value;
-}
-
 Component::Component(std::vector<Bus> inputs, std::vector<Bus> outputs)
   : inputs(std::move(inputs)), outputs(std::move(outputs))
 {
@@ -80,7 +199,7 @@ Component::Component(std::vector<Bus> inputs, std::vector<Bus> outputs)
 ComponentMetadata Component::metadata() const
 {
   const std::string type = std::string(typeName());
-  return {type, type, ComponentCategory::Utils};
+  return {.displayName = type, .description = type, .category = ComponentCategory::Utils};
 }
 
 uint64_t Component::addIOListener(IOObserver cb)
@@ -104,47 +223,27 @@ void Component::notifyIOListeners()
 
 void Component::defineStringListProperty(std::string key, std::string defaultValue,
                                          StringPropertyOptions allowedValues,
-                                         PropertyCallback      callback)
+                                         PropertyCallback      callback,
+                                         std::string           description)
 {
-  if (allowedValues.empty()) {
-    throw std::invalid_argument(std::format(
-        "String-list property '{}' on component '{}' must define allowed values", key,
-        typeName()));
-  }
-
-  const bool defaultAllowed = std::ranges::contains(allowedValues, defaultValue);
-  if (!defaultAllowed) {
-    throw std::invalid_argument(std::format(
-        "Default value '{}' is not allowed for property '{}' on component '{}'",
-        defaultValue, key, typeName()));
-  }
-
-  const std::string propertyKey = key;
-  stringPropertyOptions[key]    = std::move(allowedValues);
-  defineProperty(std::move(key), std::move(defaultValue), std::move(callback));
-  const auto& propertyValue = properties.at(propertyKey);
-  validatePropertyValue(propertyKey, propertyValue, propertyValue);
+  auto definition = std::make_unique<PropertyDefinition>(
+      stringPropertyDefinition(std::move(key), std::move(defaultValue),
+                               std::move(allowedValues), std::move(description)));
+  auto* declaration = definition.get();
+  ownedPropertyDeclarations.push_back(std::move(definition));
+  defineProperty(*declaration, std::move(callback));
+  declaration->defaultValue = properties.at(declaration->key);
 }
 
-void Component::validatePropertyValue(std::string_view     key,
-                                      const PropertyValue& currentValue,
-                                      const PropertyValue& newValue) const
+PropertyValue Component::validatedProperty(std::string_view     key,
+                                           const PropertyValue& value) const
 {
-  if (currentValue.index() != newValue.index()) {
-    throw std::invalid_argument(std::format(
-        "Type mismatch when setting property '{}' on component '{}'", key, typeName()));
-  }
-
-  const auto options = stringPropertyOptions.find(key);
-  if (options == stringPropertyOptions.end())
-    return;
-
-  const auto* stringValue = std::get_if<std::string>(&newValue);
-  if (!stringValue || !std::ranges::contains(options->second, *stringValue)) {
-    throw std::invalid_argument(std::format(
-        "Invalid value for property '{}' on component '{}'", key, typeName()));
-  }
+  const auto& definition = propertyDeclaration(key);
+  if (definition.access != PropertyAccess::Editable)
+    throw std::invalid_argument("Property is read-only: " + std::string(key));
+  return definition.normalize(value);
 }
+
 void Component::handleInputSizeChange(const unsigned int index,
                                       const unsigned int newSize)
 {
@@ -176,32 +275,24 @@ void Component::setProperty(std::string_view key, const PropertyValue& value)
         std::format("Property '{}' does not exist on component '{}'", key, typeName()));
   }
 
-  validatePropertyValue(key, it->second, value);
+  const auto& definition = propertyDeclaration(key);
+  if (definition.access != PropertyAccess::Editable)
+    throw std::invalid_argument("Property is read-only: " + std::string(key));
+  auto normalized = definition.normalize(value);
 
   // Call callback if it's registered. Update the value accordingly
   auto cbIt = propertyCallbacks.find(key);
 
-  PropertyValue finalValue =
-      (cbIt == propertyCallbacks.end()) ? value : cbIt->second(value);
+  if (cbIt != propertyCallbacks.end())
+    normalized = definition.normalize(cbIt->second(normalized));
 
-  validatePropertyValue(key, it->second, finalValue);
-  it->second = std::move(finalValue);
+  it->second = std::move(normalized);
 }
 
 std::optional<PropertyValue> Component::getProperty(std::string_view key) const
 {
   if (const auto it = properties.find(key); it != properties.end()) {
     return it->second;
-  }
-  return std::nullopt;
-}
-
-std::optional<std::reference_wrapper<const StringPropertyOptions>>
-Component::getStringPropertyOptions(std::string_view key) const
-{
-  if (const auto it = stringPropertyOptions.find(key);
-      it != stringPropertyOptions.end()) {
-    return std::cref(it->second);
   }
   return std::nullopt;
 }
@@ -214,10 +305,10 @@ void Component::setPropertyCallback(std::string_view key, PropertyCallback callb
         std::format("Property '{}' does not exist on component '{}'", key, typeName()));
   }
 
-  propertyCallbacks.insert_or_assign(std::string(key), std::move(callback));
-  PropertyValue finalValue = propertyCallbacks.find(key)->second(property->second);
-  validatePropertyValue(key, property->second, finalValue);
-  property->second = std::move(finalValue);
+  const auto [callbackIt, inserted] =
+      propertyCallbacks.insert_or_assign(std::string(key), std::move(callback));
+  PropertyValue finalValue = callbackIt->second(property->second);
+  property->second         = validatedProperty(key, finalValue);
 }
 
 void Component::setInput(const unsigned int index, const Bus& bus, const bool checkSize)

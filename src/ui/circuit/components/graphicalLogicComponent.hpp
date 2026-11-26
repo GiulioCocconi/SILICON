@@ -126,10 +126,10 @@ public:
    * @param value The new property value
    */
   void applyProperty(std::string_view key, const PropertyValue& value) override;
-  [[nodiscard]] std::vector<PropertyInfo> propertyInfo() const override;
+  [[nodiscard]] std::vector<PropertyDefinition> propertyDefinitions() const override;
   [[nodiscard]] const PropertyMap& getProperties() const override;
-  [[nodiscard]] std::optional<std::reference_wrapper<const StringPropertyOptions>>
-  getStringPropertyOptions(std::string_view key) const override;
+  [[nodiscard]] std::optional<PropertyValue>
+  getProperty(std::string_view key) const override;
 
   /**
    * @brief Sets the associated logical component.

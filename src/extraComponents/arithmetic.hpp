@@ -33,6 +33,8 @@ using namespace SILICON::core;
  */
 class Extender : public Component {
 public:
+  [[nodiscard]] std::vector<PortDescription> portDescriptions() const override;
+
   static constexpr std::string_view Type         = "Extender";
   static constexpr std::string_view SIGNED_MODE   = "signed";
   static constexpr std::string_view UNSIGNED_MODE = "unsigned";
@@ -40,8 +42,9 @@ public:
   std::string_view  typeName() const override { return Type; }
   ComponentMetadata metadata() const override
   {
-    return {"Extender", "Changes a bus width using signed or unsigned extension.",
-            ComponentCategory::Arithmetic};
+    return {.displayName = "Extender",
+            .description = "Changes a bus width using signed or unsigned extension.",
+            .category    = ComponentCategory::Arithmetic};
   }
 
   Extender();
@@ -60,13 +63,16 @@ public:
  */
 class Complementer : public Component {
 public:
+  [[nodiscard]] std::vector<PortDescription> portDescriptions() const override;
+
   static constexpr std::string_view Type = "Complementer";
 
   std::string_view  typeName() const override { return Type; }
   ComponentMetadata metadata() const override
   {
-    return {"Two's complement", "Gives the two's complement of a binary number",
-            ComponentCategory::Arithmetic};
+    return {.displayName = "Two's complement",
+            .description = "Gives the two's complement of a binary number",
+            .category    = ComponentCategory::Arithmetic};
   }
 
   Complementer();
@@ -86,6 +92,8 @@ public:
  */
 class HalfAdder : public Component {
 public:
+  [[nodiscard]] std::vector<PortDescription> portDescriptions() const override;
+
   /** @brief Serialization/type-registry identifier. */
   static constexpr std::string_view Type = "HalfAdder";
 
@@ -96,8 +104,9 @@ public:
   std::string_view  typeName() const override { return Type; }
   ComponentMetadata metadata() const override
   {
-    return {"Half Adder", "Adds two one-bit inputs and outputs sum and carry.",
-            ComponentCategory::Arithmetic};
+    return {.displayName = "Half Adder",
+            .description = "Adds two one-bit inputs and outputs sum and carry.",
+            .category    = ComponentCategory::Arithmetic};
   }
 
   /** @brief Input bus indices for HalfAdder. */
@@ -144,6 +153,8 @@ public:
  */
 class FullAdder : public Component {
 public:
+  [[nodiscard]] std::vector<PortDescription> portDescriptions() const override;
+
   /** @brief Serialization/type-registry identifier. */
   static constexpr std::string_view Type = "FullAdder";
 
@@ -154,9 +165,10 @@ public:
   std::string_view  typeName() const override { return Type; }
   ComponentMetadata metadata() const override
   {
-    return {"Full Adder",
-            "Adds two one-bit inputs plus carry-in and outputs sum and carry.",
-            ComponentCategory::Arithmetic};
+    return {.displayName = "Full Adder",
+            .description =
+                "Adds two one-bit inputs plus carry-in and outputs sum and carry.",
+            .category = ComponentCategory::Arithmetic};
   }
 
   /** @brief Input bus indices for FullAdder. */
@@ -207,6 +219,8 @@ public:
  */
 class AdderNBits : public Component {
 public:
+  [[nodiscard]] std::vector<PortDescription> portDescriptions() const override;
+
   /** @brief Serialization/type-registry identifier. */
   static constexpr std::string_view Type = "AdderNBits";
 
@@ -217,8 +231,9 @@ public:
   std::string_view  typeName() const override { return Type; }
   ComponentMetadata metadata() const override
   {
-    return {"N-bit Adder", "Adds two fixed-width buses and outputs sum and carry.",
-            ComponentCategory::Arithmetic};
+    return {.displayName = "N-bit Adder",
+            .description = "Adds two fixed-width buses and outputs sum and carry.",
+            .category    = ComponentCategory::Arithmetic};
   }
 
   /** @brief Input bus indices for AdderNBits. */
@@ -266,6 +281,8 @@ public:
 /** Shifts a value by an unsigned amount, preserving its width. */
 class Shifter : public Component {
 public:
+  [[nodiscard]] std::vector<PortDescription> portDescriptions() const override;
+
   static constexpr std::string_view Type = "Shifter";
   static constexpr std::string_view LEFT_MODE = "left";
   static constexpr std::string_view RIGHT_MODE = "right";
@@ -276,8 +293,9 @@ public:
   std::string_view typeName() const override { return Type; }
   ComponentMetadata metadata() const override
   {
-    return {"Shifter", "Shifts a bus left or right by a variable amount.",
-            ComponentCategory::Arithmetic};
+    return {.displayName = "Shifter",
+            .description = "Shifts a bus left or right by a variable amount.",
+            .category    = ComponentCategory::Arithmetic};
   }
 
   Shifter();
@@ -292,6 +310,8 @@ public:
 /** Fixed-width product, retaining the least-significant size bits. */
 class Multiplier : public Component {
 public:
+  [[nodiscard]] std::vector<PortDescription> portDescriptions() const override;
+
   static constexpr std::string_view Type = "Multiplier";
   enum class Inputs : unsigned int { A = 0, B = 1 };
   enum class Outputs : unsigned int { Product = 0 };
@@ -299,8 +319,9 @@ public:
   std::string_view  typeName() const override { return Type; }
   ComponentMetadata metadata() const override
   {
-    return {"Multiplier", "Multiplies two fixed-width signed or unsigned buses.",
-            ComponentCategory::Arithmetic};
+    return {.displayName = "Multiplier",
+            .description = "Multiplies two fixed-width signed or unsigned buses.",
+            .category    = ComponentCategory::Arithmetic};
   }
 
   Multiplier();
@@ -315,6 +336,8 @@ public:
  */
 class Divider : public Component {
 public:
+  [[nodiscard]] std::vector<PortDescription> portDescriptions() const override;
+
   static constexpr std::string_view Type = "Divider";
   enum class Inputs : unsigned int { A = 0, B = 1 };
   enum class Outputs : unsigned int { Div = 0, Mod = 1 };
@@ -322,9 +345,10 @@ public:
   std::string_view  typeName() const override { return Type; }
   ComponentMetadata metadata() const override
   {
-    return {"Divider",
-            "Divides two fixed-width buses and outputs quotient and remainder.",
-            ComponentCategory::Arithmetic};
+    return {.displayName = "Divider",
+            .description =
+                "Divides two fixed-width buses and outputs quotient and remainder.",
+            .category = ComponentCategory::Arithmetic};
   }
 
   Divider();
@@ -337,13 +361,16 @@ public:
 class Comparator : public Component {
 
 public:
+  [[nodiscard]] std::vector<PortDescription> portDescriptions() const override;
+
   static constexpr std::string_view Type = "Comparator";
 
   std::string_view  typeName() const override { return Type; }
   ComponentMetadata metadata() const override
   {
-    return {"Comparator", "Returns the result of a comparison between two values",
-            ComponentCategory::Arithmetic};
+    return {.displayName = "Comparator",
+            .description = "Returns the result of a comparison between two values",
+            .category    = ComponentCategory::Arithmetic};
   }
 
   Comparator();

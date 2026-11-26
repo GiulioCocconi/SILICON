@@ -16,7 +16,9 @@
  */
 
 #include "graphicalComponent.hpp"
+
 #include <QFontInfo>
+#include <map>
 
 #include <algorithm>
 #include <limits>
@@ -181,34 +183,22 @@ std::optional<PropertyValue> GraphicalComponent::getProperty(std::string_view ke
                                    : std::optional<PropertyValue>(found->second);
 }
 
-std::optional<std::reference_wrapper<const StringPropertyOptions>>
-GraphicalComponent::getStringPropertyOptions(std::string_view key) const
+PropertyPresentation GraphicalComponent::propertyPresentation(std::string_view) const
 {
-  Q_UNUSED(key);
-  return std::nullopt;
+  return {};
 }
 
-bool GraphicalComponent::isMultilineProperty(std::string_view key) const
+std::vector<PropertyDefinition> GraphicalComponent::propertyDefinitions() const
 {
-  Q_UNUSED(key);
-  return false;
-}
-
-bool GraphicalComponent::isPropertyHidden(std::string_view key) const
-{
-  return hiddenProperties.contains(key);
-}
-
-std::vector<PropertyInfo> GraphicalComponent::propertyInfo() const
-{
-  return describeProperties(getProperties());
+  return {};
 }
 
 void GraphicalComponent::applyProperties(const PropertyMap& values)
 {
-  for (const auto& field : describeProperties(values))
-    if (getProperty(field.key) != field.value)
-      applyProperty(field.key, field.value);
+  const std::map ordered(values.begin(), values.end());
+  for (const auto& [key, value] : ordered)
+    if (getProperty(key) != value)
+      applyProperty(key, value);
   emit propertiesChanged();
 }
 

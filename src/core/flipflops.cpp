@@ -26,6 +26,12 @@
 #include <logging/logger.hpp>
 
 namespace SILICON::core {
+namespace {
+
+  const auto propagationDelayDefinition = propertyDefinition(
+      "propagationDelay", 5, "Delay from a captured input to the output transition.",
+      {.minimum = 0});
+}  // namespace
 
 FlipFlop::FlipFlop(const unsigned int clockIndex, const unsigned int clearIndex,
                    const unsigned int presetIndex)
@@ -112,25 +118,31 @@ void FlipFlop::simulate(SILICON::simulation::Simulator&     sim,
 
 void FlipFlop::initializeProperties()
 {
-  defineProperty("propagationDelay", 5);
-  defineProperty("setupTime", 0);
-  defineProperty("holdTime", 0);
-  defineStringListProperty("triggerEdge", "PET", {"PET", "NET"});
+  defineProperty(propagationDelayDefinition);
+  static const auto setupTimeDefinition = propertyDefinition(
+      "setupTime", 0, "Required input stability before the selected clock edge.",
+      {.minimum = 0});
+  defineProperty(setupTimeDefinition);
+  static const auto holdTimeDefinition = propertyDefinition(
+      "holdTime", 0, "Required input stability after the selected clock edge.",
+      {.minimum = 0});
+  defineProperty(holdTimeDefinition);
+  static const auto triggerEdgeDefinition = stringPropertyDefinition(
+      "triggerEdge", "PET", {"PET", "NET"},
+      "Clock edge used to capture the input: PET rises, NET falls.");
+  defineProperty(triggerEdgeDefinition);
 
   setPropertyCallback("propagationDelay", [this](const PropertyValue& value) {
-    const PropertyValue validated = requireNonNegative("propagationDelay", value);
-    this->propagationDelay        = static_cast<uint64_t>(std::get<int>(validated));
-    return validated;
+    this->propagationDelay = static_cast<uint64_t>(std::get<int>(value));
+    return value;
   });
   setPropertyCallback("setupTime", [this](const PropertyValue& value) {
-    const PropertyValue validated = requireNonNegative("setupTime", value);
-    this->setupTime               = static_cast<uint64_t>(std::get<int>(validated));
-    return validated;
+    this->setupTime = static_cast<uint64_t>(std::get<int>(value));
+    return value;
   });
   setPropertyCallback("holdTime", [this](const PropertyValue& value) {
-    const PropertyValue validated = requireNonNegative("holdTime", value);
-    this->holdTime                = static_cast<uint64_t>(std::get<int>(validated));
-    return validated;
+    this->holdTime = static_cast<uint64_t>(std::get<int>(value));
+    return value;
   });
   setPropertyCallback("triggerEdge", [this](const PropertyValue& value) {
     this->edgeType = std::get<std::string>(value) == "PET"
@@ -279,11 +291,10 @@ void DLatch::simulate(SILICON::simulation::Simulator&     sim,
 
 void DLatch::initializeProperties()
 {
-  defineProperty("propagationDelay", 5);
+  defineProperty(propagationDelayDefinition);
   setPropertyCallback("propagationDelay", [this](const PropertyValue& value) {
-    const PropertyValue validated = requireNonNegative("propagationDelay", value);
-    propagationDelay              = static_cast<uint64_t>(std::get<int>(validated));
-    return validated;
+    propagationDelay = static_cast<uint64_t>(std::get<int>(value));
+    return value;
   });
 }
 
@@ -342,6 +353,59 @@ State JKFlipFlop::captureState() const
 bool JKFlipFlop::isTimingSensitiveInput(const unsigned int inputIndex) const
 {
   return inputIndex == busIndex(Inputs::J) || inputIndex == busIndex(Inputs::K);
+}
+
+std::vector<PortDescription> DFlipFlop::portDescriptions() const
+{
+  return {{"d", PortDirection::Input, busIndex(Inputs::D), 1, "Data to capture."},
+          {"clk", PortDirection::Input, busIndex(Inputs::Clock), 1,
+           "Capture clock; selected edge is configured by triggerEdge."},
+          {"clr", PortDirection::Input, busIndex(Inputs::Clear), 1,
+           "Active-high asynchronous clear; unconnected means LOW."},
+          {"pre", PortDirection::Input, busIndex(Inputs::Preset), 1,
+           "Active-high asynchronous preset; unconnected means LOW."},
+          {"q", PortDirection::Output, 0, 1, "Stored state."},
+          {"!q", PortDirection::Output, 1, 1, "Inverse of the stored state."}};
+}
+
+std::vector<PortDescription> EFlipFlop::portDescriptions() const
+{
+  return {{"d", PortDirection::Input, busIndex(Inputs::D), 1, "Data to capture."},
+          {"en", PortDirection::Input, busIndex(Inputs::Enable), 1,
+           "Active-high capture enable."},
+          {"clk", PortDirection::Input, busIndex(Inputs::Clock), 1,
+           "Capture clock; selected edge is configured by triggerEdge."},
+          {"clr", PortDirection::Input, busIndex(Inputs::Clear), 1,
+           "Active-high asynchronous clear; unconnected means LOW."},
+          {"pre", PortDirection::Input, busIndex(Inputs::Preset), 1,
+           "Active-high asynchronous preset; unconnected means LOW."},
+          {"q", PortDirection::Output, 0, 1, "Stored state."},
+          {"!q", PortDirection::Output, 1, 1, "Inverse of the stored state."}};
+}
+
+std::vector<PortDescription> JKFlipFlop::portDescriptions() const
+{
+  return {{"j", PortDirection::Input, busIndex(Inputs::J), 1,
+           "Set control sampled on the selected clock edge."},
+          {"k", PortDirection::Input, busIndex(Inputs::K), 1,
+           "Reset control sampled on the selected clock edge."},
+          {"clk", PortDirection::Input, busIndex(Inputs::Clock), 1,
+           "Capture clock; selected edge is configured by triggerEdge."},
+          {"clr", PortDirection::Input, busIndex(Inputs::Clear), 1,
+           "Active-high asynchronous clear; unconnected means LOW."},
+          {"pre", PortDirection::Input, busIndex(Inputs::Preset), 1,
+           "Active-high asynchronous preset; unconnected means LOW."},
+          {"q", PortDirection::Output, 0, 1, "Stored state."},
+          {"!q", PortDirection::Output, 1, 1, "Inverse of the stored state."}};
+}
+
+std::vector<PortDescription> DLatch::portDescriptions() const
+{
+  return {{"d", PortDirection::Input, busIndex(Inputs::D), 1, "Data to capture."},
+          {"en", PortDirection::Input, busIndex(Inputs::Enable), 1,
+           "Active-high capture enable."},
+          {"q", PortDirection::Output, 0, 1, "Stored state."},
+          {"!q", PortDirection::Output, 1, 1, "Inverse of the stored state."}};
 }
 
 }  // namespace SILICON::core

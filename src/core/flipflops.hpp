@@ -152,6 +152,8 @@ private:
  */
 class DFlipFlop : public FlipFlop {
 public:
+  [[nodiscard]] std::vector<PortDescription> portDescriptions() const override;
+
   /** @brief Serialization/type-registry identifier. */
   static constexpr std::string_view Type = "DFlipFlop";
 
@@ -162,8 +164,9 @@ public:
   std::string_view  typeName() const override { return Type; }
   ComponentMetadata metadata() const override
   {
-    return {"D Flip Flop", "Captures D on the configured clock edge.",
-            ComponentCategory::FlipFlops};
+    return {.displayName = "D Flip Flop",
+            .description = "Captures D on the configured clock edge.",
+            .category    = ComponentCategory::FlipFlops};
   }
 
   /** @brief Input bus indices for DFlipFlop. */
@@ -214,6 +217,8 @@ protected:
  */
 class EFlipFlop : public FlipFlop {
 public:
+  [[nodiscard]] std::vector<PortDescription> portDescriptions() const override;
+
   /** @brief Serialization/type-registry identifier. */
   static constexpr std::string_view Type = "EFlipFlop";
 
@@ -224,9 +229,10 @@ public:
   std::string_view  typeName() const override { return Type; }
   ComponentMetadata metadata() const override
   {
-    return {"Enabled D Flip Flop",
-            "Captures D on the configured clock edge while enable is HIGH.",
-            ComponentCategory::FlipFlops};
+    return {.displayName = "Enabled D Flip Flop",
+            .description =
+                "Captures D on the configured clock edge while enable is HIGH.",
+            .category = ComponentCategory::FlipFlops};
   }
 
   /** @brief Input bus indices for EFlipFlop. */
@@ -280,14 +286,17 @@ protected:
  */
 class DLatch : public Component {
 public:
+  [[nodiscard]] std::vector<PortDescription> portDescriptions() const override;
+
   /** @brief Serialization/type-registry identifier. */
   static constexpr std::string_view Type = "DLatch";
 
   std::string_view  typeName() const override { return Type; }
   ComponentMetadata metadata() const override
   {
-    return {"D Latch", "Follows D while enable is HIGH and holds while disabled.",
-            ComponentCategory::FlipFlops};
+    return {.displayName = "D Latch",
+            .description = "Follows D while enable is HIGH and holds while disabled.",
+            .category    = ComponentCategory::FlipFlops};
   }
 
   /** @brief Input bus indices for DLatch. */
@@ -333,6 +342,8 @@ private:
  */
 class JKFlipFlop : public FlipFlop {
 public:
+  [[nodiscard]] std::vector<PortDescription> portDescriptions() const override;
+
   /** @brief Serialization/type-registry identifier. */
   static constexpr std::string_view Type = "JKFlipFlop";
 
@@ -343,8 +354,9 @@ public:
   std::string_view  typeName() const override { return Type; }
   ComponentMetadata metadata() const override
   {
-    return {"JK Flip Flop", "Stores, sets, resets, or toggles state from J and K.",
-            ComponentCategory::FlipFlops};
+    return {.displayName = "JK Flip Flop",
+            .description = "Stores, sets, resets, or toggles state from J and K.",
+            .category    = ComponentCategory::FlipFlops};
   }
 
   /** @brief Input bus indices for JKFlipFlop. */

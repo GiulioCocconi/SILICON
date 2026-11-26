@@ -19,6 +19,7 @@
 
 #include <stdexcept>
 
+#include <utils/ranges_wrapper.hpp>
 
 namespace SILICON::ui {
 using namespace SILICON::core;
@@ -64,14 +65,15 @@ void GraphicalLogicComponent::updatePortSizes()
   if (!associatedComponent)
     return;
 
-  const std::vector<Bus> componentInputs  = associatedComponent->getInputs();
-  const std::vector<Bus> componentOutputs = associatedComponent->getOutputs();
+  const auto& componentInputs  = associatedComponent->inputBuses();
+  const auto& componentOutputs = associatedComponent->outputBuses();
 
-  for (size_t i = 0; i < inputPorts.size(); ++i)
-    inputPorts[i]->setSize(inputPortSize(i, componentInputs));
+  for (auto [i, port] : inputPorts | SILICON::views::enumerate)
+    port->setSize(inputPortSize(i, componentInputs));
 
-  for (size_t i = 0; i < outputPorts.size() && i < componentOutputs.size(); ++i)
-    outputPorts[i]->setSize(componentOutputs[i].size());
+  for (auto [i, port] : outputPorts | std::views::take(componentOutputs.size())
+                            | SILICON::views::enumerate)
+    port->setSize(componentOutputs[i].size());
 
   update();
   if (auto* diagram = qobject_cast<DiagramScene*>(scene());
@@ -102,17 +104,16 @@ const PropertyMap& GraphicalLogicComponent::getProperties() const
                              : GraphicalComponent::getProperties();
 }
 
-std::optional<std::reference_wrapper<const StringPropertyOptions>>
-GraphicalLogicComponent::getStringPropertyOptions(std::string_view key) const
+std::optional<PropertyValue>
+GraphicalLogicComponent::getProperty(std::string_view key) const
 {
-  return associatedComponent ? associatedComponent->getStringPropertyOptions(key)
-                             : std::nullopt;
+  return associatedComponent ? associatedComponent->getProperty(key) : std::nullopt;
 }
 
-std::vector<PropertyInfo> GraphicalLogicComponent::propertyInfo() const
+std::vector<PropertyDefinition> GraphicalLogicComponent::propertyDefinitions() const
 {
-  return associatedComponent ? associatedComponent->propertyInfo()
-                             : GraphicalComponent::propertyInfo();
+  return associatedComponent ? associatedComponent->propertyDefinitions()
+                             : GraphicalComponent::propertyDefinitions();
 }
 
 void GraphicalLogicComponent::applyProperty(std::string_view     key,
@@ -123,6 +124,9 @@ void GraphicalLogicComponent::applyProperty(std::string_view     key,
 
   prepareGeometryChange();
   associatedComponent->setProperty(key, value);
+  if (key == "portOrientation")
+    if (auto* diagram = qobject_cast<DiagramScene*>(scene()))
+      diagram->rememberIoPlacementOrientation(*associatedComponent);
   update();
   emit propertiesChanged();
 }
@@ -160,7 +164,15 @@ void GraphicalLogicComponent::setPorts(const std::vector<PortPair>& busToPortInp
       throw std::logic_error("Output port count mismatch with component");
   }
 
-  GraphicalComponent::setPorts(busToPortInputs, busToPortOutputs);
+  auto namedInputs  = busToPortInputs;
+  auto namedOutputs = busToPortOutputs;
+  if (associatedComponent)
+    for (const auto& port : associatedComponent->portDescriptions()) {
+      auto& ports = port.direction == PortDirection::Input ? namedInputs : namedOutputs;
+      if (port.index < ports.size() && ports[port.index].first.isNull())
+        ports[port.index].first = QString::fromStdString(port.name);
+    }
+  GraphicalComponent::setPorts(namedInputs, namedOutputs);
   updatePortSizes();
 }
 

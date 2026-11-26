@@ -52,9 +52,24 @@ void GraphicalWireSplitter::setComponent(const Component_ptr& component)
   installSizeCallback();
 }
 
+void GraphicalWireSplitter::applyProperty(std::string_view     key,
+                                          const PropertyValue& value)
+{
+  // Preserve the editor's no-op normalization for undersized requests. The core
+  // property domain still rejects them; the editor submits the existing valid size.
+  if (key == "size")
+    if (const auto* size = std::get_if<int>(&value);
+        size
+        && *size < *associatedComponent->propertyDeclaration(key).constraints.minimum) {
+      GraphicalLogicComponent::applyProperty(key, *getProperty(key));
+      return;
+    }
+  GraphicalLogicComponent::applyProperty(key, value);
+}
+
 int GraphicalWireSplitter::setSize(const int newSize)
 {
-  if (newSize < 1)
+  if (newSize < *associatedComponent->propertyDeclaration("size").constraints.minimum)
     return static_cast<int>(this->size);
 
   const auto logicalWireSplitter = dynamic_cast<WireSplitter*>(associatedComponent.get());
@@ -72,18 +87,14 @@ int GraphicalWireSplitter::setSize(const int newSize)
     QPoint portLoc(10, -20 * static_cast<int>(i) - 10);
     path.lineTo(portLoc);
 
-    const auto [offset, width] = slices[i];
-    const auto label           = width == 1
-                                     ? QString("b[%1]").arg(offset)
-                                     : QString("b[%1:%2]").arg(offset + width - 1).arg(offset);
-    outputPorts.emplace_back(label, portLoc + QPoint(20, 0));
+    outputPorts.emplace_back(QString{}, portLoc + QPoint(20, 0));
   }
 
   auto shape = new ThemedPathItem(path, this);
   shape->setPen(QPen(ThemeEngine::getColor(theme::ColorToken::Ink), 3));
 
   this->setItemShape(shape);
-  this->setPorts({PortPair{"b", QPoint(-20, 0)}}, outputPorts);
+  this->setPorts({PortPair{{}, QPoint(-20, 0)}}, outputPorts);
 
   return newSize;
 }
@@ -119,9 +130,23 @@ void GraphicalWireMerger::setComponent(const Component_ptr& component)
   installSizeCallback();
 }
 
+void GraphicalWireMerger::applyProperty(std::string_view key, const PropertyValue& value)
+{
+  // Preserve the editor's no-op normalization for undersized requests. The core
+  // property domain still rejects them; the editor submits the existing valid size.
+  if (key == "size")
+    if (const auto* size = std::get_if<int>(&value);
+        size
+        && *size < *associatedComponent->propertyDeclaration(key).constraints.minimum) {
+      GraphicalLogicComponent::applyProperty(key, *getProperty(key));
+      return;
+    }
+  GraphicalLogicComponent::applyProperty(key, value);
+}
+
 int GraphicalWireMerger::setSize(const int newSize)
 {
-  if (newSize < 1)
+  if (newSize < *associatedComponent->propertyDeclaration("size").constraints.minimum)
     return this->size;
   const auto logicalWireMerger = dynamic_cast<WireMerger*>(associatedComponent.get());
   logicalWireMerger->setSize(newSize);
@@ -134,24 +159,18 @@ int GraphicalWireMerger::setSize(const int newSize)
   const auto&           inputs = logicalWireMerger->inputBuses();
   inputPorts.reserve(inputs.size());
 
-  unsigned int offset = 0;
   for (std::size_t i = 0; i < inputs.size(); ++i) {
     QPoint portLoc(-10, -20 * static_cast<int>(i) - 10);
     path.lineTo(portLoc);
 
-    const auto width = inputs[i].size();
-    const auto label = width == 1
-                           ? QString("b[%1]").arg(offset)
-                           : QString("b[%1:%2]").arg(offset + width - 1).arg(offset);
-    inputPorts.emplace_back(label, portLoc + QPoint(-20, 0));
-    offset += width;
+    inputPorts.emplace_back(QString{}, portLoc + QPoint(-20, 0));
   }
 
   auto shape = new ThemedPathItem(path, this);
   shape->setPen(QPen(ThemeEngine::getColor(theme::ColorToken::Ink), 3));
 
   this->setItemShape(shape);
-  this->setPorts(inputPorts, {PortPair{"b", QPoint(20, 0)}});
+  this->setPorts(inputPorts, {PortPair{{}, QPoint(20, 0)}});
 
   return newSize;
 }

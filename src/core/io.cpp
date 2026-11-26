@@ -32,6 +32,23 @@ namespace SILICON::core {
 
 namespace {
 
+  constexpr char BoundaryNameDescription[] =
+      "Signal name exposed by the reusable circuit interface and exported HDL boundary.";
+
+  const auto sizeDefinition = propertyDefinition(
+      "size", 1, "Configured data width in bits.",
+      {.minimum       = 1,
+       .maximum       = MaxBusWidth,
+       .description   = "Out-of-range sizes are clamped to the supported bus width.",
+       .normalization = PropertyNormalization::Clamp});
+  const auto startValueDefinition = propertyDefinition(
+      "startValue", BusValue{State::LOW},
+      "Initial input value, normalized to the configured bus width.",
+      {.description =
+           "Nonempty LOW/HIGH/UNKNOWN bits; normalized to the port width. A scalar "
+           "UNKNOWN "
+           "fills the bus with UNKNOWN; other values are zero-extended or truncated."});
+
   std::atomic<uint64_t> nextPortIdentity{1};
 
   constexpr std::string_view                PORT_ORIENTATION_PROPERTY = "portOrientation";
@@ -39,17 +56,12 @@ namespace {
                                                                 "RIGHT"};
   [[nodiscard]] StringPropertyOptions orientationOptions()
   {
-    StringPropertyOptions options;
-    options.reserve(PORT_ORIENTATIONS.size());
-    for (const auto orientation : PORT_ORIENTATIONS)
-      options.emplace_back(orientation);
-    return options;
+    return PORT_ORIENTATIONS | std::ranges::to<StringPropertyOptions>();
   }
 
-  [[nodiscard]] int normalizedBusSize(const int size)
+  [[nodiscard]] int normalizedBusSize(const Component& component, const int size)
   {
-    return std::clamp(size, 1,
-                      static_cast<int>(std::numeric_limits<unsigned short>::max()));
+    return std::get<int>(component.propertyDeclaration("size").normalize(size));
   }
 
   [[nodiscard]] BusValue normalizedEditableValue(const BusValue&   value,
@@ -72,10 +84,17 @@ namespace {
 
 ConstantComponent::ConstantComponent()
 {
-  defineProperty("size", 1, [this](const PropertyValue& value) {
+  defineProperty(sizeDefinition, [this](const PropertyValue& value) {
     return setSize(std::get<int>(value));
   });
-  defineProperty("value", BusValue{State::LOW}, [this](const PropertyValue& value) {
+  static const auto valueDefinition = propertyDefinition(
+      "value", BusValue{State::LOW},
+      "Logic value driven by the constant, least-significant bit first.",
+      {.description =
+           "Nonempty LOW/HIGH/UNKNOWN bits; truncated or zero-extended to the configured "
+           "width. A scalar UNKNOWN fills all bits. ERROR is reserved for simulation "
+           "failures."});
+  defineProperty(valueDefinition, [this](const PropertyValue& value) {
     return setValue(std::get<BusValue>(value));
   });
 }
@@ -96,8 +115,8 @@ ConstantComponent::ConstantComponent(Bus output, BusValue value) : ConstantCompo
 
 int ConstantComponent::setSize(const int newSize)
 {
-  const int normalizedSize = std::clamp(
-      newSize, 1, static_cast<int>(std::numeric_limits<unsigned short>::max()));
+  const int normalizedSize =
+      std::get<int>(propertyDeclaration("size").normalize(newSize));
   if (!outputs.empty()) {
     outputs[0].setSize(static_cast<unsigned short>(normalizedSize));
     notifyIOListeners();
@@ -128,14 +147,17 @@ void ConstantComponent::simulate(SILICON::simulation::Simulator& sim)
 }
 
 BoundaryIoComponent::BoundaryIoComponent(std::vector<Bus> inputs,
-                                         std::vector<Bus> outputs, std::string name)
+                                         std::vector<Bus> outputs)
   : Component(std::move(inputs), std::move(outputs))
 {
   resetPortId();
-  defineProperty("name", std::move(name));
-  defineStringListProperty(std::string(PORT_ORIENTATION_PROPERTY),
-                           this->outputs.empty() ? "LEFT" : "RIGHT",
-                           orientationOptions());
+  static const auto left = stringPropertyDefinition(
+      std::string(PORT_ORIENTATION_PROPERTY), "LEFT", orientationOptions(),
+      "Side on which the external circuit boundary connection is placed.");
+  static const auto right = stringPropertyDefinition(
+      std::string(PORT_ORIENTATION_PROPERTY), "RIGHT", orientationOptions(),
+      "Side on which the external circuit boundary connection is placed.");
+  defineProperty(this->outputs.empty() ? left : right);
 }
 
 void BoundaryIoComponent::setPortId(uint64_t id)
@@ -157,9 +179,13 @@ void BoundaryIoComponent::resetPortId()
 }
 
 DummyInputComponent::DummyInputComponent(Bus bus, std::string name)
-  : BoundaryIoComponent({}, {std::move(bus)}, std::move(name))
+  : BoundaryIoComponent({}, {std::move(bus)})
 {
-  defineProperty("startValue", BusValue{State::LOW}, [](const PropertyValue& value) {
+  static const auto nameDefinition =
+      propertyDefinition("name", std::string("in"), BoundaryNameDescription);
+  defineProperty(nameDefinition, nullptr, PropertyValue{std::move(name)});
+
+  defineProperty(startValueDefinition, [](const PropertyValue& value) {
     return normalizedEditableValue(std::get<BusValue>(value), 1, true);
   });
 }
@@ -170,16 +196,23 @@ DummyInputComponent::DummyInputComponent() : DummyInputComponent(Bus{}, "in")
 }
 
 DummyBusInputComponent::DummyBusInputComponent(Bus bus, std::string name)
-  : BoundaryIoComponent({}, {std::move(bus)}, std::move(name))
+  : BoundaryIoComponent({}, {std::move(bus)})
 {
+  static const auto nameDefinition =
+      propertyDefinition("name", std::string("bus_in"), BoundaryNameDescription);
+  defineProperty(nameDefinition, nullptr, PropertyValue{std::move(name)});
+
   defineProperty(
-      "size", static_cast<int>(outputs[0].size()),
-      [this](const PropertyValue& value) { return setSize(std::get<int>(value)); });
-  defineProperty("startValue", BusValue(outputs[0].size(), State::LOW),
-                 [this](const PropertyValue& value) {
-                   const auto width = outputs.empty() ? 1 : outputs[0].size();
-                   return normalizedEditableValue(std::get<BusValue>(value), width, true);
-                 });
+      sizeDefinition,
+      [this](const PropertyValue& value) { return setSize(std::get<int>(value)); },
+      PropertyValue{static_cast<int>(outputs[0].size())});
+  defineProperty(
+      startValueDefinition,
+      [this](const PropertyValue& value) {
+        const auto width = outputs.empty() ? 1 : outputs[0].size();
+        return normalizedEditableValue(std::get<BusValue>(value), width, true);
+      },
+      PropertyValue{BusValue(outputs[0].size(), State::LOW)});
 }
 
 DummyBusInputComponent::DummyBusInputComponent() : DummyBusInputComponent(Bus{}, "bus_in")
@@ -189,7 +222,7 @@ DummyBusInputComponent::DummyBusInputComponent() : DummyBusInputComponent(Bus{},
 
 int DummyBusInputComponent::setSize(const int newSize)
 {
-  const int size = normalizedBusSize(newSize);
+  const int size = normalizedBusSize(*this, newSize);
   Bus       bus  = outputs.empty() ? Bus(size) : outputs[0];
   bus.setSize(static_cast<unsigned short>(size));
   setOutput(0, bus);
@@ -199,8 +232,11 @@ int DummyBusInputComponent::setSize(const int newSize)
 }
 
 DummyOutputComponent::DummyOutputComponent(Bus bus, std::string name)
-  : BoundaryIoComponent({std::move(bus)}, {}, std::move(name))
+  : BoundaryIoComponent({std::move(bus)}, {})
 {
+  static const auto nameDefinition =
+      propertyDefinition("name", std::string("out"), BoundaryNameDescription);
+  defineProperty(nameDefinition, nullptr, PropertyValue{std::move(name)});
 }
 
 DummyOutputComponent::DummyOutputComponent() : DummyOutputComponent(Bus{}, "out")
@@ -209,11 +245,16 @@ DummyOutputComponent::DummyOutputComponent() : DummyOutputComponent(Bus{}, "out"
 }
 
 DummyBusOutputComponent::DummyBusOutputComponent(Bus bus, std::string name)
-  : BoundaryIoComponent({std::move(bus)}, {}, std::move(name))
+  : BoundaryIoComponent({std::move(bus)}, {})
 {
+  static const auto nameDefinition =
+      propertyDefinition("name", std::string("bus_out"), BoundaryNameDescription);
+  defineProperty(nameDefinition, nullptr, PropertyValue{std::move(name)});
+
   defineProperty(
-      "size", static_cast<int>(inputs[0].size()),
-      [this](const PropertyValue& value) { return setSize(std::get<int>(value)); });
+      sizeDefinition,
+      [this](const PropertyValue& value) { return setSize(std::get<int>(value)); },
+      PropertyValue{static_cast<int>(inputs[0].size())});
 }
 
 DummyBusOutputComponent::DummyBusOutputComponent()
@@ -224,11 +265,30 @@ DummyBusOutputComponent::DummyBusOutputComponent()
 
 int DummyBusOutputComponent::setSize(const int newSize)
 {
-  const int size = normalizedBusSize(newSize);
+  const int size = normalizedBusSize(*this, newSize);
   Bus       bus  = inputs.empty() ? Bus(size) : inputs[0];
   bus.setSize(static_cast<unsigned short>(size));
   setInput(0, bus);
   return size;
+}
+
+std::vector<PortDescription> ConstantComponent::portDescriptions() const
+{
+  return {{"o", PortDirection::Output, 0,
+           static_cast<unsigned int>(getPropertyValue<int>("size").value()),
+           "Configured constant logic value."}};
+}
+
+std::vector<PortDescription> BoundaryIoComponent::portDescriptions() const
+{
+  const bool input = metadata().portRole == PortRole::Input;
+  const auto width = static_cast<unsigned int>(getPropertyValue<int>("size").value_or(1));
+  return {{getPropertyValue<int>("size") ? "bus"
+           : input                       ? "o"
+                                         : "in",
+           input ? PortDirection::Output : PortDirection::Input, 0, width,
+           input ? "Signal supplied to the circuit boundary."
+                 : "Signal observed at the circuit boundary."}};
 }
 
 }  // namespace SILICON::core

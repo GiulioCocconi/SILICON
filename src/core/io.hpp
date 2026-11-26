@@ -28,6 +28,8 @@ namespace SILICON::core {
 /** @brief Drives a one-bit constant used by imported hardware netlists. */
 class ConstantComponent : public Component {
 public:
+  [[nodiscard]] std::vector<PortDescription> portDescriptions() const override;
+
   static constexpr std::string_view Type = "ConstantComponent";
 
   ConstantComponent();
@@ -40,8 +42,9 @@ public:
   std::string_view  typeName() const override { return Type; }
   ComponentMetadata metadata() const override
   {
-    return {"Constant", "Drives a fixed binary or unknown logic value.",
-            ComponentCategory::Inputs};
+    return {.displayName = "Constant",
+            .description = "Drives a fixed binary or unknown logic value.",
+            .category    = ComponentCategory::Inputs};
   }
 
   void simulate(SILICON::simulation::Simulator& sim) override;
@@ -52,10 +55,11 @@ class BoundaryIoComponent : public Component {
   uint64_t portIdentity;
 
 protected:
-  BoundaryIoComponent(std::vector<Bus> inputs, std::vector<Bus> outputs,
-                      std::string name);
+  BoundaryIoComponent(std::vector<Bus> inputs, std::vector<Bus> outputs);
 
 public:
+  [[nodiscard]] std::vector<PortDescription> portDescriptions() const override;
+
   /** Persistent interface identity, independent of labels, wires and graph order. */
   [[nodiscard]] uint64_t           portId() const { return portIdentity; }
   void                             setPortId(uint64_t id);
@@ -79,8 +83,10 @@ public:
   std::string_view  typeName() const override { return Type; }
   ComponentMetadata metadata() const override
   {
-    return {"Input", "Provides a user-toggleable one-bit signal.",
-            ComponentCategory::Inputs, PortRole::Input};
+    return {.displayName = "Input",
+            .description = "Provides a user-toggleable one-bit signal.",
+            .category    = ComponentCategory::Inputs,
+            .portRole    = PortRole::Input};
   }
   void simulate(SILICON::simulation::Simulator&) override {}
 };
@@ -102,8 +108,10 @@ public:
   std::string_view  typeName() const override { return Type; }
   ComponentMetadata metadata() const override
   {
-    return {"Bus Input", "Provides an editable multi-bit bus value.",
-            ComponentCategory::Inputs, PortRole::Input};
+    return {.displayName = "Bus Input",
+            .description = "Provides an editable multi-bit bus value.",
+            .category    = ComponentCategory::Inputs,
+            .portRole    = PortRole::Input};
   }
   void simulate(SILICON::simulation::Simulator&) override {}
 };
@@ -119,8 +127,10 @@ public:
   std::string_view  typeName() const override { return Type; }
   ComponentMetadata metadata() const override
   {
-    return {"Output", "Displays the current state of a one-bit signal.",
-            ComponentCategory::Outputs, PortRole::Output};
+    return {.displayName = "Output",
+            .description = "Displays the current state of a one-bit signal.",
+            .category    = ComponentCategory::Outputs,
+            .portRole    = PortRole::Output};
   }
   void simulate(SILICON::simulation::Simulator&) override {}
 };
@@ -138,8 +148,10 @@ public:
   std::string_view  typeName() const override { return Type; }
   ComponentMetadata metadata() const override
   {
-    return {"Bus Output", "Displays the current value of a multi-bit bus.",
-            ComponentCategory::Outputs, PortRole::Output};
+    return {.displayName = "Bus Output",
+            .description = "Displays the current value of a multi-bit bus.",
+            .category    = ComponentCategory::Outputs,
+            .portRole    = PortRole::Output};
   }
   void simulate(SILICON::simulation::Simulator&) override {}
 };

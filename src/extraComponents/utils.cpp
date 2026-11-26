@@ -25,6 +25,8 @@
 
 #include <core/simulator.hpp>
 
+#include <utils/ranges_wrapper.hpp>
+
 namespace SILICON::extra {
 using namespace SILICON::core;
 
@@ -84,16 +86,23 @@ void WireSplitter::initializeProperties()
 {
   // Default-constructed components are used by the registry and must keep empty
   // buses. The size callback only reshapes I/O after real buses have been attached.
-  defineProperty("size", 2);
-  defineProperty("delay", 0);
-  defineProperty("slices", std::string{});
-
-  setPropertyCallback("delay", [](const PropertyValue& value) {
-    return requireNonNegative("WireSplitter delay", value);
-  });
+  static const auto sizeDefinition =
+      propertyDefinition("size", 2,
+                         "Source word length; explicit slices must fit inside it. With "
+                         "no slices, expose every individual bit.",
+                         {.minimum = 1, .maximum = MaxBusWidth});
+  defineProperty(sizeDefinition);
+  defineProperty(ZeroDelayProperty);
+  static const auto slicesDefinition = propertyDefinition(
+      "slices", std::string{},
+      "Comma-separated offset:width slices of the input; empty splits individual bits.",
+      {.description = "Each offset:width pair needs a nonnegative offset and a positive "
+                      "width within "
+                      "the input bus. Slices may overlap."});
+  defineProperty(slicesDefinition);
 
   setPropertyCallback("size", [this](const PropertyValue& value) {
-    const int newSize = std::get<int>(requireValidSize("WireSplitter size", value));
+    const int newSize = std::get<int>(value);
     for (const auto& [offset, width] : slices)
       if (offset + width > static_cast<unsigned int>(newSize))
         throw std::invalid_argument("WireSplitter slice exceeds its input width");
@@ -108,7 +117,7 @@ void WireSplitter::initializeProperties()
 
 int WireSplitter::setSize(int newSize)
 {
-  (void)requireValidSize("WireSplitter size", newSize);
+  (void)propertyDeclaration("size").normalize(newSize);
   std::vector<unsigned int> outputWidths;
   if (slices.empty()) {
     outputWidths.assign(newSize, 1);
@@ -189,16 +198,22 @@ void WireMerger::initializeProperties()
 {
   // Default-constructed components are used by the registry and must keep empty
   // buses. The size callback only reshapes I/O after real buses have been attached.
-  defineProperty("size", 2);
-  defineProperty("delay", 0);
-  defineProperty("widths", std::string{});
-
-  setPropertyCallback("delay", [](const PropertyValue& value) {
-    return requireNonNegative("WireMerger delay", value);
-  });
+  static const auto sizeDefinition =
+      propertyDefinition("size", 2,
+                         "Concatenated output length; explicit input widths must sum to "
+                         "it. With no widths, use one input per output bit.",
+                         {.minimum = 1, .maximum = MaxBusWidth});
+  defineProperty(sizeDefinition);
+  defineProperty(ZeroDelayProperty);
+  static const auto widthsDefinition = propertyDefinition(
+      "widths", std::string{},
+      "Comma-separated input widths summing to size; empty merges individual bits.",
+      {.description =
+           "Nonempty lists must contain positive integer widths summing to size."});
+  defineProperty(widthsDefinition);
 
   setPropertyCallback("size", [this](const PropertyValue& value) {
-    const int newSize = std::get<int>(requireValidSize("WireMerger size", value));
+    const int newSize = std::get<int>(value);
     if (!widths.empty()
         && std::accumulate(widths.begin(), widths.end(), 0u)
                != static_cast<unsigned int>(newSize))
@@ -212,15 +227,19 @@ void WireMerger::initializeProperties()
   });
 }
 
+std::vector<unsigned int> WireMerger::inputWidths(unsigned int size) const
+{
+  return widths.empty() ? std::vector<unsigned int>(size, 1) : widths;
+}
+
 int WireMerger::setSize(int newSize)
 {
-  (void)requireValidSize("WireMerger size", newSize);
+  (void)propertyDeclaration("size").normalize(newSize);
   if (!widths.empty()
       && std::accumulate(widths.begin(), widths.end(), 0u)
              != static_cast<unsigned int>(newSize))
     throw std::invalid_argument("WireMerger input widths must sum to its output width");
-  setInputs(resizedBuses(inputs, widths.empty() ? std::vector<unsigned int>(newSize, 1)
-                                                : widths));
+  setInputs(resizedBuses(inputs, inputWidths(newSize)));
   setOutputs(resizedBuses(outputs, {static_cast<unsigned int>(newSize)}));
   return newSize;
 }
@@ -246,8 +265,7 @@ void WireMerger::simulate(SILICON::simulation::Simulator& sim)
   const int          delay = getPropertyValue<int>("delay").value();
   if (outputs.empty())
     return;
-  const auto inputWidths =
-      widths.empty() ? std::vector<unsigned int>(outputs[0].size(), 1) : widths;
+  const auto   inputWidths = this->inputWidths(outputs[0].size());
   unsigned int offset = 0;
   for (std::size_t port = 0; port < inputWidths.size(); ++port)
     for (unsigned int bit = 0; bit < inputWidths[port]; ++bit, ++offset) {
@@ -258,6 +276,43 @@ void WireMerger::simulate(SILICON::simulation::Simulator& sim)
       if (offset < outputs[0].size())
         sim.updateWire(outputs[0][offset], state, delay, weak_from_this());
     }
+}
+
+std::vector<PortDescription> WireSplitter::portDescriptions() const
+{
+  const auto size = static_cast<unsigned int>(getPropertyValue<int>("size").value());
+  std::vector<PortDescription> result{
+      {"b", PortDirection::Input, 0, size, "Bus to split, least-significant bit first."}};
+  const auto ranges = outputSlices();
+  for (auto [i, slice] : ranges | SILICON::views::enumerate) {
+    const auto [offset, width] = slice;
+    result.push_back({width == 1 ? std::format("b[{}]", offset)
+                                 : std::format("b[{}:{}]", offset + width - 1, offset),
+                      PortDirection::Output, static_cast<unsigned int>(i), width,
+                      "Input slice starting at bit " + std::to_string(offset) + "."});
+  }
+  return result;
+}
+
+std::vector<PortDescription> WireMerger::portDescriptions() const
+{
+  const auto                   size        = outputs.empty()
+                                                 ? static_cast<unsigned int>(getPropertyValue<int>("size").value())
+                                                 : static_cast<unsigned int>(outputs[0].size());
+  const auto                   inputWidths = this->inputWidths(size);
+  std::vector<PortDescription> result;
+  unsigned int                 offset = 0;
+  for (auto [i, width] : inputWidths | SILICON::views::enumerate) {
+    result.push_back(
+        {width == 1 ? std::format("b[{}]", offset)
+                    : std::format("b[{}:{}]", offset + width - 1, offset),
+         PortDirection::Input, static_cast<unsigned int>(i), width,
+         "Concatenated starting at output bit " + std::to_string(offset) + "."});
+    offset += width;
+  }
+  result.push_back({"b", PortDirection::Output, 0, size,
+                    "Concatenated bus, least-significant input first."});
+  return result;
 }
 
 }  // namespace SILICON::extra

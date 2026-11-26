@@ -111,16 +111,24 @@ Gate::Gate(const std::vector<Wire_ptr>& inputs, Wire_ptr output,
 
 void Gate::initializeProperties(const bool enableBitwiseProperties)
 {
-  defineProperty("delay", 5);
-  setPropertyCallback("delay", [](const PropertyValue& value) {
-    return requireNonNegative("delay", value);
-  });
+  static const auto delayDefinition =
+      propertyDefinition("delay", 5, PropagationDelayDescription, {.minimum = 0});
+  defineProperty(delayDefinition);
 
   if (!enableBitwiseProperties)
     return;
 
-  defineProperty("bitwise", false);
-  defineProperty("size", 1);
+  static const auto bitwiseDefinition = propertyDefinition(
+      "bitwise", false,
+      "When true, combine corresponding bits across inputs. When false and size is "
+      "greater than one, reduce a single input bus to one output bit.");
+  defineProperty(bitwiseDefinition);
+  static const auto sizeDefinition =
+      propertyDefinition("size", 1,
+                         "Input word width; bitwise mode produces a result of the same "
+                         "width, while reduction mode produces one bit.",
+                         {.minimum = 1, .maximum = MaxBusWidth});
+  defineProperty(sizeDefinition);
 
   setPropertyCallback("bitwise", [this](const PropertyValue& value) {
     const bool bitwise = std::get<bool>(value);
@@ -132,7 +140,7 @@ void Gate::initializeProperties(const bool enableBitwiseProperties)
   });
 
   setPropertyCallback("size", [this](const PropertyValue& value) {
-    const int size = std::get<int>(requireValidSize("Gate size", value));
+    const int size = std::get<int>(value);
 
     if (!inputs.empty() && !outputs.empty())
       configureIO(size, getPropertyValue<bool>("bitwise").value_or(false));
@@ -141,14 +149,24 @@ void Gate::initializeProperties(const bool enableBitwiseProperties)
   });
 }
 
+std::size_t Gate::configuredInputCount(int width, bool bitwise) const
+{
+  return !getPropertyValue<bool>("bitwise") || (!bitwise && width > 1) ? 1
+                                                                       : scalarInputCount;
+}
+
+unsigned int Gate::configuredOutputWidth(unsigned int width, bool bitwise)
+{
+  return bitwise ? width : 1;
+}
+
 void Gate::configureIO(const int size, const bool bitwise)
 {
   auto newInputs = getInputs();
   if (newInputs.size() > 1)
     scalarInputCount = newInputs.size();
 
-  const bool reduction = !bitwise && size > 1;
-  const auto inputCount = reduction ? 1 : scalarInputCount;
+  const auto inputCount = configuredInputCount(size, bitwise);
   newInputs.resize(std::min(newInputs.size(), inputCount));
   while (newInputs.size() < inputCount)
     newInputs.emplace_back(1);
@@ -157,7 +175,7 @@ void Gate::configureIO(const int size, const bool bitwise)
 
   auto newOutputs = getOutputs();
   for (auto& output : newOutputs)
-    output.setSize(static_cast<unsigned short>(bitwise ? size : 1));
+    output.setSize(static_cast<unsigned short>(configuredOutputWidth(size, bitwise)));
 
   setInputs(newInputs);
   setOutputs(newOutputs);
@@ -165,7 +183,7 @@ void Gate::configureIO(const int size, const bool bitwise)
 
 int Gate::setSize(const int width)
 {
-  if (width < 1)
+  if (width < *propertyDeclaration("size").constraints.minimum)
     return static_cast<int>(outputs.empty() ? 0 : outputs[0].size());
 
   auto newInputs = getInputs();
@@ -219,10 +237,16 @@ NotGate::NotGate(Wire_ptr input, Wire_ptr output) : Gate({input}, output, false)
 
 void NotGate::initializeNotProperties()
 {
-  setProperty("delay", 2);
-  defineProperty("size", 1);
+  static const auto delayDefinition =
+      propertyDefinition("delay", 2, PropagationDelayDescription, {.minimum = 0});
+  defineProperty(delayDefinition);
+  static const auto sizeDefinition = propertyDefinition(
+      "size", 1,
+      "Number of input bits inverted independently into an equally wide output.",
+      {.minimum = 1, .maximum = MaxBusWidth});
+  defineProperty(sizeDefinition);
   setPropertyCallback("size", [this](const PropertyValue& value) {
-    const int size = std::get<int>(requireValidSize("Gate size", value));
+    const int size = std::get<int>(value);
     if (!inputs.empty() && !outputs.empty())
       setSize(size);
     return value;
@@ -289,6 +313,26 @@ void XorGate::simulate(SILICON::simulation::Simulator& sim)
 {
   simulateBitwiseGate(*this, sim, State::LOW,
                       [](const State lhs, const State rhs) { return lhs ^ rhs; });
+}
+
+std::vector<PortDescription> Gate::portDescriptions() const
+{
+  const auto width = static_cast<unsigned int>(getPropertyValue<int>("size").value_or(1));
+  const auto bitwise = getPropertyValue<bool>("bitwise");
+  const auto count = inputs.empty() ? configuredInputCount(width, bitwise.value_or(true))
+                                    : inputs.size();
+  std::vector<PortDescription> result;
+  for (unsigned int i = 0; i < count; ++i)
+    result.push_back({count == 1   ? "i"
+                      : count == 2 ? (i == 0 ? "a" : "b")
+                                   : std::format("i{}", i),
+                      PortDirection::Input, i, width,
+                      "Operand bits; bitwise mode combines corresponding bit positions, "
+                      "while reduction mode folds all bits into one result."});
+  result.push_back({"o", PortDirection::Output, 0,
+                    configuredOutputWidth(width, bitwise.value_or(true)),
+                    "Result of the gate operation."});
+  return result;
 }
 
 }  // namespace SILICON::core

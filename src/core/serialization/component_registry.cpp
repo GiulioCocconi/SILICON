@@ -75,6 +75,22 @@ bool ComponentRegistry::hasType(std::string_view type) const
   return types.contains(type);
 }
 
+ComponentTypeDescription ComponentRegistry::describeType(std::string_view type) const
+{
+  const auto component = create(type);
+  return {.metadata   = component->metadata(),
+          .properties = component->declaredProperties()};
+}
+
+ComponentDescription
+ComponentRegistry::describeConfiguration(std::string_view   type,
+                                         const PropertyMap& configuration) const
+{
+  const auto component = create(type);
+  component->setProperties(configuration);
+  return component->describe();
+}
+
 ComponentMetadata ComponentRegistry::metadata(std::string_view type) const
 {
   auto it = types.find(type);
@@ -86,12 +102,7 @@ ComponentMetadata ComponentRegistry::metadata(std::string_view type) const
 
 std::vector<std::string> ComponentRegistry::availableTypes() const
 {
-  std::vector<std::string> types;
-  types.reserve(this->types.size());
-  for (const auto& [type, _] : this->types) {
-    types.push_back(type);
-  }
-  return types;
+  return types | std::views::keys | std::ranges::to<std::vector>();
 }
 
 std::string_view componentCategoryName(const ComponentCategory category)

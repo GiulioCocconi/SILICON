@@ -19,6 +19,7 @@
 #include <array>
 #include <concepts>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <ranges>
@@ -145,18 +146,85 @@ using PropertyValue = std::variant<int, bool, std::string, BusValue>;
 using PropertyMap = std::unordered_map<std::string, PropertyValue, TransparentStringHash,
                                        TransparentStringEqual>;
 
-/** Transient editor information. Derived read-only values are never serialized. */
-struct PropertyInfo {
-  std::string   key;
-  PropertyValue value;
-  std::string   label{};
-  std::string   help{};
-  bool          readOnly = false;
-  bool          advanced = false;
+inline constexpr int MaxBusWidth = std::numeric_limits<unsigned short>::max();
+
+/** Semantic property types, independent of PropertyValue storage order. */
+enum class PropertyType { Integer, Boolean, String, BusValue };
+[[nodiscard]] PropertyType propertyType(const PropertyValue& value);
+
+enum class PropertyAccess { Editable, ReadOnly, Derived };
+
+enum class PropertyNormalization { Reject, Clamp };
+
+/** Inclusive scalar bounds; dependent relationships remain component callbacks. */
+struct PropertyConstraints {
+  std::optional<int> minimum{};
+  std::optional<int> maximum{};
+  /** Relationships, syntax and normalization that cannot be expressed as bounds. */
+  std::string           description{};
+  PropertyNormalization normalization = PropertyNormalization::Reject;
+  [[nodiscard]] bool    contains(int value) const;
 };
 
-/** Default alphabetical descriptions for configurable properties. */
-[[nodiscard]] std::vector<PropertyInfo> describeProperties(const PropertyMap& properties);
+/** A declaration, independent of the current instance value and GUI preferences. */
+struct PropertyDefinition {
+  std::string                  key;
+  std::string                  label;
+  std::string                  description{};
+  PropertyType                 type = PropertyType::Integer;
+  std::optional<PropertyValue> defaultValue{};
+  std::vector<PropertyValue>   acceptedValues{};
+  PropertyConstraints          constraints{};
+  PropertyAccess               access = PropertyAccess::Editable;
+  /** Human-readable applicability; active queries evaluate component-specific rules. */
+  std::string availability{};
+  /** Enforce local type, choices and bounds. Callbacks enforce dependent constraints. */
+  [[nodiscard]] PropertyValue normalize(const PropertyValue& value) const;
+};
+
+/** Construct a typed definition from its declared default, never its current value. */
+[[nodiscard]] PropertyDefinition propertyDefinition(std::string         key,
+                                                    PropertyValue       defaultValue,
+                                                    std::string         description = {},
+                                                    PropertyConstraints constraints = {});
+
+[[nodiscard]] PropertyDefinition
+stringPropertyDefinition(std::string key, std::string defaultValue,
+                         std::vector<std::string> acceptedValues,
+                         std::string              description = {});
+
+inline constexpr char PropagationDelayDescription[] =
+    "Propagation delay in simulation time units.";
+extern const PropertyDefinition ZeroDelayProperty;
+
+enum class PortDirection { Input, Output };
+
+/** Describes an existing component bus slot; owns no wires or connections. */
+struct PortDescription {
+  std::string   name;
+  PortDirection direction;
+  unsigned int  index;
+  unsigned int  width;
+  std::string   description;
+};
+
+struct ComponentDescription {
+  ComponentMetadata               metadata;
+  std::vector<PortDescription>    ports;
+  std::vector<PropertyDefinition> properties;
+  /** Current values, separate from declaration defaults; includes active derived values.
+   */
+  PropertyMap values;
+};
+
+/** Complete type schema; unlike an instance description, includes inactive properties.
+ * Port layouts are obtained by evaluating a concrete configuration through the registry.
+ * Infinite width/count domains are represented by property constraints, not enumerated.
+ */
+struct ComponentTypeDescription {
+  ComponentMetadata               metadata;
+  std::vector<PropertyDefinition> properties;
+};
 
 /** @brief Callback function for property validation/transformation */
 using PropertyCallback = std::function<PropertyValue(const PropertyValue&)>;
@@ -168,32 +236,6 @@ using PropertyCallbackMap =
 
 /** @brief Allowed values for a constrained string property */
 using StringPropertyOptions = std::vector<std::string>;
-
-/** @brief Map from property names to constrained string values */
-using StringPropertyOptionsMap =
-    std::unordered_map<std::string, StringPropertyOptions, TransparentStringHash,
-                       TransparentStringEqual>;
-
-/**
- * @brief Validates that an integer property value is non-negative.
- * @param name Property name or descriptive prefix used in the error message
- * @param value The property value to validate
- * @return The validated value unchanged
- * @throws std::invalid_argument When the value is negative
- */
-[[nodiscard]] PropertyValue requireNonNegative(std::string_view    name,
-                                               const PropertyValue& value);
-
-/**
- * @brief Validates that an integer property value is a valid bus size.
- * @param name Property name or descriptive prefix used in the error message
- * @param value The property value to validate
- * @return The validated value unchanged
- * @throws std::invalid_argument When the value is below 1 or exceeds the maximum
- * supported bus width
- */
-[[nodiscard]] PropertyValue requireValidSize(std::string_view    name,
-                                             const PropertyValue& value);
 
 /**
  * @class Component
@@ -237,8 +279,10 @@ protected:
   /** @brief Map of callbacks for property validation/transformation */
   PropertyCallbackMap propertyCallbacks;
 
-  /** @brief Allowed values for constrained string properties */
-  StringPropertyOptionsMap stringPropertyOptions;
+  /** Shared immutable declarations in registration order, separate from values. */
+  std::vector<const PropertyDefinition*> propertyDeclarations;
+  // Only legacy/runtime declarations need ownership. Static declarations are borrowed.
+  std::vector<std::unique_ptr<const PropertyDefinition>> ownedPropertyDeclarations;
 
   /** @brief Counter for generating unique I/O listener IDs */
   uint64_t nextIoListenerId = 0;
@@ -259,13 +303,9 @@ protected:
    */
   template <typename T>
   void defineProperty(std::string key, T&& defaultValue,
-                      PropertyCallback callback = nullptr)
+                      PropertyCallback callback = nullptr, std::string description = {},
+                      PropertyConstraints constraints = {})
   {
-    PropertyCallback cb;
-    if (callback) {
-      cb                     = std::move(callback);
-      propertyCallbacks[key] = cb;
-    }
     using Decayed = std::decay_t<T>;
     PropertyValue defaultVal;
     if constexpr (std::is_constructible_v<std::string, T>
@@ -274,9 +314,24 @@ protected:
     } else {
       defaultVal = PropertyValue(std::forward<T>(defaultValue));
     }
-    PropertyValue finalValue = cb ? cb(defaultVal) : std::move(defaultVal);
-    properties.insert_or_assign(std::move(key), std::move(finalValue));
+    auto definition = std::make_unique<PropertyDefinition>(
+        propertyDefinition(std::move(key), std::move(defaultVal), std::move(description),
+                           std::move(constraints)));
+    auto* declaration = definition.get();
+    ownedPropertyDeclarations.push_back(std::move(definition));
+    defineProperty(*declaration, std::move(callback));
+    declaration->defaultValue = properties.at(declaration->key);
   }
+
+  /** Borrow an immutable declaration with static lifetime; derived fields store no value.
+   */
+  void defineProperty(const PropertyDefinition&    definition,
+                      PropertyCallback             callback     = nullptr,
+                      std::optional<PropertyValue> initialValue = std::nullopt);
+  void defineProperty(PropertyDefinition&&, PropertyCallback = nullptr,
+                      std::optional<PropertyValue> = std::nullopt) = delete;
+  [[nodiscard]] PropertyValue validatedProperty(std::string_view     key,
+                                                const PropertyValue& value) const;
 
   /**
    * @brief Defines a string property constrained to a fixed set of values.
@@ -288,7 +343,8 @@ protected:
    */
   void defineStringListProperty(std::string key, std::string defaultValue,
                                 StringPropertyOptions allowedValues,
-                                PropertyCallback      callback = nullptr);
+                                PropertyCallback      callback    = nullptr,
+                                std::string           description = {});
 
   /**
    * @brief Notifies all registered I/O listeners of a change.
@@ -297,10 +353,6 @@ protected:
    * typically after setInput/setOutput is called.
    */
   void notifyIOListeners();
-
-  /** @brief Validates a property value against the declared type and metadata. */
-  void validatePropertyValue(std::string_view key, const PropertyValue& currentValue,
-                             const PropertyValue& newValue) const;
 
   /**
    * @brief Handles input size changes. By default input size shouldn't change
@@ -480,27 +532,34 @@ public:
   /** Apply a compound configuration. Components may validate dependent fields together.
    */
   virtual void setProperties(const PropertyMap& values);
-  /** Ordered, conditionally visible editor fields, including derived information. */
-  [[nodiscard]] virtual std::vector<PropertyInfo> propertyInfo() const;
+  /** Complete schema in declaration order, including inactive and derived properties.
+   * Defaults remain independent of constructor-supplied initial values and later edits.
+   */
+  [[nodiscard]] virtual std::vector<PropertyDefinition> declaredProperties() const;
+  /** Shared immutable declaration used by validation and introspection. */
+  [[nodiscard]] const PropertyDefinition& propertyDeclaration(std::string_view key) const;
+  /** Currently applicable semantic fields in declaration order, used by the property
+   * editor. Inactive values remain accessible through getProperties()/getProperty().
+   */
+  [[nodiscard]] virtual std::vector<PropertyDefinition> propertyDefinitions() const;
+  [[nodiscard]] virtual std::vector<PortDescription>    portDescriptions() const;
+  /** Configuration-aware description; does not wire, reshape or simulate the component.
+   * Attached buses supply their actual widths; unwired components describe logical ports.
+   */
+  [[nodiscard]] ComponentDescription describe() const;
 
   /**
    * @brief Gets a property value.
    * @param key The property name
    * @return The property value if present
    */
-  [[nodiscard]] std::optional<PropertyValue> getProperty(std::string_view key) const;
+  [[nodiscard]] virtual std::optional<PropertyValue>
+  getProperty(std::string_view key) const;
 
-  /** @brief Gets all properties.
+  /** @brief Gets stored configuration, excluding derived values.
    * @return Reference to the property map
    */
   [[nodiscard]] const PropertyMap& getProperties() const { return properties; }
-
-  /**
-   * @brief Gets allowed values for a constrained string property.
-   * @return The allowed values if the property is constrained
-   */
-  [[nodiscard]] std::optional<std::reference_wrapper<const StringPropertyOptions>>
-  getStringPropertyOptions(std::string_view key) const;
 
   /**
    * @brief Sets a property value with type deduction.
@@ -521,11 +580,9 @@ public:
    */
   template <typename T> std::optional<T> getPropertyValue(std::string_view key) const
   {
-    auto it = properties.find(key);
-    if (it != properties.end()) {
-      if (const T* val = std::get_if<T>(&it->second)) {
+    if (const auto value = getProperty(key)) {
+      if (const T* val = std::get_if<T>(&*value))
         return *val;
-      }
     }
     return std::nullopt;
   }
