@@ -63,8 +63,8 @@ void expectSameContents(const std::map<std::string, std::string>& actual,
 TEST_F(ComponentDocumentation, CoversCatalogAndFullSchemasWithDefaultPins)
 {
   const auto references = docs::collectReferences(registry, factory);
-  EXPECT_EQ(references.size(), factory.availableTypes().size());
-  EXPECT_EQ(references.size(), registry.availableTypes().size() + 1);
+  EXPECT_EQ(references.size(), factory.availableTypes().size() - 2);
+  EXPECT_EQ(references.size(), registry.availableTypes().size() - 1);
   std::set<std::string> types;
   for (const auto& entry : references) {
     SCOPED_TRACE(entry.type);
@@ -90,17 +90,10 @@ TEST_F(ComponentDocumentation, CoversCatalogAndFullSchemasWithDefaultPins)
   EXPECT_EQ(page.find("Bus index"), std::string::npos);
 
   const auto text = std::ranges::find(references, "Text", &docs::Reference::type);
-  ASSERT_NE(text, references.end());
-  EXPECT_TRUE(text->ports.empty());
-  EXPECT_EQ(text->properties.size(), 4);
-  EXPECT_NE(docs::componentPage(*text).find("This component has no pins."),
-            std::string::npos);
+  EXPECT_EQ(text, references.end());
   const auto subcircuit =
       std::ranges::find(references, "Subcircuit", &docs::Reference::type);
-  ASSERT_NE(subcircuit, references.end());
-  EXPECT_TRUE(subcircuit->ports.empty());
-  EXPECT_NE(docs::componentPage(*subcircuit).find("selected circuit document"),
-            std::string::npos);
+  EXPECT_EQ(subcircuit, references.end());
   const auto adder = std::ranges::find(references, "HalfAdder", &docs::Reference::type);
   ASSERT_NE(adder, references.end());
   const auto adderPage = docs::componentPage(*adder);
@@ -176,7 +169,7 @@ TEST_F(ComponentDocumentation, GeneratesHdThemedPngsAndReplacesObsoleteOutput)
         painted = image.pixelColor(x, y).alpha() > 0;
     EXPECT_TRUE(painted) << path;
   }
-  EXPECT_EQ(pngCount, factory.availableTypes().size() * 2);
+  EXPECT_EQ(pngCount, docs::collectReferences(registry, factory).size() * 2);
   EXPECT_NE(first.at("gates/AndGate-light.png"), first.at("gates/AndGate-dark.png"));
   const auto gate = docs::collectReferences(registry, factory).front();
   const auto page = docs::componentPage(gate);

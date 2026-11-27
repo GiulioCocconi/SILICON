@@ -63,9 +63,10 @@ public:
   std::string_view  typeName() const override { return Type; }
   ComponentMetadata metadata() const override
   {
-    return {.displayName = "Subcircuit",
-            .description = "Project-local reusable circuit instance.",
-            .category    = ComponentCategory::Subcircuits};
+    return {.displayName         = "Subcircuit",
+            .description         = "Project-local reusable circuit instance.",
+            .category            = ComponentCategory::Subcircuits,
+            .ignoreDocumentation = true};
   }
 
   void simulate(SILICON::simulation::Simulator& sim) override;

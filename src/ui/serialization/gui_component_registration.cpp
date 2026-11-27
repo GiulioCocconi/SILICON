@@ -57,7 +57,8 @@ void registerAllGUIComponents(GUIComponentFactory& factory)
       {.coreType          = {},
        .graphicalMetadata = ComponentMetadata{.displayName = "Text",
                                               .description = "Multiline text annotation",
-                                              .category    = ComponentCategory::Utils}});
+                                              .category    = ComponentCategory::Utils,
+                                              .ignoreDocumentation = true}});
 
   reg(std::string(AndGate::Type),
       [](QGraphicsItem* p) { return std::make_unique<GraphicalAnd>(p); });

@@ -74,7 +74,8 @@ struct ComponentMetadata {
   std::string       displayName;
   std::string       description;
   ComponentCategory category;
-  PortRole          portRole = PortRole::None;
+  PortRole          portRole            = PortRole::None;
+  bool              ignoreDocumentation = false;
 };
 
 }  // namespace SILICON::core

@@ -201,7 +201,9 @@ std::vector<Reference> collectReferences(const core::ComponentRegistry& registry
       Reference   entry{.type    = mapping.coreType.empty() ? guiType : mapping.coreType,
                         .guiType = guiType};
       if (mapping.coreType.empty()) {
-        entry.metadata   = *mapping.graphicalMetadata;
+        entry.metadata = *mapping.graphicalMetadata;
+        if (entry.metadata.ignoreDocumentation)
+          continue;
         entry.properties = graphical->propertyDefinitions();
       } else {
         // Enforce the same unique mapping used when loading circuit components.
@@ -210,6 +212,8 @@ std::vector<Reference> collectReferences(const core::ComponentRegistry& registry
           throw std::runtime_error("Duplicate core mapping");
         const auto schema = registry.describeType(mapping.coreType);
         entry.metadata    = schema.metadata;
+        if (entry.metadata.ignoreDocumentation)
+          continue;
         entry.properties  = schema.properties;
         const auto* logic = dynamic_cast<ui::GraphicalLogicComponent*>(graphical.get());
         if (!logic || !logic->getComponent()
@@ -279,10 +283,7 @@ std::string componentPage(const Reference& reference)
           "Changing properties can change the shape, pin count, or bus widths.\n\n"
        << "## Pins\n\n";
   if (reference.ports.empty()) {
-    page << (reference.type == "Subcircuit"
-                 ? "An unbound subcircuit has no pins. Its selected circuit document "
-                   "determines its shape and named input/output interface.\n\n"
-                 : "This component has no pins.\n\n");
+    page << "This component has no pins.\n\n";
   } else {
     bool aliases = false;
     for (std::size_t i = 0; i < reference.portLabels.size(); ++i)
@@ -326,17 +327,14 @@ std::string componentPage(const Reference& reference)
       page << "Any value satisfying the constraints";
     for (std::size_t i = 0; i < property.acceptedValues.size(); ++i)
       page << (i ? ", " : "") << code(formattedValue(property.acceptedValues[i]));
-    page << " |\n| Minimum (inclusive) | "
-         << (property.constraints.minimum ? std::to_string(*property.constraints.minimum)
-                                          : "None")
-         << " |\n| Maximum (inclusive) | "
-         << (property.constraints.maximum ? std::to_string(*property.constraints.maximum)
-                                          : "None")
-         << " |\n| Out-of-range behavior | "
-         << (property.constraints.normalization == core::PropertyNormalization::Clamp
-                 ? "Clamp to bounds"
-                 : "Reject")
-         << " |\n| Additional constraints | "
+    page << " |\n";
+    if (property.constraints.minimum)
+      page << "| Minimum (inclusive) | " << *property.constraints.minimum << " |\n";
+    if (property.constraints.maximum)
+      page << "| Maximum (inclusive) | " << *property.constraints.maximum << " |\n";
+    if (property.constraints.normalization == core::PropertyNormalization::Clamp)
+      page << "| Out-of-range behavior | Clamp to bounds |\n";
+    page << "| Additional constraints | "
          << (property.constraints.description.empty()
                  ? "None"
                  : escaped(property.constraints.description))
