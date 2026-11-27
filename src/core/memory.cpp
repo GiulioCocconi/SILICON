@@ -172,6 +172,22 @@ BusValue MemoryImage::word(const std::size_t address) const
   return result;
 }
 
+std::vector<DocumentationConfiguration> Memory::documentationConfigurations() const
+{
+  return {{"ram",
+           "RAM",
+           "Writable memory adds a write address, data, per-bit enable mask, and clock.",
+           {{"type", std::string("RAM")}}},
+          {"rom-two-read-ports",
+           "ROM with two read ports",
+           "Each read port has an independent address input and data output.",
+           {{"readPorts", 2}}},
+          {"ram-two-read-ports",
+           "RAM with two read ports",
+           "Two asynchronous read ports share storage with one synchronous write port.",
+           {{"type", std::string("RAM")}, {"readPorts", 2}}}};
+}
+
 Memory::Memory()
 {
   static const auto typeDefinition = stringPropertyDefinition(

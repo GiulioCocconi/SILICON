@@ -121,10 +121,28 @@ namespace {
     return bounds;
   }
 
-  void renderPng(const Reference& reference, const ui::GUIComponentFactory& factory,
-                 const std::filesystem::path& path)
+  QSize previewSize(const ui::GraphicalComponent& component)
   {
-    auto           component = factory.create(reference.guiType);
+    const auto bounds = previewBounds(component);
+    // Editor coordinates make pin labels too small on a documentation page.
+    return QSize(static_cast<int>(std::ceil(bounds.width() * 2)),
+                 static_cast<int>(std::ceil(bounds.height() * 2)));
+  }
+
+  std::unique_ptr<ui::GraphicalComponent>
+  configuredComponent(const Reference& reference, const ui::GUIComponentFactory& factory,
+                      const core::PropertyMap& properties)
+  {
+    auto component = factory.create(reference.guiType);
+    if (!properties.empty())
+      component->applyProperties(properties);
+    return component;
+  }
+
+  void renderPng(const Reference& reference, const ui::GUIComponentFactory& factory,
+                 const std::filesystem::path& path, const core::PropertyMap& properties)
+  {
+    auto           component = configuredComponent(reference, factory, properties);
     const QRectF   bounds    = previewBounds(*component);
     QGraphicsScene scene;
     scene.setFont(QApplication::font());
@@ -233,11 +251,17 @@ std::vector<Reference> collectReferences(const core::ComponentRegistry& registry
         if (entry.ports.size()
             != graphical->getInputPorts().size() + graphical->getOutputPorts().size())
           throw std::runtime_error("Graphical pin count does not match introspection");
+        std::set<std::string> configurationIds;
+        for (auto configuration : logic->getComponent()->documentationConfigurations()) {
+          if (!configurationIds.insert(typeSlug(configuration.id)).second)
+            throw std::runtime_error("Duplicate configuration ID: " + configuration.id);
+          const auto example =
+              configuredComponent(entry, factory, configuration.properties);
+          entry.configurations.push_back(
+              {std::move(configuration), previewSize(*example)});
+        }
       }
-      const auto bounds = previewBounds(*graphical);
-      // Editor coordinates make pin labels too small on a documentation page.
-      entry.previewSize = QSize(static_cast<int>(std::ceil(bounds.width() * 2)),
-                                static_cast<int>(std::ceil(bounds.height() * 2)));
+      entry.previewSize = previewSize(*graphical);
       result.push_back(std::move(entry));
     } catch (const std::exception& error) {
       throw std::runtime_error(guiType + ": " + error.what());
@@ -259,29 +283,50 @@ std::vector<Reference> collectReferences(const core::ComponentRegistry& registry
 
 std::string componentPage(const Reference& reference)
 {
-  const auto slug = typeSlug(reference.type);
-  const auto dimensions =
-      reference.previewSize.isValid()
-          ? " width=\"" + std::to_string(reference.previewSize.width()) + "\" height=\""
-                + std::to_string(reference.previewSize.height()) + "\""
-          : std::string{};
+  const auto         slug = typeSlug(reference.type);
   std::ostringstream page;
+  const auto         images = [&](const std::string& imageSlug, std::string_view title,
+                          const QSize& size) {
+    for (const auto* theme : {"light", "dark"}) {
+      page << "<img class=\"component-preview " << theme << "-only\" src=\"./"
+           << imageSlug << "-" << theme << ".png\"";
+      if (size.isValid())
+        page << " width=\"" << size.width() << "\" height=\"" << size.height() << "\"";
+      page << " alt=\"" << escaped(title) << "\">\n\n";
+    }
+  };
   page << Preamble << "# " << escaped(reference.metadata.displayName) << "\n\n"
        << "[Component Reference](../index.md) / ["
        << escaped(core::componentCategoryName(reference.metadata.category))
        << "](./index.md)\n\n"
        << escaped(reference.metadata.description) << "\n\nType: " << code(reference.type)
        << "\n\n"
-       << "## Default configuration\n\n"
-       << "<img class=\"component-preview light-only\" src=\"./" << slug << "-light.png\""
-       << dimensions << " alt=\"" << escaped(reference.metadata.displayName)
-       << " with ports\">\n\n"
-       << "<img class=\"component-preview dark-only\" src=\"./" << slug << "-dark.png\""
-       << dimensions << " alt=\"" << escaped(reference.metadata.displayName)
-       << " with ports\">\n\n"
-       << "The diagram and pins show the default configuration placed in the editor. "
-          "Changing properties can change the shape, pin count, or bus widths.\n\n"
-       << "## Pins\n\n";
+       << "## Default configuration\n\n";
+  images(slug, reference.metadata.displayName + " with ports", reference.previewSize);
+  page
+      << "The diagram and pin table show the default configuration placed in the editor. "
+         "Changing properties can change the shape, pin count, or bus widths.\n\n";
+  if (!reference.configurations.empty()) {
+    page << "## Configuration examples\n\n"
+            "Each example starts from the default configuration and applies the "
+            "property values listed below.\n\n";
+    for (const auto& configuration : reference.configurations) {
+      page << "### " << escaped(configuration.title) << "\n\n"
+           << escaped(configuration.description) << "\n\n";
+      images(slug + "-configuration-" + typeSlug(configuration.id),
+             reference.metadata.displayName + ": " + configuration.title,
+             configuration.previewSize);
+      page << "| Property | Value |\n| --- | --- |\n";
+      const std::map ordered(configuration.properties.begin(),
+                             configuration.properties.end());
+      for (const auto& [key, value] : ordered)
+        page << "| " << code(key) << " | " << code(formattedValue(value)) << " |\n";
+      page << "\n";
+    }
+  }
+  page << "## Pins\n\n";
+  if (!reference.configurations.empty())
+    page << "The following pins belong to the default configuration.\n\n";
   if (reference.ports.empty()) {
     page << "This component has no pins.\n\n";
   } else {
@@ -380,11 +425,18 @@ void generateReference(const std::filesystem::path&   output,
       writeFile(staging / (relative.string() + ".md"), componentPage(reference));
       for (const auto mode : {ui::theme::Mode::Light, ui::theme::Mode::Dark}) {
         ui::ThemeEngine::apply(app, mode);
-        renderPng(
-            reference, factory,
-            staging
-                / (relative.string()
-                   + (mode == ui::theme::Mode::Light ? "-light.png" : "-dark.png")));
+        renderPng(reference, factory,
+                  staging
+                      / (relative.string()
+                         + (mode == ui::theme::Mode::Light ? "-light.png" : "-dark.png")),
+                  {});
+        for (const auto& configuration : reference.configurations)
+          renderPng(
+              reference, factory,
+              staging
+                  / (relative.string() + "-configuration-" + typeSlug(configuration.id)
+                     + (mode == ui::theme::Mode::Light ? "-light.png" : "-dark.png")),
+              configuration.properties);
       }
     }
     std::ostringstream index;

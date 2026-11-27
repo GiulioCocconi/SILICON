@@ -19,6 +19,11 @@ class QApplication;
 
 namespace SILICON::docs {
 
+/** An additional preview, configured from a fresh editor-default component. */
+struct Configuration : core::DocumentationConfiguration {
+  QSize previewSize{};
+};
+
 struct Reference {
   std::string                           type{};
   std::string                           guiType{};
@@ -27,6 +32,7 @@ struct Reference {
   std::vector<core::PortDescription>    ports{};
   std::vector<std::string>              portLabels{};
   QSize                                 previewSize{};
+  std::vector<Configuration>            configurations{};
 };
 
 std::string            categorySlug(core::ComponentCategory category);

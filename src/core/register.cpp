@@ -56,6 +56,23 @@ Register::Register()
   initializeProperties();
 }
 
+std::vector<DocumentationConfiguration> Register::documentationConfigurations() const
+{
+  return {{"piso",
+           "Parallel input, serial output (PISO)",
+           "The load pin selects parallel capture or serial shifting.",
+           {{"outputType", std::string(SERIAL_TYPE)}}},
+          {"sipo",
+           "Serial input, parallel output (SIPO)",
+           "Serial data shifts into the register and is exposed as a parallel word.",
+           {{"inputType", std::string(SERIAL_TYPE)}}},
+          {"siso",
+           "Serial input, serial output (SISO)",
+           "Both data ports transfer one bit at a time.",
+           {{"inputType", std::string(SERIAL_TYPE)},
+            {"outputType", std::string(SERIAL_TYPE)}}}};
+}
+
 Register::Register(Bus data, Wire_ptr clock, Wire_ptr enable, Wire_ptr clear, Bus output)
   : Register()
 {

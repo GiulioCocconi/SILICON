@@ -147,6 +147,14 @@ using PropertyValue = std::variant<int, bool, std::string, BusValue>;
 using PropertyMap = std::unordered_map<std::string, PropertyValue, TransparentStringHash,
                                        TransparentStringEqual>;
 
+/** Named documentation example; overrides are applied to editor-default properties. */
+struct DocumentationConfiguration {
+  std::string id;
+  std::string title;
+  std::string description;
+  PropertyMap properties;
+};
+
 inline constexpr int MaxBusWidth = std::numeric_limits<unsigned short>::max();
 
 /** Semantic property types, independent of PropertyValue storage order. */
@@ -699,6 +707,13 @@ public:
    * @return Display name, description, and category for UI catalogs.
    */
   [[nodiscard]] virtual ComponentMetadata metadata() const;
+
+  /** Additional configurations to illustrate in the generated component reference. */
+  [[nodiscard]] virtual std::vector<DocumentationConfiguration>
+  documentationConfigurations() const
+  {
+    return {};
+  }
 
   /**
    * @brief Lower this component into native Yosys netlist cells.

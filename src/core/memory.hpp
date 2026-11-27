@@ -122,6 +122,9 @@ public:
 
   Memory();
 
+  [[nodiscard]] std::vector<DocumentationConfiguration>
+  documentationConfigurations() const override;
+
   [[nodiscard]] std::string_view  typeName() const override { return Type; }
   [[nodiscard]] ComponentMetadata metadata() const override
   {

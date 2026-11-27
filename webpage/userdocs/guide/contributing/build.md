@@ -150,6 +150,16 @@ and graphical components as the editor, and lists editable properties including
 conditional settings. Generated reference files are ignored by
 Git; update component metadata or property declarations to change their contents.
 
+Components can also show named configuration examples alongside the default image.
+Override `Component::documentationConfigurations()` in the component's `.cpp` file
+and return examples with a stable ID, title, description, and property overrides.
+Each example starts from a fresh editor-default component and applies the overrides
+through the editor's property API. The generator measures and renders each
+configuration separately in both themes, and lists its property values so readers
+can reproduce it. Register
+examples cover PISO, SIPO, and SISO modes; memory examples cover RAM and multiple
+read ports. The pin table describes the default configuration.
+
 To use an existing native CMake build, configure it with
 `-DSILICON_BUILD_DOCUMENTATION=ON`, then run
 `cmake --build <build-directory> --target user_docs` from the webpage environment.

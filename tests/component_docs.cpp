@@ -169,7 +169,10 @@ TEST_F(ComponentDocumentation, GeneratesHdThemedPngsAndReplacesObsoleteOutput)
         painted = image.pixelColor(x, y).alpha() > 0;
     EXPECT_TRUE(painted) << path;
   }
-  EXPECT_EQ(pngCount, docs::collectReferences(registry, factory).size() * 2);
+  std::size_t expectedPngCount = 0;
+  for (const auto& reference : docs::collectReferences(registry, factory))
+    expectedPngCount += (1 + reference.configurations.size()) * 2;
+  EXPECT_EQ(pngCount, expectedPngCount);
   EXPECT_NE(first.at("gates/AndGate-light.png"), first.at("gates/AndGate-dark.png"));
   const auto gate = docs::collectReferences(registry, factory).front();
   const auto page = docs::componentPage(gate);

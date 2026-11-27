@@ -29,6 +29,8 @@ namespace SILICON::core {
 class Register : public Component {
 public:
   [[nodiscard]] std::vector<PortDescription> portDescriptions() const override;
+  [[nodiscard]] std::vector<DocumentationConfiguration>
+  documentationConfigurations() const override;
 
   static constexpr std::string_view Type         = "Register";
   static constexpr std::string_view PARALLEL_TYPE = "Parallel";
