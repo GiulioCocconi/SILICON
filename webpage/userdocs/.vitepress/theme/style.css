@@ -1,5 +1,23 @@
 @import url("https://fonts.googleapis.com/css2?family=Chango&family=Nova+Mono&family=Quicksand:wght@400;500;600;700&display=swap");
 
+.vp-doc .component-preview {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 1.5rem auto;
+  transform: none !important;
+  transition: none !important;
+}
+
+.vp-doc .component-preview.dark-only,
+.dark .vp-doc .component-preview.light-only {
+  display: none;
+}
+
+.dark .vp-doc .component-preview.dark-only {
+  display: block;
+}
+
 
 :root, :root.dark {
   --silicon-doc-nav-bg: var(--vp-c-bg);

@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "docs:dev": "vitepress dev userdocs",
-    "build:docs": "vitepress build userdocs",
-    "build:all": "vite build && vitepress build userdocs",
+    "docs:dev": "bash builddocs.sh component_docs && python3 ../ci/theme/generate.py && vitepress dev userdocs",
+    "build:docs": "bash builddocs.sh",
+    "build:docs:render": "vitepress build userdocs",
+    "build:all": "python3 ../ci/theme/generate.py && vite build && bun run build:docs",
     "preview:docs": "vitepress preview userdocs",
     "lint": "eslint .",
     "format": "prettier --write ."

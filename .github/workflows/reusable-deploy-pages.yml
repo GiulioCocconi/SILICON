@@ -32,19 +32,16 @@ jobs:
         run: python3 ci/theme/generate.py
       - name: Generate API documentation
         run: nix develop .#docs --command doxygen Doxyfile
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.2.22
       - name: Install webpage dependencies
         working-directory: webpage
-        run: bun install --frozen-lockfile
+        run: nix develop ..#webpage --command bun install --frozen-lockfile
       - name: Build webpage and user documentation
         working-directory: webpage
         env:
           VITE_CLOUDSMITH_OWNER: ${{ vars.CLOUDSMITH_OWNER }}
           VITE_CLOUDSMITH_RELEASE_REPO: ${{ vars.CLOUDSMITH_RELEASE_REPO }}
           VITE_WASM_DEFAULT_CHANNEL: ${{ vars.WASM_DEFAULT_CHANNEL || 'stable' }}
-        run: bun run build:all
+        run: nix develop ..#webpage --command bun run build:all
       - name: Assemble site
         run: |
           mkdir -p dist/internaldocs

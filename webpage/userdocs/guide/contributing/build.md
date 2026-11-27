@@ -139,16 +139,35 @@ Use the dedicated Nix development shell from the repository root:
 nix develop .#webpage
 cd webpage
 bun install --frozen-lockfile
-python3 ../ci/theme/generate.py
 bun run build:docs
 ```
 
-For live editing, run `bun run docs:dev`. The complete website and VitePress
+This configures an isolated native Debug build in `build/docs`, builds the component
+reference generator, and runs the `user_docs` CMake target. It generates the
+shared palette, component pages and light/dark HD PNG previews, then builds VitePress
+into `webpage/dist/docs`. The generator uses the same registry, property schemas,
+and graphical components as the editor, and lists editable properties including
+conditional settings. Generated reference files are ignored by
+Git; update component metadata or property declarations to change their contents.
+
+To use an existing native CMake build, configure it with
+`-DSILICON_BUILD_DOCUMENTATION=ON`, then run
+`cmake --build <build-directory> --target user_docs` from the webpage environment.
+The `component_docs` target generates only the reference sources and PNGs. Previews
+have transparent backgrounds, a longest side of at least 1920 pixels, and at least
+four times their display resolution. Neither target requires building the
+application executable. Native C++ and Qt dependencies
+are included in the webpage environment; the first build can take several minutes.
+
+For live editing, run `bun run docs:dev`; this regenerates the reference before
+starting VitePress. Rerun it after changing C++ component metadata or shapes.
+The complete website and VitePress
 documentation build is `bun run build:all`. Doxygen API documentation is built
 separately from the repository root with `doxygen Doxyfile`.
 
 To build and preview the homepage, user docs, and API docs together, run
-`./webpage/buildwebpage.sh` from the repository root. It generates the palette
+`./webpage/buildwebpage.sh` from the repository root. The script enters the
+webpage Nix environment automatically. It generates the palette
 CSS, builds all three surfaces, and serves them at
 `http://127.0.0.1:8080/SILICON/`. Stop the server with Ctrl+C; its temporary preview
 directory is removed automatically.

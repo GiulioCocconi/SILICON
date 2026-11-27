@@ -33,9 +33,15 @@ include(GNUInstallDirs)
 include(InstallRequiredSystemLibraries)
 include(FetchContent)
 
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/lib")
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/lib")
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin")
+if (NOT DEFINED CMAKE_ARCHIVE_OUTPUT_DIRECTORY)
+    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/lib")
+endif ()
+if (NOT DEFINED CMAKE_LIBRARY_OUTPUT_DIRECTORY)
+    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/lib")
+endif ()
+if (NOT DEFINED CMAKE_RUNTIME_OUTPUT_DIRECTORY)
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin")
+endif ()
 set(src_dir "${CMAKE_SOURCE_DIR}/src")
 set(resources_dir "${CMAKE_SOURCE_DIR}/resources/app")
 set(yosys_resources_dir "${CMAKE_SOURCE_DIR}/resources/yosys")
@@ -202,6 +208,7 @@ set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 option(SILICON_ENABLE_SANITIZERS "Enable address and undefined behavior sanitizers" OFF)
 option(SILICON_BUILD_TESTS "Build silicon tests" ON)
 option(SILICON_BUILD_BENCHMARKS "Build standalone silicon performance benchmarks" ON)
+option(SILICON_BUILD_DOCUMENTATION "Enable native component reference and user documentation targets" OFF)
 
 add_compile_definitions(
         SILICON_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
@@ -472,6 +479,13 @@ target_link_libraries(silicon_ui
 # Qt propagates static-library resource objects to each consuming executable.
 # https://doc.qt.io/qt-6/qt-add-resources.html
 add_silicon_resources(silicon_ui)
+
+if (SILICON_BUILD_DOCUMENTATION)
+    if (CMAKE_CROSSCOMPILING)
+        message(FATAL_ERROR "Documentation generation requires a native build. Use nix develop .#webpage.")
+    endif ()
+    include(cmake/documentation.cmake)
+endif ()
 
 set(app_icon_resource_windows "${resources_dir}/app_icon.rc")
 

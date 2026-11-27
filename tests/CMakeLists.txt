@@ -67,3 +67,11 @@ target_link_libraries(autoplacer_tests PRIVATE GTest::gtest_main GTest::gtest
         silicon_ui)
 gtest_discover_tests(autoplacer_tests DISCOVERY_MODE PRE_TEST
         PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+if (SILICON_BUILD_DOCUMENTATION)
+    add_executable(component_docs_tests component_docs.cpp)
+    target_link_libraries(component_docs_tests PRIVATE GTest::gtest
+            silicon_documentation)
+    gtest_discover_tests(component_docs_tests DISCOVERY_MODE PRE_TEST
+            PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+endif ()

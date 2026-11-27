@@ -50,6 +50,7 @@ Start with a small combinational circuit:
 
 ## Next Steps
 
+- Browse the [Component Reference](./components/index.md) for symbols, pins, and properties.
 - Read [SILICON Basics](./guide/silicon.md) for editor and simulation concepts.
 - Read [Silicon Internals](./guide/internals.md) for simulator, project-format,
   waveform, Yosys, and native-component contributor guidance.
