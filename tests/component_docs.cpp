@@ -5,7 +5,9 @@
 
 #include <reference.hpp>
 
+#include <core/register.hpp>
 #include <core/serialization/component_registration.hpp>
+#include <ui/circuit/components/graphicalRegister.hpp>
 #include <ui/serialization/gui_component_registration.hpp>
 #include <ui/shell/theme.hpp>
 
@@ -60,7 +62,7 @@ void expectSameContents(const std::map<std::string, std::string>& actual,
   }
 }
 
-TEST_F(ComponentDocumentation, CoversCatalogAndFullSchemasWithDefaultPins)
+TEST_F(ComponentDocumentation, CoversCatalogAndFullSchemas)
 {
   const auto references = docs::collectReferences(registry, factory);
   EXPECT_EQ(references.size(), factory.availableTypes().size() - 2);
@@ -102,6 +104,153 @@ TEST_F(ComponentDocumentation, CoversCatalogAndFullSchemasWithDefaultPins)
             std::string::npos);
 }
 
+TEST_F(ComponentDocumentation, CapturesEveryRegisterModeAndItsActualPins)
+{
+  const auto references = docs::collectReferences(registry, factory);
+  const auto reg = std::ranges::find(references, "Register", &docs::Reference::type);
+  ASSERT_NE(reg, references.end());
+  ASSERT_EQ(reg->configurations.size(), 3);
+  EXPECT_EQ(reg->defaultProperties.at("inputType"),
+            core::PropertyValue(std::string("Parallel")));
+  EXPECT_EQ(reg->defaultProperties.at("outputType"),
+            core::PropertyValue(std::string("Parallel")));
+  EXPECT_EQ(reg->defaultProperties.at("size"), core::PropertyValue(2));
+  EXPECT_EQ(reg->ports.front().name, "d");
+  EXPECT_EQ(reg->ports.back().name, "q");
+  EXPECT_EQ(reg->ports.size(), 5);
+  for (const auto& configuration : reg->configurations) {
+    SCOPED_TRACE(configuration.id);
+    const bool  serialInput  = configuration.id != "piso";
+    const bool  serialOutput = configuration.id != "sipo";
+    const auto& values       = configuration.effectiveProperties;
+    EXPECT_EQ(values.at("inputType"),
+              core::PropertyValue(std::string(serialInput ? "Serial" : "Parallel")));
+    EXPECT_EQ(values.at("outputType"),
+              core::PropertyValue(std::string(serialOutput ? "Serial" : "Parallel")));
+    EXPECT_EQ(values.at("size"), core::PropertyValue(2));
+    ASSERT_EQ(configuration.ports.size(), configuration.id == "piso" ? 6 : 5);
+    EXPECT_EQ(configuration.ports.front().name, serialInput ? "si" : "d");
+    EXPECT_EQ(configuration.ports.front().width, serialInput ? 1 : 2);
+    EXPECT_EQ(configuration.ports.back().name, serialOutput ? "so" : "q");
+    EXPECT_EQ(configuration.ports.back().width, serialOutput ? 1 : 2);
+    const auto load =
+        std::ranges::find(configuration.ports, "ld", &core::PortDescription::name);
+    EXPECT_EQ(load != configuration.ports.end(), configuration.id == "piso");
+    ASSERT_EQ(configuration.portLabels.size(), configuration.ports.size());
+    for (std::size_t i = 0; i < configuration.ports.size(); ++i)
+      EXPECT_EQ(configuration.portLabels[i], configuration.ports[i].name);
+  }
+  const auto page = docs::componentPage(*reg);
+  EXPECT_NE(page.find("| <code v-pre>ld</code> | Input | 1 |"), std::string::npos);
+  EXPECT_NE(page.find("| <code v-pre>si</code> | Input | 1 |"), std::string::npos);
+  EXPECT_NE(page.find("| <code v-pre>so</code> | Output | 1 |"), std::string::npos);
+}
+
+TEST_F(ComponentDocumentation, CoversMemoryGateAndRoutingLayouts)
+{
+  const auto references = docs::collectReferences(registry, factory);
+  const auto find       = [&](std::string_view type) -> const docs::Reference& {
+    const auto found = std::ranges::find(references, type, &docs::Reference::type);
+    if (found == references.end())
+      throw std::runtime_error("Missing component: " + std::string(type));
+    return *found;
+  };
+  const auto& memory = find("Memory");
+  ASSERT_EQ(memory.configurations.size(), 3);
+  for (const auto& configuration : memory.configurations) {
+    SCOPED_TRACE(configuration.id);
+    const bool ram   = configuration.id.starts_with("ram");
+    const int  lanes = configuration.id == "ram" ? 1 : 2;
+    EXPECT_EQ(configuration.effectiveProperties.at("readPorts"),
+              core::PropertyValue(lanes));
+    EXPECT_EQ(configuration.effectiveProperties.at("addressWidth"),
+              core::PropertyValue(1));
+    EXPECT_EQ(configuration.effectiveProperties.at("dataWidth"), core::PropertyValue(8));
+    EXPECT_EQ(configuration.ports.size(), lanes * 2 + (ram ? 4 : 0));
+    const auto clock =
+        std::ranges::find(configuration.ports, "clk", &core::PortDescription::name);
+    EXPECT_EQ(clock != configuration.ports.end(), ram);
+    if (ram) {
+      const auto mask =
+          std::ranges::find(configuration.ports, "WE", &core::PortDescription::name);
+      ASSERT_NE(mask, configuration.ports.end());
+      EXPECT_EQ(mask->width, 8);
+    }
+  }
+  for (const auto* type : {"AndGate", "OrGate", "NandGate", "NorGate", "XorGate"}) {
+    const auto& gate = find(type);
+    ASSERT_EQ(gate.configurations.size(), 2);
+    const auto& reduction = gate.configurations[0];
+    ASSERT_EQ(reduction.ports.size(), 2);
+    EXPECT_EQ(reduction.ports.front().width, 4);
+    EXPECT_EQ(reduction.ports.back().width, 1);
+    const auto& bitwise = gate.configurations[1];
+    ASSERT_EQ(bitwise.ports.size(), gate.ports.size());
+    for (const auto& port : bitwise.ports)
+      EXPECT_EQ(port.width, 4);
+  }
+  const auto& mux = find("Multiplexer");
+  ASSERT_EQ(mux.configurations.size(), 3);
+  for (const auto& configuration : mux.configurations) {
+    ASSERT_EQ(configuration.ports.size(), 4);
+    EXPECT_EQ(configuration.ports[2].name, "s");
+    EXPECT_EQ(configuration.ports[2].width, configuration.id == "bus" ? 1 : 2);
+    EXPECT_EQ(configuration.ports.back().width, configuration.id == "remapped" ? 1 : 4);
+  }
+  const auto& demux = find("Demultiplexer");
+  ASSERT_EQ(demux.configurations.size(), 1);
+  ASSERT_EQ(demux.configurations[0].ports.size(), 4);
+  EXPECT_EQ(demux.configurations[0].ports[2].name, "o0");
+  EXPECT_EQ(demux.configurations[0].ports[3].name, "o1");
+  EXPECT_EQ(demux.configurations[0].ports[3].width, 4);
+  const auto& splitter = find("WireSplitter");
+  ASSERT_EQ(splitter.configurations.size(), 2);
+  ASSERT_EQ(splitter.configurations[0].ports.size(), 3);
+  EXPECT_EQ(splitter.configurations[0].ports[1].name, "b[1:0]");
+  EXPECT_EQ(splitter.configurations[0].ports[2].name, "b[3:2]");
+  EXPECT_EQ(splitter.configurations[1].ports[1].name, "b[2:0]");
+  EXPECT_EQ(splitter.configurations[1].ports[2].name, "b[3:1]");
+  const auto& merger = find("WireMerger");
+  ASSERT_EQ(merger.configurations.size(), 1);
+  ASSERT_EQ(merger.configurations[0].ports.size(), 3);
+  EXPECT_EQ(merger.configurations[0].ports[0].width, 1);
+  EXPECT_EQ(merger.configurations[0].ports[1].width, 3);
+  EXPECT_EQ(merger.configurations[0].ports[2].width, 4);
+  const auto& extender = find("Extender");
+  ASSERT_EQ(extender.configurations.size(), 1);
+  EXPECT_EQ(extender.configurations[0].ports.front().width, 8);
+  EXPECT_EQ(extender.configurations[0].ports.back().width, 4);
+  for (const auto* type : {"Shifter", "Comparator", "Multiplier", "Divider"}) {
+    const auto& entry = find(type);
+    EXPECT_TRUE(entry.configurations.empty());
+    const auto page = docs::componentPage(entry);
+    EXPECT_NE(page.find("Options sharing a pin layout"), std::string::npos);
+    EXPECT_NE(page.find("[<code v-pre>signed</code>](#property-signed)"),
+              std::string::npos);
+  }
+}
+
+TEST_F(ComponentDocumentation, LinksGalleryCaptionsToEveryPinTable)
+{
+  for (const auto& reference : docs::collectReferences(registry, factory)) {
+    SCOPED_TRACE(reference.type);
+    const auto page = docs::componentPage(reference);
+    EXPECT_NE(page.find("class=\"configuration-gallery\" data-count=\""
+                        + std::to_string(1 + reference.configurations.size()) + "\""),
+              std::string::npos);
+    EXPECT_NE(page.find("href=\"#pins-default\""), std::string::npos);
+    EXPECT_NE(page.find("{#pins-default}"), std::string::npos);
+    EXPECT_EQ(page.find("pins belong to the default"), std::string::npos);
+    for (const auto& configuration : reference.configurations) {
+      const auto id = docs::typeSlug(configuration.id);
+      EXPECT_NE(page.find("href=\"#pins-configuration-" + id + "\""), std::string::npos);
+      EXPECT_NE(page.find("{#pins-configuration-" + id + "}"), std::string::npos);
+      for (const auto& key : reference.metadata.configurationProperties)
+        EXPECT_TRUE(configuration.effectiveProperties.contains(key)) << key;
+    }
+  }
+}
+
 TEST_F(ComponentDocumentation, EscapesMetadataAndDocumentsAllConstraintKinds)
 {
   auto property =
@@ -126,7 +275,21 @@ TEST_F(ComponentDocumentation, EscapesMetadataAndDocumentsAllConstraintKinds)
                      .category    = core::ComponentCategory::Utils},
       .properties = {property, readOnly, derived},
       .ports      = {{"a|b", core::PortDirection::Input, 0, 8, "Operand"}}};
-  const auto page = docs::componentPage(entry);
+  auto configured              = entry;
+  configured.defaultProperties = {{"key", std::string("<default> {{ value }}")}};
+  docs::Configuration variant;
+  variant.id                  = "a/b";
+  variant.title               = "<Mode> {{ value }}";
+  variant.description         = "a < b & c";
+  variant.effectiveProperties = {{"key", std::string("<variant> {{ value }}")}};
+  variant.ports = {{"p|q", core::PortDirection::Input, 0, 1, "<description>"}};
+  configured.configurations.push_back(variant);
+  const auto page = docs::componentPage(configured);
+  EXPECT_NE(page.find("&lt;default&gt;"), std::string::npos);
+  EXPECT_NE(page.find("&lt;variant&gt;"), std::string::npos);
+  EXPECT_NE(page.find("&lt;Mode&gt;"), std::string::npos);
+  EXPECT_NE(page.find("{#pins-configuration-a-2fb}"), std::string::npos);
+  EXPECT_NE(page.find("p&#124;q"), std::string::npos);
   for (const auto* expected :
        {"&lt;script&gt;", "&#123;&#123;", "&#124;", "<br>next", "Clamp to bounds",
         "Minimum (inclusive) | 1", "Maximum (inclusive) | 8", "Only in mode &#42;A&#42;",
@@ -190,6 +353,44 @@ TEST_F(ComponentDocumentation, GeneratesHdThemedPngsAndReplacesObsoleteOutput)
   EXPECT_THROW(docs::generateReference(output, registry, missing, app),
                std::runtime_error);
   expectSameContents(contents(output), first);
+}
+
+TEST_F(ComponentDocumentation, ValidatesConfiguredPinsBeforeReplacingOutput)
+{
+  class BadRegister : public core::Register {
+  public:
+    using core::Register::Register;
+    std::vector<core::PortDescription> portDescriptions() const override
+    {
+      auto result = core::Register::portDescriptions();
+      if (getPropertyValue<std::string>("outputType") == "Serial")
+        result.back().index =
+            1;  // The default is valid; only the PISO variant is broken.
+      return result;
+    }
+  };
+  auto badRegistry = core::ComponentRegistry::empty();
+  badRegistry.registerType("Register", [] { return std::make_shared<BadRegister>(); });
+  auto badFactory = ui::GUIComponentFactory::empty();
+  badFactory.registerType("BadRegister",
+                          [](QGraphicsItem* parent) {
+                            auto graphical =
+                                std::make_unique<ui::GraphicalRegister>(parent);
+                            graphical->setComponent(std::make_shared<BadRegister>(
+                                core::Bus(2), core::Wire_ptr{}, core::Wire_ptr{},
+                                core::Wire_ptr{}, core::Bus(2)));
+                            return graphical;
+                          },
+                          {.coreType = "Register"});
+  QTemporaryDir temporary;
+  ASSERT_TRUE(temporary.isValid());
+  const std::filesystem::path output(temporary.path().toStdString());
+  std::ofstream(output / ".silicon-component-reference") << "Generated output";
+  std::ofstream(output / "previous.md") << "Previous reference";
+  auto& app = *qobject_cast<QApplication*>(QApplication::instance());
+  EXPECT_THROW(docs::generateReference(output, badRegistry, badFactory, app),
+               std::runtime_error);
+  EXPECT_EQ(contents(output).at("previous.md"), "Previous reference");
 }
 
 TEST_F(ComponentDocumentation, RejectsMissingAndAmbiguousMappingsAndUnownedOutput)

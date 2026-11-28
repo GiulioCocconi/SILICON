@@ -150,15 +150,28 @@ and graphical components as the editor, and lists editable properties including
 conditional settings. Generated reference files are ignored by
 Git; update component metadata or property declarations to change their contents.
 
-Components can also show named configuration examples alongside the default image.
+The reference covers distinct pin configurations across the component catalog.
+Set `ComponentMetadata::configurationProperties` to the editable property keys
+that determine the component's pins or behavior. Captions show their effective
+values, including settings inherited from editor defaults. Property descriptions
+and accepted options explain behavior variants that share a pin layout, such as
+signed and unsigned arithmetic, without repeating identical diagrams.
+
 Override `Component::documentationConfigurations()` in the component's `.cpp` file
-and return examples with a stable ID, title, description, and property overrides.
-Each example starts from a fresh editor-default component and applies the overrides
-through the editor's property API. The generator measures and renders each
-configuration separately in both themes, and lists its property values so readers
-can reproduce it. Register
-examples cover PISO, SIPO, and SISO modes; memory examples cover RAM and multiple
-read ports. The pin table describes the default configuration.
+to supply additional layouts with a stable ID, title, description, and property
+overrides. Include every distinct layout and use representative numeric values
+where widths or counts scale. Each example starts from a fresh editor-default
+component and applies overrides through the editor's property API. Generation
+validates the resulting pins against core introspection and checks that the
+requested settings were applied.
+
+The default and additional previews share one row, scaling to the available width.
+They stack vertically when each preview would receive less than 10rem. Each caption
+links to its configuration's pin table, which records the actual names, editor
+labels, widths, and descriptions. Registers cover PIPO, PISO, SIPO, and SISO;
+memory covers ROM/RAM and multiple read ports; gates and routing components
+illustrate their alternative bus layouts. Previews are rendered separately in
+both themes.
 
 To use an existing native CMake build, configure it with
 `-DSILICON_BUILD_DOCUMENTATION=ON`, then run

@@ -76,6 +76,8 @@ struct ComponentMetadata {
   ComponentCategory category;
   PortRole          portRole            = PortRole::None;
   bool              ignoreDocumentation = false;
+  /** Properties shown beside documentation previews and explained for shared layouts. */
+  std::vector<std::string> configurationProperties{};
 };
 
 }  // namespace SILICON::core

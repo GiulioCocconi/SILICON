@@ -42,9 +42,10 @@ public:
   std::string_view  typeName() const override { return Type; }
   ComponentMetadata metadata() const override
   {
-    return {.displayName = "Constant",
-            .description = "Drives a fixed binary or unknown logic value.",
-            .category    = ComponentCategory::Inputs};
+    return {.displayName             = "Constant",
+            .description             = "Drives a fixed binary or unknown logic value.",
+            .category                = ComponentCategory::Inputs,
+            .configurationProperties = {"size"}};
   }
 
   void simulate(SILICON::simulation::Simulator& sim) override;
@@ -83,10 +84,11 @@ public:
   std::string_view  typeName() const override { return Type; }
   ComponentMetadata metadata() const override
   {
-    return {.displayName = "Input",
-            .description = "Provides a user-toggleable one-bit signal.",
-            .category    = ComponentCategory::Inputs,
-            .portRole    = PortRole::Input};
+    return {.displayName             = "Input",
+            .description             = "Provides a user-toggleable one-bit signal.",
+            .category                = ComponentCategory::Inputs,
+            .portRole                = PortRole::Input,
+            .configurationProperties = {"portOrientation"}};
   }
   void simulate(SILICON::simulation::Simulator&) override {}
 };
@@ -108,10 +110,11 @@ public:
   std::string_view  typeName() const override { return Type; }
   ComponentMetadata metadata() const override
   {
-    return {.displayName = "Bus Input",
-            .description = "Provides an editable multi-bit bus value.",
-            .category    = ComponentCategory::Inputs,
-            .portRole    = PortRole::Input};
+    return {.displayName             = "Bus Input",
+            .description             = "Provides an editable multi-bit bus value.",
+            .category                = ComponentCategory::Inputs,
+            .portRole                = PortRole::Input,
+            .configurationProperties = {"size", "portOrientation"}};
   }
   void simulate(SILICON::simulation::Simulator&) override {}
 };
@@ -127,10 +130,11 @@ public:
   std::string_view  typeName() const override { return Type; }
   ComponentMetadata metadata() const override
   {
-    return {.displayName = "Output",
-            .description = "Displays the current state of a one-bit signal.",
-            .category    = ComponentCategory::Outputs,
-            .portRole    = PortRole::Output};
+    return {.displayName             = "Output",
+            .description             = "Displays the current state of a one-bit signal.",
+            .category                = ComponentCategory::Outputs,
+            .portRole                = PortRole::Output,
+            .configurationProperties = {"portOrientation"}};
   }
   void simulate(SILICON::simulation::Simulator&) override {}
 };
@@ -148,10 +152,11 @@ public:
   std::string_view  typeName() const override { return Type; }
   ComponentMetadata metadata() const override
   {
-    return {.displayName = "Bus Output",
-            .description = "Displays the current value of a multi-bit bus.",
-            .category    = ComponentCategory::Outputs,
-            .portRole    = PortRole::Output};
+    return {.displayName             = "Bus Output",
+            .description             = "Displays the current value of a multi-bit bus.",
+            .category                = ComponentCategory::Outputs,
+            .portRole                = PortRole::Output,
+            .configurationProperties = {"size", "portOrientation"}};
   }
   void simulate(SILICON::simulation::Simulator&) override {}
 };

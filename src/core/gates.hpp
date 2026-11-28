@@ -45,6 +45,8 @@ private:
 
 public:
   [[nodiscard]] std::vector<PortDescription> portDescriptions() const override;
+  [[nodiscard]] std::vector<DocumentationConfiguration>
+  documentationConfigurations() const override;
 
   /**
    * @brief Constructs a gate with scalar I/O and bitwise properties enabled.
@@ -87,9 +89,10 @@ public:
   std::string_view                  typeName() const override { return Type; }
   ComponentMetadata                 metadata() const override
   {
-    return {.displayName = "AND Gate",
-            .description = "Outputs HIGH only when every input is HIGH.",
-            .category    = ComponentCategory::Gates};
+    return {.displayName             = "AND Gate",
+            .description             = "Outputs HIGH only when every input is HIGH.",
+            .category                = ComponentCategory::Gates,
+            .configurationProperties = {"size", "bitwise"}};
   }
 
   AndGate() = default;
@@ -104,9 +107,10 @@ public:
   std::string_view                  typeName() const override { return Type; }
   ComponentMetadata                 metadata() const override
   {
-    return {.displayName = "OR Gate",
-            .description = "Outputs HIGH when at least one input is HIGH.",
-            .category    = ComponentCategory::Gates};
+    return {.displayName             = "OR Gate",
+            .description             = "Outputs HIGH when at least one input is HIGH.",
+            .category                = ComponentCategory::Gates,
+            .configurationProperties = {"size", "bitwise"}};
   }
 
   OrGate() = default;
@@ -124,9 +128,10 @@ public:
   std::string_view                  typeName() const override { return Type; }
   ComponentMetadata                 metadata() const override
   {
-    return {.displayName = "NOT Gate",
-            .description = "Inverts an input signal or bus.",
-            .category    = ComponentCategory::Gates};
+    return {.displayName             = "NOT Gate",
+            .description             = "Inverts an input signal or bus.",
+            .category                = ComponentCategory::Gates,
+            .configurationProperties = {"size"}};
   }
 
   NotGate();
@@ -141,9 +146,10 @@ public:
   std::string_view                  typeName() const override { return Type; }
   ComponentMetadata                 metadata() const override
   {
-    return {.displayName = "NAND Gate",
-            .description = "Outputs the inverse of an AND operation.",
-            .category    = ComponentCategory::Gates};
+    return {.displayName             = "NAND Gate",
+            .description             = "Outputs the inverse of an AND operation.",
+            .category                = ComponentCategory::Gates,
+            .configurationProperties = {"size", "bitwise"}};
   }
 
   NandGate() = default;
@@ -158,9 +164,10 @@ public:
   std::string_view                  typeName() const override { return Type; }
   ComponentMetadata                 metadata() const override
   {
-    return {.displayName = "NOR Gate",
-            .description = "Outputs the inverse of an OR operation.",
-            .category    = ComponentCategory::Gates};
+    return {.displayName             = "NOR Gate",
+            .description             = "Outputs the inverse of an OR operation.",
+            .category                = ComponentCategory::Gates,
+            .configurationProperties = {"size", "bitwise"}};
   }
 
   NorGate() = default;
@@ -178,7 +185,8 @@ public:
     return {.displayName = "XOR Gate",
             .description =
                 "Outputs HIGH for odd parity of input signals or reduced input bits.",
-            .category = ComponentCategory::Gates};
+            .category                = ComponentCategory::Gates,
+            .configurationProperties = {"size", "bitwise"}};
   }
 
   XorGate() = default;

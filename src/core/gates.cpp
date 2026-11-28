@@ -84,6 +84,23 @@ namespace {
   }
 }  // namespace
 
+std::vector<DocumentationConfiguration> Gate::documentationConfigurations() const
+{
+  if (!getPropertyValue<bool>("bitwise"))
+    return {{"bus",
+             "Bus inversion",
+             "Each input bit is inverted independently.",
+             {{"size", 4}}}};
+  return {{"reduction",
+           "Bus reduction",
+           "All bits of one input word are combined into one output bit.",
+           {{"size", 4}, {"bitwise", false}}},
+          {"bitwise",
+           "Bitwise buses",
+           "Corresponding bits of the input words are combined independently.",
+           {{"size", 4}, {"bitwise", true}}}};
+}
+
 Gate::Gate() : Gate(true) {}
 
 Gate::Gate(const bool enableBitwiseProperties)

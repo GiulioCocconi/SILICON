@@ -33,6 +33,8 @@ private:
 
 public:
   [[nodiscard]] std::vector<PortDescription> portDescriptions() const override;
+  [[nodiscard]] std::vector<DocumentationConfiguration>
+  documentationConfigurations() const override;
 
   static constexpr std::string_view Type = "Multiplexer";
 
@@ -47,9 +49,10 @@ public:
   std::string_view  typeName() const override { return Type; }
   ComponentMetadata metadata() const override
   {
-    return {.displayName = "Multiplexer",
-            .description = "Selects one input bus using a selection bus.",
-            .category    = ComponentCategory::Multiplexers};
+    return {.displayName             = "Multiplexer",
+            .description             = "Selects one input bus using a selection bus.",
+            .category                = ComponentCategory::Multiplexers,
+            .configurationProperties = {"selectionSize", "busSize", "selectionTable"}};
   }
 
   Multiplexer();
@@ -74,6 +77,8 @@ public:
 class Demultiplexer : public Component {
 public:
   [[nodiscard]] std::vector<PortDescription> portDescriptions() const override;
+  [[nodiscard]] std::vector<DocumentationConfiguration>
+  documentationConfigurations() const override;
 
   static constexpr std::string_view Type = "Demultiplexer";
 
@@ -92,7 +97,8 @@ public:
     return {.displayName = "Demultiplexer",
             .description =
                 "Routes one data bit to one output selected by a selection bus.",
-            .category = ComponentCategory::Multiplexers};
+            .category                = ComponentCategory::Multiplexers,
+            .configurationProperties = {"selectionSize", "busSize"}};
   }
 
   Demultiplexer();
@@ -126,7 +132,8 @@ public:
     return {.displayName = "Decoder",
             .description =
                 "Drives one output high from a binary selection bus when enabled.",
-            .category = ComponentCategory::Multiplexers};
+            .category                = ComponentCategory::Multiplexers,
+            .configurationProperties = {"selectionSize"}};
   }
 
   Decoder();

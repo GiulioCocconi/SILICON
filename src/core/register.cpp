@@ -314,8 +314,8 @@ std::vector<PortDescription> Register::portDescriptions() const
   auto       result     = std::vector<PortDescription>{
       {parallelInput() ? "d" : "si", PortDirection::Input, busIndex(Inputs::Data),
        dataBusSize(inputType, size),
-       "Parallel word to load, or serial bit shifted into the most-significant "
-                 "position."},
+       parallelInput() ? "Parallel word to capture when enabled."
+                                 : "Serial bit shifted into the most-significant position."},
       {"clk", PortDirection::Input, busIndex(Inputs::Clock), 1,
                  "Rising-edge capture clock."},
       {"en", PortDirection::Input, busIndex(Inputs::Enable), 1,
@@ -330,7 +330,7 @@ std::vector<PortDescription> Register::portDescriptions() const
   result.push_back(
       {parallelOutput() ? "q" : "so", PortDirection::Output, busIndex(Outputs::Out),
        registerOutputBusSize(outputType, size),
-       "Stored word in parallel mode, or its least-significant bit in serial mode."});
+       parallelOutput() ? "Complete stored word." : "Least-significant stored bit."});
   return result;
 }
 

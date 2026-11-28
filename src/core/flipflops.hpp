@@ -164,9 +164,10 @@ public:
   std::string_view  typeName() const override { return Type; }
   ComponentMetadata metadata() const override
   {
-    return {.displayName = "D Flip Flop",
-            .description = "Captures D on the configured clock edge.",
-            .category    = ComponentCategory::FlipFlops};
+    return {.displayName             = "D Flip Flop",
+            .description             = "Captures D on the configured clock edge.",
+            .category                = ComponentCategory::FlipFlops,
+            .configurationProperties = {"triggerEdge"}};
   }
 
   /** @brief Input bus indices for DFlipFlop. */
@@ -232,7 +233,8 @@ public:
     return {.displayName = "Enabled D Flip Flop",
             .description =
                 "Captures D on the configured clock edge while enable is HIGH.",
-            .category = ComponentCategory::FlipFlops};
+            .category                = ComponentCategory::FlipFlops,
+            .configurationProperties = {"triggerEdge"}};
   }
 
   /** @brief Input bus indices for EFlipFlop. */
@@ -356,7 +358,8 @@ public:
   {
     return {.displayName = "JK Flip Flop",
             .description = "Stores, sets, resets, or toggles state from J and K.",
-            .category    = ComponentCategory::FlipFlops};
+            .category    = ComponentCategory::FlipFlops,
+            .configurationProperties = {"triggerEdge"}};
   }
 
   /** @brief Input bus indices for JKFlipFlop. */

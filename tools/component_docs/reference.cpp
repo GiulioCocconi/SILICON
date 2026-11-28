@@ -139,6 +139,46 @@ namespace {
     return component;
   }
 
+  void collectPins(const ui::GraphicalComponent& graphical, std::string_view type,
+                   std::vector<PortDescription>& ports, std::vector<std::string>& labels)
+  {
+    const auto* logic = dynamic_cast<const ui::GraphicalLogicComponent*>(&graphical);
+    if (!logic || !logic->getComponent() || logic->getComponent()->typeName() != type)
+      throw std::runtime_error("Graphical component does not match core type");
+    ports = logic->getComponent()->describe().ports;
+    std::set<std::pair<PortDirection, unsigned int>> pinSlots;
+    for (const auto& port : ports) {
+      const auto& graphicalPorts = port.direction == PortDirection::Input
+                                       ? graphical.getInputPorts()
+                                       : graphical.getOutputPorts();
+      if (!pinSlots.emplace(port.direction, port.index).second
+          || port.index >= graphicalPorts.size()
+          || graphicalPorts[port.index]->getSize() != port.width)
+        throw std::runtime_error("Graphical pin does not match introspection: "
+                                 + port.name);
+      labels.push_back(graphicalPorts[port.index]->getName().toStdString());
+    }
+    if (ports.size()
+        != graphical.getInputPorts().size() + graphical.getOutputPorts().size())
+      throw std::runtime_error("Graphical pin count does not match introspection");
+  }
+
+  PropertyMap configurationProperties(const Reference&              reference,
+                                      const ui::GraphicalComponent& graphical)
+  {
+    PropertyMap result;
+    for (const auto& key : reference.metadata.configurationProperties) {
+      const auto definition =
+          std::ranges::find(reference.properties, key, &PropertyDefinition::key);
+      const auto value = graphical.getProperty(key);
+      if (definition == reference.properties.end()
+          || definition->access != PropertyAccess::Editable || !value)
+        throw std::runtime_error("Missing editable configuration property: " + key);
+      result.emplace(key, *value);
+    }
+    return result;
+  }
+
   void renderPng(const Reference& reference, const ui::GUIComponentFactory& factory,
                  const std::filesystem::path& path, const core::PropertyMap& properties)
   {
@@ -237,30 +277,26 @@ std::vector<Reference> collectReferences(const core::ComponentRegistry& registry
         if (!logic || !logic->getComponent()
             || logic->getComponent()->typeName() != mapping.coreType)
           throw std::runtime_error("Graphical component does not match core type");
-        const auto description = logic->getComponent()->describe();
-        entry.ports            = description.ports;
-        for (const auto& port : entry.ports) {
-          const auto& ports = port.direction == core::PortDirection::Input
-                                  ? graphical->getInputPorts()
-                                  : graphical->getOutputPorts();
-          if (port.index >= ports.size() || ports[port.index]->getSize() != port.width)
-            throw std::runtime_error("Graphical pin does not match introspection: "
-                                     + port.name);
-          entry.portLabels.push_back(ports[port.index]->getName().toStdString());
-        }
-        if (entry.ports.size()
-            != graphical->getInputPorts().size() + graphical->getOutputPorts().size())
-          throw std::runtime_error("Graphical pin count does not match introspection");
+        collectPins(*graphical, entry.type, entry.ports, entry.portLabels);
         std::set<std::string> configurationIds;
         for (auto configuration : logic->getComponent()->documentationConfigurations()) {
           if (!configurationIds.insert(typeSlug(configuration.id)).second)
             throw std::runtime_error("Duplicate configuration ID: " + configuration.id);
           const auto example =
               configuredComponent(entry, factory, configuration.properties);
-          entry.configurations.push_back(
-              {std::move(configuration), previewSize(*example)});
+          Configuration snapshot{std::move(configuration), previewSize(*example)};
+          snapshot.effectiveProperties = configurationProperties(entry, *example);
+          for (const auto& [key, value] : snapshot.properties) {
+            const auto effective = example->getProperty(key);
+            if (!effective || *effective != value)
+              throw std::runtime_error("Configuration property was not applied: " + key);
+            snapshot.effectiveProperties.insert_or_assign(key, *effective);
+          }
+          collectPins(*example, entry.type, snapshot.ports, snapshot.portLabels);
+          entry.configurations.push_back(std::move(snapshot));
         }
       }
+      entry.defaultProperties = configurationProperties(entry, *graphical);
       entry.previewSize = previewSize(*graphical);
       result.push_back(std::move(entry));
     } catch (const std::exception& error) {
@@ -292,7 +328,7 @@ std::string componentPage(const Reference& reference)
            << imageSlug << "-" << theme << ".png\"";
       if (size.isValid())
         page << " width=\"" << size.width() << "\" height=\"" << size.height() << "\"";
-      page << " alt=\"" << escaped(title) << "\">\n\n";
+      page << " alt=\"" << escaped(title) << "\">\n";
     }
   };
   page << Preamble << "# " << escaped(reference.metadata.displayName) << "\n\n"
@@ -301,52 +337,89 @@ std::string componentPage(const Reference& reference)
        << "](./index.md)\n\n"
        << escaped(reference.metadata.description) << "\n\nType: " << code(reference.type)
        << "\n\n"
-       << "## Default configuration\n\n";
+       << "## Pin configurations\n\n"
+       << "Each diagram shows the listed property settings, starting from editor "
+          "defaults. Numeric settings are representative; the property descriptions "
+          "explain how widths and pin counts scale.\n\n";
+  const auto caption = [&](std::string_view id, std::string_view title,
+                           const core::PropertyMap& properties) {
+    page << "<figcaption><a href=\"#pins-" << id << "\">" << escaped(title) << "</a><dl>";
+    const std::map ordered(properties.begin(), properties.end());
+    for (const auto& [key, value] : ordered)
+      page << "<div><dt>" << code(key) << "</dt><dd>" << code(formattedValue(value))
+           << "</dd></div>";
+    page << "</dl></figcaption>\n";
+  };
+  page << "<div class=\"configuration-gallery-container\">\n"
+       << "<div class=\"configuration-gallery\" data-count=\""
+       << 1 + reference.configurations.size()
+       << "\" style=\"--configuration-row-min-width: "
+       << 10 + reference.configurations.size() * 10.75 << "rem\">\n<figure>\n";
   images(slug, reference.metadata.displayName + " with ports", reference.previewSize);
-  page
-      << "The diagram and pin table show the default configuration placed in the editor. "
-         "Changing properties can change the shape, pin count, or bus widths.\n\n";
-  if (!reference.configurations.empty()) {
-    page << "## Configuration examples\n\n"
-            "Each example starts from the default configuration and applies the "
-            "property values listed below.\n\n";
-    for (const auto& configuration : reference.configurations) {
-      page << "### " << escaped(configuration.title) << "\n\n"
-           << escaped(configuration.description) << "\n\n";
-      images(slug + "-configuration-" + typeSlug(configuration.id),
-             reference.metadata.displayName + ": " + configuration.title,
-             configuration.previewSize);
-      page << "| Property | Value |\n| --- | --- |\n";
-      const std::map ordered(configuration.properties.begin(),
-                             configuration.properties.end());
-      for (const auto& [key, value] : ordered)
-        page << "| " << code(key) << " | " << code(formattedValue(value)) << " |\n";
+  caption("default", "Default configuration", reference.defaultProperties);
+  page << "</figure>\n";
+  for (const auto& configuration : reference.configurations) {
+    page << "<figure>\n";
+    images(slug + "-configuration-" + typeSlug(configuration.id),
+           reference.metadata.displayName + ": " + configuration.title,
+           configuration.previewSize);
+    caption("configuration-" + typeSlug(configuration.id), configuration.title,
+            configuration.effectiveProperties);
+    page << "</figure>\n";
+  }
+  page << "</div>\n</div>\n\n";
+  if (!reference.metadata.configurationProperties.empty()) {
+    page << "### Property-dependent behavior\n\n"
+            "Options sharing a pin layout use the same diagram and pin table. "
+            "The captions identify the values actually rendered.\n\n";
+    for (const auto& key : reference.metadata.configurationProperties) {
+      const auto property =
+          std::ranges::find(reference.properties, key, &core::PropertyDefinition::key);
+      page << "- [" << code(key) << "](#property-" << typeSlug(key)
+           << "): " << escaped(property->description);
+      if (property->type == core::PropertyType::Boolean) {
+        page << " Options: " << code("false") << ", " << code("true") << ".";
+      } else if (!property->acceptedValues.empty()) {
+        page << " Options: ";
+        for (std::size_t i = 0; i < property->acceptedValues.size(); ++i)
+          page << (i ? ", " : "") << code(formattedValue(property->acceptedValues[i]));
+        page << ".";
+      }
+      if (!property->availability.empty())
+        page << " " << escaped(property->availability);
       page << "\n";
     }
+    page << "\n";
   }
   page << "## Pins\n\n";
-  if (!reference.configurations.empty())
-    page << "The following pins belong to the default configuration.\n\n";
-  if (reference.ports.empty()) {
-    page << "This component has no pins.\n\n";
-  } else {
+  const auto pinTable = [&](const auto& ports, const auto& labels) {
+    if (ports.empty()) {
+      page << "This component has no pins.\n\n";
+      return;
+    }
     bool aliases = false;
-    for (std::size_t i = 0; i < reference.portLabels.size(); ++i)
-      aliases = aliases || reference.portLabels[i] != reference.ports.at(i).name;
+    for (std::size_t i = 0; i < labels.size(); ++i)
+      aliases = aliases || labels[i] != ports.at(i).name;
     page << "| Name | " << (aliases ? "Editor label | " : "")
          << "Direction | Width (bits) | Description |\n"
          << "| --- | " << (aliases ? "--- | " : "") << "--- | --- | --- |\n";
-    for (std::size_t i = 0; i < reference.ports.size(); ++i) {
-      const auto& port = reference.ports[i];
+    for (std::size_t i = 0; i < ports.size(); ++i) {
+      const auto& port = ports[i];
       page << "| " << code(port.name) << " | ";
       if (aliases)
-        page << (reference.portLabels.at(i).empty() ? "Unlabeled"
-                                                    : code(reference.portLabels[i]))
-             << " | ";
+        page << (labels.at(i).empty() ? "Unlabeled" : code(labels[i])) << " | ";
       page << (port.direction == core::PortDirection::Input ? "Input" : "Output") << " | "
            << port.width << " | " << escaped(port.description) << " |\n";
     }
     page << "\n";
+  };
+  page << "### Default configuration {#pins-default}\n\n";
+  pinTable(reference.ports, reference.portLabels);
+  for (const auto& configuration : reference.configurations) {
+    page << "### " << escaped(configuration.title) << " {#pins-configuration-"
+         << typeSlug(configuration.id) << "}\n\n"
+         << escaped(configuration.description) << "\n\n";
+    pinTable(configuration.ports, configuration.portLabels);
   }
   page << "## Properties\n\n"
           "Editable properties are listed, including those available only in "

@@ -266,6 +266,37 @@ namespace {
   }
 }  // namespace
 
+std::vector<DocumentationConfiguration> Multiplexer::documentationConfigurations() const
+{
+  return {{"bus",
+           "Bus lanes",
+           "Each selector value chooses one complete input word. With an empty selection "
+           "table, there are 2^selectionSize data inputs.",
+           {{"busSize", 4}}},
+          {"remapped",
+           "Remapped selector values",
+           "The selection table maps four selector values to two data inputs: "
+           "0 and 3 select i0; 1 and 2 select i1. Repeated indices share a data pin.",
+           {{"selectionSize", 2}, {"selectionTable", std::string("0,1,1,0")}}},
+          {"remapped-bus",
+           "Remapped bus lanes",
+           "Remapping also supports complete words, with one data pin per distinct "
+           "input lane in the table.",
+           {{"busSize", 4},
+            {"selectionSize", 2},
+            {"selectionTable", std::string("0,1,1,0")}}}};
+}
+
+std::vector<DocumentationConfiguration> Demultiplexer::documentationConfigurations() const
+{
+  return {
+      {"bus",
+       "Bus destinations",
+       "Single-bit mode packs destinations into one output bus. Multi-bit mode "
+       "exposes 2^selectionSize separate output words. Unselected destinations are LOW.",
+       {{"busSize", 4}}}};
+}
+
 Multiplexer::Multiplexer()
 {
   defineProperty(selectionSizeDefinition);

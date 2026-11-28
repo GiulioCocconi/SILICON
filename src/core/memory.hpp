@@ -132,7 +132,9 @@ public:
         .displayName = "Memory",
         .description =
             "Asynchronous read memory with an optional masked synchronous write port.",
-        .category = ComponentCategory::Memory};
+        .category                = ComponentCategory::Memory,
+        .configurationProperties = {"type", "addressWidth", "dataWidth", "readPorts",
+                                    "initialization", "padding"}};
   }
 
   using Component::simulate;

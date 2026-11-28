@@ -57,7 +57,8 @@ public:
     return {.displayName = "Register",
             .description =
                 "Stores and shifts data while enabled on a positive clock edge.",
-            .category = ComponentCategory::Register};
+            .category                = ComponentCategory::Register,
+            .configurationProperties = {"inputType", "outputType", "size"}};
   }
 
   [[nodiscard]] bool usesStagedSequentialOutputs() const override { return true; }

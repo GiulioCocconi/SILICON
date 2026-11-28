@@ -34,14 +34,17 @@ private:
 
 public:
   [[nodiscard]] std::vector<PortDescription> portDescriptions() const override;
+  [[nodiscard]] std::vector<DocumentationConfiguration>
+  documentationConfigurations() const override;
 
   static constexpr std::string_view Type = "WireSplitter";
   std::string_view                  typeName() const override { return Type; }
   ComponentMetadata                 metadata() const override
   {
-    return {.displayName = "Wire Splitter",
-            .description = "Splits a bus into bits or bus slices.",
-            .category    = ComponentCategory::Utils};
+    return {.displayName             = "Wire Splitter",
+            .description             = "Splits a bus into bits or bus slices.",
+            .category                = ComponentCategory::Utils,
+            .configurationProperties = {"size", "slices"}};
   }
 
   WireSplitter();
@@ -67,6 +70,8 @@ private:
 
 public:
   [[nodiscard]] std::vector<PortDescription> portDescriptions() const override;
+  [[nodiscard]] std::vector<DocumentationConfiguration>
+  documentationConfigurations() const override;
 
   static constexpr std::string_view Type = "WireMerger";
   std::string_view                  typeName() const override { return Type; }
@@ -74,7 +79,8 @@ public:
   {
     return {.displayName = "Wire Merger",
             .description = "Concatenates bits or buses, least-significant input first.",
-            .category    = ComponentCategory::Utils};
+            .category    = ComponentCategory::Utils,
+            .configurationProperties = {"size", "widths"}};
   }
 
   WireMerger();

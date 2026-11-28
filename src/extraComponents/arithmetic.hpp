@@ -34,6 +34,8 @@ using namespace SILICON::core;
 class Extender : public Component {
 public:
   [[nodiscard]] std::vector<PortDescription> portDescriptions() const override;
+  [[nodiscard]] std::vector<DocumentationConfiguration>
+  documentationConfigurations() const override;
 
   static constexpr std::string_view Type         = "Extender";
   static constexpr std::string_view SIGNED_MODE   = "signed";
@@ -44,7 +46,8 @@ public:
   {
     return {.displayName = "Extender",
             .description = "Changes a bus width using signed or unsigned extension.",
-            .category    = ComponentCategory::Arithmetic};
+            .category    = ComponentCategory::Arithmetic,
+            .configurationProperties = {"inSize", "outSize", "mode"}};
   }
 
   Extender();
@@ -70,9 +73,10 @@ public:
   std::string_view  typeName() const override { return Type; }
   ComponentMetadata metadata() const override
   {
-    return {.displayName = "Two's complement",
-            .description = "Gives the two's complement of a binary number",
-            .category    = ComponentCategory::Arithmetic};
+    return {.displayName             = "Two's complement",
+            .description             = "Gives the two's complement of a binary number",
+            .category                = ComponentCategory::Arithmetic,
+            .configurationProperties = {"size"}};
   }
 
   Complementer();
@@ -233,7 +237,8 @@ public:
   {
     return {.displayName = "N-bit Adder",
             .description = "Adds two fixed-width buses and outputs sum and carry.",
-            .category    = ComponentCategory::Arithmetic};
+            .category    = ComponentCategory::Arithmetic,
+            .configurationProperties = {"size"}};
   }
 
   /** @brief Input bus indices for AdderNBits. */
@@ -293,9 +298,10 @@ public:
   std::string_view typeName() const override { return Type; }
   ComponentMetadata metadata() const override
   {
-    return {.displayName = "Shifter",
-            .description = "Shifts a bus left or right by a variable amount.",
-            .category    = ComponentCategory::Arithmetic};
+    return {.displayName             = "Shifter",
+            .description             = "Shifts a bus left or right by a variable amount.",
+            .category                = ComponentCategory::Arithmetic,
+            .configurationProperties = {"size", "amountSize", "mode", "signed"}};
   }
 
   Shifter();
@@ -321,7 +327,8 @@ public:
   {
     return {.displayName = "Multiplier",
             .description = "Multiplies two fixed-width signed or unsigned buses.",
-            .category    = ComponentCategory::Arithmetic};
+            .category    = ComponentCategory::Arithmetic,
+            .configurationProperties = {"size", "signed"}};
   }
 
   Multiplier();
@@ -348,7 +355,8 @@ public:
     return {.displayName = "Divider",
             .description =
                 "Divides two fixed-width buses and outputs quotient and remainder.",
-            .category = ComponentCategory::Arithmetic};
+            .category                = ComponentCategory::Arithmetic,
+            .configurationProperties = {"size", "signed"}};
   }
 
   Divider();
@@ -370,7 +378,8 @@ public:
   {
     return {.displayName = "Comparator",
             .description = "Returns the result of a comparison between two values",
-            .category    = ComponentCategory::Arithmetic};
+            .category    = ComponentCategory::Arithmetic,
+            .configurationProperties = {"size", "mode", "signed"}};
   }
 
   Comparator();

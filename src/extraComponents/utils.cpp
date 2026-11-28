@@ -82,6 +82,19 @@ WireSplitter::WireSplitter(Bus input, const std::vector<Bus>& outputs) : WireSpl
               this->inputs[0].size() == 0 ? 2 : static_cast<int>(this->inputs[0].size()));
 }
 
+std::vector<DocumentationConfiguration> WireSplitter::documentationConfigurations() const
+{
+  return {
+      {"slices",
+       "Bus slices",
+       "Explicit offset:width pairs expose groups of bits instead of individual bits.",
+       {{"size", 4}, {"slices", std::string("0:2,2:2")}}},
+      {"overlapping",
+       "Overlapping slices",
+       "Slices may overlap: these outputs share bits 1 and 2 of the input word.",
+       {{"size", 4}, {"slices", std::string("0:3,1:3")}}}};
+}
+
 void WireSplitter::initializeProperties()
 {
   // Default-constructed components are used by the registry and must keep empty
@@ -192,6 +205,15 @@ WireMerger::WireMerger(const std::vector<Bus>& inputs, Bus output) : WireMerger(
   setProperty("size", this->outputs[0].size() == 0
                           ? 2
                           : static_cast<int>(this->outputs[0].size()));
+}
+
+std::vector<DocumentationConfiguration> WireMerger::documentationConfigurations() const
+{
+  return {{"buses",
+           "Mixed input widths",
+           "Explicit widths concatenate inputs of different sizes, least-significant "
+           "input first. Their widths must sum to size.",
+           {{"size", 4}, {"widths", std::string("1,3")}}}};
 }
 
 void WireMerger::initializeProperties()

@@ -22,6 +22,9 @@ namespace SILICON::docs {
 /** An additional preview, configured from a fresh editor-default component. */
 struct Configuration : core::DocumentationConfiguration {
   QSize previewSize{};
+  core::PropertyMap                  effectiveProperties{};
+  std::vector<core::PortDescription> ports{};
+  std::vector<std::string>           portLabels{};
 };
 
 struct Reference {
@@ -33,6 +36,7 @@ struct Reference {
   std::vector<std::string>              portLabels{};
   QSize                                 previewSize{};
   std::vector<Configuration>            configurations{};
+  core::PropertyMap                     defaultProperties{};
 };
 
 std::string            categorySlug(core::ComponentCategory category);

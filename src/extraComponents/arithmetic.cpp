@@ -31,6 +31,15 @@
 namespace SILICON::extra {
 using namespace SILICON::core;
 
+std::vector<DocumentationConfiguration> Extender::documentationConfigurations() const
+{
+  return {{"narrowing",
+           "Narrowing",
+           "High input bits are discarded. Signed and unsigned modes share this layout "
+           "and produce the same retained low bits.",
+           {{"inSize", 8}, {"outSize", 4}}}};
+}
+
 Extender::Extender()
 {
   static const auto inSizeDefinition = propertyDefinition(
@@ -422,7 +431,9 @@ void Shifter::simulate(SILICON::simulation::Simulator& sim)
 namespace {
 
   const auto signedDefinition = propertyDefinition(
-      "signed", false, "Interpret operands as signed two's-complement numbers.");
+      "signed", false,
+      "When true, interpret operands as signed two's-complement numbers; "
+      "when false, interpret them as unsigned numbers. The pin layout is unchanged.");
   int resizeBinaryArithmetic(Component& component, const int width,
                              const std::size_t outputCount)
   {
@@ -489,8 +500,9 @@ Divider::Divider()
   });
   static const auto signedDefinition = propertyDefinition(
       "signed", false,
-      "Signed division truncates toward zero and the remainder follows the dividend "
-      "sign. Division by zero drives UNKNOWN on both outputs.");
+      "When true, use signed division: truncate toward zero and give the remainder "
+      "the dividend sign. When false, use unsigned division. The pin layout is "
+      "unchanged. Division by zero drives UNKNOWN on both outputs.");
   defineProperty(signedDefinition);
 }
 
