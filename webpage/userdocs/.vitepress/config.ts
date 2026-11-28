@@ -26,11 +26,11 @@ export default defineConfig({
   description: "User documentation for the SILICON digital logic simulator.",
   base: "/SILICON/docs",
   appearance: true,
-  markdown: { theme: { light: syntaxTheme("light"), dark: syntaxTheme("dark") } },
   outDir: "../dist/docs",
   cacheDir: "../node_modules/.vitepress-cache/userdocs",
   markdown: {
     math: true,
+    theme: { light: syntaxTheme("light"), dark: syntaxTheme("dark") },
   },
   themeConfig: {
     logo: "/silicon-icon.svg",
@@ -71,6 +71,7 @@ export default defineConfig({
           items: [
             { text: "Getting Started", link: "/" },
             { text: "SILICON Basics", link: "/guide/silicon" },
+            { text: "Component Reference", link: "/components/" },
             { text: "Silicon Internals", link: "/guide/internals" },
             { text: "Troubleshooting", link: "/guide/troubleshooting" },
             { text: "Formatting Showcase", link: "/guide/lorem-ipsum" },

@@ -2166,9 +2166,11 @@ TEST(ComponentTest, SetAndGetStringListProperty)
   ASSERT_TRUE(prop.has_value());
   EXPECT_EQ(*prop, "DOWN");
 
-  const auto options = c->getStringPropertyOptions("orientation");
-  ASSERT_TRUE(options.has_value());
-  EXPECT_EQ(options->get().size(), 4);
+  const auto definitions = c->propertyDefinitions();
+  const auto options =
+      std::ranges::find(definitions, "orientation", &PropertyDefinition::key);
+  ASSERT_NE(options, definitions.end());
+  EXPECT_EQ(options->acceptedValues.size(), 4);
 
   c->setProperty("orientation", std::string("LEFT"));
   EXPECT_EQ(c->getPropertyValue<std::string>("orientation").value(), "LEFT");
@@ -2260,4 +2262,33 @@ TEST(ComponentTest, GetProperties)
   EXPECT_EQ(std::get<int>(props.at("intVal")), 5);
   EXPECT_EQ(std::get<bool>(props.at("boolVal")), true);
   EXPECT_EQ(std::get<std::string>(props.at("strVal")), "hello");
+}
+
+TEST(ComponentTest, ReadOnlyStoredPropertyRejectsSingleAndCompoundEdits)
+{
+  class ReadOnlyComponent : public Component {
+  public:
+    ReadOnlyComponent()
+    {
+      static const auto definition = [] {
+        auto value   = propertyDefinition("identifier", std::string("device"),
+                                          "Immutable device identifier.");
+        value.access = PropertyAccess::ReadOnly;
+        return value;
+      }();
+      defineProperty(definition);
+    }
+    std::string_view typeName() const override { return "ReadOnlyTest"; }
+    void             simulate(Simulator&) override {}
+  } component;
+  const auto definitions = component.propertyDefinitions();
+  ASSERT_EQ(definitions.size(), 1u);
+  EXPECT_EQ(definitions[0].access, PropertyAccess::ReadOnly);
+  EXPECT_EQ(definitions[0].defaultValue, PropertyValue{std::string("device")});
+  EXPECT_THROW(component.setProperty("identifier", std::string("changed")),
+               std::invalid_argument);
+  EXPECT_THROW(component.setProperties({{"identifier", std::string("changed")}}),
+               std::invalid_argument);
+  EXPECT_EQ(component.getPropertyValue<std::string>("identifier"), "device");
+  EXPECT_TRUE(component.getProperties().contains("identifier"));
 }

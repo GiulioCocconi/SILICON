@@ -32,6 +32,8 @@ struct CircuitPort;
 
 class SubcircuitComponent : public Component {
 public:
+  [[nodiscard]] std::vector<PortDescription> portDescriptions() const override;
+
   static constexpr std::string_view Type = "Subcircuit";
 
   /** @param resolver Non-owning; must outlive this component when non-null. */
@@ -61,8 +63,10 @@ public:
   std::string_view  typeName() const override { return Type; }
   ComponentMetadata metadata() const override
   {
-    return {"Subcircuit", "Project-local reusable circuit instance.",
-            ComponentCategory::Subcircuits};
+    return {.displayName         = "Subcircuit",
+            .description         = "Project-local reusable circuit instance.",
+            .category            = ComponentCategory::Subcircuits,
+            .ignoreDocumentation = true};
   }
 
   void simulate(SILICON::simulation::Simulator& sim) override;

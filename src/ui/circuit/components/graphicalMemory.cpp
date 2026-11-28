@@ -117,6 +117,23 @@ GraphicalMemory::GraphicalMemory(QGraphicsItem* parent)
   rebuildPorts();
 }
 
+PropertyPresentation GraphicalMemory::propertyPresentation(std::string_view key) const
+{
+  auto result = GraphicalLogicComponent::propertyPresentation(key);
+  if (key == "effectiveDepth")
+    result.formatValue = [](const PropertyValue& value) {
+      return QString("%1 words").arg(std::get<int>(value));
+    };
+  if (key == "capacity")
+    result.formatValue = [](const PropertyValue& value) {
+      const auto bits = std::get<int>(value);
+      return QString("%1 bits (%2 bytes)").arg(bits).arg((bits + 7) / 8);
+    };
+  result.advanced = key == "depthOverride"
+                    && associatedComponent->getPropertyValue<int>(key).value() == 0;
+  return result;
+}
+
 void GraphicalMemory::rebuildPorts()
 {
   const auto memory = std::dynamic_pointer_cast<Memory>(associatedComponent);
@@ -125,19 +142,19 @@ void GraphicalMemory::rebuildPorts()
   std::vector<PortPair> outputs;
   if (memory->isWritable()) {
     const auto writeY = memoryTop(*memory) + MemoryHeaderHeight + MemoryPortOffset;
-    inputs[memory->writeInputIndex(Memory::WriteInputs::Address)] = {"ADDR",
+    inputs[memory->writeInputIndex(Memory::WriteInputs::Address)] = {QString{},
                                                                      QPoint(-20, writeY)};
     inputs[memory->writeInputIndex(Memory::WriteInputs::Data)]    = {
-        "DATA", QPoint(-20, writeY + 20)};
+        QString{}, QPoint(-20, writeY + 20)};
     inputs[memory->writeInputIndex(Memory::WriteInputs::Enable)] = {
-        "WE", QPoint(-20, writeY + 40)};
+        QString{}, QPoint(-20, writeY + 40)};
     inputs[memory->writeInputIndex(Memory::WriteInputs::Clock)] = {
-        "clk", QPoint(-20, writeY + 60)};
+        QString{}, QPoint(-20, writeY + 60)};
   }
   for (std::size_t port = 0; port < memory->readPortCount(); ++port) {
     const auto y = readPortY(port);
-    inputs[port] = {"ADDR", QPoint(-20, y)};
-    outputs.push_back({"DATA", QPoint(MemoryWidth + 20, y)});
+    inputs[port] = {QString{}, QPoint(-20, y)};
+    outputs.push_back({QString{}, QPoint(MemoryWidth + 20, y)});
   }
   setPorts(inputs, outputs);
   for (auto* port : getPorts())

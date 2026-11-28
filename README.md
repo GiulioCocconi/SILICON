@@ -119,5 +119,5 @@ make -C build
 - [User documentation and digital electronics lessons](https://giuliococconi.github.io/SILICON/)
 - [C++ API reference](https://giuliococconi.github.io/SILICON/internaldocs/)
 - [Contributing guidelines](./CONTRIBUTING.md)
-- [Local build and test guide](./webpage/userdocs/guide/contributing/build.md)
-- [Simulation and project internals](./webpage/userdocs/guide/internals.md)
+- [Local build and test guide](https://giuliococconi.github.io/SILICON/docs/guide/contributing/build.html)
+- [Simulation and project internals](https://giuliococconi.github.io/SILICON/docs/guide/internals.html)

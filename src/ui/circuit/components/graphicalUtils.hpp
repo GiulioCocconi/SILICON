@@ -35,6 +35,7 @@ public:
   explicit GraphicalWireSplitter(QGraphicsItem* parent = nullptr);
   int type() const override { return SiliconTypes::WIRE_SPLITTER; }
 
+  void applyProperty(std::string_view key, const PropertyValue& value) override;
   int  setSize(int newSize);
   void setComponent(const Component_ptr& component) override;
 
@@ -49,6 +50,7 @@ public:
   explicit GraphicalWireMerger(QGraphicsItem* parent = nullptr);
   int type() const override { return SiliconTypes::WIRE_MERGER; }
 
+  void applyProperty(std::string_view key, const PropertyValue& value) override;
   int  setSize(int newSize);
   void setComponent(const Component_ptr& component) override;
 

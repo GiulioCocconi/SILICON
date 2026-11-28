@@ -28,6 +28,15 @@
 namespace SILICON::core {
 namespace {
 
+  PropertyConstraints geometryConstraints(int minimum, std::optional<int> maximum = {})
+  {
+    static const auto description =
+        std::format("Depth must fit the address space and be at most {} words; "
+                    "capacity at most {} bits; total port bits at most {}.",
+                    Memory::MaxDepth, Memory::MaxCapacityBits, Memory::MaxPortBits);
+    return {.minimum = minimum, .maximum = maximum, .description = description};
+  }
+
   std::size_t bitCount(const std::size_t width, const std::size_t depth)
   {
     if (width == 0 || width > std::numeric_limits<unsigned short>::max() || depth == 0
@@ -163,19 +172,110 @@ BusValue MemoryImage::word(const std::size_t address) const
   return result;
 }
 
+std::vector<DocumentationConfiguration> Memory::documentationConfigurations() const
+{
+  return {{"ram",
+           "RAM",
+           "Writable memory adds a write address, data, per-bit enable mask, and clock.",
+           {{"type", std::string("RAM")}}},
+          {"rom-two-read-ports",
+           "ROM with two read ports",
+           "Each read port has an independent address input and data output.",
+           {{"readPorts", 2}}},
+          {"ram-two-read-ports",
+           "RAM with two read ports",
+           "Two asynchronous read ports share storage with one synchronous write port.",
+           {{"type", std::string("RAM")}, {"readPorts", 2}}}};
+}
+
 Memory::Memory()
 {
-  defineStringListProperty("type", std::string("ROM"), {"ROM", "RAM"});
-  defineProperty("readPorts", 1);
-  defineProperty("addressWidth", 1);
-  defineProperty("dataWidth", 8);
-  defineProperty("depthOverride", 0);
-  defineProperty("binaryContents", std::string());
-  defineStringListProperty(
-      "initialization", std::string(BinaryDocument),
-      {std::string(Uninitialized), std::string(Zero), std::string(BinaryDocument)});
-  defineStringListProperty("padding", std::string(Zero),
-                           {std::string(Zero), std::string(Unknown)});
+  static const auto typeDefinition = stringPropertyDefinition(
+      "type", std::string("ROM"), {"ROM", "RAM"},
+      "ROM provides asynchronous reads from a binary document. RAM additionally exposes "
+      "a per-bit write mask and rising-edge write clock.");
+  defineProperty(typeDefinition);
+  static const auto addressWidthDefinition =
+      propertyDefinition("addressWidth", 1,
+                         "Address bits per port; normally selects 2^addressWidth words "
+                         "unless depthOverride limits the addressable range.",
+                         geometryConstraints(1, MaxBusWidth));
+  defineProperty(addressWidthDefinition);
+  static const auto dataWidthDefinition =
+      propertyDefinition("dataWidth", 8,
+                         "Bits stored in each word; also the width of read data, write "
+                         "data and the per-bit write mask.",
+                         geometryConstraints(1, MaxBusWidth));
+  defineProperty(dataWidthDefinition);
+  static const auto readPortsDefinition =
+      propertyDefinition("readPorts", 1, "Number of independent asynchronous read ports.",
+                         geometryConstraints(1, MaxBusWidth));
+  defineProperty(readPortsDefinition);
+  static const PropertyDefinition initializationDefinition{
+      .key   = "initialization",
+      .label = "initialization",
+      .description =
+          "RAM powers up UNKNOWN, all LOW, or from a binary document. ROM always uses "
+          "binary-document initialization.",
+      .type           = PropertyType::String,
+      .defaultValue   = std::string(BinaryDocument),
+      .acceptedValues = {std::string(Uninitialized), std::string(Zero),
+                         std::string(BinaryDocument)},
+      .availability   = "Writable RAM; ROM always uses a binary document."};
+  defineProperty(initializationDefinition);
+  static const PropertyDefinition binaryContentsDefinition{
+      .key   = "binaryContents",
+      .label = "binaryContents",
+      .description =
+          "Binary document providing packed least-significant-bit-first initial words; "
+          "selecting a larger document can grow memory geometry.",
+      .type         = PropertyType::String,
+      .defaultValue = std::string{},
+      .availability = "Binary document initialization."};
+  defineProperty(binaryContentsDefinition);
+  static const PropertyDefinition paddingDefinition{
+      .key   = "padding",
+      .label = "padding",
+      .description =
+          "Fill bits beyond the binary document with LOW or UNKNOWN, including partial "
+          "final words.",
+      .type           = PropertyType::String,
+      .defaultValue   = std::string(Zero),
+      .acceptedValues = {std::string(Zero), std::string(Unknown)},
+      .availability   = "Binary document initialization."};
+  defineProperty(paddingDefinition);
+  static const std::array derived{
+      PropertyDefinition{
+          .key   = "effectiveDepth",
+          .label = "Effective depth",
+          .description =
+              "Number of addressable words, using depthOverride when nonzero or "
+              "2^addressWidth otherwise.",
+          .access = PropertyAccess::Derived},
+      PropertyDefinition{.key   = "capacity",
+                         .label = "Capacity",
+                         .description =
+                             "Effective depth multiplied by the word width, in bits.",
+                         .access = PropertyAccess::Derived},
+      PropertyDefinition{
+          .key   = "initializationStatus",
+          .label = "Initialization status",
+          .description =
+              "Reason a selected initialization document cannot be used; absent when "
+              "initialization is resolved.",
+          .type         = PropertyType::String,
+          .access       = PropertyAccess::Derived,
+          .availability = "An initialization error exists."}};
+  for (const auto& definition : derived)
+    defineProperty(definition);
+  static const PropertyDefinition depthOverrideDefinition{
+      .key   = "depthOverride",
+      .label = "Depth override",
+      .description =
+          "0 uses 2^addressWidth words; a positive depth must fit the address space.",
+      .defaultValue = 0,
+      .constraints  = geometryConstraints(0)};
+  defineProperty(depthOverrideDefinition);
   for (const auto key :
        {"type", "readPorts", "addressWidth", "dataWidth", "depthOverride",
         "binaryContents", "initialization", "padding"}) {
@@ -209,8 +309,7 @@ void Memory::setProperties(const PropertyMap& values)
     const auto it = properties.find(key);
     if (it == properties.end())
       throw std::invalid_argument("Unknown memory property: " + key);
-    validatePropertyValue(key, it->second, value);
-    next.at(key) = value;
+    next.at(key) = validatedProperty(key, value);
   }
   const auto contents =
       next.at("binaryContents") == properties.at("binaryContents") ? content : nullptr;
@@ -223,40 +322,35 @@ void Memory::setProperties(const PropertyMap& values)
   commit(std::move(next), contents, false);
 }
 
-std::vector<PropertyInfo> Memory::propertyInfo() const
+std::vector<PropertyDefinition> Memory::propertyDefinitions() const
 {
-  std::vector<PropertyInfo> result;
-  const bool                binary =
+  const bool binary =
       getPropertyValue<std::string>("initialization").value() == BinaryDocument;
-  for (const auto key : {"type", "addressWidth", "dataWidth", "readPorts",
-                         "initialization", "binaryContents", "padding"}) {
-    if (std::string_view(key) == "initialization" && !isWritable())
-      continue;
-    if (!binary
-        && (std::string_view(key) == "binaryContents"
-            || std::string_view(key) == "padding"))
-      continue;
-    if (const auto value = getProperty(key))
-      result.push_back({key, *value});
+  return propertyDeclarations
+         | std::views::transform(
+             [](const auto* definition) -> const auto& { return *definition; })
+         | std::views::filter([&](const PropertyDefinition& definition) {
+             if (definition.key == "initialization")
+               return isWritable();
+             if (definition.key == "binaryContents" || definition.key == "padding")
+               return binary;
+             return definition.key != "initializationStatus"
+                    || !initializationError().empty();
+           })
+         | std::ranges::to<std::vector>();
+}
+
+std::optional<PropertyValue> Memory::getProperty(std::string_view key) const
+{
+  if (key == "effectiveDepth")
+    return static_cast<int>(memoryDepth());
+  if (key == "capacity")
+    return static_cast<int>(capacityBits());
+  if (key == "initializationStatus") {
+    const auto error = initializationError();
+    return error.empty() ? std::nullopt : std::optional<PropertyValue>(error);
   }
-  result.push_back({"effectiveDepth",
-                    std::to_string(memoryDepth()) + " words",
-                    "Effective depth",
-                    {},
-                    true});
-  result.push_back({"capacity",
-                    std::to_string(capacityBits()) + " bits ("
-                        + std::to_string((capacityBits() + 7) / 8) + " bytes)",
-                    "Capacity",
-                    {},
-                    true});
-  if (const auto error = initializationError(); !error.empty())
-    result.push_back({"initializationStatus", error, "Initialization status", {}, true});
-  result.push_back({"depthOverride", *getProperty("depthOverride"), "Depth override",
-                    "0: use 2^addressWidth words. Positive values override depth and "
-                    "must fit within the address space.",
-                    false, getPropertyValue<int>("depthOverride").value() == 0});
-  return result;
+  return Component::getProperty(key);
 }
 
 int Memory::configuredDataWidth() const
@@ -284,12 +378,11 @@ void Memory::commit(PropertyMap                                      next,
                     std::shared_ptr<const std::vector<std::uint8_t>> contents,
                     const bool                                       rejectInvalid)
 {
+  for (auto& [key, value] : next)
+    value = validatedProperty(key, value);
   const auto width = std::get<int>(next.at("dataWidth"));
   const auto abits = std::get<int>(next.at("addressWidth"));
   const auto depth = std::get<int>(next.at("depthOverride"));
-  (void)requireValidSize("Memory dataWidth", PropertyValue{width});
-  (void)requireValidSize("Memory addressWidth", PropertyValue{abits});
-  (void)requireNonNegative("Memory depth override", PropertyValue{depth});
   if (depth == 0 && abits >= static_cast<int>(std::numeric_limits<std::size_t>::digits))
     throw std::invalid_argument(
         "Derived memory depth overflows; use an explicit depth override");
@@ -299,7 +392,6 @@ void Memory::commit(PropertyMap                                      next,
   if (abits < static_cast<int>(std::numeric_limits<std::size_t>::digits)
       && count > (std::size_t{1} << abits))
     throw std::invalid_argument("Memory depth override exceeds the address space");
-  (void)requireValidSize("Memory readPorts", next.at("readPorts"));
   const auto ports   = static_cast<std::size_t>(std::get<int>(next.at("readPorts")));
   const auto perPort = static_cast<std::size_t>(abits) + width;
   if (ports == 0 || ports > MaxPortBits / perPort
@@ -427,7 +519,8 @@ void Memory::reshapeBuses()
   const auto       addressBits = addressWidth();
   const auto       width       = static_cast<unsigned short>(configuredDataWidth());
   const auto       oldReadPorts = outputs.size();
-  std::vector<Bus> newInputs(readPorts + (isWritable() ? 4 : 0));
+  std::vector<Bus> newInputs(readPorts
+                             + (isWritable() ? busIndex(WriteInputs::Clock) + 1 : 0));
   for (std::size_t port = 0; port < readPorts; ++port) {
     auto& address = newInputs[port];
     if (port < oldReadPorts)
@@ -593,6 +686,36 @@ void Memory::simulate(SILICON::simulation::Simulator&     sim,
     const auto value = read(inputBuses()[port].getCurrentValue());
     sim.updateBus(outputBuses()[port], value, 0, weak_from_this());
   }
+}
+
+std::vector<PortDescription> Memory::portDescriptions() const
+{
+  std::vector<PortDescription> result;
+  for (unsigned int i = 0; i < readPortCount(); ++i)
+    result.push_back({"ADDR", PortDirection::Input, i, addressWidth(),
+                      "Asynchronous read address for lane " + std::to_string(i) + "."});
+  if (isWritable()) {
+    const auto width = static_cast<unsigned int>(configuredDataWidth());
+    result.push_back({"ADDR", PortDirection::Input,
+                      static_cast<unsigned int>(writeInputIndex(WriteInputs::Address)),
+                      addressWidth(), "Synchronous write address."});
+    result.push_back({"DATA", PortDirection::Input,
+                      static_cast<unsigned int>(writeInputIndex(WriteInputs::Data)),
+                      width, "Data to write on the rising clock edge."});
+    result.push_back({"WE", PortDirection::Input,
+                      static_cast<unsigned int>(writeInputIndex(WriteInputs::Enable)),
+                      width, "Active-high write enable mask, one bit per data bit."});
+    result.push_back({"clk", PortDirection::Input,
+                      static_cast<unsigned int>(writeInputIndex(WriteInputs::Clock)), 1,
+                      "Rising-edge write clock."});
+  }
+  for (unsigned int i = 0; i < readPortCount(); ++i)
+    result.push_back({"DATA", PortDirection::Output, i,
+                      static_cast<unsigned int>(configuredDataWidth()),
+                      "Asynchronously read word; unknown address bits merge possible "
+                      "words bit by bit. Read lane "
+                          + std::to_string(i) + "."});
+  return result;
 }
 
 }  // namespace SILICON::core

@@ -86,21 +86,25 @@ TEST(MemoryTest, DefaultsToRomAndExposesTypeChoices)
   EXPECT_EQ(memory.typeName(), "Memory");
   EXPECT_EQ(memory.metadata().displayName, "Memory");
   EXPECT_EQ(memory.getPropertyValue<std::string>("type"), "ROM");
-  const auto choices = memory.getStringPropertyOptions("type");
-  ASSERT_TRUE(choices);
-  EXPECT_EQ(choices->get(), (StringPropertyOptions{"ROM", "RAM"}));
+  const auto definitions = memory.propertyDefinitions();
+  const auto choices = std::ranges::find(definitions, "type", &PropertyDefinition::key);
+  ASSERT_NE(choices, definitions.end());
+  EXPECT_EQ(choices->acceptedValues,
+            (std::vector<PropertyValue>{std::string("ROM"), std::string("RAM")}));
   EXPECT_FALSE(memory.isWritable());
   EXPECT_EQ(memory.getPropertyValue<std::string>("initialization"),
             Memory::BinaryDocument);
   EXPECT_FALSE(memory.usesStagedSequentialOutputs());
   EXPECT_EQ(memory.inputBuses().size(), 1);
   EXPECT_EQ(memory.outputBuses().size(), 1);
-  const auto info = memory.propertyInfo();
+  const auto info = memory.propertyDefinitions();
   ASSERT_FALSE(info.empty());
-  EXPECT_EQ(info.front().key, "type");
-  EXPECT_EQ(std::ranges::find(info, "initialization", &PropertyInfo::key), info.end());
-  EXPECT_NE(std::ranges::find(info, "binaryContents", &PropertyInfo::key), info.end());
-  EXPECT_NE(std::ranges::find(info, "padding", &PropertyInfo::key), info.end());
+  EXPECT_NE(std::ranges::find(info, "type", &PropertyDefinition::key), info.end());
+  EXPECT_EQ(std::ranges::find(info, "initialization", &PropertyDefinition::key),
+            info.end());
+  EXPECT_NE(std::ranges::find(info, "binaryContents", &PropertyDefinition::key),
+            info.end());
+  EXPECT_NE(std::ranges::find(info, "padding", &PropertyDefinition::key), info.end());
 }
 
 TEST(MemoryTest, RomAlwaysUsesBinaryDocumentInitialization)
@@ -116,8 +120,8 @@ TEST(MemoryTest, RomAlwaysUsesBinaryDocumentInitialization)
   EXPECT_EQ(memory.getPropertyValue<std::string>("initialization"),
             Memory::Uninitialized);
   memory.setProperty("initialization", std::string(Memory::Zero));
-  const auto ramFields = memory.propertyInfo();
-  EXPECT_NE(std::ranges::find(ramFields, "initialization", &PropertyInfo::key),
+  const auto ramFields = memory.propertyDefinitions();
+  EXPECT_NE(std::ranges::find(ramFields, "initialization", &PropertyDefinition::key),
             ramFields.end());
 
   memory.setProperty("type", std::string("ROM"));
@@ -1334,7 +1338,7 @@ TEST(MemoryGeometryTest, AddressWidthResizesEveryAddressBusInBothDirections)
       }
       EXPECT_EQ(memory->outputBuses(), initialOutputs);
     }
-    EXPECT_FALSE(memory->getProperty("effectiveDepth"));
+    EXPECT_TRUE(memory->getProperty("effectiveDepth"));
     EXPECT_FALSE(memory->getProperty("capacityBits"));
   }
 }
@@ -1712,42 +1716,39 @@ TEST(MemoryGeometryTest, PropertyDescriptionsKeepDerivedInformationOutOfConfigur
 {
   for (const auto& memory : memories()) {
     const auto configuration = memory->getProperties();
-    auto       fields        = memory->propertyInfo();
+    auto       fields        = memory->propertyDefinitions();
     ASSERT_GE(fields.size(), 5);
-    EXPECT_EQ(fields[0].key, "type");
-    EXPECT_EQ(fields[1].key, "addressWidth");
-    EXPECT_EQ(fields[2].key, "dataWidth");
-    EXPECT_EQ(std::ranges::find(fields, "initialization", &PropertyInfo::key)
+    for (const auto key : {"type", "addressWidth", "dataWidth"}) {
+      EXPECT_NE(std::ranges::find(fields, key, &PropertyDefinition::key), fields.end());
+    }
+    EXPECT_EQ(std::ranges::find(fields, "initialization", &PropertyDefinition::key)
                   != fields.end(),
               memory->isWritable());
-    EXPECT_EQ(std::ranges::find(fields, "binaryContents", &PropertyInfo::key)
+    EXPECT_EQ(std::ranges::find(fields, "binaryContents", &PropertyDefinition::key)
                   != fields.end(),
               !memory->isWritable());
-    EXPECT_EQ(std::ranges::find(fields, "padding", &PropertyInfo::key) != fields.end(),
+    EXPECT_EQ(std::ranges::find(fields, "padding", &PropertyDefinition::key)
+                  != fields.end(),
               !memory->isWritable());
-    EXPECT_TRUE(std::ranges::find(fields, "depthOverride", &PropertyInfo::key)->advanced);
     EXPECT_TRUE(
-        std::ranges::find(fields, "effectiveDepth", &PropertyInfo::key)->readOnly);
-    EXPECT_TRUE(std::ranges::find(fields, "capacity", &PropertyInfo::key)->readOnly);
+        std::ranges::find(fields, "effectiveDepth", &PropertyDefinition::key)->access
+        == PropertyAccess::Derived);
+    EXPECT_TRUE(std::ranges::find(fields, "capacity", &PropertyDefinition::key)->access
+                == PropertyAccess::Derived);
     EXPECT_EQ(memory->getProperties(), configuration);
-    EXPECT_FALSE(memory->getProperty("effectiveDepth"));
-    EXPECT_FALSE(memory->getProperty("capacity"));
+    EXPECT_TRUE(memory->getProperty("effectiveDepth"));
+    EXPECT_TRUE(memory->getProperty("capacity"));
     EXPECT_FALSE(memory->getProperty("depth"));
     memory->setProperty("initialization", std::string(Memory::BinaryDocument));
-    fields = memory->propertyInfo();
-    EXPECT_NE(std::ranges::find(fields, "binaryContents", &PropertyInfo::key),
+    fields = memory->propertyDefinitions();
+    EXPECT_NE(std::ranges::find(fields, "binaryContents", &PropertyDefinition::key),
               fields.end());
-    EXPECT_NE(std::ranges::find(fields, "padding", &PropertyInfo::key), fields.end());
+    EXPECT_NE(std::ranges::find(fields, "padding", &PropertyDefinition::key),
+              fields.end());
     memory->setGeometry(10, 5, 3);
-    fields = memory->propertyInfo();
-    EXPECT_FALSE(
-        std::ranges::find(fields, "depthOverride", &PropertyInfo::key)->advanced);
-    EXPECT_EQ(std::get<std::string>(
-                  std::ranges::find(fields, "effectiveDepth", &PropertyInfo::key)->value),
-              "3 words");
-    EXPECT_EQ(std::get<std::string>(
-                  std::ranges::find(fields, "capacity", &PropertyInfo::key)->value),
-              "30 bits (4 bytes)");
+    fields = memory->propertyDefinitions();
+    EXPECT_EQ(std::get<int>(*memory->getProperty("effectiveDepth")), 3);
+    EXPECT_EQ(std::get<int>(*memory->getProperty("capacity")), 30);
   }
 }
 

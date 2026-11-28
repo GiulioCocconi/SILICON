@@ -32,6 +32,8 @@ class GraphicalMemory final : public GraphicalLogicComponent {
   Q_OBJECT
 public:
   explicit GraphicalMemory(QGraphicsItem* parent = nullptr);
+  [[nodiscard]] PropertyPresentation
+      propertyPresentation(std::string_view key) const override;
   int type() const override { return SiliconTypes::MEMORY_COMPONENT; }
   ~GraphicalMemory() override;
 

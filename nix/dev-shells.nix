@@ -63,7 +63,9 @@ in
 
   webpage = pkgs.mkShell {
     name = "SILICON-webpage-dev";
-    packages = [ bun pkgs.doxygen pkgs.graphviz pkgs.python3 pkgs.opencode ] ++ preCommitCheck.enabledPackages;
+    packages = [ bun pkgs.doxygen pkgs.graphviz pkgs.opencode sislPackage ]
+      ++ libraries ++ nativeInputs ++ preCommitCheck.enabledPackages;
     inherit (preCommitCheck) shellHook;
+    hardeningDisable = [ "fortify" ];
   };
 }

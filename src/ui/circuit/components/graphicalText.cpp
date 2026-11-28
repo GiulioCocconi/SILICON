@@ -34,8 +34,6 @@
 namespace SILICON::ui {
 namespace {
 
-  const StringPropertyOptions FontOptions{"Quicksand", "Chango", "NovaMono"};
-
   // Inline objects let Qt wrap prose around vector-rendered equations and include
   // their full height when measuring annotations and resizing them.
   class MathTextObjects : public QObject, public QTextObjectInterface {
@@ -316,36 +314,42 @@ namespace {
 
 GraphicalText::GraphicalText(QGraphicsItem* parent) : GraphicalComponent(nullptr, parent)
 {
-  hiddenProperties.insert("wrapWidth");
+  for (const auto& definition : propertyDefinitions())
+    properties.emplace(definition.key, *definition.defaultValue);
   // Keep annotations above circuit components and wires, regardless of insertion order.
   setZValue(1);
   setProperties(properties);
 }
 
-std::optional<std::reference_wrapper<const StringPropertyOptions>>
-GraphicalText::getStringPropertyOptions(std::string_view key) const
+std::vector<PropertyDefinition> GraphicalText::propertyDefinitions() const
 {
-  if (key == "font")
-    return std::cref(FontOptions);
-  return std::nullopt;
+  static const std::array definitions{
+      stringPropertyDefinition("font", "Quicksand", {"Quicksand", "Chango", "NovaMono"},
+                               "Annotation font family."),
+      propertyDefinition("size", 12, "Font size in points.", {.minimum = 1}),
+      propertyDefinition("text", std::string("Text"),
+                         "Annotation text, supporting bold, italics and LaTeX math."),
+      propertyDefinition("wrapWidth", 0,
+                         "Text wrapping width; zero uses automatic width.",
+                         {.minimum = 0})};
+  return definitions | std::ranges::to<std::vector>();
+}
+
+PropertyPresentation GraphicalText::propertyPresentation(std::string_view key) const
+{
+  return {.hidden = key == "wrapWidth",
+          .editor =
+              key == "text" ? PropertyEditor::Multiline : PropertyEditor::Automatic};
 }
 
 void GraphicalText::setProperties(PropertyMap next)
 {
+  for (const auto& definition : propertyDefinitions())
+    next.at(definition.key) = definition.normalize(next.at(definition.key));
   const auto* text      = std::get_if<std::string>(&next.at("text"));
   const auto* size      = std::get_if<int>(&next.at("size"));
   const auto* font      = std::get_if<std::string>(&next.at("font"));
   const auto* wrapWidth = std::get_if<int>(&next.at("wrapWidth"));
-  if (!text || !size || !font || !wrapWidth)
-    throw std::invalid_argument(
-        "Text properties require text, integer size, font, and integer wrapWidth");
-  if (*size <= 0)
-    throw std::invalid_argument("Text size must be a positive number of points");
-  if (*wrapWidth < 0)
-    throw std::invalid_argument("Text wrapWidth must be non-negative");
-  if (!std::ranges::contains(FontOptions, *font))
-    throw std::invalid_argument("Text font must be Quicksand, Chango, or NovaMono");
-
   if (auto* existing = dynamic_cast<TextShape*>(getItemShape());
       existing && next.at("text") == properties.at("text")
       && next.at("size") == properties.at("size")

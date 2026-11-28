@@ -65,6 +65,8 @@ private:
  * Unknown read addresses merge all possible words bit by bit. */
 class Memory final : public Component {
 public:
+  [[nodiscard]] std::vector<PortDescription> portDescriptions() const override;
+
   static constexpr std::string_view Uninitialized  = "Uninitialized";
   static constexpr std::string_view Zero           = "Zero";
   static constexpr std::string_view BinaryDocument = "Binary document";
@@ -87,7 +89,10 @@ public:
   void setMemoryImage(std::shared_ptr<const MemoryImage> image);
 
   void setProperties(const PropertyMap& values) override;
-  [[nodiscard]] std::vector<PropertyInfo> propertyInfo() const override;
+  [[nodiscard]] std::vector<PropertyDefinition> propertyDefinitions() const override;
+
+  [[nodiscard]] std::optional<PropertyValue>
+  getProperty(std::string_view key) const override;
 
   [[nodiscard]] std::size_t    memoryDepth() const noexcept;
   [[nodiscard]] unsigned short addressWidth() const;
@@ -117,12 +122,19 @@ public:
 
   Memory();
 
+  [[nodiscard]] std::vector<DocumentationConfiguration>
+  documentationConfigurations() const override;
+
   [[nodiscard]] std::string_view  typeName() const override { return Type; }
   [[nodiscard]] ComponentMetadata metadata() const override
   {
-    return {"Memory",
+    return {
+        .displayName = "Memory",
+        .description =
             "Asynchronous read memory with an optional masked synchronous write port.",
-            ComponentCategory::Memory};
+        .category                = ComponentCategory::Memory,
+        .configurationProperties = {"type", "addressWidth", "dataWidth", "readPorts",
+                                    "initialization", "padding"}};
   }
 
   using Component::simulate;

@@ -29,10 +29,9 @@ namespace SILICON::core {
 
 namespace {
 
-  void validateSize(const int size)
+  bool needsLoadInput(const std::string& inputType, const std::string& outputType)
   {
-    if (size <= 1)
-      throw std::invalid_argument("Register size must be greater than 1");
+    return inputType == Register::PARALLEL_TYPE && outputType == Register::SERIAL_TYPE;
   }
 
   State normalizedInputState(const State state)
@@ -55,6 +54,23 @@ namespace {
 Register::Register()
 {
   initializeProperties();
+}
+
+std::vector<DocumentationConfiguration> Register::documentationConfigurations() const
+{
+  return {{"piso",
+           "Parallel input, serial output (PISO)",
+           "The load pin selects parallel capture or serial shifting.",
+           {{"outputType", std::string(SERIAL_TYPE)}}},
+          {"sipo",
+           "Serial input, parallel output (SIPO)",
+           "Serial data shifts into the register and is exposed as a parallel word.",
+           {{"inputType", std::string(SERIAL_TYPE)}}},
+          {"siso",
+           "Serial input, serial output (SISO)",
+           "Both data ports transfer one bit at a time.",
+           {{"inputType", std::string(SERIAL_TYPE)},
+            {"outputType", std::string(SERIAL_TYPE)}}}};
 }
 
 Register::Register(Bus data, Wire_ptr clock, Wire_ptr enable, Wire_ptr clear, Bus output)
@@ -104,19 +120,28 @@ bool Register::parallelOutput() const
 void Register::initializeProperties()
 {
   defineUnconnectedInputDefault(busIndex(Inputs::Clear), State::LOW);
-  defineProperty("delay", 0);
-  defineStringListProperty("inputType", std::string(PARALLEL_TYPE),
-                           {std::string(PARALLEL_TYPE), std::string(SERIAL_TYPE)});
-  defineStringListProperty("outputType", std::string(PARALLEL_TYPE),
-                           {std::string(PARALLEL_TYPE), std::string(SERIAL_TYPE)});
-  defineProperty("size", 2);
+  defineProperty(ZeroDelayProperty);
+  static const auto inputTypeDefinition = stringPropertyDefinition(
+      "inputType", std::string(PARALLEL_TYPE),
+      {std::string(PARALLEL_TYPE), std::string(SERIAL_TYPE)},
+      "Parallel input captures a complete word; serial input shifts toward bit zero and "
+      "inserts the new bit at the most-significant position.");
+  defineProperty(inputTypeDefinition);
+  static const auto outputTypeDefinition =
+      stringPropertyDefinition("outputType", std::string(PARALLEL_TYPE),
+                               {std::string(PARALLEL_TYPE), std::string(SERIAL_TYPE)},
+                               "Parallel output exposes the complete stored word; serial "
+                               "output exposes the least-significant stored bit.");
+  defineProperty(outputTypeDefinition);
+  static const auto sizeDefinition = propertyDefinition(
+      "size", 2,
+      "Stored word length; parallel ports expose the full word while serial transfers "
+      "shift toward the least-significant output bit.",
+      {.minimum = 2});
+  defineProperty(sizeDefinition);
 
-  setPropertyCallback("delay", [](const PropertyValue& value) {
-    return requireNonNegative("Register delay", value);
-  });
   setPropertyCallback("size", [this](const PropertyValue& value) {
     const int size = std::get<int>(value);
-    validateSize(size);
     if (!inputs.empty() && !outputs.empty())
       setSize(size);
     return value;
@@ -137,7 +162,7 @@ void Register::initializeProperties()
 
 int Register::setSize(const int size)
 {
-  validateSize(size);
+  (void)propertyDeclaration("size").normalize(size);
   if (state.size() != static_cast<std::size_t>(size))
     state.assign(static_cast<std::size_t>(size), State::UNKNOWN);
   reshapeBuses(size, configuredInputType(), configuredOutputType());
@@ -165,7 +190,8 @@ void Register::reshapeBuses(const int size, const std::string& inputType,
                             const std::string& outputType)
 {
   std::vector<Bus> newInputs = inputs;
-  newInputs.resize(inputType == PARALLEL_TYPE && outputType == SERIAL_TYPE ? 5 : 4);
+  newInputs.resize(needsLoadInput(inputType, outputType) ? busIndex(Inputs::Load) + 1
+                                                         : busIndex(Inputs::Clear) + 1);
   newInputs[busIndex(Inputs::Data)].setSize(dataBusSize(inputType, size));
   newInputs[busIndex(Inputs::Clock)].setSize(1);
   newInputs[busIndex(Inputs::Enable)].setSize(1);
@@ -278,6 +304,34 @@ void Register::simulate(SILICON::simulation::Simulator&     sim,
 
   if (context.initialEvaluation)
     driveOutput(sim);
+}
+
+std::vector<PortDescription> Register::portDescriptions() const
+{
+  const auto size       = configuredSize();
+  const auto inputType  = configuredInputType();
+  const auto outputType = configuredOutputType();
+  auto       result     = std::vector<PortDescription>{
+      {parallelInput() ? "d" : "si", PortDirection::Input, busIndex(Inputs::Data),
+       dataBusSize(inputType, size),
+       parallelInput() ? "Parallel word to capture when enabled."
+                                 : "Serial bit shifted into the most-significant position."},
+      {"clk", PortDirection::Input, busIndex(Inputs::Clock), 1,
+                 "Rising-edge capture clock."},
+      {"en", PortDirection::Input, busIndex(Inputs::Enable), 1,
+                 "Active-high capture or shift enable."},
+      {"clr", PortDirection::Input, busIndex(Inputs::Clear), 1,
+                 "Active-high asynchronous clear; unconnected means LOW."}};
+  if (needsLoadInput(inputType, outputType))
+    result.push_back(
+        {"ld", PortDirection::Input, busIndex(Inputs::Load), 1,
+         "Present only for parallel-input/serial-output mode. HIGH loads the word; LOW "
+         "shifts right and inserts LOW at the most-significant position."});
+  result.push_back(
+      {parallelOutput() ? "q" : "so", PortDirection::Output, busIndex(Outputs::Out),
+       registerOutputBusSize(outputType, size),
+       parallelOutput() ? "Complete stored word." : "Least-significant stored bit."});
+  return result;
 }
 
 }  // namespace SILICON::core

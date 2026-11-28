@@ -52,13 +52,9 @@ void GraphicalGate::updateGatePorts()
     std::vector<PortPair> inputVec;
     inputVec.reserve(count);
     for (std::size_t i = 0; i < count; ++i) {
-      const QString name = count == 1 ? QStringLiteral("i")
-                           : count == 2 ? (i == 0 ? QStringLiteral("a")
-                                                  : QStringLiteral("b"))
-                                        : QString("i%1").arg(i);
-      inputVec.emplace_back(name, QPoint(-20, 10 + 20 * static_cast<int>(i)));
+      inputVec.emplace_back(QString{}, QPoint(-20, 10 + 20 * static_cast<int>(i)));
     }
-    setPorts(inputVec, {PortPair{"o", QPoint(80, height / 2)}});
+    setPorts(inputVec, {PortPair{{}, QPoint(80, height / 2)}});
   }
 }
 
@@ -74,7 +70,7 @@ GraphicalNot::GraphicalNot(QGraphicsItem* parent)
 {
   isEditable = false;
 
-  setPorts({PortPair{"i", QPoint(-20, 20)}}, {PortPair{"o", QPoint(80, 20)}});
+  setPorts({PortPair{{}, QPoint(-20, 20)}}, {PortPair{{}, QPoint(80, 20)}});
 }
 
 }  // namespace SILICON::ui

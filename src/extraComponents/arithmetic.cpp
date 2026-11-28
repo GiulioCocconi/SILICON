@@ -31,21 +31,43 @@
 namespace SILICON::extra {
 using namespace SILICON::core;
 
+std::vector<DocumentationConfiguration> Extender::documentationConfigurations() const
+{
+  return {{"narrowing",
+           "Narrowing",
+           "High input bits are discarded. Signed and unsigned modes share this layout "
+           "and produce the same retained low bits.",
+           {{"inSize", 8}, {"outSize", 4}}}};
+}
+
 Extender::Extender()
 {
-  defineProperty("inSize", 4);
-  defineProperty("outSize", 8);
-  defineStringListProperty("mode", std::string(UNSIGNED_MODE),
-                           {std::string(UNSIGNED_MODE), std::string(SIGNED_MODE)});
+  static const auto inSizeDefinition = propertyDefinition(
+      "inSize", 4,
+      "Input word length before high-bit truncation or extension to outSize.",
+      {.minimum = 1, .maximum = MaxBusWidth});
+  defineProperty(inSizeDefinition);
+  static const auto outSizeDefinition =
+      propertyDefinition("outSize", 8,
+                         "Result word length; larger widths add high bits according to "
+                         "mode, smaller widths discard high input bits.",
+                         {.minimum = 1, .maximum = MaxBusWidth});
+  defineProperty(outSizeDefinition);
+  static const auto modeDefinition = stringPropertyDefinition(
+      "mode", std::string(UNSIGNED_MODE),
+      {std::string(UNSIGNED_MODE), std::string(SIGNED_MODE)},
+      "Unsigned extension fills new high bits with LOW; signed extension repeats the "
+      "input sign bit. Narrower outputs discard high bits.");
+  defineProperty(modeDefinition);
 
   setPropertyCallback("inSize", [this](const PropertyValue& value) {
-    const int width = std::get<int>(requireValidSize("Extender inSize", value));
+    const int width = std::get<int>(value);
     if (!inputs.empty())
       setInputSize(width);
     return value;
   });
   setPropertyCallback("outSize", [this](const PropertyValue& value) {
-    const int width = std::get<int>(requireValidSize("Extender outSize", value));
+    const int width = std::get<int>(value);
     if (!outputs.empty())
       setOutputSize(width);
     return value;
@@ -66,7 +88,7 @@ Extender::Extender(Bus in, Bus out, std::string mode) : Extender()
 
 int Extender::setInputSize(const int width)
 {
-  if (width < 1 || width > std::numeric_limits<unsigned short>::max())
+  if (!propertyDeclaration("inSize").constraints.contains(width))
     return getPropertyValue<int>("inSize").value_or(4);
 
   auto newInputs = getInputs();
@@ -79,7 +101,7 @@ int Extender::setInputSize(const int width)
 
 int Extender::setOutputSize(const int width)
 {
-  if (width < 1 || width > std::numeric_limits<unsigned short>::max())
+  if (!propertyDeclaration("outSize").constraints.contains(width))
     return getPropertyValue<int>("outSize").value_or(8);
 
   auto newOutputs = getOutputs();
@@ -108,15 +130,14 @@ void Extender::simulate(SILICON::simulation::Simulator& sim)
 }
 Complementer::Complementer()
 {
-  defineProperty("delay", 0);
-  defineProperty("size", 4);
-
-  setPropertyCallback("delay", [](const PropertyValue& value) {
-    return requireNonNegative("Complementer delay", value);
-  });
+  defineProperty(ZeroDelayProperty);
+  static const auto sizeDefinition = propertyDefinition(
+      "size", 4, "Operand and result width; negation is computed modulo 2^size.",
+      {.minimum = 1, .maximum = MaxBusWidth});
+  defineProperty(sizeDefinition);
 
   setPropertyCallback("size", [this](const PropertyValue& value) {
-    const int size = std::get<int>(requireValidSize("Complementer size", value));
+    const int size = std::get<int>(value);
 
     if (!inputs.empty() && !outputs.empty())
       setSize(size);
@@ -138,7 +159,7 @@ Complementer::Complementer(Bus in, Bus out) : Complementer()
 
 int Complementer::setSize(const int width)
 {
-  if (width < 1 || width > std::numeric_limits<unsigned short>::max())
+  if (!propertyDeclaration("size").constraints.contains(width))
     return getPropertyValue<int>("size").value_or(4);
 
   auto newInputs = getInputs();
@@ -168,10 +189,9 @@ void Complementer::simulate(SILICON::simulation::Simulator& sim)
 
 HalfAdder::HalfAdder()
 {
-  defineProperty("delay", 2);
-  setPropertyCallback("delay", [](const PropertyValue& value) {
-    return requireNonNegative("HalfAdder delay", value);
-  });
+  static const auto delayDefinition =
+      propertyDefinition("delay", 2, PropagationDelayDescription, {.minimum = 0});
+  defineProperty(delayDefinition);
 }
 
 HalfAdder::HalfAdder(std::array<Wire_ptr, 2> inputWires, Wire_ptr sum, Wire_ptr cout)
@@ -197,10 +217,9 @@ void HalfAdder::simulate(SILICON::simulation::Simulator& sim)
 
 FullAdder::FullAdder()
 {
-  defineProperty("delay", 3);
-  setPropertyCallback("delay", [](const PropertyValue& value) {
-    return requireNonNegative("FullAdder delay", value);
-  });
+  static const auto delayDefinition =
+      propertyDefinition("delay", 3, PropagationDelayDescription, {.minimum = 0});
+  defineProperty(delayDefinition);
 }
 
 FullAdder::FullAdder(std::array<Wire_ptr, 2> inputWires, Wire_ptr cin, Wire_ptr sum,
@@ -231,14 +250,18 @@ void FullAdder::simulate(SILICON::simulation::Simulator& sim)
 
 AdderNBits::AdderNBits()
 {
-  defineProperty("delay", 5);
-  defineProperty("size", 4);
+  static const auto delayDefinition =
+      propertyDefinition("delay", 5, PropagationDelayDescription, {.minimum = 0});
+  defineProperty(delayDefinition);
+  static const auto sizeDefinition =
+      propertyDefinition("size", 4,
+                         "Width of both addends and the low sum bits; unsigned overflow "
+                         "is emitted separately on carry out.",
+                         {.minimum = 1, .maximum = MaxBusWidth});
+  defineProperty(sizeDefinition);
 
-  setPropertyCallback("delay", [](const PropertyValue& value) {
-    return requireNonNegative("AdderNBits delay", value);
-  });
   setPropertyCallback("size", [this](const PropertyValue& value) {
-    const int size = std::get<int>(requireValidSize("AdderNBits size", value));
+    const int size = std::get<int>(value);
 
     if (!inputs.empty() && !outputs.empty())
       setSize(size);
@@ -262,7 +285,7 @@ AdderNBits::AdderNBits(std::array<Bus, 2> inputBuses, Bus sum, Wire_ptr cout)
 
 int AdderNBits::setSize(const int width)
 {
-  if (width < 1)
+  if (width < *propertyDeclaration("size").constraints.minimum)
     return getPropertyValue<int>("size").value_or(4);
 
   auto newInputs = getInputs();
@@ -305,24 +328,34 @@ void AdderNBits::simulate(SILICON::simulation::Simulator& sim)
 
 Shifter::Shifter()
 {
-  defineProperty("delay", 0, [](const PropertyValue& value) {
-    return requireNonNegative("Shifter delay", value);
-  });
-  defineProperty("size", 4, [this](const PropertyValue& value) {
-    const int width = std::get<int>(requireValidSize("Shifter size", value));
+  defineProperty(ZeroDelayProperty);
+  static const auto sizeDefinition = propertyDefinition(
+      "size", 4, "Retained word length; bits shifted past either edge are discarded.",
+      {.minimum = 1, .maximum = MaxBusWidth});
+  defineProperty(sizeDefinition, [this](const PropertyValue& value) {
+    const int width = std::get<int>(value);
     if (!inputs.empty() && !outputs.empty())
       setSize(width);
     return value;
   });
-  defineProperty("amountSize", 4, [this](const PropertyValue& value) {
-    const int width = std::get<int>(requireValidSize("Shifter amountSize", value));
+  static const auto amountSizeDefinition =
+      propertyDefinition("amountSize", 4, "Unsigned shift amount width in bits.",
+                         {.minimum = 1, .maximum = MaxBusWidth});
+  defineProperty(amountSizeDefinition, [this](const PropertyValue& value) {
+    const int width = std::get<int>(value);
     if (inputs.size() == 2)
       setAmountSize(width);
     return value;
   });
-  defineStringListProperty("mode", std::string(RIGHT_MODE),
-                           {std::string(LEFT_MODE), std::string(RIGHT_MODE)});
-  defineProperty("signed", false);
+  static const auto modeDefinition = stringPropertyDefinition(
+      "mode", std::string(RIGHT_MODE), {std::string(LEFT_MODE), std::string(RIGHT_MODE)},
+      "Select left or right shift. Vacated bits are LOW, except signed right shifts "
+      "repeat the sign bit.");
+  defineProperty(modeDefinition);
+  static const auto signedDefinition = propertyDefinition(
+      "signed", false,
+      "Use sign extension for right shifts; left shifts always insert LOW bits.");
+  defineProperty(signedDefinition);
 }
 
 Shifter::Shifter(Bus value, Bus amount, Bus result) : Shifter()
@@ -338,7 +371,7 @@ Shifter::Shifter(Bus value, Bus amount, Bus result) : Shifter()
 
 int Shifter::setSize(const int width)
 {
-  if (width < 1 || width > std::numeric_limits<unsigned short>::max())
+  if (!propertyDeclaration("size").constraints.contains(width))
     return getPropertyValue<int>("size").value_or(4);
   auto newInputs = getInputs();
   if (newInputs.size() < 2)
@@ -355,7 +388,7 @@ int Shifter::setSize(const int width)
 
 int Shifter::setAmountSize(const int width)
 {
-  if (width < 1 || width > std::numeric_limits<unsigned short>::max())
+  if (!propertyDeclaration("amountSize").constraints.contains(width))
     return getPropertyValue<int>("amountSize").value_or(4);
   auto newInputs = getInputs();
   if (newInputs.size() < 2)
@@ -396,37 +429,45 @@ void Shifter::simulate(SILICON::simulation::Simulator& sim)
 }
 
 namespace {
-int resizeBinaryArithmetic(Component& component, const int width,
-                           const std::size_t outputCount)
-{
-  if (width < 1 || width > std::numeric_limits<unsigned short>::max())
-    return component.getPropertyValue<int>("size").value_or(4);
-  auto inputs = component.getInputs();
-  inputs.resize(2);
-  for (auto& bus : inputs)
-    bus.setSize(static_cast<unsigned short>(width));
-  component.setInputs(inputs);
-  auto outputs = component.getOutputs();
-  outputs.resize(outputCount);
-  for (auto& bus : outputs)
-    bus.setSize(static_cast<unsigned short>(width));
-  component.setOutputs(outputs);
-  return width;
-}
+
+  const auto signedDefinition = propertyDefinition(
+      "signed", false,
+      "When true, interpret operands as signed two's-complement numbers; "
+      "when false, interpret them as unsigned numbers. The pin layout is unchanged.");
+  int resizeBinaryArithmetic(Component& component, const int width,
+                             const std::size_t outputCount)
+  {
+    if (!component.propertyDeclaration("size").constraints.contains(width))
+      return component.getPropertyValue<int>("size").value_or(4);
+    auto inputs = component.getInputs();
+    inputs.resize(2);
+    for (auto& bus : inputs)
+      bus.setSize(static_cast<unsigned short>(width));
+    component.setInputs(inputs);
+    auto outputs = component.getOutputs();
+    outputs.resize(outputCount);
+    for (auto& bus : outputs)
+      bus.setSize(static_cast<unsigned short>(width));
+    component.setOutputs(outputs);
+    return width;
+  }
 }  // namespace
 
 Multiplier::Multiplier()
 {
-  defineProperty("delay", 0, [](const PropertyValue& value) {
-    return requireNonNegative("Multiplier delay", value);
-  });
-  defineProperty("size", 4, [this](const PropertyValue& value) {
-    const int width = std::get<int>(requireValidSize("Multiplier size", value));
+  defineProperty(ZeroDelayProperty);
+  static const auto sizeDefinition =
+      propertyDefinition("size", 4,
+                         "Width of both factors and the retained low product bits; "
+                         "higher product bits are discarded.",
+                         {.minimum = 1, .maximum = MaxBusWidth});
+  defineProperty(sizeDefinition, [this](const PropertyValue& value) {
+    const int width = std::get<int>(value);
     if (!inputs.empty() && !outputs.empty())
       setSize(width);
     return value;
   });
-  defineProperty("signed", false);
+  defineProperty(signedDefinition);
 }
 
 Multiplier::Multiplier(std::array<Bus, 2> inputBuses, Bus product) : Multiplier()
@@ -447,16 +488,22 @@ int Multiplier::setSize(const int width)
 
 Divider::Divider()
 {
-  defineProperty("delay", 0, [](const PropertyValue& value) {
-    return requireNonNegative("Divider delay", value);
-  });
-  defineProperty("size", 4, [this](const PropertyValue& value) {
-    const int width = std::get<int>(requireValidSize("Divider size", value));
+  defineProperty(ZeroDelayProperty);
+  static const auto sizeDefinition =
+      propertyDefinition("size", 4, "Width of dividend, divisor, quotient and remainder.",
+                         {.minimum = 1, .maximum = MaxBusWidth});
+  defineProperty(sizeDefinition, [this](const PropertyValue& value) {
+    const int width = std::get<int>(value);
     if (!inputs.empty() && !outputs.empty())
       setSize(width);
     return value;
   });
-  defineProperty("signed", false);
+  static const auto signedDefinition = propertyDefinition(
+      "signed", false,
+      "When true, use signed division: truncate toward zero and give the remainder "
+      "the dividend sign. When false, use unsigned division. The pin layout is "
+      "unchanged. Division by zero drives UNKNOWN on both outputs.");
+  defineProperty(signedDefinition);
 }
 
 Divider::Divider(std::array<Bus, 2> inputBuses, Bus quotient, Bus remainder) : Divider()
@@ -514,14 +561,18 @@ void Divider::simulate(SILICON::simulation::Simulator& sim)
 
 Comparator::Comparator()
 {
-  defineProperty("delay", 0, [this](const PropertyValue& value) {
-    const auto validated   = requireNonNegative("Comparator delay", value);
+  defineProperty(ZeroDelayProperty, [this](const PropertyValue& value) {
     this->propagationDelay = static_cast<uint64_t>(std::get<int>(value));
-    return validated;
+    return value;
   });
 
-  defineProperty("size", 4, [this](const PropertyValue& value) {
-    const int size = std::get<int>(requireValidSize("Comparator size", value));
+  static const auto sizeDefinition =
+      propertyDefinition("size", 4,
+                         "Width of both compared operands; signed comparison treats the "
+                         "highest bit as the sign.",
+                         {.minimum = 1, .maximum = MaxBusWidth});
+  defineProperty(sizeDefinition, [this](const PropertyValue& value) {
+    const int size = std::get<int>(value);
 
     if (!inputs.empty() && !outputs.empty())
       setSize(size);
@@ -529,8 +580,12 @@ Comparator::Comparator()
     return value;
   });
 
-  defineStringListProperty("mode", "==", {"==", "<", "<=", ">", ">="});
-  defineProperty("signed", false);
+  static const auto modeDefinition = stringPropertyDefinition(
+      "mode", "==", {"==", "<", "<=", ">", ">="},
+      "Relation to evaluate between a and b. An indeterminate comparison drives UNKNOWN; "
+      "an ERROR operand drives ERROR.");
+  defineProperty(modeDefinition);
+  defineProperty(signedDefinition);
 }
 
 Comparator::Comparator(std::array<Bus, 2> inputBuses, Wire_ptr output) : Comparator()
@@ -595,7 +650,7 @@ void Comparator::simulate(SILICON::simulation::Simulator& sim)
 
 int Comparator::setSize(const int width)
 {
-  if (width < 1)
+  if (width < *propertyDeclaration("size").constraints.minimum)
     return getPropertyValue<int>("size").value_or(4);
 
   auto newInputs = inputs;
@@ -608,6 +663,109 @@ int Comparator::setSize(const int width)
   this->inputs = newInputs;
 
   return width;
+}
+
+std::vector<PortDescription> Extender::portDescriptions() const
+{
+  return {{"n", PortDirection::Input, 0,
+           static_cast<unsigned int>(getPropertyValue<int>("inSize").value()),
+           "Input number, least-significant bit first; high bits are discarded when "
+           "narrowing."},
+          {"o", PortDirection::Output, 0,
+           static_cast<unsigned int>(getPropertyValue<int>("outSize").value()),
+           "Resized number; added high bits follow the selected extension mode."}};
+}
+
+std::vector<PortDescription> Complementer::portDescriptions() const
+{
+  const auto width = static_cast<unsigned int>(getPropertyValue<int>("size").value());
+  return {
+      {"n", PortDirection::Input, 0, width,
+       "Number to negate modulo 2^size, least-significant bit first."},
+      {"o", PortDirection::Output, 0, width,
+       "Two's-complement negation; overflow beyond the configured width is discarded."}};
+}
+
+std::vector<PortDescription> HalfAdder::portDescriptions() const
+{
+  return {{"a", PortDirection::Input, busIndex(Inputs::A), 1, "First addend bit."},
+          {"b", PortDirection::Input, busIndex(Inputs::B), 1, "Second addend bit."},
+          {"sum", PortDirection::Output, busIndex(Outputs::Sum), 1,
+           "Sum modulo the data width."},
+          {"cout", PortDirection::Output, busIndex(Outputs::Cout), 1,
+           "Carry out of the most-significant bit."}};
+}
+
+std::vector<PortDescription> FullAdder::portDescriptions() const
+{
+  return {{"a", PortDirection::Input, busIndex(Inputs::A), 1, "First addend bit."},
+          {"b", PortDirection::Input, busIndex(Inputs::B), 1, "Second addend bit."},
+          {"cin", PortDirection::Input, busIndex(Inputs::Cin), 1,
+           "Carry bit added to the two addends."},
+          {"sum", PortDirection::Output, busIndex(Outputs::Sum), 1,
+           "Sum modulo the data width."},
+          {"cout", PortDirection::Output, busIndex(Outputs::Cout), 1,
+           "Carry out of the most-significant bit."}};
+}
+
+std::vector<PortDescription> AdderNBits::portDescriptions() const
+{
+  const auto width = static_cast<unsigned int>(getPropertyValue<int>("size").value());
+  return {{"a", PortDirection::Input, busIndex(Inputs::A), width,
+           "First addend, least-significant bit first."},
+          {"b", PortDirection::Input, busIndex(Inputs::B), width,
+           "Second addend, least-significant bit first."},
+          {"sum", PortDirection::Output, busIndex(Outputs::Sum), width,
+           "Sum modulo the data width."},
+          {"cout", PortDirection::Output, busIndex(Outputs::Cout), 1,
+           "Carry out of the most-significant bit."}};
+}
+
+std::vector<PortDescription> Shifter::portDescriptions() const
+{
+  const auto width = static_cast<unsigned int>(getPropertyValue<int>("size").value());
+  return {
+      {"value", PortDirection::Input, busIndex(Inputs::Value), width, "Value to shift."},
+      {"amount", PortDirection::Input, busIndex(Inputs::Amount),
+       static_cast<unsigned int>(getPropertyValue<int>("amountSize").value()),
+       "Unsigned shift distance; distances at least the value width discard all original "
+       "bits."},
+      {"result", PortDirection::Output, busIndex(Outputs::Result), width,
+       "Fixed-width shifted value; signed right shifts fill vacated bits with the input "
+       "sign."}};
+}
+
+std::vector<PortDescription> Multiplier::portDescriptions() const
+{
+  const auto width = static_cast<unsigned int>(getPropertyValue<int>("size").value());
+  return {{"a", PortDirection::Input, busIndex(Inputs::A), width,
+           "First factor, interpreted according to signed."},
+          {"b", PortDirection::Input, busIndex(Inputs::B), width,
+           "Second factor, interpreted according to signed."},
+          {"product", PortDirection::Output, busIndex(Outputs::Product), width,
+           "Least-significant data-width bits of the product."}};
+}
+
+std::vector<PortDescription> Divider::portDescriptions() const
+{
+  const auto width = static_cast<unsigned int>(getPropertyValue<int>("size").value());
+  return {{"a", PortDirection::Input, busIndex(Inputs::A), width,
+           "Dividend, interpreted according to signed."},
+          {"b", PortDirection::Input, busIndex(Inputs::B), width,
+           "Divisor; zero produces UNKNOWN quotient and remainder."},
+          {"div", PortDirection::Output, busIndex(Outputs::Div), width,
+           "Quotient truncated toward zero."},
+          {"mod", PortDirection::Output, busIndex(Outputs::Mod), width,
+           "Remainder with the dividend sign."}};
+}
+
+std::vector<PortDescription> Comparator::portDescriptions() const
+{
+  const auto width = static_cast<unsigned int>(getPropertyValue<int>("size").value());
+  return {
+      {"a", PortDirection::Input, 0, width, "Left operand of the selected relation."},
+      {"b", PortDirection::Input, 1, width, "Right operand of the selected relation."},
+      {"o", PortDirection::Output, 0, 1, "HIGH when the selected comparison is true."}};
 }
 
 }  // namespace SILICON::extra

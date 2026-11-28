@@ -35,7 +35,15 @@ namespace SILICON::extra {
 using namespace SILICON::core;
 
 namespace {
-  constexpr int MAX_SELECTION_SIZE = 15;
+
+  constexpr int MaxSelectionSize = 15;
+
+  const auto selectionSizeDefinition =
+      propertyDefinition("selectionSize", 1, "Number of selector bits.",
+                         {.minimum = 1, .maximum = MaxSelectionSize});
+  const auto busSizeDefinition =
+      propertyDefinition("busSize", 1, "Width of each data lane in bits.",
+                         {.minimum = 1, .maximum = MaxBusWidth});
 
   // Converts an N-bit selection bus into the width of a packed one-bit mux/demux bus.
   unsigned short dataWidthForSelectionSize(const int selectionSize)
@@ -49,25 +57,17 @@ namespace {
     return std::size_t{1} << selectionSize;
   }
 
-  void validateSelectionSize(const std::string_view componentName,
-                             const int              selectionSize)
+  std::size_t multiplexerDataBusCount(int                                selectionSize,
+                                      const std::vector<unsigned short>& table)
   {
-    if (selectionSize < 1)
-      throw std::invalid_argument(std::string(componentName)
-                                  + " selectionSize must be at least 1");
-    if (selectionSize > MAX_SELECTION_SIZE)
-      throw std::invalid_argument(std::string(componentName)
-                                  + " selectionSize is too large");
+    return table.empty() ? dataBusCountForSelectionSize(selectionSize)
+                         : static_cast<std::size_t>(*std::ranges::max_element(table)) + 1;
   }
 
-  void validateSelectionBus(const std::string_view componentName, const Bus& selection)
+  void validateSelectionBus(const Component& component, const Bus& selection)
   {
-    if (selection.size() == 0)
-      throw std::invalid_argument(std::string(componentName)
-                                  + " selection bus must not be empty");
-    if (selection.size() > MAX_SELECTION_SIZE)
-      throw std::invalid_argument(std::string(componentName)
-                                  + " selection bus is too large");
+    (void)component.propertyDeclaration("selectionSize")
+        .normalize(static_cast<int>(selection.size()));
   }
 
   struct MuxShapeProperties {
@@ -86,11 +86,10 @@ namespace {
         component.getPropertyValue<int>("selectionSize").value_or(1));
     const int rawBusSize =
         busSizeOverride.value_or(component.getPropertyValue<int>("busSize").value_or(1));
-    const int busSize = std::get<int>(
-        requireValidSize(std::string(componentName) + " busSize",
-                         PropertyValue{rawBusSize}));
+    const int busSize =
+        std::get<int>(component.propertyDeclaration("busSize").normalize(rawBusSize));
 
-    validateSelectionSize(componentName, selectionSize);
+    (void)component.propertyDeclaration("selectionSize").normalize(selectionSize);
     return {selectionSize, busSize};
   }
 
@@ -190,9 +189,7 @@ namespace {
     Bus selectionBus;
     if (!currentInputs.empty())
       selectionBus = currentInputs.back();
-    const std::size_t dataBusCount =
-        table.empty() ? dataBusCountForSelectionSize(selectionSize)
-                      : static_cast<std::size_t>(*std::ranges::max_element(table)) + 1;
+    const std::size_t dataBusCount = multiplexerDataBusCount(selectionSize, table);
     std::vector<Bus>  newInputs(dataBusCount + 1);
 
     const std::size_t oldDataBusCount =
@@ -239,6 +236,17 @@ namespace {
     return newInputs;
   }
 
+  std::size_t demultiplexerOutputCount(int selectionSize, int busSize)
+  {
+    return busSize == 1 ? 1 : dataBusCountForSelectionSize(selectionSize);
+  }
+
+  unsigned short demultiplexerOutputWidth(int selectionSize, int busSize)
+  {
+    return busSize == 1 ? dataWidthForSelectionSize(selectionSize)
+                        : static_cast<unsigned short>(busSize);
+  }
+
   std::vector<Bus> shapedDemultiplexerOutputs(const std::vector<Bus>& currentOutputs,
                                               const int selectionSize, const int busSize)
   {
@@ -247,27 +255,64 @@ namespace {
       auto newOutputs = currentOutputs;
       newOutputs.resize(1);
       newOutputs[std::to_underlying(Demultiplexer::Outputs::Out)].setSize(
-          dataWidthForSelectionSize(selectionSize));
+          demultiplexerOutputWidth(selectionSize, busSize));
       return newOutputs;
     }
 
-    const std::size_t outputBusCount = dataBusCountForSelectionSize(selectionSize);
+    const std::size_t outputBusCount = demultiplexerOutputCount(selectionSize, busSize);
     // Multi-bit demuxes expose one output bus per selectable destination.
     return resizedPorts(currentOutputs, outputBusCount,
-                        static_cast<unsigned short>(busSize));
+                        demultiplexerOutputWidth(selectionSize, busSize));
   }
 }  // namespace
 
+std::vector<DocumentationConfiguration> Multiplexer::documentationConfigurations() const
+{
+  return {{"bus",
+           "Bus lanes",
+           "Each selector value chooses one complete input word. With an empty selection "
+           "table, there are 2^selectionSize data inputs.",
+           {{"busSize", 4}}},
+          {"remapped",
+           "Remapped selector values",
+           "The selection table maps four selector values to two data inputs: "
+           "0 and 3 select i0; 1 and 2 select i1. Repeated indices share a data pin.",
+           {{"selectionSize", 2}, {"selectionTable", std::string("0,1,1,0")}}},
+          {"remapped-bus",
+           "Remapped bus lanes",
+           "Remapping also supports complete words, with one data pin per distinct "
+           "input lane in the table.",
+           {{"busSize", 4},
+            {"selectionSize", 2},
+            {"selectionTable", std::string("0,1,1,0")}}}};
+}
+
+std::vector<DocumentationConfiguration> Demultiplexer::documentationConfigurations() const
+{
+  return {
+      {"bus",
+       "Bus destinations",
+       "Single-bit mode packs destinations into one output bus. Multi-bit mode "
+       "exposes 2^selectionSize separate output words. Unselected destinations are LOW.",
+       {{"busSize", 4}}}};
+}
+
 Multiplexer::Multiplexer()
 {
-  defineProperty("selectionSize", 1);
-  defineProperty("busSize", 1);
-  defineProperty("delay", 0);
-  defineProperty("selectionTable", std::string{});
+  defineProperty(selectionSizeDefinition);
+  defineProperty(busSizeDefinition);
+  defineProperty(ZeroDelayProperty);
+  static const auto selectionTableDefinition = propertyDefinition(
+      "selectionTable", std::string{},
+      "Comma-separated data lane indices, one per selector value; empty uses "
+      "consecutive lanes.",
+      {.description =
+           "Nonempty tables must contain 2^selectionSize indices and reference a "
+           "contiguous set of data lanes starting at zero."});
+  defineProperty(selectionTableDefinition);
 
   setPropertyCallback("selectionSize", [this](const PropertyValue& value) {
     const int selectionSize = std::get<int>(value);
-    validateSelectionSize("Multiplexer", selectionSize);
     if (!selectionTable.empty()
         && selectionTable.size() != dataBusCountForSelectionSize(selectionSize))
       throw std::invalid_argument(
@@ -280,7 +325,7 @@ Multiplexer::Multiplexer()
   });
 
   setPropertyCallback("busSize", [this](const PropertyValue& value) {
-    const int busSize = std::get<int>(requireValidSize("Multiplexer busSize", value));
+    const int busSize = std::get<int>(value);
 
     if (!inputs.empty() && !outputs.empty())
       setBusSize(busSize);
@@ -288,9 +333,6 @@ Multiplexer::Multiplexer()
     return value;
   });
 
-  setPropertyCallback("delay", [](const PropertyValue& value) {
-    return requireNonNegative("Multiplexer delay", value);
-  });
   setPropertyCallback("selectionTable", [this](const PropertyValue& value) {
     return setSelectionTable(std::get<std::string>(value));
   });
@@ -298,7 +340,7 @@ Multiplexer::Multiplexer()
 
 Multiplexer::Multiplexer(Bus data, Bus selection, Wire_ptr output) : Multiplexer()
 {
-  validateSelectionBus("Multiplexer", selection);
+  validateSelectionBus(*this, selection);
 
   const auto expectedDataWidth =
       dataWidthForSelectionSize(static_cast<int>(selection.size()));
@@ -437,13 +479,12 @@ void Multiplexer::simulate(SILICON::simulation::Simulator& sim)
 
 Demultiplexer::Demultiplexer()
 {
-  defineProperty("selectionSize", 1);
-  defineProperty("busSize", 1);
-  defineProperty("delay", 0);
+  defineProperty(selectionSizeDefinition);
+  defineProperty(busSizeDefinition);
+  defineProperty(ZeroDelayProperty);
 
   setPropertyCallback("selectionSize", [this](const PropertyValue& value) {
     const int selectionSize = std::get<int>(value);
-    validateSelectionSize("Demultiplexer", selectionSize);
 
     if (!inputs.empty() && !outputs.empty())
       setSelectionSize(selectionSize);
@@ -452,23 +493,18 @@ Demultiplexer::Demultiplexer()
   });
 
   setPropertyCallback("busSize", [this](const PropertyValue& value) {
-    const int busSize =
-        std::get<int>(requireValidSize("Demultiplexer busSize", value));
+    const int busSize = std::get<int>(value);
 
     if (!inputs.empty() && !outputs.empty())
       setBusSize(busSize);
 
     return value;
   });
-
-  setPropertyCallback("delay", [](const PropertyValue& value) {
-    return requireNonNegative("Demultiplexer delay", value);
-  });
 }
 
 Demultiplexer::Demultiplexer(Bus data, Bus selection, Bus output) : Demultiplexer()
 {
-  validateSelectionBus("Demultiplexer", selection);
+  validateSelectionBus(*this, selection);
   if (data.size() != 1)
     throw std::invalid_argument("Demultiplexer data bus must be single-bit");
 
@@ -594,27 +630,22 @@ void Demultiplexer::simulate(SILICON::simulation::Simulator& sim)
 
 Decoder::Decoder()
 {
-  defineProperty("selectionSize", 1);
-  defineProperty("delay", 0);
+  defineProperty(selectionSizeDefinition);
+  defineProperty(ZeroDelayProperty);
 
   setPropertyCallback("selectionSize", [this](const PropertyValue& value) {
     const int selectionSize = std::get<int>(value);
-    validateSelectionSize("Decoder", selectionSize);
 
     if (!inputs.empty() && !outputs.empty())
       setSelectionSize(selectionSize);
 
     return value;
   });
-
-  setPropertyCallback("delay", [](const PropertyValue& value) {
-    return requireNonNegative("Decoder delay", value);
-  });
 }
 
 Decoder::Decoder(Bus enable, Bus selection, Bus output) : Decoder()
 {
-  validateSelectionBus("Decoder", selection);
+  validateSelectionBus(*this, selection);
   if (enable.size() != 1)
     throw std::invalid_argument("Decoder enable bus must be single-bit");
 
@@ -631,7 +662,7 @@ Decoder::Decoder(Bus enable, Bus selection, Bus output) : Decoder()
 
 int Decoder::setSelectionSize(const int selectionSize)
 {
-  validateSelectionSize("Decoder", selectionSize);
+  (void)propertyDeclaration("selectionSize").normalize(selectionSize);
 
   auto newInputs = getInputs();
   if (newInputs.size() < 2)
@@ -712,6 +743,56 @@ void Decoder::simulate(SILICON::simulation::Simulator& sim)
         (static_cast<std::size_t>(bit) == selectedIndex) ? State::HIGH : State::LOW;
     sim.updateWire(outputWire(Outputs::Out, bit), outputState, delay, weak_from_this());
   }
+}
+
+std::vector<PortDescription> Multiplexer::portDescriptions() const
+{
+  const auto shape = checkedShapeProperties(*this, "Multiplexer");
+  const auto count = multiplexerDataBusCount(shape.selectionSize, selectionTable);
+  std::vector<PortDescription> result;
+  for (unsigned int i = 0; i < count; ++i)
+    result.push_back({std::format("i{}", i), PortDirection::Input, i,
+                      static_cast<unsigned int>(shape.busSize),
+                      "Selectable data lane " + std::to_string(i) + "."});
+  result.push_back(
+      {"s", PortDirection::Input, static_cast<unsigned int>(count),
+       static_cast<unsigned int>(shape.selectionSize),
+       "Unsigned data lane selector; selectionTable remaps indices when configured."});
+  result.push_back({"o", PortDirection::Output, busIndex(Outputs::Out),
+                    static_cast<unsigned int>(shape.busSize), "Selected input lane."});
+  return result;
+}
+
+std::vector<PortDescription> Demultiplexer::portDescriptions() const
+{
+  const auto                   shape = checkedShapeProperties(*this, "Demultiplexer");
+  std::vector<PortDescription> result{
+      {"i", PortDirection::Input, busIndex(Inputs::Data),
+       static_cast<unsigned int>(shape.busSize),
+       "Data routed to the selected destination."},
+      {"s", PortDirection::Input, busIndex(Inputs::Selection),
+       static_cast<unsigned int>(shape.selectionSize), "Unsigned destination selector."}};
+  const auto count = demultiplexerOutputCount(shape.selectionSize, shape.busSize);
+  const auto width = demultiplexerOutputWidth(shape.selectionSize, shape.busSize);
+  for (unsigned int i = 0; i < count; ++i)
+    result.push_back(
+        {count == 1 ? "o" : std::format("o{}", i), PortDirection::Output, i,
+         static_cast<unsigned int>(width),
+         "Selected destination receives data; unselected destinations are LOW."});
+  return result;
+}
+
+std::vector<PortDescription> Decoder::portDescriptions() const
+{
+  const auto size = getPropertyValue<int>("selectionSize").value();
+  return {{"en", PortDirection::Input, busIndex(Inputs::Enable), 1,
+           "Active-high decoding enable."},
+          {"s", PortDirection::Input, busIndex(Inputs::Selection),
+           static_cast<unsigned int>(size),
+           "Unsigned index of the output bit to assert."},
+          {"o", PortDirection::Output, busIndex(Outputs::Out),
+           dataWidthForSelectionSize(size),
+           "One-hot decoded output; all LOW when disabled."}};
 }
 
 }  // namespace SILICON::extra

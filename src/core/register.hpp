@@ -28,6 +28,10 @@ namespace SILICON::core {
 
 class Register : public Component {
 public:
+  [[nodiscard]] std::vector<PortDescription> portDescriptions() const override;
+  [[nodiscard]] std::vector<DocumentationConfiguration>
+  documentationConfigurations() const override;
+
   static constexpr std::string_view Type         = "Register";
   static constexpr std::string_view PARALLEL_TYPE = "Parallel";
   static constexpr std::string_view SERIAL_TYPE   = "Serial";
@@ -50,8 +54,11 @@ public:
   std::string_view  typeName() const override { return Type; }
   ComponentMetadata metadata() const override
   {
-    return {"Register", "Stores and shifts data while enabled on a positive clock edge.",
-            ComponentCategory::Register};
+    return {.displayName = "Register",
+            .description =
+                "Stores and shifts data while enabled on a positive clock edge.",
+            .category                = ComponentCategory::Register,
+            .configurationProperties = {"inputType", "outputType", "size"}};
   }
 
   [[nodiscard]] bool usesStagedSequentialOutputs() const override { return true; }

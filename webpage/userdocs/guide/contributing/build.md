@@ -139,16 +139,58 @@ Use the dedicated Nix development shell from the repository root:
 nix develop .#webpage
 cd webpage
 bun install --frozen-lockfile
-python3 ../ci/theme/generate.py
 bun run build:docs
 ```
 
-For live editing, run `bun run docs:dev`. The complete website and VitePress
+This configures an isolated native Debug build in `build/docs`, builds the component
+reference generator, and runs the `user_docs` CMake target. It generates the
+shared palette, component pages and light/dark HD PNG previews, then builds VitePress
+into `webpage/dist/docs`. The generator uses the same registry, property schemas,
+and graphical components as the editor, and lists editable properties including
+conditional settings. Generated reference files are ignored by
+Git; update component metadata or property declarations to change their contents.
+
+The reference covers distinct pin configurations across the component catalog.
+Set `ComponentMetadata::configurationProperties` to the editable property keys
+that determine the component's pins or behavior. Captions show their effective
+values, including settings inherited from editor defaults. Property descriptions
+and accepted options explain behavior variants that share a pin layout, such as
+signed and unsigned arithmetic, without repeating identical diagrams.
+
+Override `Component::documentationConfigurations()` in the component's `.cpp` file
+to supply additional layouts with a stable ID, title, description, and property
+overrides. Include every distinct layout and use representative numeric values
+where widths or counts scale. Each example starts from a fresh editor-default
+component and applies overrides through the editor's property API. Generation
+validates the resulting pins against core introspection and checks that the
+requested settings were applied.
+
+The default and additional previews share one row, scaling to the available width.
+They stack vertically when each preview would receive less than 10rem. Each caption
+links to its configuration's pin table, which records the actual names, editor
+labels, widths, and descriptions. Registers cover PIPO, PISO, SIPO, and SISO;
+memory covers ROM/RAM and multiple read ports; gates and routing components
+illustrate their alternative bus layouts. Previews are rendered separately in
+both themes.
+
+To use an existing native CMake build, configure it with
+`-DSILICON_BUILD_DOCUMENTATION=ON`, then run
+`cmake --build <build-directory> --target user_docs` from the webpage environment.
+The `component_docs` target generates only the reference sources and PNGs. Previews
+have transparent backgrounds, a longest side of at least 1920 pixels, and at least
+four times their display resolution. Neither target requires building the
+application executable. Native C++ and Qt dependencies
+are included in the webpage environment; the first build can take several minutes.
+
+For live editing, run `bun run docs:dev`; this regenerates the reference before
+starting VitePress. Rerun it after changing C++ component metadata or shapes.
+The complete website and VitePress
 documentation build is `bun run build:all`. Doxygen API documentation is built
 separately from the repository root with `doxygen Doxyfile`.
 
 To build and preview the homepage, user docs, and API docs together, run
-`./webpage/buildwebpage.sh` from the repository root. It generates the palette
+`./webpage/buildwebpage.sh` from the repository root. The script enters the
+webpage Nix environment automatically. It generates the palette
 CSS, builds all three surfaces, and serves them at
 `http://127.0.0.1:8080/SILICON/`. Stop the server with Ctrl+C; its temporary preview
 directory is removed automatically.

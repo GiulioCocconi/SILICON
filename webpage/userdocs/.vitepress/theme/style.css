@@ -1,5 +1,93 @@
 @import url("https://fonts.googleapis.com/css2?family=Chango&family=Nova+Mono&family=Quicksand:wght@400;500;600;700&display=swap");
 
+.vp-doc .component-preview {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 1.5rem auto;
+  transform: none !important;
+  transition: none !important;
+}
+
+.vp-doc .component-preview.dark-only,
+.dark .vp-doc .component-preview.light-only {
+  display: none;
+}
+
+.dark .vp-doc .component-preview.dark-only {
+  display: block;
+}
+
+.configuration-gallery-container {
+  container: configuration-previews / inline-size;
+}
+
+.vp-doc .configuration-gallery {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin: 1.5rem 0;
+}
+
+.vp-doc .configuration-gallery figure {
+  /* A zero basis shares one row equally. Below the row's minimum width,
+     a full-width basis puts every figure on its own row, for any figure count. */
+  flex: 1 1 clamp(0px, calc((var(--configuration-row-min-width) - 100cqw) * 10000), 100%);
+  min-width: 0;
+  margin: 0;
+}
+
+.vp-doc .configuration-gallery .component-preview {
+  margin: 0 auto 1rem;
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.vp-doc .configuration-gallery figcaption {
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+.vp-doc .configuration-gallery figcaption > a {
+  font-weight: 600;
+}
+
+.vp-doc .configuration-gallery dl {
+  display: block;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.vp-doc .configuration-gallery dl > div {
+  margin-top: 0.5rem;
+}
+
+.vp-doc .configuration-gallery dt,
+.vp-doc .configuration-gallery dd {
+  display: inline;
+  margin: 0;
+  font-weight: inherit;
+}
+
+.vp-doc .configuration-gallery dd::before {
+  content: " = ";
+}
+
+.vp-doc .configuration-gallery code {
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  font: inherit;
+  white-space: normal;
+}
 
 :root, :root.dark {
   --silicon-doc-nav-bg: var(--vp-c-bg);

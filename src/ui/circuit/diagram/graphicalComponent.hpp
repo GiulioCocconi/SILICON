@@ -39,6 +39,16 @@
 namespace SILICON::ui {
 using namespace SILICON::core;
 
+enum class PropertyEditor { Automatic, Multiline };
+
+/** GUI-only preferences, separate from semantic property declarations. */
+struct PropertyPresentation {
+  bool                                         hidden   = false;
+  bool                                         advanced = false;
+  PropertyEditor                               editor   = PropertyEditor::Automatic;
+  std::function<QString(const PropertyValue&)> formatValue{};
+};
+
 using PortPair = std::pair<QString, QPoint>;
 
 class GUIComponentFactory;
@@ -163,16 +173,14 @@ class GraphicalComponent : public GraphicalItem {
 public:
   /** @brief Properties exposed by graphical and simulation components alike. */
   [[nodiscard]] virtual const PropertyMap&   getProperties() const;
-  [[nodiscard]] std::optional<PropertyValue> getProperty(std::string_view key) const;
-  [[nodiscard]] virtual std::optional<std::reference_wrapper<const StringPropertyOptions>>
-                             getStringPropertyOptions(std::string_view key) const;
-  [[nodiscard]] virtual bool isMultilineProperty(std::string_view key) const;
-  /** @brief Whether a property is omitted from the properties panel. */
-  [[nodiscard]] bool isPropertyHidden(std::string_view key) const;
+  [[nodiscard]] virtual std::optional<PropertyValue>
+  getProperty(std::string_view key) const;
+  [[nodiscard]] virtual PropertyPresentation
+               propertyPresentation(std::string_view key) const;
   virtual void applyProperty(std::string_view key, const PropertyValue& value);
   /** Apply a compound edit without re-running an interactive selection action. */
   virtual void applyProperties(const PropertyMap& values);
-  [[nodiscard]] virtual std::vector<PropertyInfo> propertyInfo() const;
+  [[nodiscard]] virtual std::vector<PropertyDefinition> propertyDefinitions() const;
 
 signals:
   /** Editor fields or derived information changed, independently of component size. */
@@ -206,12 +214,6 @@ public:
   [[nodiscard]] QRectF collisionRectForWires() const;
 
 protected:
-  /** @brief Property names hidden from the panel, still accessible and serialized.
-   * Add names in subclasses with hiddenProperties.insert("propertyName").
-   */
-  std::unordered_set<std::string, TransparentStringHash, std::equal_to<>>
-      hiddenProperties;
-
   /**
    * @brief Sets the component shape graphics item.
    * @param shape The shape item

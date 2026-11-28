@@ -45,6 +45,10 @@ public:
   void                     registerType(std::string type, Factory factory);
   Component_ptr            create(std::string_view type) const;
   bool                     hasType(std::string_view type) const;
+  /** Full type schema, including properties absent from the default configuration. */
+  ComponentTypeDescription describeType(std::string_view type) const;
+  ComponentDescription     describeConfiguration(std::string_view   type,
+                                                 const PropertyMap& configuration = {}) const;
   ComponentMetadata        metadata(std::string_view type) const;
   std::vector<std::string> availableTypes() const;
 

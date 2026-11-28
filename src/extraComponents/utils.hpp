@@ -33,12 +33,18 @@ private:
   std::vector<std::pair<unsigned int, unsigned int>> slices;
 
 public:
+  [[nodiscard]] std::vector<PortDescription> portDescriptions() const override;
+  [[nodiscard]] std::vector<DocumentationConfiguration>
+  documentationConfigurations() const override;
+
   static constexpr std::string_view Type = "WireSplitter";
   std::string_view                  typeName() const override { return Type; }
   ComponentMetadata                 metadata() const override
   {
-    return {"Wire Splitter", "Splits a bus into bits or bus slices.",
-            ComponentCategory::Utils};
+    return {.displayName             = "Wire Splitter",
+            .description             = "Splits a bus into bits or bus slices.",
+            .category                = ComponentCategory::Utils,
+            .configurationProperties = {"size", "slices"}};
   }
 
   WireSplitter();
@@ -60,14 +66,21 @@ class WireMerger : public Component {
 private:
   void initializeProperties();
   std::vector<unsigned int> widths;
+  [[nodiscard]] std::vector<unsigned int> inputWidths(unsigned int size) const;
 
 public:
+  [[nodiscard]] std::vector<PortDescription> portDescriptions() const override;
+  [[nodiscard]] std::vector<DocumentationConfiguration>
+  documentationConfigurations() const override;
+
   static constexpr std::string_view Type = "WireMerger";
   std::string_view                  typeName() const override { return Type; }
   ComponentMetadata                 metadata() const override
   {
-    return {"Wire Merger", "Concatenates bits or buses, least-significant input first.",
-            ComponentCategory::Utils};
+    return {.displayName = "Wire Merger",
+            .description = "Concatenates bits or buses, least-significant input first.",
+            .category    = ComponentCategory::Utils,
+            .configurationProperties = {"size", "widths"}};
   }
 
   WireMerger();
